@@ -1,15 +1,14 @@
-# ./flake.nix
 {
   description = "network-control-plane-model";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/0182a361324364ae3f436a63005877674cf45efb";
-    network-solver.url = "github:esp0xdeadbeef/network-forwarding-model";
+    network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model";
 
-    network-solver.inputs.nixpkgs.follows = "nixpkgs";
+    network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, network-solver }:
+  outputs = { self, nixpkgs, network-forwarding-model }:
     let
       lib = nixpkgs.lib;
       systems = [
@@ -29,7 +28,7 @@
       packages = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          solverApp = network-solver.apps.${system}.compile-and-solve.program;
+          solverApp = network-forwarding-model.apps.${system}.compile-and-solve.program;
         in
         {
           control-plane-model = pkgs.writeShellApplication {
@@ -60,13 +59,15 @@
               jq empty "$FORWARDING_JSON"
 
               echo "[*] Evaluating control-plane model..." >&2
-              nix eval \
+              FORWARDING_JSON="$FORWARDING_JSON" nix eval \
                 --impure \
                 --json \
                 --expr '
                   let
                     flake = builtins.getFlake (toString ./.);
-                    forwardingModel = builtins.fromJSON (builtins.readFile (builtins.getEnv "FORWARDING_JSON"));
+                    forwardingModel =
+                      builtins.fromJSON
+                        (builtins.readFile (builtins.getEnv "FORWARDING_JSON"));
                   in
                     flake.lib.controlPlaneModel { input = forwardingModel; }
                 ' > "$OUTPUT_JSON"
