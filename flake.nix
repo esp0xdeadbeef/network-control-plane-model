@@ -32,6 +32,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           solverApp = network-forwarding-model.apps.${system}.compile-and-solve.program;
+          flakeRef = self.outPath;
         in
         {
           control-plane-model = pkgs.writeShellApplication {
@@ -62,12 +63,12 @@
               jq empty "$FORWARDING_JSON"
 
               echo "[*] Evaluating control-plane model..." >&2
-              FORWARDING_JSON="$FORWARDING_JSON" FLAKE_REF="$(pwd)" nix eval \
+              FORWARDING_JSON="$FORWARDING_JSON" nix eval \
                 --impure \
                 --json \
                 --expr '
                   let
-                    flake = builtins.getFlake (builtins.getEnv "FLAKE_REF");
+                    flake = builtins.getFlake "${flakeRef}";
                     forwardingModel =
                       builtins.fromJSON
                         (builtins.readFile (builtins.getEnv "FORWARDING_JSON"));
