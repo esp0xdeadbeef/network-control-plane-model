@@ -109,6 +109,38 @@ uplinkRoutingPolicy
 
 ---
 
+## Network inventory integration
+
+The control plane model requires access to **endpoint inventory information**.
+
+This currently exists as a separate input (`endpoint-inventory.nix`) but ideally should be represented as a structured part of the overall model.
+
+A future schema should define a stable inventory structure.
+
+Example concept:
+
+inventory = {
+  endpoints = {
+    <endpoint-name> = {
+      zone = "...";
+      ipv4 = [ ... ];
+      ipv6 = [ ... ];
+    };
+  };
+}
+
+This allows the control plane model to reason about:
+
+- endpoint ownership
+- service placement
+- routing exposure
+- policy evaluation
+- service reachability
+
+Embedding this information directly in the model ensures that downstream renderers consume a **single authoritative model** instead of loading external inventory sources.
+
+---
+
 # Why these fields matter
 
 Without these fields, the control plane model must infer behavior from forwarding structure.
