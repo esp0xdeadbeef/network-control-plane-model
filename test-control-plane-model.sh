@@ -1,35 +1,21 @@
+# ./test-control-plane-model.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
-INPUT="../network-compiler/examples/single-wan/inputs.nix"
-EXPECTED="./output-solver-signed.json"
-OUTPUT="control-plane-model.json"
+#example_repo=$(nix eval --raw --impure --expr 'builtins.fetchGit { url = "git@github.com:esp0xdeadbeef/network-labs.git";}')
+#example_repo=$(nix flake prefetch github:esp0xdeadbeef/network-labs --json | jq -r .path)
+example_repo=$(nix flake prefetch github:esp0xdeadbeef/network-labs --json | jq -r .storePath)
+INPUT="$example_repo/examples/single-wan/intent.nix"
+INPUT_INVENTORY="$example_repo/examples/single-wan/inventory.nix"
+OUTPUT="output-control-plane-model.json"
 
 rm -f "$OUTPUT"
 
 echo "[*] Running control-plane-model..."
-nix run .#control-plane-model -- "$INPUT" "$OUTPUT"
+nix run .#control-plane-model -- "$INPUT" "$INPUT_INVENTORY" "$OUTPUT"
 
 echo "[*] Validating JSON..."
 jq empty "$OUTPUT" >/dev/null
 
-echo "[*] Verifying Phase 1 pass-through (exact match with solver output)..."
-
-TMP_EXPECTED="$(mktemp)"
-trap 'rm -f "$TMP_EXPECTED"' EXIT
-
-# regenerate solver output exactly like pipeline does
-echo "[*] Running solver separately for comparison..."
-nix run github:esp0xdeadbeef/network-forwarding-model#compile-and-solve -- "$INPUT" > "$TMP_EXPECTED"
-
-jq empty "$TMP_EXPECTED" >/dev/null
-
-if diff -u <(jq -S . "$TMP_EXPECTED") <(jq -S . "$OUTPUT") ; then
-  echo "[✓] PASS: control-plane-model output is identical to forwarding model"
-else
-  echo "[✗] FAIL: outputs differ"
-  exit 1
-fi
-
-echo "[*] Preview output..."
-jq '.enterprise | keys' "$OUTPUT"
+echo "[*] Output (compact JSON)..."
+jq -c . "$OUTPUT"

@@ -17,6 +17,7 @@
         "aarch64-linux"
       ];
       forAllSystems = nixLib.genAttrs systems;
+
       controlPlaneModel = import ./src/main.nix;
     in
     {
@@ -46,15 +47,27 @@
             text = ''
               set -euo pipefail
 
-              if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-                echo "Usage: $0 <input.nix> [output-control-plane-model.json]" >&2
+              if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+                echo "Usage: $0 <input.nix> [inventory.nix] [output-control-plane-model.json]" >&2
                 exit 1
               fi
 
               INPUT_NIX="$1"
-              OUTPUT_JSON="''${2:-control-plane-model.json}"
+              INVENTORY_NIX=""
+              OUTPUT_JSON="control-plane-model.json"
+
+              if [ "$#" -eq 2 ]; then
+                OUTPUT_JSON="$2"
+              fi
+
+              if [ "$#" -eq 3 ]; then
+                INVENTORY_NIX="$2"
+                OUTPUT_JSON="$3"
+              fi
+
               FORWARDING_JSON="$(mktemp)"
-              trap 'rm -f "$FORWARDING_JSON"' EXIT
+              INVENTORY_JSON="$(mktemp)"
+              trap 'rm -f "$FORWARDING_JSON" "$INVENTORY_JSON"' EXIT
 
               echo "[*] Running solver..." >&2
               ${solverApp} "$INPUT_NIX" > "$FORWARDING_JSON"
@@ -62,18 +75,39 @@
               echo "[*] Validating solver JSON..." >&2
               jq empty "$FORWARDING_JSON"
 
+              if [ -n "$INVENTORY_NIX" ]; then
+                echo "[*] Evaluating inventory..." >&2
+
+                nix eval \
+                  --impure \
+                  --json \
+                  --expr "import $INVENTORY_NIX" \
+                  > "$INVENTORY_JSON"
+
+                echo "[*] Validating inventory JSON..." >&2
+                jq empty "$INVENTORY_JSON"
+              else
+                printf '{}\n' > "$INVENTORY_JSON"
+              fi
+
               echo "[*] Evaluating control-plane model..." >&2
-              FORWARDING_JSON="$FORWARDING_JSON" nix eval \
+              FORWARDING_JSON="$FORWARDING_JSON" INVENTORY_JSON="$INVENTORY_JSON" nix eval \
                 --impure \
                 --json \
                 --expr '
                   let
-                    flake = builtins.getFlake "${flakeRef}";
+                    flake = builtins.getFlake "'"${flakeRef}"'";
                     forwardingModel =
                       builtins.fromJSON
                         (builtins.readFile (builtins.getEnv "FORWARDING_JSON"));
+                    inventory =
+                      builtins.fromJSON
+                        (builtins.readFile (builtins.getEnv "INVENTORY_JSON"));
                   in
-                    flake.lib.controlPlaneModel { input = forwardingModel; }
+                    flake.lib.controlPlaneModel {
+                      input = forwardingModel;
+                      inherit inventory;
+                    }
                 ' > "$OUTPUT_JSON"
 
               echo "[*] Validating control-plane model JSON..." >&2
