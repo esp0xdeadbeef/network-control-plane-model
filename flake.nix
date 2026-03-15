@@ -1,3 +1,4 @@
+# ./flake.nix
 {
   description = "network-control-plane-model";
 
@@ -10,16 +11,18 @@
 
   outputs = { self, nixpkgs, network-forwarding-model }:
     let
-      lib = nixpkgs.lib;
+      nixLib = nixpkgs.lib;
       systems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
-      forAllSystems = lib.genAttrs systems;
+      forAllSystems = nixLib.genAttrs systems;
       controlPlaneModel = import ./src/main.nix;
     in
     {
-      lib.controlPlaneModel = controlPlaneModel;
+      lib = {
+        controlPlaneModel = controlPlaneModel;
+      };
 
       formatter = forAllSystems (system:
         nixpkgs.legacyPackages.${system}.nixfmt-rfc-style
@@ -59,12 +62,12 @@
               jq empty "$FORWARDING_JSON"
 
               echo "[*] Evaluating control-plane model..." >&2
-              FORWARDING_JSON="$FORWARDING_JSON" nix eval \
+              FORWARDING_JSON="$FORWARDING_JSON" FLAKE_REF="$(pwd)" nix eval \
                 --impure \
                 --json \
                 --expr '
                   let
-                    flake = builtins.getFlake (toString ./.);
+                    flake = builtins.getFlake (builtins.getEnv "FLAKE_REF");
                     forwardingModel =
                       builtins.fromJSON
                         (builtins.readFile (builtins.getEnv "FORWARDING_JSON"));
@@ -105,6 +108,11 @@
 
           cli-structure = pkgs.runCommand "network-control-plane-model-cli-structure" { } ''
             test -x ${self.packages.${system}.control-plane-model}/bin/control-plane-model
+            touch "$out"
+          '';
+
+          flake-lib-visible = pkgs.runCommand "network-control-plane-model-flake-lib-visible" { } ''
+            ${pkgs.nix}/bin/nix eval --json ${self}#lib >/dev/null
             touch "$out"
           '';
         });
