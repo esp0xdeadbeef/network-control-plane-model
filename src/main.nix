@@ -1,8 +1,21 @@
 { input, inventory ? {} }:
 
 let
-  cleaned = builtins.removeAttrs input [ "endpointInventory" ];
+  lib = import ../lib/utils.nix;
+
+  normalize = import ./normalize-forwarding-model.nix;
+  deriveCPM = import ./build-cpm.nix { inherit lib; };
+  mergeInputs = import ./merge-inputs.nix;
+
+  normalized = normalize input;
+
+  cpm = deriveCPM (normalized.enterprise or {});
+
 in
-cleaned // {
-  endpointInventory = inventory;
+mergeInputs {
+  forwardingModel = normalized;
+  inventory = inventory;
+}
+// {
+  control_plane_model = cpm;
 }
