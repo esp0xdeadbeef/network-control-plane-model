@@ -10,6 +10,17 @@ INPUT="$example_repo/examples/single-wan/intent.nix"
 INPUT_INVENTORY="$example_repo/examples/single-wan/inventory.nix"
 OUTPUT="output-control-plane-model.json"
 
+
+
+
+# TEMP OVERWRITES:
+#INPUT_INVENTORY="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-policy-only/inventory.nix"
+#INPUT="/home/deadbeef/github/nixos/library/100-fabric-routing/inputs/intent.nix"
+
+
+
+
+
 rm -f "$OUTPUT"
 
 echo "[*] Running control-plane-model..."
