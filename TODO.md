@@ -1,11 +1,14 @@
-Temporary boundary violation (currently in the main NixOS repo):
-transit VLAN IDs are currently derived locally from a formula.
+Temporary boundary violations (currently in the main NixOS repo):
+
+1. Transit VLAN IDs are currently derived locally from a formula.
+2. Tenant VLAN IDs are currently derived locally from the IPv4 tenant subnet shape.
 
 Reason:
-needed to finish access/policy router realization before CPM emits explicit transit VLANs.
+needed to finish access/policy router realization before `network-control-plane-model` emits explicit VLAN data needed by the NixOS modules.
 
 Constraint:
-this derivation must exist in exactly one helper and must not be reimplemented in host/container/router modules.
+these derivations must exist in exactly one helper each and must not be reimplemented in host/container/router modules.
 
 Exit criteria:
-remove helper after `network-control-plane-model` emits explicit per-interface transit VLAN IDs.
+remove the transit VLAN helper after `network-control-plane-model` emits explicit per-interface transit VLAN IDs.
+remove the tenant VLAN helper after `network-control-plane-model` emits explicit tenant VLAN IDs for rendered interfaces or networks.
