@@ -24,6 +24,7 @@ let
     in
     {
       endpoints = endpoints;
+      routingParticipation = false;
     };
 
   p2pLinks =

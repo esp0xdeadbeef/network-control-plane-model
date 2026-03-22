@@ -1,0 +1,1 @@
+site.transit.adjacencies is required
