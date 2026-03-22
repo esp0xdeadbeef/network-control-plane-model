@@ -9,7 +9,13 @@ let
 
   normalized = normalize input;
 
-  cpm = deriveCPM (normalized.enterprise or {});
+  enterprise =
+    if builtins.isAttrs (normalized.enterprise or null) then
+      normalized.enterprise
+    else
+      throw "missing required forwardingModel.enterprise attribute set";
+
+  cpm = deriveCPM enterprise;
 
 in
 mergeInputs {

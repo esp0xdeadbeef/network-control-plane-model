@@ -3,89 +3,84 @@
 enterprise:
 
 let
-  deriveTransit = import ./derive-transit.nix { inherit lib; };
-  validateTransit = import ./validate-transit.nix { inherit lib; };
+  invariants = import ../invariants/default.nix { inherit lib; };
 
-  hasExplicitTransit = transit:
-    builtins.isAttrs transit
-    && builtins.isList (transit.adjacencies or null)
-    && builtins.isList (transit.ordering or null);
-
-  normalizeTransit = site:
-    let
-      transit = site.transit or null;
-      _ =
-        if hasExplicitTransit transit then
-          null
-        else
-          validateTransit site;
-    in
-    if hasExplicitTransit transit then
-      transit
+  requireAttrs = path: value:
+    if builtins.isAttrs value then
+      value
     else
-      deriveTransit site;
+      throw "missing required ${path} attribute set";
 
   normalizeOverlay = site:
     let
-      transport = site.transport or {};
+      transport =
+        if site ? transport then
+          requireAttrs "site.transport" site.transport
+        else
+          {};
+
       overlays = transport.overlays or {};
     in
     if builtins.isAttrs overlays || builtins.isList overlays then
       overlays
     else
-      {};
+      throw "site.transport.overlays must be an attribute set or list";
 
-  normalizeSite = site: {
-    transit = normalizeTransit site;
-    overlay = normalizeOverlay site;
-  };
-
-  normalizeEnterpriseSites = ent:
+  normalizeTransit = site:
     let
-      siteRoot =
-        if builtins.isAttrs ent.site or null then
-          ent.site
+      transit =
+        if site ? transit then
+          site.transit
         else
-          {};
+          throw "missing explicit site.transit with adjacencies and ordering";
+    in
+    if invariants.hasExplicitTransit transit then
+      transit
+    else
+      throw "missing explicit site.transit with adjacencies and ordering";
+
+  normalizeSite = site:
+    let
+      siteAttrs = requireAttrs "site" site;
+    in
+    {
+      transit = normalizeTransit siteAttrs;
+      overlay = normalizeOverlay siteAttrs;
+    };
+
+  normalizeEnterpriseSites = enterpriseName: ent:
+    let
+      entAttrs = requireAttrs "enterprise.${enterpriseName}" ent;
+
+      siteRoot =
+        if entAttrs ? site then
+          requireAttrs "enterprise.${enterpriseName}.site" entAttrs.site
+        else
+          throw "missing required enterprise.${enterpriseName}.site attribute set";
     in
     lib.mapAttrsSorted
-      (_: site: normalizeSite site)
+      (_siteName: site: normalizeSite site)
       siteRoot;
+
+  enterpriseAttrs =
+    if builtins.isAttrs enterprise then
+      enterprise
+    else
+      throw "missing required forwardingModel.enterprise attribute set";
+
+  inputValidation = invariants.validateEnterpriseInputs enterpriseAttrs;
 
   cpmData =
     lib.mapAttrsSorted
-      (_: ent: normalizeEnterpriseSites ent)
-      enterprise;
+      (enterpriseName: ent: normalizeEnterpriseSites enterpriseName ent)
+      enterpriseAttrs;
 
-  # NEW: CPM schema validation
-  validateCPM = data:
-    let
-      validateSite = site:
-        let
-          transit = site.transit or {};
-        in
-        if !(builtins.isAttrs transit) then
-          throw "CPM validation error: transit must be an attribute set"
-        else if !(builtins.isList (transit.adjacencies or null)) then
-          throw "CPM validation error: transit.adjacencies must be a list"
-        else if !(builtins.isList (transit.ordering or null)) then
-          throw "CPM validation error: transit.ordering must be a list"
-        else
-          true;
-
-      validateSites = sites:
-        builtins.mapAttrs (_: validateSite) sites;
-
-      validateEnterprises =
-        builtins.mapAttrs (_: validateSites) data;
-    in
-    validateEnterprises;
-
-  _ = validateCPM cpmData;
-
+  cpmValidation = invariants.validateCPMData cpmData;
 in
-{
-  version = 1;
-  source = "nix";
-  data = cpmData;
-}
+builtins.seq inputValidation (
+  builtins.seq cpmValidation {
+    version = 1;
+    source = "nix";
+    data = cpmData;
+  }
+)

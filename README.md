@@ -1,267 +1,166 @@
 # network-control-plane-model
 
-> ⚠️ This module exists because forwarding behavior alone does not define how a network actually operates.
-
-The **network-control-plane-model** converts a deterministic **Forwarding Model** into an explicit **Control Plane Model**.
-
-The forwarding model describes **how packets must traverse the network fabric**.
-
-The control plane model describes **how routing behavior is constructed so that forwarding becomes operational**.
-
-This repository therefore defines the routing structure required to realize the forwarding model.
-
-It produces a platform-neutral description of routing behavior.
-
-No device configuration must be generated here.
+`network-control-plane-model` accepts an explicit forwarding model and produces a deterministic `control_plane_model`.
 
 ---
 
-# TLDR
+## Normative implementation
 
-Forwarding describes packet traversal.
+The Nix path is the only normative implementation.
 
-Control plane describes how routing protocols make that traversal possible.
-
-Renderers translate the result into device configuration.
+`./src/python-reference/` is reference-only historical material. It does not define accepted input shape, required fields, invariants, or test outcomes.
 
 ---
 
-# Architecture position
+## Canonical explicit model contract
 
-The network toolchain is divided into four layers.
+A valid input passed to `./src/main.nix` must provide:
 
-Compiler  
-↓  
-Forwarding Model  
-↓  
-Control Plane Model  ← this repository  
-↓  
-Renderer  
-
-Each layer has a strictly defined responsibility.
+* `enterprise` as an attribute set.
+* `enterprise.<name>.site` as an attribute set.
+* `enterprise.<name>.site.<name>.transit` explicitly.
+* `enterprise.<name>.site.<name>.transit.adjacencies` explicitly.
+* `enterprise.<name>.site.<name>.transit.ordering` explicitly.
+* `enterprise.<name>.site.<name>.transport.overlays` as either an attribute set or a list when present.
 
 ---
 
-# Compiler
+## Explicit transit
 
-The compiler defines **communication intent**.
+`site.transit` is required and must not be inferred.
 
-Examples include:
+Each adjacency must contain exactly two endpoints.
 
-- tenants
-- services
-- traffic types
-- communication contracts
+Each endpoint must contain:
 
-The compiler answers the question:
+* `unit`
+* `local`
+* at least one of `local.ipv4` or `local.ipv6`
 
-Who must be able to communicate with whom?
+Example:
 
-The compiler does **not** define topology or routing behavior.
+```nix
+{
+  transit = {
+    adjacencies = [
+      {
+        endpoints = [
+          {
+            unit = "policy-1";
+            local.ipv4 = "10.0.0.1";
+          }
+          {
+            unit = "access-1";
+            local.ipv4 = "10.0.0.2";
+          }
+        ];
+        routingParticipation = false;
+      }
+    ];
 
----
-
-# Forwarding Model
-
-The forwarding model constructs a **deterministic packet traversal structure**.
-
-It defines:
-
-- nodes
-- roles
-- adjacency ordering
-- prefix ownership
-- forwarding responsibilities
-- interface addressing
-- uplinks
-
-The forwarding model answers:
-
-How must packets move through the network so that communication intent becomes executable?
-
-However, the forwarding model **does not define routing protocols**.
-
-It describes forwarding behavior, not control-plane behavior.
-
----
-
-# Control Plane Model
-
-This repository constructs the **Control Plane Model**.
-
-It converts the forwarding structure into explicit routing behavior.
-
-This includes:
-
-- routing adjacencies
-- routing session topology
-- routing hierarchy
-- route propagation paths
-- prefix advertisement responsibilities
-- routing roles per node
-
-The control plane model answers:
-
-How do routing protocols realize the forwarding structure?
-
-The result is **platform neutral** and must contain no configuration syntax.
+    ordering = [
+      [ "policy-1" "access-1" ]
+    ];
+  };
+}
+```
 
 ---
 
-# Renderer
+## Explicit overlays
 
-Renderers translate the control plane model into **device configuration**.
+`site.transport.overlays` must be either:
 
-Examples include:
+* an attribute set, or
+* a list
 
-- NixOS router configuration
-- Containerlab node definitions
-- FRR configuration
-- vendor router configuration
-
-Renderers must not invent routing structure.
-
-They must consume the control plane model deterministically.
+No other type is accepted.
 
 ---
 
-# Responsibilities of this repository
+## Explicit interface semantics
 
-This repository must:
+When `site.nodes` is present, `site.nodes.<node>.interfaces.<ifname>` is validated explicitly.
 
-- consume the forwarding model
-- derive routing adjacencies
-- derive routing hierarchy
-- determine route propagation structure
-- determine prefix advertisement responsibilities
-- determine routing protocol roles
+Every interface requires:
 
-This repository must **not**:
+* `kind`
 
-- generate device configuration
-- define platform syntax
-- allocate IP addresses
-- modify forwarding behavior
-- reinterpret communication intent
+Additional required fields by kind:
 
-The forwarding model is authoritative.
+* `kind = "tenant"` requires `tenant`
+* `kind = "overlay"` requires `overlay`
+* `kind = "wan"` requires `upstream`
+
+Semantic repair from links, prefixes, names, or topology shape is not accepted.
 
 ---
 
-# Implementation requirements
+## Explicit tenant identity
 
-The control plane model **must be implemented entirely in Nix**.
+Tenant identity must be present on tenant-facing interfaces.
 
-This ensures:
+For `role = "access"`, at least one interface must be:
 
-- deterministic evaluation
-- pure functional behavior
-- reproducible builds
-- schema validation through evaluation failure
+* `kind = "tenant"`
+* with explicit `tenant`
 
-The repository must not contain:
-
-- Python
-- shell orchestration
-- imperative logic
-
-All control-plane derivation must be expressed as **pure Nix evaluation**.
+Prefix ownership, node naming, contracts, and topology heuristics are not accepted as substitutes.
 
 ---
 
-# Expected input
+## Explicit policy and firewall tags
 
-The input to this repository is the **Forwarding Model** produced by the upstream solver.
+When `communicationContract` is present, `site.policy.interfaceTags` is required.
 
-Typical structures include:
+`site.policy.interfaceTags` is the canonical explicit source of policy tags.
 
-- nodes
-- node roles
-- transit adjacency ordering
-- prefix ownership
-- forwarding routes
-- interface definitions
-- uplink definitions
-- topology metadata
+Every tenant, external, service, or named relation member referenced by `communicationContract` must already appear as a value in `site.policy.interfaceTags`.
 
-The control plane model must treat the forwarding model as **authoritative**.
-
-Forwarding behavior must not be modified.
+Topology-derived policy tags are not accepted.
 
 ---
 
-# Expected output
+## Explicit BGP session intent
 
-The output of this repository must be a **Control Plane Model** describing routing behavior.
+If `site.bgp.mode = "bgp"`, then `site.bgp.sessions` is required and must be non-empty.
 
-The model must contain structures such as:
+Each session must declare explicit endpoint node names:
 
-- routing adjacencies
-- routing sessions
-- routing hierarchy
-- prefix advertisement responsibilities
-- route propagation relationships
-- route import/export structure
+* `a`
+* `b`
 
-The model must remain **platform neutral**.
+Optional:
 
-Multiple renderers should be able to consume the same model and produce identical routing behavior.
+* `rr`
 
----
+Every referenced node must exist in `site.nodes`.
 
-# Missing forwarding model fields
-
-Some information required for correct control plane construction is currently missing from the forwarding model schema.
-
-These missing elements are documented in:
-
-MISSING-FIELDS-NETWORK-FORWARDER.md
-
-This file lists structural gaps in the forwarding model which must eventually be resolved upstream.
-
-Examples include:
-
-- explicit routing adjacency intent
-- prefix advertisement scope
-- route propagation boundaries
-- routing capability declarations
-- control-plane participation flags
-
-These are **upstream schema issues**, not problems in this repository.
-
-This repository must not attempt to compensate for them through ad-hoc heuristics.
+Role-derived BGP sessions are not accepted.
 
 ---
 
-# Repository structure
+## Test layout
 
-network-control-plane-model
-LICENSE
-README.md
-TODO.md
-MISSING-FIELDS-NETWORK-FORWARDER.md
+Fixtures are committed under:
+
+* `fixtures/passing/`
+* `fixtures/failing/invariants/`
+* `fixtures/failing/no-guessing/`
+
+Direct test entrypoints:
+
+* `tests/test-passing-fixtures.sh`
+* `tests/test-failing-invariants.sh`
+* `tests/test-no-guessing.sh`
 
 ---
 
-# Design philosophy
+## Running tests
 
-This repository exists to remove ambiguity between forwarding behavior and routing behavior.
+```bash
+./tests/test-passing-fixtures.sh
+./tests/test-failing-invariants.sh
+./tests/test-no-guessing.sh
+```
 
-Forwarding models describe:
-
-packet traversal.
-
-Control plane models describe:
-
-routing behavior required to make traversal possible.
-
-Renderers describe:
-
-device configuration.
-
-Keeping these layers separate ensures:
-
-- deterministic network construction
-- renderer independence
-- architectural clarity
-- reproducible infrastructure

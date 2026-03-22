@@ -1,0 +1,1 @@
+site.transit.adjacencies[0].endpoints[0].local is required

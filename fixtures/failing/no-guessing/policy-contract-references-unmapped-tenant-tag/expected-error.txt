@@ -1,0 +1,1 @@
+communicationContract references tag 'tenant-a' with no explicit interfaceTags mapping
