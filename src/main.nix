@@ -10,29 +10,46 @@ let
 
   normalized = normalize input;
 
+  embeddedInventory =
+    if builtins.isAttrs (input.endpointInventory or null) then
+      input.endpointInventory
+    else
+      { };
+
+  effectiveInventory =
+    if inventory != {} then
+      inventory
+    else
+      embeddedInventory;
+
   enterprise =
     if builtins.isAttrs (normalized.enterprise or null) then
       normalized.enterprise
     else
       throw "missing required forwardingModel.enterprise attribute set";
 
-  cpm = deriveCPM enterprise;
+  cpm =
+    deriveCPM {
+      inherit enterprise;
+      inventory = effectiveInventory;
+    };
 
   merged =
     mergeInputs {
       forwardingModel = normalized;
-      inventory = inventory;
+      inventory = effectiveInventory;
     }
     // {
       control_plane_model = cpm;
     };
 
   inventoryValidation =
-    if inventory == {} then
+    if effectiveInventory == {} then
       true
     else
       validateInventory {
-        inherit inventory cpm;
+        inventory = effectiveInventory;
+        inherit cpm;
       };
 
 in
