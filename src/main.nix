@@ -6,6 +6,7 @@ let
   normalize = import ./normalize-forwarding-model.nix;
   deriveCPM = import ./build-cpm.nix { inherit lib; };
   mergeInputs = import ./merge-inputs.nix;
+  validateInventory = import ./validate-inventory.nix { inherit lib; };
 
   normalized = normalize input;
 
@@ -17,11 +18,24 @@ let
 
   cpm = deriveCPM enterprise;
 
+  merged =
+    mergeInputs {
+      forwardingModel = normalized;
+      inventory = inventory;
+    }
+    // {
+      control_plane_model = cpm;
+    };
+
+  inventoryValidation =
+    if inventory == {} then
+      true
+    else
+      validateInventory {
+        inherit inventory cpm;
+      };
+
 in
-mergeInputs {
-  forwardingModel = normalized;
-  inventory = inventory;
-}
-// {
-  control_plane_model = cpm;
-}
+builtins.seq cpm (
+  builtins.seq inventoryValidation merged
+)
