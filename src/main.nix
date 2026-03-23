@@ -17,20 +17,14 @@ let
       { };
 
   effectiveInventory =
-    if inventory != {} then
+    if inventory != { } then
       inventory
     else
       embeddedInventory;
 
-  enterprise =
-    if builtins.isAttrs (normalized.enterprise or null) then
-      normalized.enterprise
-    else
-      throw "missing required forwardingModel.enterprise attribute set";
-
   cpm =
     deriveCPM {
-      inherit enterprise;
+      forwardingModel = normalized;
       inventory = effectiveInventory;
     };
 
@@ -44,14 +38,13 @@ let
     };
 
   inventoryValidation =
-    if effectiveInventory == {} then
+    if effectiveInventory == { } then
       true
     else
       validateInventory {
         inventory = effectiveInventory;
         inherit cpm;
       };
-
 in
 builtins.seq cpm (
   builtins.seq inventoryValidation merged

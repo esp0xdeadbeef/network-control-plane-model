@@ -1,3 +1,4 @@
+# ./src/validate-inventory.nix
 { lib }:
 
 { inventory, cpm }:
@@ -562,82 +563,143 @@ let
     in
     builtins.concatLists refsPerNode;
 
-  collectCPMP2PLinks =
+  cpmP2PAliasMap =
     let
       data = requireAttrs "control_plane_model.data" (cpm.data or null);
 
       enterpriseNames = attrNames data;
 
-      perEnterprise =
-        builtins.map
-          (enterpriseName:
-            let
-              sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
-              siteNames = attrNames sites;
-
-              perSite =
+      aliasEntries =
+        builtins.concatLists (
+          builtins.map
+            (enterpriseName:
+              let
+                sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
+                siteNames = attrNames sites;
+              in
+              builtins.concatLists (
                 builtins.map
                   (siteName:
                     let
                       site = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}" sites.${siteName};
                       transit = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}.transit" (site.transit or null);
                       adjacencies = requireList "control_plane_model.data.${enterpriseName}.${siteName}.transit.adjacencies" (transit.adjacencies or null);
-
-                      names =
-                        builtins.filter
-                          (x: x != null)
-                          (builtins.map
-                            (adj:
-                              if (adj.kind or null) == "p2p" then
-                                if adj ? link && nonEmptyString adj.link then
-                                  adj.link
-                                else if adj ? name && nonEmptyString adj.name then
-                                  adj.name
-                                else
-                                  throw "inventory lint error: CPM p2p adjacency is missing link/name"
-                              else
-                                null
-                            )
-                            adjacencies);
                     in
-                    names
-                  )
-                  siteNames;
-            in
-            builtins.concatLists perSite
-          )
-          enterpriseNames;
+                    builtins.concatLists (
+                      builtins.map
+                        (adj:
+                          if (adj.kind or null) == "p2p" then
+                            let
+                              canonicalId =
+                                if adj ? id && nonEmptyString adj.id then
+                                  adj.id
+                                else
+                                  throw "inventory lint error: CPM p2p adjacency is missing id";
+
+                              aliases =
+                                builtins.filter
+                                  nonEmptyString
+                                  [
+                                    canonicalId
+                                    (adj.link or null)
+                                    (adj.name or null)
+                                  ];
+                            in
+                            builtins.map
+                              (alias: {
+                                name = alias;
+                                value = canonicalId;
+                              })
+                              aliases
+                          else
+                            [ ])
+                        adjacencies
+                    ))
+                  siteNames
+              ))
+            enterpriseNames
+        );
     in
-    builtins.concatLists perEnterprise;
+    builtins.listToAttrs aliasEntries;
+
+  cpmCanonicalP2PLinks =
+    let
+      data = requireAttrs "control_plane_model.data" (cpm.data or null);
+
+      enterpriseNames = attrNames data;
+
+      ids =
+        builtins.concatLists (
+          builtins.map
+            (enterpriseName:
+              let
+                sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
+                siteNames = attrNames sites;
+              in
+              builtins.concatLists (
+                builtins.map
+                  (siteName:
+                    let
+                      site = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}" sites.${siteName};
+                      transit = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}.transit" (site.transit or null);
+                      adjacencies = requireList "control_plane_model.data.${enterpriseName}.${siteName}.transit.adjacencies" (transit.adjacencies or null);
+                    in
+                    builtins.filter
+                      (x: x != null)
+                      (builtins.map
+                        (adj:
+                          if (adj.kind or null) == "p2p" then
+                            if adj ? id && nonEmptyString adj.id then
+                              adj.id
+                            else
+                              throw "inventory lint error: CPM p2p adjacency is missing id"
+                          else
+                            null)
+                        adjacencies))
+                  siteNames
+              ))
+            enterpriseNames
+        );
+    in
+    ids;
+
+  canonicalizeRefs = refs:
+    builtins.map
+      (ref:
+        if hasAttr ref.link cpmP2PAliasMap then
+          ref // { canonicalLink = cpmP2PAliasMap.${ref.link}; }
+        else
+          ref // { canonicalLink = null; })
+      refs;
 
   validateDeclaredRefsExistInCPM = refs:
     let
-      cpmLinkSet = listToSet collectCPMP2PLinks;
+      canonicalRefs = canonicalizeRefs refs;
 
       unknownRefs =
         builtins.filter
-          (ref: !(hasAttr ref.link cpmLinkSet))
-          refs;
+          (ref: ref.canonicalLink == null)
+          canonicalRefs;
     in
     if unknownRefs != [ ] then
       throw ''
-        inventory lint error: inventory references p2p link names not present in control_plane_model transit.
+        inventory lint error: inventory references stable transit link IDs not present in control_plane_model transit.
         Unknown references:
         ${builtins.toJSON unknownRefs}
       ''
     else
-      true;
+      canonicalRefs;
 
   validateFullP2PCoverage = refs:
     let
-      cpmLinks = collectCPMP2PLinks;
+      cpmLinks = cpmCanonicalP2PLinks;
 
       counts =
         builtins.foldl'
           (acc: ref:
             acc
             // {
-              ${ref.link} = (acc.${ref.link} or 0) + 1;
+              ${ref.canonicalLink} = (acc.${ref.canonicalLink} or 0) + 1;
             })
           { }
           refs;
@@ -646,9 +708,9 @@ let
         builtins.filter
           (item: item.count != 2)
           (builtins.map
-            (linkName: {
-              link = linkName;
-              count = counts.${linkName} or 0;
+            (linkId: {
+              link = linkId;
+              count = counts.${linkId} or 0;
             })
             cpmLinks);
 
@@ -669,19 +731,19 @@ let
     in
     if missing != [ ] then
       throw ''
-        inventory lint error: missing explicit inventory realization for required p2p transit links.
+        inventory lint error: missing explicit inventory realization for required stable p2p transit link IDs.
         Missing links:
         ${builtins.toJSON missing}
       ''
     else if incomplete != [ ] then
       throw ''
-        inventory lint error: p2p transit links must be realized exactly twice in inventory.
+        inventory lint error: stable p2p transit link IDs must be realized exactly twice in inventory.
         Incomplete links:
         ${builtins.toJSON incomplete}
       ''
     else if overRealized != [ ] then
       throw ''
-        inventory lint error: p2p transit links may not be realized more than twice in inventory.
+        inventory lint error: stable p2p transit link IDs may not be realized more than twice in inventory.
         Over-realized links:
         ${builtins.toJSON overRealized}
       ''
@@ -719,12 +781,16 @@ let
       [ ];
 
   allRefs = fabricP2PRefs ++ realizationRefs;
+
+  canonicalRefs =
+    if inventoryAttrs == { } then
+      [ ]
+    else
+      validateDeclaredRefsExistInCPM allRefs;
 in
 if inventoryAttrs == { } then
   true
 else
   builtins.seq deploymentInfo (
-    builtins.seq (validateDeclaredRefsExistInCPM allRefs) (
-      validateFullP2PCoverage allRefs
-    )
+    validateFullP2PCoverage canonicalRefs
   )
