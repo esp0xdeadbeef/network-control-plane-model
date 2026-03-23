@@ -1,11 +1,29 @@
 { lib }:
 
 let
+  hasAttr = name: attrs:
+    builtins.isAttrs attrs && builtins.hasAttr name attrs;
+
   isNonEmptyString = value:
     builtins.isString value && value != "";
 
+  isStringList = value:
+    builtins.isList value && builtins.all isNonEmptyString value;
+
   forceAll = values:
     builtins.deepSeq values true;
+
+  hasDuplicates = values:
+    let
+      sorted = builtins.sort builtins.lessThan values;
+      count = builtins.length sorted;
+    in
+    if count <= 1 then
+      false
+    else
+      builtins.any
+        (idx: builtins.elemAt sorted idx == builtins.elemAt sorted (idx + 1))
+        (builtins.genList (idx: idx) (count - 1));
 
   contextString = context:
     let
@@ -13,84 +31,44 @@ let
         (if context ? enterprise && isNonEmptyString context.enterprise then [ "enterprise.${context.enterprise}" ] else [])
         ++ (if context ? site && isNonEmptyString context.site then [ "site.${context.site}" ] else [])
         ++ (if context ? node && isNonEmptyString context.node then [ "node.${context.node}" ] else [])
-        ++ (if context ? interface && isNonEmptyString context.interface then [ "interface.${context.interface}" ] else []);
+        ++ (if context ? interface && isNonEmptyString context.interface then [ "interface.${context.interface}" ] else [])
+        ++ (if context ? target && isNonEmptyString context.target then [ "target.${context.target}" ] else []);
     in
     if segments == [] then
-      "input"
+      "forwardingModel"
     else
       builtins.concatStringsSep "." segments;
 
   fail = context: message:
     throw "${contextString context}: ${message}";
 
-  relationObjects = context: contract:
-    let
-      relations =
-        if contract ? allowedRelations then
-          contract.allowedRelations
-        else
-          contract.relations or null;
-    in
-    if relations == null then
-      []
-    else if !builtins.isList relations then
-      fail context "communicationContract.allowedRelations must be a list"
+  requireAttrs = context: path: value:
+    if builtins.isAttrs value then
+      value
     else
-      builtins.filter builtins.isAttrs relations;
+      fail context "${path} must be an attribute set";
 
-  endpointMembers = endpoint:
-    if builtins.isString endpoint then
-      [ endpoint ]
-    else if builtins.isList endpoint then
-      builtins.concatLists (builtins.map endpointMembers endpoint)
-    else if !builtins.isAttrs endpoint then
-      []
+  requireList = context: path: value:
+    if builtins.isList value then
+      value
     else
-      let
-        kind = endpoint.kind or null;
-        members = endpoint.members or null;
-        name = endpoint.name or null;
-      in
-      if builtins.elem kind [ "tenant" "tenant-set" "external" "service" ] then
-        if builtins.isList members then
-          builtins.filter isNonEmptyString members
-        else if isNonEmptyString name then
-          [ name ]
-        else
-          []
-      else
-        [];
+      fail context "${path} must be a list";
 
-  referencedContractTags = context: contract:
-    let
-      relations = relationObjects context contract;
-    in
-    builtins.sort builtins.lessThan (
-      builtins.attrNames (
-        builtins.listToAttrs (
-          builtins.concatLists (
-            builtins.map
-              (relation:
-                builtins.map
-                  (name: { inherit name; value = true; })
-                  (
-                    endpointMembers (relation.from or null)
-                    ++ (
-                      if relation.to or null == "any" then
-                        []
-                      else
-                        endpointMembers (relation.to or null)
-                    )
-                  ))
-              relations
-          )
-        )
-      )
-    );
+  requireString = context: path: value:
+    if isNonEmptyString value then
+      value
+    else
+      fail context "${path} is required";
+
+  requireStringList = context: path: value:
+    if isStringList value then
+      value
+    else
+      fail context "${path} must contain only non-empty strings";
 
   validateTransitEndpoint = context: adjacencyIndex: endpointIndex: endpoint:
     let
-      prefix = "site.transit.adjacencies[${toString adjacencyIndex}].endpoints[${toString endpointIndex}]";
+      prefix = "transit.adjacencies[${toString adjacencyIndex}].endpoints[${toString endpointIndex}]";
     in
     if !builtins.isAttrs endpoint then
       fail context "${prefix} must be an attribute set"
@@ -108,280 +86,391 @@ let
     else
       true;
 
-  validateAdjacency = context: adjacencyIndex: adjacency:
+  validateAdjacency = context: links: adjacencyIndex: adjacency:
     let
-      prefix = "site.transit.adjacencies[${toString adjacencyIndex}]";
+      prefix = "transit.adjacencies[${toString adjacencyIndex}]";
+      adjacencyAttrs =
+        if builtins.isAttrs adjacency then
+          adjacency
+        else
+          fail context "${prefix} must be an attribute set";
+
+      adjacencyId = adjacencyAttrs.id or null;
+      kind = adjacencyAttrs.kind or null;
+      linkName = adjacencyAttrs.link or null;
+      endpoints =
+        if adjacencyAttrs ? endpoints then
+          adjacencyAttrs.endpoints
+        else
+          fail context "${prefix}.endpoints is required";
     in
-    if !builtins.isAttrs adjacency then
-      fail context "${prefix} must be an attribute set"
-    else if !(adjacency ? endpoints) then
-      fail context "${prefix} missing endpoints"
-    else if !builtins.isList adjacency.endpoints then
+    if !isNonEmptyString adjacencyId then
+      fail context "${prefix}.id is required"
+    else if !isNonEmptyString kind then
+      fail context "${prefix}.kind is required"
+    else if !builtins.isList endpoints then
       fail context "${prefix}.endpoints must be a list"
-    else if builtins.length adjacency.endpoints != 2 then
+    else if builtins.length endpoints != 2 then
       fail context "${prefix}.endpoints must contain exactly 2 endpoints"
+    else if kind == "p2p" && !isNonEmptyString linkName then
+      fail context "${prefix}.link is required for p2p adjacency"
+    else if kind == "p2p" && !(hasAttr linkName links) then
+      fail context "${prefix}.link references unknown link '${linkName}'"
+    else if kind == "p2p" then
+      let
+        linkId = links.${linkName}.id or null;
+      in
+      if !isNonEmptyString linkId then
+        fail context "links.${linkName}.id is required"
+      else if linkId != adjacencyId then
+        fail context "transit adjacency id '${adjacencyId}' does not match links.${linkName}.id '${linkId}'"
+      else
+        forceAll (
+          builtins.genList
+            (endpointIndex:
+              validateTransitEndpoint context adjacencyIndex endpointIndex (builtins.elemAt endpoints endpointIndex))
+            (builtins.length endpoints)
+        )
     else
       forceAll (
         builtins.genList
           (endpointIndex:
-            validateTransitEndpoint
-              context
-              adjacencyIndex
-              endpointIndex
-              (builtins.elemAt adjacency.endpoints endpointIndex))
-          (builtins.length adjacency.endpoints)
+            validateTransitEndpoint context adjacencyIndex endpointIndex (builtins.elemAt endpoints endpointIndex))
+          (builtins.length endpoints)
       );
 
-  validateOrderingEntry = context: orderIndex: entry:
+  validateTransit = context: links: transit:
     let
-      prefix = "site.transit.ordering[${toString orderIndex}]";
+      transitAttrs = requireAttrs context "transit" transit;
+      adjacencies = requireList context "transit.adjacencies" (transitAttrs.adjacencies or null);
+      orderingRaw = transitAttrs.ordering or null;
+      ordering =
+        if !builtins.isList orderingRaw then
+          fail context "transit.ordering must be a list of stable adjacency IDs"
+        else if !builtins.all isNonEmptyString orderingRaw then
+          fail context "transit.ordering must contain only stable adjacency IDs"
+        else
+          orderingRaw;
+
+      adjacencyIds =
+        builtins.genList
+          (adjacencyIndex:
+            let
+              adjacency = builtins.elemAt adjacencies adjacencyIndex;
+            in
+            if !builtins.isAttrs adjacency then
+              fail context "transit.adjacencies[${toString adjacencyIndex}] must be an attribute set"
+            else if !isNonEmptyString (adjacency.id or null) then
+              fail context "transit.adjacencies[${toString adjacencyIndex}].id is required"
+            else
+              adjacency.id)
+          (builtins.length adjacencies);
+
+      adjacencyIdSet =
+        builtins.listToAttrs (
+          builtins.map
+            (id: {
+              name = id;
+              value = true;
+            })
+            adjacencyIds
+        );
+
+      p2pIds =
+        builtins.filter
+          (id: id != null)
+          (
+            builtins.genList
+              (adjacencyIndex:
+                let
+                  adjacency = builtins.elemAt adjacencies adjacencyIndex;
+                in
+                if builtins.isAttrs adjacency && (adjacency.kind or null) == "p2p" then
+                  adjacency.id or null
+                else
+                  null)
+              (builtins.length adjacencies)
+          );
     in
-    if !builtins.isList entry then
-      fail context "${prefix} must be a list"
-    else if builtins.length entry != 2 then
-      fail context "${prefix} must contain exactly 2 unit names"
-    else if !(builtins.all isNonEmptyString entry) then
-      fail context "${prefix} must contain only non-empty unit names"
-    else
-      true;
-
-  validateTransit = context: transit:
-    if !builtins.isAttrs transit then
-      fail context "missing explicit site.transit with adjacencies and ordering"
-    else if !(transit ? adjacencies) then
-      fail context "site.transit.adjacencies is required"
-    else if !builtins.isList transit.adjacencies then
-      fail context "site.transit.adjacencies must be a list"
-    else if !(transit ? ordering) then
-      fail context "site.transit.ordering is required"
-    else if !builtins.isList transit.ordering then
-      fail context "site.transit.ordering must be a list"
-    else
-      builtins.seq
-        (forceAll (
-          builtins.genList
-            (adjacencyIndex:
-              validateAdjacency context adjacencyIndex (builtins.elemAt transit.adjacencies adjacencyIndex))
-            (builtins.length transit.adjacencies)
-        ))
-        (forceAll (
-          builtins.genList
-            (orderIndex:
-              validateOrderingEntry context orderIndex (builtins.elemAt transit.ordering orderIndex))
-            (builtins.length transit.ordering)
-        ));
-
-  validateOverlays = context: site:
-    if !(site ? transport) then
-      true
-    else if !builtins.isAttrs site.transport then
-      fail context "site.transport must be an attribute set"
-    else
-      let
-        overlays = site.transport.overlays or {};
-      in
-      if builtins.isAttrs overlays || builtins.isList overlays then
-        true
-      else
-        fail context "site.transport.overlays must be an attribute set or list";
-
-  validateInterface = context: nodeName: ifName: iface:
-    let
-      ifaceContext = context // { node = nodeName; interface = ifName; };
-      kind = iface.kind or null;
-    in
-    if !builtins.isAttrs iface then
-      fail ifaceContext "interface must be an attribute set"
-    else if !isNonEmptyString kind then
-      fail ifaceContext "interface kind is required"
-    else if kind == "tenant" && !isNonEmptyString (iface.tenant or null) then
-      fail ifaceContext "tenant interface requires explicit tenant"
-    else if kind == "overlay" && !isNonEmptyString (iface.overlay or null) then
-      fail ifaceContext "overlay interface requires explicit overlay"
-    else if kind == "wan" && !isNonEmptyString (iface.upstream or null) then
-      fail ifaceContext "wan interface requires explicit upstream"
-    else
-      true;
+    builtins.seq
+      (forceAll (
+        builtins.map
+          (linkName:
+            let
+              link = links.${linkName};
+            in
+            if !builtins.isAttrs link then
+              fail context "links.${linkName} must be an attribute set"
+            else if !isNonEmptyString (link.id or null) then
+              fail context "links.${linkName}.id is required"
+            else
+              true)
+          (lib.attrNamesSorted links)
+      ))
+      (builtins.seq
+        (if hasDuplicates adjacencyIds then
+          fail context "transit.adjacencies contains duplicate ids"
+        else
+          true)
+        (builtins.seq
+          (if hasDuplicates ordering then
+            fail context "transit.ordering contains duplicate adjacency IDs"
+          else
+            true)
+          (builtins.seq
+            (forceAll (
+              builtins.genList
+                (adjacencyIndex:
+                  validateAdjacency context links adjacencyIndex (builtins.elemAt adjacencies adjacencyIndex))
+                (builtins.length adjacencies)
+            ))
+            (builtins.seq
+              (forceAll (
+                builtins.genList
+                  (orderIndex:
+                    let
+                      entry = builtins.elemAt ordering orderIndex;
+                    in
+                    if hasAttr entry adjacencyIdSet then
+                      true
+                    else
+                      fail context "transit.ordering[${toString orderIndex}] references unknown adjacency ID '${entry}'")
+                  (builtins.length ordering)
+              ))
+              (forceAll (
+                builtins.map
+                  (adjacencyId:
+                    if builtins.elem adjacencyId ordering then
+                      true
+                    else
+                      fail context "p2p adjacency '${adjacencyId}' is missing from transit.ordering")
+                  p2pIds
+              ))))));
 
   validateNode = context: nodeName: node:
     let
       nodeContext = context // { node = nodeName; };
-      interfaces = node.interfaces or null;
-      interfaceNames =
-        if builtins.isAttrs interfaces then
-          lib.attrNamesSorted interfaces
+      nodeAttrs = requireAttrs nodeContext "nodes.${nodeName}" node;
+      _legacyAttachment =
+        if nodeAttrs ? attachment then
+          fail nodeContext "legacy singular attachment is not supported; use attachments"
         else
-          [];
-      tenantInterfaces =
-        builtins.filter
-          (ifName:
-            let iface = interfaces.${ifName}; in
-            builtins.isAttrs iface
-            && (iface.kind or null) == "tenant"
-            && isNonEmptyString (iface.tenant or null))
-          interfaceNames;
+          true;
+      interfaces = requireAttrs nodeContext "node.interfaces" (nodeAttrs.interfaces or null);
+      loopback = requireAttrs nodeContext "node.loopback" (nodeAttrs.loopback or null);
+      interfaceNames = lib.attrNamesSorted interfaces;
     in
-    if !builtins.isAttrs node then
-      fail nodeContext "node must be an attribute set"
-    else if !builtins.isAttrs interfaces then
-      fail nodeContext "node.interfaces must be an attribute set"
-    else
+    builtins.seq _legacyAttachment (
       builtins.seq
+        (if !isNonEmptyString (loopback.ipv4 or null) || !isNonEmptyString (loopback.ipv6 or null) then
+          fail nodeContext "node loopback is required"
+        else
+          true)
         (forceAll (
           builtins.map
-            (ifName: validateInterface context nodeName ifName interfaces.${ifName})
-            interfaceNames
-        ))
-        (
-          if (node.role or null) == "access" && tenantInterfaces == [] then
-            fail nodeContext "access node requires at least one tenant interface with explicit tenant"
-          else
-            true
-        );
-
-  validateNodes = context: site:
-    let
-      nodes = site.nodes or {};
-      nodeNames = lib.attrNamesSorted nodes;
-    in
-    if !(site ? nodes) then
-      true
-    else if !builtins.isAttrs nodes then
-      fail context "site.nodes must be an attribute set"
-    else
-      forceAll (
-        builtins.map
-          (nodeName: validateNode context nodeName nodes.${nodeName})
-          nodeNames
-      );
-
-  validatePolicy = context: site:
-    let
-      contract = site.communicationContract or null;
-    in
-    if contract == null then
-      true
-    else if !builtins.isAttrs contract then
-      fail context "communicationContract must be an attribute set"
-    else
-      let
-        interfaceTags =
-          if builtins.isAttrs (contract.interfaceTags or null) then
-            contract.interfaceTags
-          else if builtins.isAttrs (site.policy or null) && builtins.isAttrs ((site.policy or {}).interfaceTags or null) then
-            site.policy.interfaceTags
-          else
-            null;
-        knownTags =
-          if builtins.isAttrs interfaceTags then
-            builtins.filter isNonEmptyString (builtins.attrValues interfaceTags)
-          else
-            [];
-        refs = referencedContractTags context contract;
-      in
-      if !builtins.isAttrs interfaceTags then
-        fail context "communicationContract requires explicit communicationContract.interfaceTags"
-      else
-        forceAll (
-          builtins.map
-            (tag:
-              if builtins.elem tag knownTags then
-                true
+            (ifName:
+              let
+                ifaceContext = nodeContext // { interface = ifName; };
+                iface = requireAttrs ifaceContext "node.interfaces.${ifName}" interfaces.${ifName};
+                kind = iface.kind or null;
+              in
+              if !isNonEmptyString kind then
+                fail ifaceContext "interface kind is required"
               else
-                fail context "communicationContract references tag '${tag}' with no explicit interfaceTags mapping")
-            refs
-        );
+                true)
+            interfaceNames
+        )));
 
-  validateBGP = context: site:
-    let
-      bgp = site.bgp or {};
-      mode = bgp.mode or null;
-      nodes = site.nodes or {};
-      sessions = bgp.sessions or null;
-    in
-    if mode != "bgp" then
-      true
-    else if !builtins.isList sessions || sessions == [] then
-      fail context "bgp mode requires explicit site.bgp.sessions"
-    else
-      forceAll (
-        builtins.genList
-          (sessionIndex:
-            let
-              session = builtins.elemAt sessions sessionIndex;
-              prefix = "site.bgp.sessions[${toString sessionIndex}]";
-              a = session.a or null;
-              b = session.b or null;
-              rr = session.rr or null;
-            in
-            if !builtins.isAttrs session then
-              fail context "${prefix} must be an attribute set"
-            else if !isNonEmptyString a then
-              fail context "${prefix}.a is required"
-            else if !isNonEmptyString b then
-              fail context "${prefix}.b is required"
-            else if !(nodes ? "${a}") then
-              fail context "${prefix}.a references unknown node '${a}'"
-            else if !(nodes ? "${b}") then
-              fail context "${prefix}.b references unknown node '${b}'"
-            else if rr != null && (!isNonEmptyString rr || !(nodes ? "${rr}")) then
-              fail context "${prefix}.rr references unknown node '${toString rr}'"
-            else
-              true)
-          (builtins.length sessions)
-      );
-
-  validateSiteInputs = enterpriseName: siteName: site:
+  validateSiteForwardingModel = enterpriseName: siteName: site:
     let
       context = {
         enterprise = enterpriseName;
         site = siteName;
       };
-    in
-    if !builtins.isAttrs site then
-      fail context "site must be an attribute set"
-    else
-      builtins.seq (validateTransit context (site.transit or null))
-        (builtins.seq (validateOverlays context site)
-          (builtins.seq (validateNodes context site)
-            (builtins.seq (validatePolicy context site)
-              (validateBGP context site))));
 
-  validateEnterpriseInputs = enterprise:
-    let
-      enterpriseNames =
-        if builtins.isAttrs enterprise then
-          lib.attrNamesSorted enterprise
+      siteAttrs = requireAttrs context "site" site;
+
+      _legacyAttachment =
+        if siteAttrs ? attachment then
+          fail context "legacy singular attachment is not supported; use attachments"
         else
-          [];
+          true;
+
+      _siteId = requireString context "siteId" (siteAttrs.siteId or null);
+      _siteName = requireString context "siteName" (siteAttrs.siteName or null);
+
+      attachments = requireList context "attachments" (siteAttrs.attachments or null);
+      _validatedAttachments =
+        forceAll (
+          builtins.genList
+            (attachmentIndex:
+              let
+                attachment =
+                  requireAttrs context "attachments[${toString attachmentIndex}]" (builtins.elemAt attachments attachmentIndex);
+              in
+              builtins.seq
+                (requireString context "attachments[${toString attachmentIndex}].kind" (attachment.kind or null))
+                (builtins.seq
+                  (requireString context "attachments[${toString attachmentIndex}].name" (attachment.name or null))
+                  (requireString context "attachments[${toString attachmentIndex}].unit" (attachment.unit or null))))
+            (builtins.length attachments)
+        );
+
+      links = requireAttrs context "links" (siteAttrs.links or null);
+      nodes = requireAttrs context "nodes" (siteAttrs.nodes or null);
+
+      _policyNodeName = requireString context "policyNodeName" (siteAttrs.policyNodeName or null);
+      _upstreamSelectorNodeName = requireString context "upstreamSelectorNodeName" (siteAttrs.upstreamSelectorNodeName or null);
+      coreNodeNames = requireStringList context "coreNodeNames" (siteAttrs.coreNodeNames or null);
+      uplinkCoreNames = requireStringList context "uplinkCoreNames" (siteAttrs.uplinkCoreNames or null);
+      _uplinkNames = requireStringList context "uplinkNames" (siteAttrs.uplinkNames or null);
+
+      domains = requireAttrs context "domains" (siteAttrs.domains or null);
+      _tenants = requireList context "domains.tenants" (domains.tenants or null);
+      _externals = requireList context "domains.externals" (domains.externals or null);
+
+      _tenantPrefixOwners = requireAttrs context "tenantPrefixOwners" (siteAttrs.tenantPrefixOwners or null);
+
+      nodeNames = lib.attrNamesSorted nodes;
+      nodeNameSet =
+        builtins.listToAttrs (
+          builtins.map
+            (name: {
+              inherit name;
+              value = true;
+            })
+            nodeNames
+        );
+
+      _roleReferences =
+        builtins.seq
+          (if hasAttr _policyNodeName nodeNameSet then
+            true
+          else
+            fail context "policyNodeName references unknown node '${_policyNodeName}'")
+          (builtins.seq
+            (if hasAttr _upstreamSelectorNodeName nodeNameSet then
+              true
+            else
+              fail context "upstreamSelectorNodeName references unknown node '${_upstreamSelectorNodeName}'")
+            (builtins.seq
+              (forceAll (
+                builtins.map
+                  (nodeName:
+                    if hasAttr nodeName nodeNameSet then
+                      true
+                    else
+                      fail context "coreNodeNames references unknown node '${nodeName}'")
+                  coreNodeNames
+              ))
+              (forceAll (
+                builtins.map
+                  (nodeName:
+                    if hasAttr nodeName nodeNameSet then
+                      true
+                    else
+                      fail context "uplinkCoreNames references unknown node '${nodeName}'")
+                  uplinkCoreNames
+              ))));
     in
-    if !builtins.isAttrs enterprise then
-      throw "missing required forwardingModel.enterprise attribute set"
+    builtins.seq _legacyAttachment (
+      builtins.seq _validatedAttachments (
+        builtins.seq _roleReferences (
+          builtins.seq
+            (forceAll (
+              builtins.map
+                (nodeName: validateNode context nodeName nodes.${nodeName})
+                nodeNames
+            ))
+            (validateTransit context links (siteAttrs.transit or null))
+        )));
+
+  validateForwardingModelInput = input:
+    let
+      context = { };
+      inputAttrs =
+        if builtins.isAttrs input then
+          input
+        else
+          fail context "forwarding model input must be an attribute set";
+
+      meta = requireAttrs context "meta" (inputAttrs.meta or null);
+      marker =
+        if builtins.isAttrs (meta.networkForwardingModel or null) then
+          meta.networkForwardingModel
+        else
+          fail context "forwarding model input requires meta.networkForwardingModel";
+
+      schemaVersion = marker.schemaVersion or null;
+      enterprise = requireAttrs context "enterprise" (inputAttrs.enterprise or null);
+      enterpriseNames = lib.attrNamesSorted enterprise;
+    in
+    if schemaVersion != 6 then
+      fail context "unsupported forwarding model schema version '${toString schemaVersion}' (expected 6)"
     else
       forceAll (
         builtins.map
           (enterpriseName:
             let
-              enterpriseValue = enterprise.${enterpriseName};
-              siteRoot = enterpriseValue.site or null;
-              siteNames =
-                if builtins.isAttrs siteRoot then
-                  lib.attrNamesSorted siteRoot
-                else
-                  [];
+              enterpriseValue = requireAttrs { enterprise = enterpriseName; } "enterprise.${enterpriseName}" enterprise.${enterpriseName};
+              siteRoot = requireAttrs { enterprise = enterpriseName; } "enterprise.${enterpriseName}.site" (enterpriseValue.site or null);
+              siteNames = lib.attrNamesSorted siteRoot;
             in
-            if !builtins.isAttrs enterpriseValue then
-              throw "missing required enterprise.${enterpriseName} attribute set"
-            else if !builtins.isAttrs siteRoot then
-              throw "missing required enterprise.${enterpriseName}.site attribute set"
-            else
-              forceAll (
-                builtins.map
-                  (siteName: validateSiteInputs enterpriseName siteName siteRoot.${siteName})
-                  siteNames
-              ))
+            forceAll (
+              builtins.map
+                (siteName: validateSiteForwardingModel enterpriseName siteName siteRoot.${siteName})
+                siteNames
+            ))
           enterpriseNames
       );
+
+  validateRuntimeTarget = context: targetName: target:
+    let
+      targetContext = context // { target = targetName; };
+      targetAttrs = requireAttrs targetContext "runtimeTargets.${targetName}" target;
+      placement = requireAttrs targetContext "runtimeTargets.${targetName}.placement" (targetAttrs.placement or null);
+      effective = requireAttrs targetContext "runtimeTargets.${targetName}.effectiveRuntimeRealization" (targetAttrs.effectiveRuntimeRealization or null);
+      loopback = requireAttrs targetContext "runtimeTargets.${targetName}.effectiveRuntimeRealization.loopback" (effective.loopback or null);
+      interfaces = requireAttrs targetContext "runtimeTargets.${targetName}.effectiveRuntimeRealization.interfaces" (effective.interfaces or null);
+      interfaceNames = lib.attrNamesSorted interfaces;
+
+      renderedNames =
+        builtins.map
+          (ifName:
+            let
+              ifaceContext = targetContext // { interface = ifName; };
+              iface = requireAttrs ifaceContext "effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
+              backingRef = requireAttrs ifaceContext "effectiveRuntimeRealization.interfaces.${ifName}.backingRef" (iface.backingRef or null);
+              kind = backingRef.kind or null;
+            in
+            builtins.seq
+              (requireString ifaceContext "effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName" (iface.runtimeIfName or null))
+              (builtins.seq
+                (requireString ifaceContext "effectiveRuntimeRealization.interfaces.${ifName}.renderedIfName" (iface.renderedIfName or null))
+                (builtins.seq
+                  (if kind == "link" || kind == "attachment" then
+                    true
+                  else
+                    fail ifaceContext "ambiguous backing reference")
+                  (builtins.seq
+                    (if builtins.isAttrs (iface.routes or null) then
+                      true
+                    else
+                      fail ifaceContext "routes are required for renderer-ready interfaces")
+                    (iface.renderedIfName or null))))
+          interfaceNames;
+    in
+    builtins.seq
+      (requireString targetContext "runtimeTargets.${targetName}.placement.kind" (placement.kind or null))
+      (builtins.seq
+        (if !isNonEmptyString (loopback.addr4 or null) || !isNonEmptyString (loopback.addr6 or null) then
+          fail targetContext "loopback must contain addr4 and addr6"
+        else
+          true)
+        (if hasDuplicates renderedNames then
+          fail targetContext "duplicate rendered interface names are not allowed"
+        else
+          true));
 
   validateCPMSite = enterpriseName: siteName: site:
     let
@@ -389,17 +478,42 @@ let
         enterprise = enterpriseName;
         site = siteName;
       };
+
+      siteAttrs = requireAttrs context "control_plane_model.data.${enterpriseName}.${siteName}" site;
+      transit = requireAttrs context "transit" (siteAttrs.transit or null);
+      adjacencies = requireList context "transit.adjacencies" (transit.adjacencies or null);
+      ordering = requireStringList context "transit.ordering" (transit.ordering or null);
+      runtimeTargets = requireAttrs context "runtimeTargets" (siteAttrs.runtimeTargets or null);
+
+      adjacencyIds =
+        builtins.genList
+          (adjacencyIndex:
+            let
+              adjacency = builtins.elemAt adjacencies adjacencyIndex;
+            in
+            if !builtins.isAttrs adjacency then
+              fail context "transit.adjacencies[${toString adjacencyIndex}] must be an attribute set"
+            else if !isNonEmptyString (adjacency.id or null) then
+              fail context "transit.adjacencies[${toString adjacencyIndex}].id is required"
+            else
+              adjacency.id)
+          (builtins.length adjacencies);
     in
-    if !builtins.isAttrs site then
-      fail context "control_plane_model site must be an attribute set"
-    else
-      builtins.seq (validateTransit context (site.transit or null))
-        (if builtins.isAttrs (site.overlay or {})
-          || builtins.isList (site.overlay or [])
-        then
-          true
+    builtins.seq
+      (if hasDuplicates adjacencyIds then
+        fail context "transit.adjacencies contains duplicate ids"
+      else
+        true)
+      (builtins.seq
+        (if hasDuplicates ordering then
+          fail context "transit.ordering contains duplicate adjacency IDs"
         else
-          fail context "control_plane_model overlay must be an attribute set or list");
+          true)
+        (forceAll (
+          builtins.map
+            (targetName: validateRuntimeTarget context targetName runtimeTargets.${targetName})
+            (lib.attrNamesSorted runtimeTargets)
+        )));
 
   validateCPMData = cpmData:
     let
@@ -416,33 +530,19 @@ let
         builtins.map
           (enterpriseName:
             let
-              siteRoot = cpmData.${enterpriseName};
-              siteNames =
-                if builtins.isAttrs siteRoot then
-                  lib.attrNamesSorted siteRoot
-                else
-                  [];
+              sites = requireAttrs { enterprise = enterpriseName; } "control_plane_model.data.${enterpriseName}" cpmData.${enterpriseName};
+              siteNames = lib.attrNamesSorted sites;
             in
-            if !builtins.isAttrs siteRoot then
-              throw "control_plane_model.data.${enterpriseName} must be an attribute set"
-            else
-              forceAll (
-                builtins.map
-                  (siteName: validateCPMSite enterpriseName siteName siteRoot.${siteName})
-                  siteNames
-              ))
+            forceAll (
+              builtins.map
+                (siteName: validateCPMSite enterpriseName siteName sites.${siteName})
+                siteNames
+            ))
           enterpriseNames
       );
 in
 {
-  hasExplicitTransit = transit:
-    builtins.isAttrs transit
-    && builtins.isList (transit.adjacencies or null)
-    && builtins.isList (transit.ordering or null);
-
   inherit
-    validateBGP
     validateCPMData
-    validateEnterpriseInputs
-    validateSiteInputs;
+    validateForwardingModelInput;
 }

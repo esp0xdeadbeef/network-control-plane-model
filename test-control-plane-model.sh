@@ -24,7 +24,7 @@ OUTPUT="output-control-plane-model.json"
 rm -f "$OUTPUT"
 
 echo "[*] Running control-plane-model..."
-nix run .#control-plane-model -- "$INPUT" "$INPUT_INVENTORY" "$OUTPUT"
+nix run .#compile-and-build-control-plane-model -- "$INPUT" "$INPUT_INVENTORY" "$OUTPUT"
 
 echo "[*] Validating JSON..."
 jq empty "$OUTPUT" >/dev/null

@@ -1,169 +1,177 @@
-# ./flake.nix
 {
   description = "network-control-plane-model";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/0182a361324364ae3f436a63005877674cf45efb";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model";
-
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, network-forwarding-model }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      network-forwarding-model,
+    }:
     let
-      nixLib = nixpkgs.lib;
       systems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
-      forAllSystems = nixLib.genAttrs systems;
 
-      controlPlaneModel = import ./src/main.nix;
+      forAll = f: nixpkgs.lib.genAttrs systems f;
+
+      mkPkgs = system: import nixpkgs { inherit system; };
     in
     {
-      lib = {
-        controlPlaneModel = controlPlaneModel;
-      };
-
-      formatter = forAllSystems (system:
-        nixpkgs.legacyPackages.${system}.nixfmt-rfc-style
+      lib = forAll (
+        system: {
+          build = { input, inventory ? { } }:
+            import ./src/main.nix {
+              inherit input inventory;
+            };
+        }
       );
 
-      packages = forAllSystems (system:
+      packages = forAll (
+        system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          solverApp = network-forwarding-model.apps.${system}.compile-and-solve.program;
-          flakeRef = self.outPath;
+          pkgs = mkPkgs system;
         in
         {
-          control-plane-model = pkgs.writeShellApplication {
-            name = "control-plane-model";
+          debug = pkgs.writeShellApplication {
+            name = "network-control-plane-model-debug";
 
             runtimeInputs = [
               pkgs.jq
+              pkgs.git
               pkgs.nix
+              pkgs.coreutils
             ];
 
             text = ''
               set -euo pipefail
 
-              if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
-                echo "Usage: $0 <input.nix> [inventory.nix] [output-control-plane-model.json]" >&2
-                exit 1
-              fi
+              case "$#" in
+                1)
+                  INPUT="$1"
+                  INVENTORY=""
+                  OUTPUT="./output-control-plane-model.json"
+                  ;;
+                2)
+                  INPUT="$1"
+                  INVENTORY="$2"
+                  OUTPUT="./output-control-plane-model.json"
+                  ;;
+                *)
+                  INPUT="$1"
+                  INVENTORY="$2"
+                  OUTPUT="$3"
+                  ;;
+              esac
 
-              INPUT_NIX="$1"
-              INVENTORY_NIX=""
-              OUTPUT_JSON="control-plane-model.json"
+              expr="$(cat <<EOF
+              let
+                flake = builtins.getFlake (toString ${self});
+                builder = flake.lib.${system}.build;
+                readValue =
+                  path:
+                  if path == "" then
+                    {}
+                  else if builtins.match ".*\\.json$" path != null then
+                    builtins.fromJSON (builtins.readFile path)
+                  else
+                    import path;
+              in
+                builder {
+                  input = readValue (builtins.getEnv "INPUT");
+                  inventory = readValue (builtins.getEnv "INVENTORY");
+                }
+              EOF
+              )"
 
-              if [ "$#" -eq 2 ]; then
-                OUTPUT_JSON="$2"
-              fi
+              json="$(
+                INPUT="$INPUT" INVENTORY="$INVENTORY" nix eval --impure --json --expr "$expr"
+              )"
 
-              if [ "$#" -eq 3 ]; then
-                INVENTORY_NIX="$2"
-                OUTPUT_JSON="$3"
-              fi
+              gitRev="$(${pkgs.git}/bin/git rev-parse HEAD 2>/dev/null || echo "unknown")"
 
-              FORWARDING_JSON="$(mktemp)"
-              INVENTORY_JSON="$(mktemp)"
-              trap 'rm -f "$FORWARDING_JSON" "$INVENTORY_JSON"' EXIT
-
-              echo "[*] Running solver..." >&2
-              ${solverApp} "$INPUT_NIX" > "$FORWARDING_JSON"
-
-              echo "[*] Validating solver JSON..." >&2
-              jq empty "$FORWARDING_JSON"
-
-              if [ -n "$INVENTORY_NIX" ]; then
-                echo "[*] Evaluating inventory..." >&2
-
-                nix eval \
-                  --impure \
-                  --json \
-                  --expr "import $INVENTORY_NIX" \
-                  > "$INVENTORY_JSON"
-
-                echo "[*] Validating inventory JSON..." >&2
-                jq empty "$INVENTORY_JSON"
+              if ${pkgs.git}/bin/git diff --quiet && ${pkgs.git}/bin/git diff --cached --quiet; then
+                gitDirty=false
               else
-                printf '{}\n' > "$INVENTORY_JSON"
+                gitDirty=true
               fi
 
-              echo "[*] Evaluating control-plane model..." >&2
-              FORWARDING_JSON="$FORWARDING_JSON" INVENTORY_JSON="$INVENTORY_JSON" nix eval \
-                --impure \
-                --json \
-                --expr '
-                  let
-                    flake = builtins.getFlake "'"${flakeRef}"'";
-                    forwardingModel =
-                      builtins.fromJSON
-                        (builtins.readFile (builtins.getEnv "FORWARDING_JSON"));
-                    inventory =
-                      builtins.fromJSON
-                        (builtins.readFile (builtins.getEnv "INVENTORY_JSON"));
-                  in
-                    flake.lib.controlPlaneModel {
-                      input = forwardingModel;
-                      inherit inventory;
-                    }
-                ' > "$OUTPUT_JSON"
-
-              echo "[*] Validating control-plane model JSON..." >&2
-              jq empty "$OUTPUT_JSON"
+              echo "$json" | ${pkgs.jq}/bin/jq -S -c \
+                --arg rev "$gitRev" \
+                --argjson dirty "$gitDirty" \
+                '.control_plane_model.meta = (.control_plane_model.meta // {})
+                 | .control_plane_model.meta.networkControlPlaneModel =
+                     ((.control_plane_model.meta.networkControlPlaneModel // {})
+                      + { name: "network-control-plane-model", gitRev: $rev, gitDirty: $dirty })' \
+                | tee "$OUTPUT" \
+                | ${pkgs.jq}/bin/jq -S
             '';
           };
 
-          default = self.packages.${system}.control-plane-model;
+          compile-and-build-control-plane-model = pkgs.writeShellApplication {
+            name = "compile-and-build-control-plane-model";
+
+            runtimeInputs = [
+              pkgs.nix
+              pkgs.coreutils
+            ];
+
+            text = ''
+              set -euo pipefail
+
+              case "$#" in
+                1)
+                  INPUTS_NIX="$1"
+                  INVENTORY=""
+                  OUTPUT="./output-control-plane-model.json"
+                  ;;
+                2)
+                  INPUTS_NIX="$1"
+                  INVENTORY="$2"
+                  OUTPUT="./output-control-plane-model.json"
+                  ;;
+                *)
+                  INPUTS_NIX="$1"
+                  INVENTORY="$2"
+                  OUTPUT="$3"
+                  ;;
+              esac
+
+              FORWARDING_JSON="$(mktemp --suffix .json)"
+              trap 'rm -f "$FORWARDING_JSON"' EXIT
+
+              nix run --no-warn-dirty ${network-forwarding-model}#compile-and-build-forwarding-model -- "$INPUTS_NIX" > "$FORWARDING_JSON"
+
+              if [ -n "$INVENTORY" ]; then
+                nix run --no-warn-dirty ${self}#debug -- "$FORWARDING_JSON" "$INVENTORY" "$OUTPUT"
+              else
+                nix run --no-warn-dirty ${self}#debug -- "$FORWARDING_JSON" "" "$OUTPUT"
+              fi
+            '';
+          };
+
+          default = self.packages.${system}.debug;
         }
       );
 
-      apps = forAllSystems (system: {
-        control-plane-model = {
+      apps = forAll (system: {
+        debug = {
           type = "app";
-          program = "${self.packages.${system}.control-plane-model}/bin/control-plane-model";
+          program = "${self.packages.${system}.debug}/bin/network-control-plane-model-debug";
         };
 
-        default = self.apps.${system}.control-plane-model;
+        compile-and-build-control-plane-model = {
+          type = "app";
+          program = "${self.packages.${system}.compile-and-build-control-plane-model}/bin/compile-and-build-control-plane-model";
+        };
+
+        default = self.apps.${system}.debug;
       });
-
-      checks = forAllSystems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          sampleInput = builtins.fromJSON (builtins.readFile ./output-solver-signed.json);
-          evaluated = controlPlaneModel { input = sampleInput; };
-        in
-        {
-          passthrough-eval = pkgs.runCommand "network-control-plane-model-passthrough-eval" { } ''
-            cat > "$out" <<'EOF'
-            ${builtins.toJSON evaluated}
-            EOF
-          '';
-
-          cli-structure = pkgs.runCommand "network-control-plane-model-cli-structure" { } ''
-            test -x ${self.packages.${system}.control-plane-model}/bin/control-plane-model
-            touch "$out"
-          '';
-
-          flake-lib-visible = pkgs.runCommand "network-control-plane-model-flake-lib-visible" { } ''
-            ${pkgs.nix}/bin/nix eval --json ${self}#lib >/dev/null
-            touch "$out"
-          '';
-        });
-
-      devShells = forAllSystems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          default = pkgs.mkShell {
-            packages = [
-              pkgs.nixfmt-rfc-style
-              pkgs.jq
-              pkgs.nix
-            ];
-          };
-        });
     };
 }
