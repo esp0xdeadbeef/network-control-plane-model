@@ -120,4 +120,4 @@ CPM converts structure → explicit behavior.
 * [ ] no implicit semantics remain
 * [ ] renderer performs zero decision-making
 * [ ] output is deterministic and st
-
+* [ ] network-control-plane-model has fully explicit intent, zero runtime state
