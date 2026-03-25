@@ -71,6 +71,13 @@ let
           iface.link
         else
           null;
+      overlayName =
+        if isNonEmptyString (iface.overlay or null) then
+          iface.overlay
+        else if linkName != null then
+          linkName
+        else
+          null;
     in
     if linkName != null && hasAttr linkName siteLinks then
       let
@@ -97,6 +104,16 @@ let
         }
       else
         throw "runtime realization failure: ${ifacePath} could not resolve tenant attachment '${tenant}'"
+    else if kind == "overlay" then
+      let
+        resolvedOverlayName =
+          requireString "${ifacePath}.overlay" overlayName;
+      in
+      {
+        kind = "overlay";
+        id = "overlay::${enterpriseName}.${siteName}::${resolvedOverlayName}";
+        name = resolvedOverlayName;
+      }
     else
       throw ''
         runtime realization failure: ${ifacePath} must resolve to exactly one backing reference
@@ -116,28 +133,82 @@ let
         else
           ifName;
 
-      runtimeIfName =
+      sourceKind = requireString "${ifacePath}.kind" (ifaceAttrs.kind or null);
+
+      portLink =
         if (backingRef.kind or null) == "link" && hasAttr backingRef.id portLinks then
-          portLinks.${backingRef.id}.runtimeIfName
+          portLinks.${backingRef.id}
         else if (backingRef.kind or null) == "link" && hasAttr backingRef.name portLinks then
-          portLinks.${backingRef.name}.runtimeIfName
+          portLinks.${backingRef.name}
+        else
+          null;
+
+      runtimeIfName =
+        if portLink != null then
+          portLink.runtimeIfName
         else
           sourceIfName;
+
+      hostUplink =
+        if portLink != null && builtins.isAttrs (portLink.hostUplink or null) then
+          portLink.hostUplink
+        else
+          null;
+
+      wanInventoryExtras =
+        if sourceKind == "wan" && hostUplink != null then
+          {
+            hostUplink = {
+              name = hostUplink.uplinkName or null;
+              bridge = hostUplink.bridge or null;
+            };
+          }
+          // (
+            if builtins.isAttrs (hostUplink.ipv4 or null) then
+              { ipv4 = hostUplink.ipv4; }
+            else
+              { }
+          )
+          // (
+            if builtins.isAttrs (hostUplink.ipv6 or null) then
+              { ipv6 = hostUplink.ipv6; }
+            else
+              { }
+          )
+        else
+          { };
+
+      wanModelExtras =
+        (if sourceKind == "wan" && isNonEmptyString (ifaceAttrs.upstream or null) then
+          {
+            upstream = ifaceAttrs.upstream;
+          }
+        else
+          { })
+        // (if sourceKind == "wan" && builtins.isAttrs (ifaceAttrs.wan or null) then
+          {
+            wan = ifaceAttrs.wan;
+          }
+        else
+          { });
     in
     {
       name = ifName;
-      value = {
-        runtimeTarget = targetId;
-        logicalNode = nodeName;
-        sourceInterface = ifName;
-        sourceKind = requireString "${ifacePath}.kind" (ifaceAttrs.kind or null);
-        runtimeIfName = runtimeIfName;
-        renderedIfName = runtimeIfName;
-        addr4 = ifaceAttrs.addr4 or null;
-        addr6 = ifaceAttrs.addr6 or null;
-        routes = requireRoutes ifacePath (ifaceAttrs.routes or null);
-        backingRef = backingRef;
-      };
+      value =
+        {
+          runtimeTarget = targetId;
+          logicalNode = nodeName;
+          sourceInterface = ifName;
+          sourceKind = sourceKind;
+          runtimeIfName = runtimeIfName;
+          renderedIfName = runtimeIfName;
+          addr4 = ifaceAttrs.addr4 or null;
+          addr6 = ifaceAttrs.addr6 or null;
+          routes = requireRoutes ifacePath (ifaceAttrs.routes or null);
+          backingRef = backingRef;
+        }
+        // wanModelExtras
+        // wanInventoryExtras;
     };
 
   buildTargetInterfaces = { nodeName, node, portLinks, targetId }:

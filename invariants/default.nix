@@ -448,7 +448,7 @@ let
               (builtins.seq
                 (requireString ifaceContext "effectiveRuntimeRealization.interfaces.${ifName}.renderedIfName" (iface.renderedIfName or null))
                 (builtins.seq
-                  (if kind == "link" || kind == "attachment" then
+                  (if kind == "link" || kind == "attachment" || kind == "overlay" then
                     true
                   else
                     fail ifaceContext "ambiguous backing reference")
