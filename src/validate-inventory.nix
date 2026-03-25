@@ -1,4 +1,3 @@
-# ./src/validate-inventory.nix
 { lib }:
 
 { inventory, cpm }:
@@ -62,6 +61,18 @@ let
         names
     );
 
+  validateUplinkAddressing = uplinkPath: familyName: familyValue:
+    let
+      familyPath = "${uplinkPath}.${familyName}";
+      family = requireAttrs familyPath familyValue;
+      _method =
+        if family ? method then
+          requireString "${familyPath}.method" family.method
+        else
+          throw "inventory lint error: ${familyPath}.method is required";
+    in
+    true;
+
   assertNoMixedTopLevelSchema =
     let
       deployment = optionalAttrs (inventory.deployment or null);
@@ -107,8 +118,7 @@ let
             if child ? bridge then
               requireString "${hostPath}.uplink.${childName}.bridge" child.bridge
             else
-              throw "inventory lint error: ${hostPath}.uplink.${childName}.bridge is required"
-          )
+              throw "inventory lint error: ${hostPath}.uplink.${childName}.bridge is required")
           childNames;
     in
     builtins.seq parent true;
@@ -123,35 +133,54 @@ let
           (uplinkName:
             let
               uplink = requireAttrs "${hostPath}.uplinks.${uplinkName}" uplinksAttrs.${uplinkName};
+              uplinkPath = "${hostPath}.uplinks.${uplinkName}";
+
               parent =
                 if uplink ? parent then
-                  requireString "${hostPath}.uplinks.${uplinkName}.parent" uplink.parent
+                  requireString "${uplinkPath}.parent" uplink.parent
                 else
-                  throw "inventory lint error: ${hostPath}.uplinks.${uplinkName}.parent is required";
+                  throw "inventory lint error: ${uplinkPath}.parent is required";
 
               mode =
                 if uplink ? mode then
-                  requireString "${hostPath}.uplinks.${uplinkName}.mode" uplink.mode
+                  requireString "${uplinkPath}.mode" uplink.mode
                 else
                   null;
 
               bridge =
                 if uplink ? bridge then
-                  requireString "${hostPath}.uplinks.${uplinkName}.bridge" uplink.bridge
+                  requireString "${uplinkPath}.bridge" uplink.bridge
                 else
-                  throw "inventory lint error: ${hostPath}.uplinks.${uplinkName}.bridge is required";
+                  throw "inventory lint error: ${uplinkPath}.bridge is required";
 
               _vlanCheck =
                 if mode != null && mode == "vlan" then
                   if uplink ? vlan then
-                    requireInt "${hostPath}.uplinks.${uplinkName}.vlan" uplink.vlan
+                    requireInt "${uplinkPath}.vlan" uplink.vlan
                   else
-                    throw "inventory lint error: ${hostPath}.uplinks.${uplinkName}.vlan is required when mode = \"vlan\""
+                    throw "inventory lint error: ${uplinkPath}.vlan is required when mode = \"vlan\""
+                else
+                  true;
+
+              _ipv4Check =
+                if uplink ? ipv4 then
+                  validateUplinkAddressing uplinkPath "ipv4" uplink.ipv4
+                else
+                  true;
+
+              _ipv6Check =
+                if uplink ? ipv6 then
+                  validateUplinkAddressing uplinkPath "ipv6" uplink.ipv6
                 else
                   true;
             in
-            builtins.seq parent bridge
-          )
+            builtins.seq parent (
+              builtins.seq bridge (
+                builtins.seq _vlanCheck (
+                  builtins.seq _ipv4Check _ipv6Check
+                )
+              )
+            ))
           uplinkNames;
     in
     builtins.seq _validated true;
@@ -206,8 +235,7 @@ let
                 else
                   throw "inventory lint error: ${hostPath}.transitBridges.${bridgeName}.parentUplink references unknown uplink '${parentUplink}'";
             in
-            true
-          )
+            builtins.seq _nameCheck (builtins.seq _vlanCheck _parentCheck))
           (attrNames bridges);
     in
     builtins.seq _validated true;
@@ -243,8 +271,7 @@ let
                   else
                     throw "inventory lint error: ${hostPath}.uplink is required";
               in
-              true
-            )
+              builtins.seq _noPlural _uplink)
             hostNames;
       in
       builtins.seq _validated {
@@ -289,8 +316,11 @@ let
                   else
                     true;
               in
-              true
-            )
+              builtins.seq _noSingular (
+                builtins.seq _uplinks (
+                  builtins.seq _bridgeNetworks _transitBridges
+                )
+              ))
             hostNames;
       in
       builtins.seq _validated {
@@ -311,8 +341,7 @@ let
                 let
                   uplink = host.uplinks.${name};
                 in
-                if uplink ? bridge && nonEmptyString uplink.bridge then uplink.bridge else null
-              )
+                if uplink ? bridge && nonEmptyString uplink.bridge then uplink.bridge else null)
               (attrNames host.uplinks))
         else
           [ ];
@@ -360,7 +389,7 @@ let
           else
             throw "inventory lint error: ${portPath}.vlan is required when ${portPath}.kind = \"p2p\"";
       in
-      true
+      builtins.seq _link (builtins.seq _kind _vlan)
     else
       let
         attachment = requireAttrs "${portPath}.attachment" portAttrs.attachment;
@@ -385,7 +414,7 @@ let
           else
             true;
       in
-      true;
+      builtins.seq attachKind (builtins.seq _tenantCheck _hostsCheck);
 
   collectFabricP2PLinkRefs =
     let
@@ -434,15 +463,51 @@ let
                           link = port.link;
                         }
                       else
-                        null
-                    )
+                        null)
                     portNames);
             in
-            builtins.seq _validatedPorts refs
-          )
+            builtins.seq _platform (builtins.seq _validatedPorts refs))
           nodeNames;
     in
     builtins.concatLists refsPerNode;
+
+  validateRealizationLinks =
+    let
+      realization = optionalAttrs (inventory.realization or null);
+      links = optionalAttrs (realization.links or null);
+      linkNames = attrNames links;
+
+      _validated =
+        builtins.map
+          (linkName:
+            let
+              linkPath = "inventory.realization.links.${linkName}";
+              link = requireAttrs linkPath links.${linkName};
+              _id =
+                if link ? id then
+                  requireString "${linkPath}.id" link.id
+                else
+                  throw "inventory lint error: ${linkPath}.id is required";
+              _kind =
+                if link ? kind then
+                  requireString "${linkPath}.kind" link.kind
+                else
+                  throw "inventory lint error: ${linkPath}.kind is required";
+              _link =
+                if link ? link then
+                  requireString "${linkPath}.link" link.link
+                else
+                  throw "inventory lint error: ${linkPath}.link is required";
+              _members =
+                if link ? members then
+                  requireList "${linkPath}.members" link.members
+                else
+                  true;
+            in
+            builtins.seq _id (builtins.seq _kind (builtins.seq _link _members)))
+          linkNames;
+    in
+    builtins.seq _validated true;
 
   validateRealizationPort = hostBridgesSet: nodePath: portName: port:
     let
@@ -495,7 +560,7 @@ let
         else
           throw "inventory lint error: ${portPath}.interface.name is required";
     in
-    true;
+    builtins.seq _link (builtins.seq _attachCheck _ifName);
 
   collectRealizationLinkRefs = deploymentInfo:
     let
@@ -548,17 +613,19 @@ let
 
               refs =
                 builtins.map
-                  (portName:
-                    {
-                      source = "realization";
-                      node = nodeName;
-                      port = portName;
-                      link = ports.${portName}.link;
-                    })
+                  (portName: {
+                    source = "realization";
+                    node = nodeName;
+                    port = portName;
+                    link = ports.${portName}.link;
+                  })
                   portNames;
             in
-            builtins.seq _validatedPorts refs
-          )
+            builtins.seq _hostExists (
+              builtins.seq _platform (
+                builtins.seq _validatedPorts refs
+              )
+            ))
           nodeNames;
     in
     builtins.concatLists refsPerNode;
@@ -625,73 +692,141 @@ let
   cpmCanonicalP2PLinks =
     let
       data = requireAttrs "control_plane_model.data" (cpm.data or null);
-
       enterpriseNames = attrNames data;
+    in
+    builtins.concatLists (
+      builtins.map
+        (enterpriseName:
+          let
+            sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
+            siteNames = attrNames sites;
+          in
+          builtins.concatLists (
+            builtins.map
+              (siteName:
+                let
+                  site = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}" sites.${siteName};
+                  transit = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}.transit" (site.transit or null);
+                  adjacencies = requireList "control_plane_model.data.${enterpriseName}.${siteName}.transit.adjacencies" (transit.adjacencies or null);
+                in
+                builtins.filter
+                  (x: x != null)
+                  (builtins.map
+                    (adj:
+                      if (adj.kind or null) == "p2p" then
+                        if adj ? id && nonEmptyString adj.id then
+                          adj.id
+                        else
+                          throw "inventory lint error: CPM p2p adjacency is missing id"
+                      else
+                        null)
+                    adjacencies))
+              siteNames
+          ))
+        enterpriseNames
+    );
 
-      ids =
+  inventoryLinkAliasMap =
+    let
+      realization = optionalAttrs (inventory.realization or null);
+      links = optionalAttrs (realization.links or null);
+      linkNames = attrNames links;
+      entries =
         builtins.concatLists (
           builtins.map
-            (enterpriseName:
+            (linkName:
               let
-                sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
-                siteNames = attrNames sites;
+                linkPath = "inventory.realization.links.${linkName}";
+                link = requireAttrs linkPath links.${linkName};
+                kind = requireString "${linkPath}.kind" (link.kind or null);
+                canonicalId = requireString "${linkPath}.id" (link.id or null);
+                realizedName = requireString "${linkPath}.link" (link.link or null);
+                aliases =
+                  builtins.filter
+                    nonEmptyString
+                    [ linkName realizedName canonicalId ];
               in
-              builtins.concatLists (
-                builtins.map
-                  (siteName:
-                    let
-                      site = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}" sites.${siteName};
-                      transit = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}.transit" (site.transit or null);
-                      adjacencies = requireList "control_plane_model.data.${enterpriseName}.${siteName}.transit.adjacencies" (transit.adjacencies or null);
-                    in
-                    builtins.filter
-                      (x: x != null)
-                      (builtins.map
-                        (adj:
-                          if (adj.kind or null) == "p2p" then
-                            if adj ? id && nonEmptyString adj.id then
-                              adj.id
-                            else
-                              throw "inventory lint error: CPM p2p adjacency is missing id"
-                          else
-                            null)
-                        adjacencies))
-                  siteNames
-              ))
-            enterpriseNames
+              builtins.map
+                (alias: {
+                  name = alias;
+                  value = {
+                    inherit kind canonicalId realizedName;
+                  };
+                })
+                aliases)
+            linkNames
         );
     in
-    ids;
+    builtins.listToAttrs entries;
 
-  canonicalizeRefs = refs:
+  classifyRefs = refs:
     builtins.map
       (ref:
-        if hasAttr ref.link cpmP2PAliasMap then
-          ref // { canonicalLink = cpmP2PAliasMap.${ref.link}; }
+        let
+          inventoryMeta =
+            if hasAttr ref.link inventoryLinkAliasMap then
+              inventoryLinkAliasMap.${ref.link}
+            else
+              null;
+
+          cpmP2P =
+            if hasAttr ref.link cpmP2PAliasMap then
+              cpmP2PAliasMap.${ref.link}
+            else
+              null;
+        in
+        if inventoryMeta != null && inventoryMeta.kind != "p2p" then
+          ref // {
+            relationKind = inventoryMeta.kind;
+            validateP2P = false;
+            canonicalLink = inventoryMeta.canonicalId;
+          }
+        else if cpmP2P != null then
+          ref // {
+            relationKind = "p2p";
+            validateP2P = true;
+            canonicalLink = cpmP2P;
+          }
+        else if inventoryMeta != null && inventoryMeta.kind == "p2p" then
+          ref // {
+            relationKind = "p2p";
+            validateP2P = true;
+            canonicalLink = null;
+          }
         else
-          ref // { canonicalLink = null; })
+          ref // {
+            relationKind = null;
+            validateP2P = false;
+            canonicalLink = null;
+          })
       refs;
 
   validateDeclaredRefsExistInCPM = refs:
     let
-      canonicalRefs = canonicalizeRefs refs;
-
+      classified = classifyRefs refs;
       unknownRefs =
         builtins.filter
-          (ref: ref.canonicalLink == null)
-          canonicalRefs;
+          (ref:
+            (ref.relationKind or null) == null
+            || ((ref.validateP2P or false) && (ref.canonicalLink or null) == null))
+          classified;
     in
     if unknownRefs != [ ] then
       throw ''
-        inventory lint error: inventory references stable transit link IDs not present in control_plane_model transit.
+        inventory lint error: inventory references links that are neither known non-p2p realization links nor present in control_plane_model transit.
         Unknown references:
         ${builtins.toJSON unknownRefs}
       ''
     else
-      canonicalRefs;
+      classified;
 
   validateFullP2PCoverage = refs:
     let
+      p2pRefs =
+        builtins.filter
+          (ref: ref.validateP2P or false)
+          refs;
+
       cpmLinks = cpmCanonicalP2PLinks;
 
       counts =
@@ -702,7 +837,7 @@ let
               ${ref.canonicalLink} = (acc.${ref.canonicalLink} or 0) + 1;
             })
           { }
-          refs;
+          p2pRefs;
 
       badCounts =
         builtins.filter
@@ -768,6 +903,12 @@ let
       in
       builtins.seq _schema validateDeployment;
 
+  _validatedRealizationLinks =
+    if inventoryAttrs ? realization then
+      validateRealizationLinks
+    else
+      true;
+
   fabricP2PRefs =
     if inventoryAttrs ? fabric then
       collectFabricP2PLinkRefs
@@ -782,7 +923,7 @@ let
 
   allRefs = fabricP2PRefs ++ realizationRefs;
 
-  canonicalRefs =
+  classifiedRefs =
     if inventoryAttrs == { } then
       [ ]
     else
@@ -792,5 +933,7 @@ if inventoryAttrs == { } then
   true
 else
   builtins.seq deploymentInfo (
-    validateFullP2PCoverage canonicalRefs
+    builtins.seq _validatedRealizationLinks (
+      validateFullP2PCoverage classifiedRefs
+    )
   )

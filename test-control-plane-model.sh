@@ -14,7 +14,7 @@ OUTPUT="output-control-plane-model.json"
 
 
 # TEMP OVERWRITES:
-#INPUT_INVENTORY="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-policy-only/inventory.nix"
+#INPUT_INVENTORY="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-core/inventory.nix"
 #INPUT="/home/deadbeef/github/nixos/library/100-fabric-routing/inputs/intent.nix"
 
 
@@ -24,7 +24,7 @@ OUTPUT="output-control-plane-model.json"
 rm -f "$OUTPUT"
 
 echo "[*] Running control-plane-model..."
-nix run .#compile-and-build-control-plane-model -- "$INPUT" "$INPUT_INVENTORY" "$OUTPUT"
+nix run .#compile-and-build-control-plane-model -- "$INPUT" "$INPUT_INVENTORY" "$OUTPUT" >/dev/null
 
 echo "[*] Validating JSON..."
 jq empty "$OUTPUT" >/dev/null
