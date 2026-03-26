@@ -4,27 +4,221 @@ forwardingModel:
 
 let
   inherit (helpers)
+    failWithContext
     forceAll
     hasAttr
     isNonEmptyString
     requireAttrs
+    requireAttrsIn
     requireList
+    requireListIn
     requireString
+    requireStringIn
     requireStringList
+    requireStringListIn
     sortedNames;
 
-  validateTransit = sitePath: siteLinks: transit:
+  makeStringSet = values:
+    builtins.listToAttrs (
+      builtins.map
+        (value: {
+          name = value;
+          value = true;
+        })
+        values
+    );
+
+  validateContractTagMappings = sitePath: siteAttrs:
+    let
+      communicationContractValue = siteAttrs.communicationContract or null;
+      communicationContract =
+        if communicationContractValue == null then
+          null
+        else
+          requireAttrsIn
+            siteAttrs
+            "${sitePath}.communicationContract"
+            communicationContractValue;
+    in
+    if communicationContract == null then
+      true
+    else
+      let
+        allowedRelations =
+          requireListIn
+            communicationContract
+            "${sitePath}.communicationContract.allowedRelations"
+            (communicationContract.allowedRelations or null);
+
+        policy =
+          if builtins.isAttrs (siteAttrs.policy or null) then
+            siteAttrs.policy
+          else
+            null;
+
+        policyInterfaceTagsValue =
+          if policy == null then
+            null
+          else
+            policy.interfaceTags or null;
+
+        contractInterfaceTagsValue =
+          communicationContract.interfaceTags or null;
+
+        hasPolicyInterfaceTags = builtins.isAttrs policyInterfaceTagsValue;
+        hasContractInterfaceTags = builtins.isAttrs contractInterfaceTagsValue;
+
+        interfaceTags =
+          if hasPolicyInterfaceTags && hasContractInterfaceTags then
+            failWithContext
+              "exactly one canonical interfaceTags source is allowed; use communicationContract.interfaceTags"
+              {
+                policy = policyInterfaceTagsValue;
+                communicationContract = contractInterfaceTagsValue;
+              }
+          else if hasPolicyInterfaceTags then
+            failWithContext
+              "policy.interfaceTags is not supported; use communicationContract.interfaceTags"
+              policy
+          else if !hasContractInterfaceTags then
+            failWithContext
+              "communicationContract.interfaceTags is required"
+              communicationContract
+          else
+            requireAttrsIn
+              communicationContract
+              "${sitePath}.communicationContract.interfaceTags"
+              contractInterfaceTagsValue;
+
+        explicitTagSet =
+          makeStringSet (
+            builtins.filter
+              isNonEmptyString
+              (builtins.attrValues interfaceTags)
+          );
+
+        referencedTags =
+          builtins.concatLists (
+            builtins.genList
+              (idx:
+                let
+                  relationPath =
+                    "${sitePath}.communicationContract.allowedRelations[${toString idx}]";
+                  relation =
+                    requireAttrsIn
+                      communicationContract
+                      relationPath
+                      (builtins.elemAt allowedRelations idx);
+
+                  collectEndpointTags = endpointName:
+                    let
+                      endpointPath = "${relationPath}.${endpointName}";
+                      endpointRaw = relation.${endpointName} or null;
+                    in
+                    if endpointRaw == "any" then
+                      [ ]
+                    else if builtins.isAttrs endpointRaw then
+                      let
+                        endpoint =
+                          requireAttrsIn
+                            relation
+                            endpointPath
+                            endpointRaw;
+                        kind =
+                          requireStringIn
+                            endpoint
+                            "${endpointPath}.kind"
+                            (endpoint.kind or null);
+                      in
+                      if kind == "tenant" || kind == "external" || kind == "service" then
+                        [
+                          (
+                            requireStringIn
+                              endpoint
+                              "${endpointPath}.name"
+                              (endpoint.name or null)
+                          )
+                        ]
+                      else if kind == "tenant-set" then
+                        requireStringListIn
+                          endpoint
+                          "${endpointPath}.members"
+                          (endpoint.members or null)
+                      else
+                        [ ]
+                    else
+                      failWithContext
+                        "input contract failure: ${endpointPath} must be an attribute set or the string \"any\""
+                        relation;
+                in
+                collectEndpointTags "from" ++ collectEndpointTags "to")
+              (builtins.length allowedRelations)
+          );
+
+        validatedTags =
+          builtins.genList
+            (idx:
+              let
+                tag = builtins.elemAt referencedTags idx;
+              in
+              if hasAttr tag explicitTagSet then
+                true
+              else
+                failWithContext
+                  "communicationContract references tag '${tag}' with no explicit interfaceTags mapping"
+                  {
+                    interfaceTags = interfaceTags;
+                    referencedTag = tag;
+                    site = sitePath;
+                  })
+            (builtins.length referencedTags);
+      in
+      forceAll validatedTags;
+
+  validateBGP = sitePath: siteAttrs:
+    let
+      bgpValue = siteAttrs.bgp or null;
+      bgp =
+        if bgpValue == null then
+          null
+        else
+          requireAttrsIn siteAttrs "${sitePath}.bgp" bgpValue;
+      mode =
+        if bgp == null then
+          null
+        else
+          bgp.mode or null;
+      sessions =
+        if bgp == null then
+          null
+        else
+          bgp.sessions or null;
+    in
+    if mode == "bgp" && !builtins.isList sessions then
+      failWithContext "bgp mode requires explicit site.bgp.sessions" bgp
+    else
+      true;
+
+  validateTransit = sitePath: siteLinks: siteAttrs: transit:
     let
       transitPath = "${sitePath}.transit";
-      transitAttrs = requireAttrs transitPath transit;
-      adjacencies = requireList "${transitPath}.adjacencies" (transitAttrs.adjacencies or null);
+      transitAttrs = requireAttrsIn siteAttrs transitPath transit;
+      adjacencies =
+        requireListIn
+          transitAttrs
+          "${transitPath}.adjacencies"
+          (transitAttrs.adjacencies or null);
       orderingRaw = transitAttrs.ordering or null;
 
       ordering =
         if !builtins.isList orderingRaw then
-          throw "transit.ordering must contain only stable adjacency IDs"
+          failWithContext
+            "transit.ordering must contain only stable adjacency IDs"
+            transitAttrs
         else if !builtins.all isNonEmptyString orderingRaw then
-          throw "transit.ordering must contain only stable adjacency IDs"
+          failWithContext
+            "transit.ordering must contain only stable adjacency IDs"
+            transitAttrs
         else
           orderingRaw;
 
@@ -33,126 +227,299 @@ let
           (idx:
             let
               adjacencyPath = "${transitPath}.adjacencies[${toString idx}]";
-              adjacency = requireAttrs adjacencyPath (builtins.elemAt adjacencies idx);
-              adjacencyId = requireString "${adjacencyPath}.id" (adjacency.id or null);
-              adjacencyKind = requireString "${adjacencyPath}.kind" (adjacency.kind or null);
-              endpoints = requireList "${adjacencyPath}.endpoints" (adjacency.endpoints or null);
+              adjacency =
+                requireAttrsIn
+                  transitAttrs
+                  adjacencyPath
+                  (builtins.elemAt adjacencies idx);
+              adjacencyId =
+                requireStringIn
+                  adjacency
+                  "${adjacencyPath}.id"
+                  (adjacency.id or null);
+              adjacencyKind =
+                requireStringIn
+                  adjacency
+                  "${adjacencyPath}.kind"
+                  (adjacency.kind or null);
+              endpoints =
+                requireListIn
+                  adjacency
+                  "${adjacencyPath}.endpoints"
+                  (adjacency.endpoints or null);
 
-              _endpointCheck =
+              endpointCheck =
                 if builtins.length endpoints > 0 then
                   true
                 else
-                  throw "input contract failure: ${adjacencyPath}.endpoints must not be empty";
+                  failWithContext
+                    "input contract failure: ${adjacencyPath}.endpoints must not be empty"
+                    adjacency;
 
-              _linkCheck =
+              linkCheck =
                 if adjacencyKind == "p2p" then
                   let
-                    linkName = requireString "${adjacencyPath}.link" (adjacency.link or null);
+                    linkName =
+                      requireStringIn
+                        adjacency
+                        "${adjacencyPath}.link"
+                        (adjacency.link or null);
                   in
                   if !hasAttr linkName siteLinks then
-                    throw "input contract failure: ${adjacencyPath}.link references unknown link '${linkName}'"
+                    failWithContext
+                      "input contract failure: ${adjacencyPath}.link references unknown link '${linkName}'"
+                      {
+                        adjacency = adjacency;
+                        availableLinks = builtins.attrNames siteLinks;
+                      }
                   else
                     let
-                      linkId = requireString "${sitePath}.links.${linkName}.id" (siteLinks.${linkName}.id or null);
+                      linkId =
+                        requireStringIn
+                          siteLinks.${linkName}
+                          "${sitePath}.links.${linkName}.id"
+                          (siteLinks.${linkName}.id or null);
                     in
                     if linkId != adjacencyId then
-                      throw "input contract failure: ${adjacencyPath}.id '${adjacencyId}' does not match links.${linkName}.id '${linkId}'"
+                      failWithContext
+                        "input contract failure: ${adjacencyPath}.id '${adjacencyId}' does not match links.${linkName}.id '${linkId}'"
+                        {
+                          adjacency = adjacency;
+                          link = siteLinks.${linkName};
+                        }
                     else
                       true
                 else
                   true;
             in
-            builtins.seq _endpointCheck (builtins.seq _linkCheck adjacencyId))
+            builtins.seq endpointCheck (builtins.seq linkCheck adjacencyId))
           (builtins.length adjacencies);
 
-      _orderingMembership =
+      orderingMembership =
         builtins.map
           (adjacencyId:
             if builtins.elem adjacencyId adjacencyIds then
               true
             else
-              throw "input contract failure: ${transitPath}.ordering references unknown adjacency ID '${adjacencyId}'")
+              failWithContext
+                "input contract failure: ${transitPath}.ordering references unknown adjacency ID '${adjacencyId}'"
+                {
+                  ordering = ordering;
+                  knownAdjacencyIds = adjacencyIds;
+                })
           ordering;
     in
-    builtins.seq (forceAll adjacencyIds) (forceAll _orderingMembership);
+    builtins.seq (forceAll adjacencyIds) (forceAll orderingMembership);
+
+  validateInterface = sitePath: nodeName: ifName: nodeAttrs: iface:
+    let
+      ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
+      ifaceAttrs = requireAttrsIn nodeAttrs ifacePath iface;
+      kind = ifaceAttrs.kind or null;
+      interfaceValue = ifaceAttrs.interface or null;
+    in
+    if !isNonEmptyString kind then
+      failWithContext
+        "interface kind is required"
+        {
+          site = sitePath;
+          node = nodeName;
+          interfaceKey = ifName;
+          interfaceDefinition = ifaceAttrs;
+        }
+    else if !isNonEmptyString interfaceValue then
+      failWithContext
+        "input contract failure: ${ifacePath}.interface is required"
+        {
+          site = sitePath;
+          node = nodeName;
+          interfaceKey = ifName;
+          availableInterfaceKeys =
+            if builtins.isAttrs (nodeAttrs.interfaces or null) then
+              sortedNames nodeAttrs.interfaces
+            else
+              [ ];
+          interfaceFields =
+            if builtins.isAttrs ifaceAttrs then
+              sortedNames ifaceAttrs
+            else
+              [ ];
+          interfaceDefinition = ifaceAttrs;
+          nodeDefinition = nodeAttrs;
+        }
+    else if kind == "tenant" && !isNonEmptyString (ifaceAttrs.tenant or null) then
+      failWithContext
+        "tenant interface requires explicit tenant"
+        {
+          site = sitePath;
+          node = nodeName;
+          interfaceKey = ifName;
+          interfaceDefinition = ifaceAttrs;
+        }
+    else if kind == "wan" && !isNonEmptyString (ifaceAttrs.upstream or null) then
+      failWithContext
+        "wan interface requires explicit upstream"
+        {
+          site = sitePath;
+          node = nodeName;
+          interfaceKey = ifName;
+          interfaceDefinition = ifaceAttrs;
+        }
+    else if kind == "overlay" && !isNonEmptyString (ifaceAttrs.overlay or null) then
+      failWithContext
+        "overlay interface requires explicit overlay"
+        {
+          site = sitePath;
+          node = nodeName;
+          interfaceKey = ifName;
+          interfaceDefinition = ifaceAttrs;
+        }
+    else
+      true;
 
   validateNode = sitePath: nodeName: node:
     let
       nodePath = "${sitePath}.nodes.${nodeName}";
-      nodeAttrs = requireAttrs nodePath node;
+      nodeAttrs = requireAttrsIn nodePath nodePath node;
       loopback = nodeAttrs.loopback or null;
       interfaces = nodeAttrs.interfaces or null;
+      interfaceNames =
+        if builtins.isAttrs interfaces then
+          sortedNames interfaces
+        else
+          [ ];
+
+      validatedInterfaces =
+        if builtins.isAttrs interfaces then
+          builtins.map
+            (ifName: validateInterface sitePath nodeName ifName nodeAttrs interfaces.${ifName})
+            interfaceNames
+        else
+          [ ];
+
+      hasExplicitTenantInterface =
+        builtins.any
+          (ifName:
+            let
+              iface = interfaces.${ifName};
+            in
+            builtins.isAttrs iface
+            && (iface.kind or null) == "tenant"
+            && isNonEmptyString (iface.tenant or null))
+          interfaceNames;
     in
     if !builtins.isAttrs interfaces then
-      throw "input contract failure: ${nodePath}.interfaces must be an attribute set"
+      failWithContext
+        "input contract failure: ${nodePath}.interfaces must be an attribute set"
+        nodeAttrs
     else if !builtins.isAttrs loopback then
-      throw "node loopback is required"
+      failWithContext "node loopback is required" nodeAttrs
     else if !isNonEmptyString (loopback.ipv4 or null) || !isNonEmptyString (loopback.ipv6 or null) then
-      throw "node loopback is required"
+      failWithContext "node loopback is required" loopback
     else
-      true;
+      builtins.seq
+        (forceAll validatedInterfaces)
+        (if (nodeAttrs.role or null) == "access" && !hasExplicitTenantInterface then
+          failWithContext
+            "access node requires at least one tenant interface with explicit tenant"
+            nodeAttrs
+        else
+          true);
 
   validateSite = enterpriseName: siteName: site:
     let
       sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
       siteAttrs = requireAttrs sitePath site;
 
-      _legacyAttachment =
+      legacyAttachment =
         if siteAttrs ? attachment then
-          throw "legacy singular attachment is not supported; use attachments"
+          failWithContext
+            "legacy singular attachment is not supported; use attachments"
+            siteAttrs
         else
           true;
 
-      _siteId = requireString "${sitePath}.siteId" (siteAttrs.siteId or null);
-      _siteName = requireString "${sitePath}.siteName" (siteAttrs.siteName or null);
-      _attachments = requireList "${sitePath}.attachments" (siteAttrs.attachments or null);
-      _policyNodeName = requireString "${sitePath}.policyNodeName" (siteAttrs.policyNodeName or null);
-      _upstreamSelectorNodeName =
-        requireString "${sitePath}.upstreamSelectorNodeName" (siteAttrs.upstreamSelectorNodeName or null);
-      _coreNodeNames = requireStringList "${sitePath}.coreNodeNames" (siteAttrs.coreNodeNames or null);
-      _uplinkCoreNames = requireStringList "${sitePath}.uplinkCoreNames" (siteAttrs.uplinkCoreNames or null);
-      _uplinkNames = requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
+      siteId = requireStringIn siteAttrs "${sitePath}.siteId" (siteAttrs.siteId or null);
+      siteNameValue =
+        requireStringIn siteAttrs "${sitePath}.siteName" (siteAttrs.siteName or null);
+      attachments =
+        requireListIn siteAttrs "${sitePath}.attachments" (siteAttrs.attachments or null);
+      policyNodeName =
+        requireStringIn
+          siteAttrs
+          "${sitePath}.policyNodeName"
+          (siteAttrs.policyNodeName or null);
+      upstreamSelectorNodeName =
+        requireStringIn
+          siteAttrs
+          "${sitePath}.upstreamSelectorNodeName"
+          (siteAttrs.upstreamSelectorNodeName or null);
+      coreNodeNames =
+        requireStringListIn
+          siteAttrs
+          "${sitePath}.coreNodeNames"
+          (siteAttrs.coreNodeNames or null);
+      uplinkCoreNames =
+        requireStringListIn
+          siteAttrs
+          "${sitePath}.uplinkCoreNames"
+          (siteAttrs.uplinkCoreNames or null);
+      uplinkNames =
+        requireStringListIn
+          siteAttrs
+          "${sitePath}.uplinkNames"
+          (siteAttrs.uplinkNames or null);
 
-      domains = requireAttrs "${sitePath}.domains" (siteAttrs.domains or null);
-      _tenants = requireList "${sitePath}.domains.tenants" (domains.tenants or null);
-      _externals = requireList "${sitePath}.domains.externals" (domains.externals or null);
-      _tenantPrefixOwners = requireAttrs "${sitePath}.tenantPrefixOwners" (siteAttrs.tenantPrefixOwners or null);
+      domains = requireAttrsIn siteAttrs "${sitePath}.domains" (siteAttrs.domains or null);
+      tenants =
+        requireListIn
+          domains
+          "${sitePath}.domains.tenants"
+          (domains.tenants or null);
+      externals =
+        requireListIn
+          domains
+          "${sitePath}.domains.externals"
+          (domains.externals or null);
+      tenantPrefixOwners =
+        requireAttrsIn
+          siteAttrs
+          "${sitePath}.tenantPrefixOwners"
+          (siteAttrs.tenantPrefixOwners or null);
 
-      siteLinks = requireAttrs "${sitePath}.links" (siteAttrs.links or null);
-      nodes = requireAttrs "${sitePath}.nodes" (siteAttrs.nodes or null);
+      siteLinks =
+        requireAttrsIn siteAttrs "${sitePath}.links" (siteAttrs.links or null);
+      nodes =
+        requireAttrsIn siteAttrs "${sitePath}.nodes" (siteAttrs.nodes or null);
 
-      _validatedNodes =
+      validatedNodes =
         builtins.map
-          (nodeName': validateNode sitePath nodeName' nodes.${nodeName'})
+          (nodeName: validateNode sitePath nodeName nodes.${nodeName})
           (sortedNames nodes);
 
-      _validatedTransit = validateTransit sitePath siteLinks (siteAttrs.transit or null);
+      validatedTransit =
+        validateTransit sitePath siteLinks siteAttrs (siteAttrs.transit or null);
+      validatedContractTags = validateContractTagMappings sitePath siteAttrs;
+      validatedBGP = validateBGP sitePath siteAttrs;
     in
-    builtins.seq
-      _legacyAttachment
-      (builtins.seq
-        _siteId
-        (builtins.seq
-          _siteName
-          (builtins.seq
-            _attachments
-            (builtins.seq
-              _policyNodeName
-              (builtins.seq
-                _upstreamSelectorNodeName
-                (builtins.seq
-                  _coreNodeNames
-                  (builtins.seq
-                    _uplinkCoreNames
-                    (builtins.seq
-                      _uplinkNames
-                      (builtins.seq
-                        _tenants
-                        (builtins.seq
-                          _externals
-                          (builtins.seq
-                            _tenantPrefixOwners
-                            (builtins.seq (forceAll _validatedNodes) _validatedTransit))))))))))));
+    forceAll [
+      legacyAttachment
+      siteId
+      siteNameValue
+      attachments
+      policyNodeName
+      upstreamSelectorNodeName
+      coreNodeNames
+      uplinkCoreNames
+      uplinkNames
+      tenants
+      externals
+      tenantPrefixOwners
+      validatedNodes
+      validatedTransit
+      validatedContractTags
+      validatedBGP
+    ];
 
   inputAttrs =
     if builtins.isAttrs forwardingModel then
@@ -163,7 +530,7 @@ let
   meta = forwardingModel.meta or null;
 
   marker =
-    if builtins.isAttrs meta && builtins.isAttrs ((meta).networkForwardingModel or null) then
+    if builtins.isAttrs meta && builtins.isAttrs (meta.networkForwardingModel or null) then
       meta.networkForwardingModel
     else
       throw "forwarding model input requires meta.networkForwardingModel";

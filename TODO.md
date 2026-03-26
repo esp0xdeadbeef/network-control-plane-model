@@ -29,6 +29,7 @@ If meaning is not explicit → fail
 
 ### 2. Forwarding-model is the only authority
 
+* [ ] include DHCP - slaac auto configs
 * [ ] Require `meta.networkForwardingModel` (schema v6)
 * [ ] Reject solver-era input (`meta.solver`, pair-based transit, etc.)
 * [ ] Consume only canonical fields:
@@ -121,3 +122,4 @@ CPM converts structure → explicit behavior.
 * [ ] renderer performs zero decision-making
 * [ ] output is deterministic and st
 * [ ] network-control-plane-model has fully explicit intent, zero runtime state
+
