@@ -42,12 +42,10 @@ run_case() {
 
   log "Running ${name}"
 
-  local tmp_dir
   tmp_dir="$(mktemp -d)"
   printf '%s\n' "$input_nix" > "${tmp_dir}/input.nix"
   printf '%s\n' "$inventory_nix" > "${tmp_dir}/inventory.nix"
 
-  local expr
   expr="let input = import ${tmp_dir}/input.nix; inventory = import ${tmp_dir}/inventory.nix; in import ${repo_root}/src/main.nix { inherit input inventory; }"
 
   nix eval --show-trace --impure --json --expr "${expr}" > "${tmp_dir}/out.json" \
@@ -67,36 +65,38 @@ run_external_examples() {
   log "Running external examples"
 
   find "${examples_root}" -mindepth 1 -maxdepth 1 -type d | sort | while read -r dir; do
-    local name
-    local intent
-    local inventory
-    local tmp_dir
-    local tmp_out
-    local stderr_file
-
     name="$(basename "$dir")"
     intent="${dir}/intent.nix"
     inventory="${dir}/inventory.nix"
 
     [[ -f "$intent" ]] || { echo "SKIP ${name} (no intent.nix)"; continue; }
-    [[ -f "$inventory" ]] || { echo "SKIP ${name} (no inventory.nix)"; continue; }
 
     log "Example ${name}"
 
     tmp_dir="$(mktemp -d)"
     tmp_out="${tmp_dir}/out.json"
+    tmp_inventory="${tmp_dir}/inventory.nix"
     stderr_file="${tmp_dir}/stderr.log"
+
+    if [[ -f "${inventory}" ]]; then
+      inventory_arg="${inventory}"
+    else
+      printf '%s\n' '{}' > "${tmp_inventory}"
+      inventory_arg="${tmp_inventory}"
+    fi
 
     nix run "${repo_root}#compile-and-build-control-plane-model" -- \
       "${intent}" \
-      "${inventory}" \
+      "${inventory_arg}" \
       "${tmp_out}" \
       >/dev/null 2>"${stderr_file}" \
       || {
         echo "--- INTENT (${name}) ---"
         cat "${intent}"
-        echo "--- INVENTORY (${name}) ---"
-        cat "${inventory}"
+        if [[ -f "${inventory}" ]]; then
+          echo "--- INVENTORY (${name}) ---"
+          cat "${inventory}"
+        fi
         echo "--- STDERR (${name}) ---"
         cat "${stderr_file}"
         rm -rf "${tmp_dir}"
@@ -132,10 +132,6 @@ minimal_input='{
           tenantPrefixOwners = {};
           links = {};
           transit = { adjacencies = []; ordering = []; };
-          communicationContract = {
-            interfaceTags = {};
-            allowedRelations = [];
-          };
           nodes = {};
         };
       };

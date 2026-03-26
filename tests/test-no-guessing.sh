@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+golden_input_file="${repo_root}/fixtures/passing/golden-no-guessing-base/input.nix"
 
 status=0
 
@@ -44,599 +45,162 @@ run_case() {
   trap - RETURN
 }
 
-inventory_empty='{}'
+mutate_once_with_nix() {
+  local source_file="$1"
+  local op="$2"
+  local old_file="$3"
+  local new_file="${4:-}"
 
-run_case \
+  local expr
+  case "$op" in
+    replace)
+      expr="
+        let
+          text = builtins.readFile ${source_file};
+          old = builtins.readFile ${old_file};
+          new = builtins.readFile ${new_file};
+          out = builtins.replaceStrings [ old ] [ new ] text;
+        in
+        if out == text then
+          throw \"mutation failed: replace pattern not found\"
+        else
+          out
+      "
+      ;;
+    delete)
+      expr="
+        let
+          text = builtins.readFile ${source_file};
+          old = builtins.readFile ${old_file};
+          out = builtins.replaceStrings [ old ] [ \"\" ] text;
+        in
+        if out == text then
+          throw \"mutation failed: delete pattern not found\"
+        else
+          out
+      "
+      ;;
+    *)
+      echo "unknown mutation op: ${op}" >&2
+      return 1
+      ;;
+  esac
+
+  nix eval --impure --raw --expr "${expr}"
+}
+
+mutate_input() {
+  local work_dir
+  work_dir="$(mktemp -d)"
+  trap 'rm -rf "$work_dir"' RETURN
+
+  local current_file="${work_dir}/current.nix"
+  cp "${golden_input_file}" "${current_file}"
+
+  while (($# > 0)); do
+    local op="$1"
+    shift
+
+    case "$op" in
+      replace)
+        local old="$1"
+        local new="$2"
+        shift 2
+
+        local old_file="${work_dir}/old.txt"
+        local new_file="${work_dir}/new.txt"
+        local next_file="${work_dir}/next.nix"
+
+        printf '%s' "${old}" > "${old_file}"
+        printf '%s' "${new}" > "${new_file}"
+        mutate_once_with_nix "${current_file}" replace "${old_file}" "${new_file}" > "${next_file}"
+        mv "${next_file}" "${current_file}"
+        ;;
+      delete)
+        local old="$1"
+        shift
+
+        local old_file="${work_dir}/old.txt"
+        local next_file="${work_dir}/next.nix"
+
+        printf '%s' "${old}" > "${old_file}"
+        mutate_once_with_nix "${current_file}" delete "${old_file}" > "${next_file}"
+        mv "${next_file}" "${current_file}"
+        ;;
+      *)
+        echo "unknown mutation op: ${op}" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  cat "${current_file}"
+  trap - RETURN
+  rm -rf "${work_dir}"
+}
+
+run_case_from_golden() {
+  local name="$1"
+  local expected="$2"
+  shift 2
+  run_case "$name" "$expected" "$(mutate_input "$@")" '{}'
+}
+
+run_case_from_golden \
   "pair-based-transit-ordering" \
   "transit.ordering must contain only stable adjacency IDs" \
-  "$(cat <<'EOF'
-{
-  meta = {
-    networkForwardingModel = {
-      name = "network-forwarding-model";
-      schemaVersion = 6;
-    };
-  };
-
-  enterprise = {
-    acme = {
-      site = {
-        ams = {
-          siteId = "ams";
-          siteName = "acme.ams";
-          attachments = [
-            {
-              kind = "tenant";
-              name = "tenant-a";
-              unit = "access-1";
-            }
-          ];
-          policyNodeName = "policy-1";
-          upstreamSelectorNodeName = "upstream-1";
-          coreNodeNames = [ "core-1" ];
-          uplinkCoreNames = [ "core-1" ];
-          uplinkNames = [ "wan" ];
-          domains = {
-            tenants = [
-              {
-                name = "tenant-a";
-                ipv4 = "10.20.0.0/24";
-                ipv6 = "fd00:20::/64";
-              }
-            ];
-            externals = [
-              {
-                name = "wan";
-              }
-            ];
-          };
-          tenantPrefixOwners = {
-            "4|10.20.0.0/24" = {
-              family = 4;
-              dst = "10.20.0.0/24";
-              netName = "tenant-a";
-              owner = "access-1";
-            };
-          };
-
-          links = {
-            link-policy-access = {
-              id = "link::acme.ams::policy-access";
-              kind = "p2p";
-              members = [ "policy-1" "access-1" ];
-              endpoints = {
-                policy-1 = {
-                  node = "policy-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.1/31";
-                  addr6 = "fd00:1::1/127";
-                };
-                access-1 = {
-                  node = "access-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.0/31";
-                  addr6 = "fd00:1::0/127";
-                };
-              };
-            };
-          };
-
-          transit = {
-            adjacencies = [
-              {
-                id = "link::acme.ams::policy-access";
-                kind = "p2p";
-                link = "link-policy-access";
-                endpoints = [
-                  {
-                    unit = "policy-1";
-                    local = {
-                      ipv4 = "169.254.0.1";
-                      ipv6 = "fd00:1::1";
-                    };
-                  }
-                  {
-                    unit = "access-1";
-                    local = {
-                      ipv4 = "169.254.0.0";
-                      ipv6 = "fd00:1::0";
-                    };
-                  }
-                ];
-              }
-            ];
-            ordering = [
+  replace \
+  '            ordering = [
+              "adj::acme.ams::core-upstream"
+              "adj::acme.ams::upstream-policy"
+              "adj::acme.ams::policy-access"
+            ];' \
+  '            ordering = [
+              [ "core-1" "upstream-1" ]
+              [ "upstream-1" "policy-1" ]
               [ "policy-1" "access-1" ]
-            ];
-          };
+            ];'
 
-          nodes = {
-            access-1 = {
-              role = "access";
-              loopback = {
-                ipv4 = "10.255.0.2/32";
-                ipv6 = "fd00:ff::2/128";
-              };
-              interfaces = {
-                tenant0 = {
-                  interface = "tenant-a";
-                  kind = "tenant";
-                  tenant = "tenant-a";
-                  addr4 = "10.20.0.1/24";
-                  addr6 = "fd00:20::1/64";
-                  routes = {
-                    ipv4 = [ ];
-                    ipv6 = [ ];
-                  };
-                };
-              };
-            };
-
-            policy-1 = {
-              role = "policy";
-              loopback = {
-                ipv4 = "10.255.0.1/32";
-                ipv6 = "fd00:ff::1/128";
-              };
-              interfaces = {};
-            };
-
-            core-1 = {
-              role = "core";
-              loopback = {
-                ipv4 = "10.255.0.3/32";
-                ipv6 = "fd00:ff::3/128";
-              };
-              interfaces = {};
-            };
-
-            upstream-1 = {
-              role = "upstream-selector";
-              loopback = {
-                ipv4 = "10.255.0.4/32";
-                ipv6 = "fd00:ff::4/128";
-              };
-              interfaces = {};
-            };
-          };
-        };
-      };
-    };
-  };
-}
-EOF
-)" \
-  "${inventory_empty}"
-
-run_case \
+run_case_from_golden \
   "missing-transit-adjacency-id" \
   "transit.adjacencies[0].id is required" \
-  "$(cat <<'EOF'
-{
-  meta = {
-    networkForwardingModel = {
-      name = "network-forwarding-model";
-      schemaVersion = 6;
-    };
-  };
+  delete \
+  '                id = "adj::acme.ams::core-upstream";
+'
 
-  enterprise = {
-    acme = {
-      site = {
-        ams = {
-          siteId = "ams";
-          siteName = "acme.ams";
-          attachments = [
-            {
-              kind = "tenant";
-              name = "tenant-a";
-              unit = "access-1";
-            }
-          ];
-          policyNodeName = "policy-1";
-          upstreamSelectorNodeName = "upstream-1";
-          coreNodeNames = [ "core-1" ];
-          uplinkCoreNames = [ "core-1" ];
-          uplinkNames = [ "wan" ];
-          domains = {
-            tenants = [
-              {
-                name = "tenant-a";
-                ipv4 = "10.20.0.0/24";
-                ipv6 = "fd00:20::/64";
-              }
-            ];
-            externals = [
-              {
-                name = "wan";
-              }
-            ];
-          };
-          tenantPrefixOwners = {
-            "4|10.20.0.0/24" = {
-              family = 4;
-              dst = "10.20.0.0/24";
-              netName = "tenant-a";
-              owner = "access-1";
-            };
-          };
-
-          links = {
-            link-policy-access = {
-              id = "link::acme.ams::policy-access";
-              kind = "p2p";
-              members = [ "policy-1" "access-1" ];
-              endpoints = {
-                policy-1 = {
-                  node = "policy-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.1/31";
-                  addr6 = "fd00:1::1/127";
-                };
-                access-1 = {
-                  node = "access-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.0/31";
-                  addr6 = "fd00:1::0/127";
-                };
-              };
-            };
-          };
-
-          transit = {
-            adjacencies = [
-              {
-                kind = "p2p";
-                link = "link-policy-access";
-                endpoints = [
-                  {
-                    unit = "policy-1";
-                    local = {
-                      ipv4 = "169.254.0.1";
-                      ipv6 = "fd00:1::1";
-                    };
-                  }
-                  {
-                    unit = "access-1";
-                    local = {
-                      ipv4 = "169.254.0.0";
-                      ipv6 = "fd00:1::0";
-                    };
-                  }
-                ];
-              }
-            ];
-            ordering = [ "link::acme.ams::policy-access" ];
-          };
-
-          nodes = {
-            access-1 = {
-              role = "access";
-              loopback = {
-                ipv4 = "10.255.0.2/32";
-                ipv6 = "fd00:ff::2/128";
-              };
-              interfaces = {
-                tenant0 = {
-                  interface = "tenant-a";
-                  kind = "tenant";
-                  tenant = "tenant-a";
-                  addr4 = "10.20.0.1/24";
-                  addr6 = "fd00:20::1/64";
-                  routes = {
-                    ipv4 = [ ];
-                    ipv6 = [ ];
-                  };
-                };
-              };
-            };
-
-            policy-1 = {
-              role = "policy";
-              loopback = {
-                ipv4 = "10.255.0.1/32";
-                ipv6 = "fd00:ff::1/128";
-              };
-              interfaces = {};
-            };
-
-            core-1 = {
-              role = "core";
-              loopback = {
-                ipv4 = "10.255.0.3/32";
-                ipv6 = "fd00:ff::3/128";
-              };
-              interfaces = {};
-            };
-
-            upstream-1 = {
-              role = "upstream-selector";
-              loopback = {
-                ipv4 = "10.255.0.4/32";
-                ipv6 = "fd00:ff::4/128";
-              };
-              interfaces = {};
-            };
-          };
-        };
-      };
-    };
-  };
-}
-EOF
-)" \
-  "${inventory_empty}"
-
-run_case \
+run_case_from_golden \
   "missing-link-id" \
-  "links.link-policy-access.id is required" \
-  "$(cat <<'EOF'
-{
-  meta = {
-    networkForwardingModel = {
-      name = "network-forwarding-model";
-      schemaVersion = 6;
-    };
-  };
+  "links.link-core-upstream.id is required" \
+  delete \
+  '              id = "adj::acme.ams::core-upstream";
+'
 
-  enterprise = {
-    acme = {
-      site = {
-        ams = {
-          siteId = "ams";
-          siteName = "acme.ams";
-          attachments = [
-            {
-              kind = "tenant";
-              name = "tenant-a";
-              unit = "access-1";
-            }
-          ];
-          policyNodeName = "policy-1";
-          upstreamSelectorNodeName = "upstream-1";
-          coreNodeNames = [ "core-1" ];
-          uplinkCoreNames = [ "core-1" ];
-          uplinkNames = [ "wan" ];
-          domains = {
-            tenants = [
-              {
-                name = "tenant-a";
-                ipv4 = "10.20.0.0/24";
-                ipv6 = "fd00:20::/64";
-              }
-            ];
-            externals = [
-              {
-                name = "wan";
-              }
-            ];
-          };
-          tenantPrefixOwners = {
-            "4|10.20.0.0/24" = {
-              family = 4;
-              dst = "10.20.0.0/24";
-              netName = "tenant-a";
-              owner = "access-1";
-            };
-          };
-
-          links = {
-            link-policy-access = {
-              kind = "p2p";
-              members = [ "policy-1" "access-1" ];
-              endpoints = {
-                policy-1 = {
-                  node = "policy-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.1/31";
-                  addr6 = "fd00:1::1/127";
-                };
-                access-1 = {
-                  node = "access-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.0/31";
-                  addr6 = "fd00:1::0/127";
-                };
-              };
-            };
-          };
-
-          transit = {
-            adjacencies = [
-              {
-                id = "link::acme.ams::policy-access";
-                kind = "p2p";
-                link = "link-policy-access";
-                endpoints = [
-                  {
-                    unit = "policy-1";
-                    local = {
-                      ipv4 = "169.254.0.1";
-                      ipv6 = "fd00:1::1";
-                    };
-                  }
-                  {
-                    unit = "access-1";
-                    local = {
-                      ipv4 = "169.254.0.0";
-                      ipv6 = "fd00:1::0";
-                    };
-                  }
-                ];
-              }
-            ];
-            ordering = [ "link::acme.ams::policy-access" ];
-          };
-
-          nodes = {
-            access-1 = {
-              role = "access";
-              loopback = {
-                ipv4 = "10.255.0.2/32";
-                ipv6 = "fd00:ff::2/128";
-              };
-              interfaces = {
-                tenant0 = {
-                  interface = "tenant-a";
-                  kind = "tenant";
-                  tenant = "tenant-a";
-                  addr4 = "10.20.0.1/24";
-                  addr6 = "fd00:20::1/64";
-                  routes = {
-                    ipv4 = [ ];
-                    ipv6 = [ ];
-                  };
-                };
-              };
-            };
-
-            policy-1 = {
-              role = "policy";
-              loopback = {
-                ipv4 = "10.255.0.1/32";
-                ipv6 = "fd00:ff::1/128";
-              };
-              interfaces = {};
-            };
-
-            core-1 = {
-              role = "core";
-              loopback = {
-                ipv4 = "10.255.0.3/32";
-                ipv6 = "fd00:ff::3/128";
-              };
-              interfaces = {};
-            };
-
-            upstream-1 = {
-              role = "upstream-selector";
-              loopback = {
-                ipv4 = "10.255.0.4/32";
-                ipv6 = "fd00:ff::4/128";
-              };
-              interfaces = {};
-            };
-          };
-        };
-      };
-    };
-  };
-}
-EOF
-)" \
-  "${inventory_empty}"
-
-run_case \
+run_case_from_golden \
   "adjacency-link-id-mismatch" \
-  "does not match links.link-policy-access.id" \
-  "$(cat <<'EOF'
-{
-  meta = {
-    networkForwardingModel = {
-      name = "network-forwarding-model";
-      schemaVersion = 6;
-    };
-  };
+  "does not match links.link-core-upstream.id" \
+  replace \
+  '                id = "adj::acme.ams::core-upstream";' \
+  '                id = "adj::acme.ams::wrong-core-upstream";'
 
-  enterprise = {
-    acme = {
-      site = {
-        ams = {
-          siteId = "ams";
-          siteName = "acme.ams";
-          attachments = [
-            {
-              kind = "tenant";
-              name = "tenant-a";
-              unit = "access-1";
-            }
-          ];
-          policyNodeName = "policy-1";
-          upstreamSelectorNodeName = "upstream-1";
-          coreNodeNames = [ "core-1" ];
-          uplinkCoreNames = [ "core-1" ];
-          uplinkNames = [ "wan" ];
-          domains = {
-            tenants = [
-              {
-                name = "tenant-a";
-                ipv4 = "10.20.0.0/24";
-                ipv6 = "fd00:20::/64";
-              }
-            ];
-            externals = [
-              {
-                name = "wan";
-              }
-            ];
-          };
-          tenantPrefixOwners = {
-            "4|10.20.0.0/24" = {
-              family = 4;
-              dst = "10.20.0.0/24";
-              netName = "tenant-a";
-              owner = "access-1";
-            };
-          };
+run_case_from_golden \
+  "interface-name-must-be-explicit" \
+  "forwardingModel.enterprise.acme.site.ams.nodes.access-1.interfaces.tenant0.interface is required" \
+  delete \
+  '                  interface = "tenant-a";
+'
 
-          links = {
-            link-policy-access = {
-              id = "link::acme.ams::policy-access";
-              kind = "p2p";
-              members = [ "policy-1" "access-1" ];
-              endpoints = {
-                policy-1 = {
-                  node = "policy-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.1/31";
-                  addr6 = "fd00:1::1/127";
-                };
-                access-1 = {
-                  node = "access-1";
-                  interface = "eth-transit";
-                  addr4 = "169.254.0.0/31";
-                  addr6 = "fd00:1::0/127";
-                };
-              };
-            };
-          };
+run_case_from_golden \
+  "tenant-interface-missing-tenant" \
+  "tenant interface requires explicit tenant" \
+  delete \
+  '                  tenant = "tenant-a";
+'
 
-          transit = {
-            adjacencies = [
-              {
-                id = "link::acme.ams::different-id";
-                kind = "p2p";
-                link = "link-policy-access";
-                endpoints = [
-                  {
-                    unit = "policy-1";
-                    local = {
-                      ipv4 = "169.254.0.1";
-                      ipv6 = "fd00:1::1";
-                    };
-                  }
-                  {
-                    unit = "access-1";
-                    local = {
-                      ipv4 = "169.254.0.0";
-                      ipv6 = "fd00:1::0";
-                    };
-                  }
-                ];
-              }
-            ];
-            ordering = [ "link::acme.ams::different-id" ];
-          };
-
-          nodes = {
-            access-1 = {
-              role = "access";
-              loopback = {
-                ipv4 = "10.255.0.2/32";
-                ipv6 = "fd00:ff::2/128";
-              };
-              interfaces = {
-                tenant0 = {
+run_case_from_golden \
+  "access-node-missing-explicit-tenant-identity" \
+  "access node requires at least one tenant interface with explicit tenant" \
+  replace \
+  '                tenant0 = {
                   interface = "tenant-a";
                   kind = "tenant";
                   tenant = "tenant-a";
@@ -646,44 +210,99 @@ run_case \
                     ipv4 = [ ];
                     ipv6 = [ ];
                   };
-                };
-              };
-            };
+                };' \
+  '                tenant0 = {
+                  interface = "tenant-a";
+                  kind = "lan";
+                  addr4 = "10.20.0.1/24";
+                  addr6 = "fd00:20::1/64";
+                  routes = {
+                    ipv4 = [ ];
+                    ipv6 = [ ];
+                  };
+                };'
 
-            policy-1 = {
-              role = "policy";
-              loopback = {
-                ipv4 = "10.255.0.1/32";
-                ipv6 = "fd00:ff::1/128";
-              };
-              interfaces = {};
-            };
+run_case_from_golden \
+  "overlay-interface-missing-explicit-overlay" \
+  "overlay interface requires explicit overlay" \
+  delete \
+  '                  overlay = "nebula-east-west";
+'
 
-            core-1 = {
-              role = "core";
-              loopback = {
-                ipv4 = "10.255.0.3/32";
-                ipv6 = "fd00:ff::3/128";
-              };
-              interfaces = {};
-            };
+run_case_from_golden \
+  "wan-interface-missing-explicit-upstream" \
+  "wan interface requires explicit upstream" \
+  delete \
+  '                  upstream = "wan";
+'
 
-            upstream-1 = {
-              role = "upstream-selector";
-              loopback = {
-                ipv4 = "10.255.0.4/32";
-                ipv6 = "fd00:ff::4/128";
-              };
-              interfaces = {};
+run_case_from_golden \
+  "bgp-mode-without-explicit-sessions" \
+  "bgp mode requires explicit site.bgp.sessions" \
+  replace \
+  '          communicationContract = {' \
+  '          bgp = {
+            mode = "bgp";
+          };
+
+          communicationContract = {'
+
+run_case_from_golden \
+  "missing-canonical-interface-tags" \
+  "communicationContract.interfaceTags is required" \
+  delete \
+  '            interfaceTags = {
+              tenant0 = "tenant-a";
+              uplink0 = "wan";
+            };
+'
+
+run_case_from_golden \
+  "multiple-interface-tags-sources" \
+  "exactly one canonical interfaceTags source is allowed; use communicationContract.interfaceTags" \
+  replace \
+  '          nodes = {' \
+  '          policy = {
+            interfaceTags = {
+              legacy-tenant0 = "tenant-a";
+              legacy-uplink0 = "wan";
             };
           };
-        };
-      };
-    };
-  };
-}
-EOF
-)" \
-  "${inventory_empty}"
+
+          nodes = {'
+
+run_case_from_golden \
+  "policy-contract-references-unmapped-tenant-tag" \
+  "communicationContract references tag 'tenant-a' with no explicit interfaceTags mapping" \
+  replace \
+  '              tenant0 = "tenant-a";' \
+  '              tenant0 = "tenant-z";'
+
+run_case_from_golden \
+  "external-reference-without-explicit-policy-mapping" \
+  "communicationContract references tag 'internet' with no explicit interfaceTags mapping" \
+  replace \
+  '              {
+                from = {
+                  kind = "tenant";
+                  name = "tenant-a";
+                };
+                to = {
+                  kind = "external";
+                  name = "wan";
+                };
+                action = "allow";
+              }' \
+  '              {
+                from = {
+                  kind = "tenant";
+                  name = "tenant-a";
+                };
+                to = {
+                  kind = "external";
+                  name = "internet";
+                };
+                action = "allow";
+              }'
 
 exit "${status}"

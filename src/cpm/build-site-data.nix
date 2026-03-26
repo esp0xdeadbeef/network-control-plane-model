@@ -74,8 +74,6 @@ let
       overlayName =
         if isNonEmptyString (iface.overlay or null) then
           iface.overlay
-        else if linkName != null then
-          linkName
         else
           null;
     in
@@ -126,14 +124,8 @@ let
       ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
       ifaceAttrs = requireAttrs ifacePath iface;
       backingRef = resolveBackingRef nodeName ifName ifaceAttrs;
-
-      sourceIfName =
-        if isNonEmptyString (ifaceAttrs.interface or null) then
-          ifaceAttrs.interface
-        else
-          ifName;
-
       sourceKind = requireString "${ifacePath}.kind" (ifaceAttrs.kind or null);
+      sourceIfName = requireString "${ifacePath}.interface" (ifaceAttrs.interface or null);
 
       portLink =
         if (backingRef.kind or null) == "link" && hasAttr backingRef.id portLinks then
@@ -253,8 +245,6 @@ let
                   displayName =
                     if isNonEmptyString (adjacency.name or null) then
                       adjacency.name
-                    else if linkName != null then
-                      linkName
                     else
                       adjacencyId;
                   linkId =
