@@ -8,6 +8,8 @@ example_repo=$(nix flake prefetch github:esp0xdeadbeef/network-labs --json | jq 
 #example_repo=~/github/network-labs
 INPUT="$example_repo/examples/single-wan/intent.nix"
 INPUT_INVENTORY="$example_repo/examples/single-wan/inventory.nix"
+INPUT="$example_repo/examples/multi-enterprise/intent.nix"
+INPUT_INVENTORY="$example_repo/examples/multi-enterprise/inventory.nix"
 OUTPUT="output-control-plane-model.json"
 
 
