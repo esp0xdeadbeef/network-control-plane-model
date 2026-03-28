@@ -19,6 +19,100 @@ let
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
   siteAttrs = requireAttrs sitePath site;
 
+  tenantPrefixOwners =
+    requireAttrs "${sitePath}.tenantPrefixOwners" (siteAttrs.tenantPrefixOwners or null);
+
+  tenantPrefixLookup =
+    builtins.foldl'
+      (acc: ownerKey:
+        let
+          ownerPath = "${sitePath}.tenantPrefixOwners.${ownerKey}";
+          owner = requireAttrs ownerPath tenantPrefixOwners.${ownerKey};
+          family = owner.family or null;
+          tenantName = requireString "${ownerPath}.netName" (owner.netName or null);
+          dst = requireString "${ownerPath}.dst" (owner.dst or null);
+          previous = acc.${tenantName} or { };
+        in
+        acc
+        // {
+          ${tenantName} =
+            previous
+            // (
+              if family == 4 then
+                { ipv4 = dst; }
+              else if family == 6 then
+                { ipv6 = dst; }
+              else
+                { }
+            );
+        })
+      { }
+      (sortedNames tenantPrefixOwners);
+
+  ipv6Lib =
+    if lib ? network && lib.network ? ipv6 then
+      lib.network.ipv6
+    else
+      throw "runtime realization failure: lib.network.ipv6 is required";
+
+  mkFirstTenantHost4 = cidr:
+    let
+      m = builtins.match "^([0-9]+\\.[0-9]+\\.[0-9]+)\\.0/24$" cidr;
+    in
+    if m == null then
+      cidr
+    else
+      "${builtins.elemAt m 0}.1/24";
+
+  mkFirstTenantHost6 = cidr:
+    let
+      parsed = ipv6Lib.fromString cidr;
+      _parsedOk = builtins.deepSeq parsed true;
+      first = builtins.seq _parsedOk (ipv6Lib.firstAddress parsed);
+      _firstOk = builtins.deepSeq first true;
+      next = builtins.seq _firstOk (ipv6Lib.nextAddress first);
+    in
+    if next == null then
+      throw "runtime realization failure: could not derive first usable IPv6 host from '${cidr}'"
+    else
+      builtins.seq (builtins.deepSeq next true) next.addressCidr;
+
+  normalizeTenantAddr4 = tenantName: rawAddr4:
+    let
+      tenantPrefixes =
+        if hasAttr tenantName tenantPrefixLookup then
+          tenantPrefixLookup.${tenantName}
+        else
+          { };
+      tenantPrefix4 = tenantPrefixes.ipv4 or null;
+    in
+    if !isNonEmptyString rawAddr4 then
+      rawAddr4
+    else if !isNonEmptyString tenantPrefix4 then
+      rawAddr4
+    else if rawAddr4 != tenantPrefix4 then
+      rawAddr4
+    else
+      mkFirstTenantHost4 rawAddr4;
+
+  normalizeTenantAddr6 = tenantName: rawAddr6:
+    let
+      tenantPrefixes =
+        if hasAttr tenantName tenantPrefixLookup then
+          tenantPrefixLookup.${tenantName}
+        else
+          { };
+      tenantPrefix6 = tenantPrefixes.ipv6 or null;
+    in
+    if !isNonEmptyString rawAddr6 then
+      rawAddr6
+    else if !isNonEmptyString tenantPrefix6 then
+      rawAddr6
+    else if rawAddr6 != tenantPrefix6 then
+      rawAddr6
+    else
+      mkFirstTenantHost6 rawAddr6;
+
   buildSiteLinks =
     lib.mapAttrsSorted
       (linkName: linkValue:
@@ -127,6 +221,27 @@ let
       sourceKind = requireString "${ifacePath}.kind" (ifaceAttrs.kind or null);
       sourceIfName = requireString "${ifacePath}.interface" (ifaceAttrs.interface or null);
 
+      tenantName =
+        if sourceKind == "tenant" then
+          requireString "${ifacePath}.tenant" (ifaceAttrs.tenant or null)
+        else
+          null;
+
+      rawAddr4 = ifaceAttrs.addr4 or null;
+      rawAddr6 = ifaceAttrs.addr6 or null;
+
+      normalizedAddr4 =
+        if tenantName == null then
+          rawAddr4
+        else
+          normalizeTenantAddr4 tenantName rawAddr4;
+
+      normalizedAddr6 =
+        if tenantName == null then
+          rawAddr6
+        else
+          normalizeTenantAddr6 tenantName rawAddr6;
+
       portLink =
         if (backingRef.kind or null) == "link" && hasAttr backingRef.id portLinks then
           portLinks.${backingRef.id}
@@ -194,8 +309,8 @@ let
           sourceKind = sourceKind;
           runtimeIfName = runtimeIfName;
           renderedIfName = runtimeIfName;
-          addr4 = ifaceAttrs.addr4 or null;
-          addr6 = ifaceAttrs.addr6 or null;
+          addr4 = normalizedAddr4;
+          addr6 = normalizedAddr6;
           routes = requireRoutes ifacePath (ifaceAttrs.routes or null);
           backingRef = backingRef;
         }
@@ -380,7 +495,7 @@ in
   uplinkCoreNames = requireStringList "${sitePath}.uplinkCoreNames" (siteAttrs.uplinkCoreNames or null);
   uplinkNames = requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
   domains = requireAttrs "${sitePath}.domains" (siteAttrs.domains or null);
-  tenantPrefixOwners = requireAttrs "${sitePath}.tenantPrefixOwners" (siteAttrs.tenantPrefixOwners or null);
+  tenantPrefixOwners = tenantPrefixOwners;
   transit = buildCanonicalTransit;
   runtimeTargets = ensureUniqueEntries "${sitePath}.runtimeTargets" runtimeTargetEntries;
 }

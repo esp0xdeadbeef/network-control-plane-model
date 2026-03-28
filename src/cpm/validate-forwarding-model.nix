@@ -130,7 +130,7 @@ let
                             "${endpointPath}.kind"
                             (endpoint.kind or null);
                       in
-                      if kind == "tenant" || kind == "external" || kind == "service" then
+                      if kind == "tenant" || kind == "service" then
                         [
                           (
                             requireStringIn
@@ -139,6 +139,31 @@ let
                               (endpoint.name or null)
                           )
                         ]
+                      else if kind == "external" then
+                        let
+                          externalName =
+                            if isNonEmptyString (endpoint.name or null) then
+                              endpoint.name
+                            else
+                              null;
+
+                          externalUplinks =
+                            if endpoint.uplinks or null == null then
+                              null
+                            else
+                              requireStringListIn
+                                endpoint
+                                "${endpointPath}.uplinks"
+                                (endpoint.uplinks or null);
+                        in
+                        if externalName != null then
+                          [ externalName ]
+                        else if externalUplinks != null then
+                          externalUplinks
+                        else
+                          failWithContext
+                            "input contract failure: ${endpointPath} external endpoint requires name or uplinks"
+                            endpoint
                       else if kind == "tenant-set" then
                         requireStringListIn
                           endpoint
