@@ -61,6 +61,15 @@ let
         names
     );
 
+  logicalSiteKey = logical:
+    "${logical.enterprise}|${logical.site}";
+
+  logicalNodeKey = logical:
+    "${logical.enterprise}|${logical.site}|${logical.name}";
+
+  uniqueStringValues = values:
+    builtins.attrNames (listToSet values);
+
   validateUplinkAddressing = uplinkPath: familyName: familyValue:
     let
       familyPath = "${uplinkPath}.${familyName}";
@@ -594,6 +603,18 @@ let
                 else
                   throw "inventory lint error: ${nodePath}.platform is required";
 
+              logicalNode =
+                if node ? logicalNode then
+                  requireAttrs "${nodePath}.logicalNode" node.logicalNode
+                else
+                  throw "inventory lint error: ${nodePath}.logicalNode is required";
+
+              logical = {
+                enterprise = requireString "${nodePath}.logicalNode.enterprise" (logicalNode.enterprise or null);
+                site = requireString "${nodePath}.logicalNode.site" (logicalNode.site or null);
+                name = requireString "${nodePath}.logicalNode.name" (logicalNode.name or null);
+              };
+
               ports =
                 if node ? ports then
                   requireAttrs "${nodePath}.ports" node.ports
@@ -618,6 +639,9 @@ let
                     node = nodeName;
                     port = portName;
                     link = ports.${portName}.link;
+                    logical = logical;
+                    logicalSiteKey = logicalSiteKey logical;
+                    logicalNodeKey = logicalNodeKey logical;
                   })
                   portNames;
             in
@@ -630,64 +654,224 @@ let
     in
     builtins.concatLists refsPerNode;
 
-  cpmP2PAliasMap =
+  cpmLogicalP2PAliasEntries =
     let
       data = requireAttrs "control_plane_model.data" (cpm.data or null);
-
       enterpriseNames = attrNames data;
-
-      aliasEntries =
-        builtins.concatLists (
-          builtins.map
-            (enterpriseName:
-              let
-                sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
-                siteNames = attrNames sites;
-              in
-              builtins.concatLists (
-                builtins.map
-                  (siteName:
-                    let
-                      site = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}" sites.${siteName};
-                      transit = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}.transit" (site.transit or null);
-                      adjacencies = requireList "control_plane_model.data.${enterpriseName}.${siteName}.transit.adjacencies" (transit.adjacencies or null);
-                    in
-                    builtins.concatLists (
-                      builtins.map
-                        (adj:
-                          if (adj.kind or null) == "p2p" then
-                            let
-                              canonicalId =
-                                if adj ? id && nonEmptyString adj.id then
-                                  adj.id
-                                else
-                                  throw "inventory lint error: CPM p2p adjacency is missing id";
-
-                              aliases =
-                                builtins.filter
-                                  nonEmptyString
-                                  [
-                                    canonicalId
-                                    (adj.link or null)
-                                    (adj.name or null)
-                                  ];
-                            in
-                            builtins.map
-                              (alias: {
-                                name = alias;
-                                value = canonicalId;
-                              })
-                              aliases
-                          else
-                            [ ])
-                        adjacencies
-                    ))
-                  siteNames
-              ))
-            enterpriseNames
-        );
     in
-    builtins.listToAttrs aliasEntries;
+    builtins.concatLists (
+      builtins.map
+        (enterpriseName:
+          let
+            sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
+            siteNames = attrNames sites;
+          in
+          builtins.concatLists (
+            builtins.map
+              (siteName:
+                let
+                  runtimeTargets =
+                    requireAttrs
+                      "control_plane_model.data.${enterpriseName}.${siteName}.runtimeTargets"
+                      ((sites.${siteName}).runtimeTargets or null);
+                  targetNames = attrNames runtimeTargets;
+                in
+                builtins.concatLists (
+                  builtins.map
+                    (targetName:
+                      let
+                        targetPath = "control_plane_model.data.${enterpriseName}.${siteName}.runtimeTargets.${targetName}";
+                        target = requireAttrs targetPath runtimeTargets.${targetName};
+                        logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
+                        logical = {
+                          enterprise = requireString "${targetPath}.logicalNode.enterprise" (logicalNode.enterprise or null);
+                          site = requireString "${targetPath}.logicalNode.site" (logicalNode.site or null);
+                          name = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
+                        };
+                        expectedKey = logicalNodeKey logical;
+                        effective =
+                          requireAttrs
+                            "${targetPath}.effectiveRuntimeRealization"
+                            (target.effectiveRuntimeRealization or null);
+                        interfaces =
+                          requireAttrs
+                            "${targetPath}.effectiveRuntimeRealization.interfaces"
+                            (effective.interfaces or null);
+                      in
+                      builtins.concatLists (
+                        builtins.map
+                          (ifName:
+                            let
+                              ifacePath = "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}";
+                              iface = requireAttrs ifacePath interfaces.${ifName};
+                              backingRef =
+                                if builtins.isAttrs (iface.backingRef or null) then
+                                  iface.backingRef
+                                else
+                                  null;
+                            in
+                            if (iface.sourceKind or null) == "p2p"
+                              && backingRef != null
+                              && (backingRef.kind or null) == "link" then
+                              let
+                                canonicalId = requireString "${ifacePath}.backingRef.id" (backingRef.id or null);
+                                aliases =
+                                  builtins.filter
+                                    nonEmptyString
+                                    [
+                                      canonicalId
+                                      (backingRef.name or null)
+                                    ];
+                              in
+                              builtins.map
+                                (alias: {
+                                  key = expectedKey;
+                                  inherit alias canonicalId;
+                                })
+                                aliases
+                            else
+                              [ ])
+                          (attrNames interfaces)
+                      ))
+                    targetNames
+                ))
+              siteNames
+          ))
+        enterpriseNames
+    );
+
+  cpmLogicalP2PAliasMap =
+    builtins.foldl'
+      (acc: entry:
+        let
+          existing =
+            if hasAttr entry.key acc then
+              acc.${entry.key}
+            else
+              { };
+        in
+        acc
+        // {
+          ${entry.key} =
+            existing
+            // {
+              ${entry.alias} = entry.canonicalId;
+            };
+        })
+      { }
+      cpmLogicalP2PAliasEntries;
+
+  cpmP2PAliasEntries =
+    let
+      data = requireAttrs "control_plane_model.data" (cpm.data or null);
+      enterpriseNames = attrNames data;
+    in
+    builtins.concatLists (
+      builtins.map
+        (enterpriseName:
+          let
+            sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
+            siteNames = attrNames sites;
+          in
+          builtins.concatLists (
+            builtins.map
+              (siteName:
+                let
+                  siteKey = "${enterpriseName}|${siteName}";
+                  site = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}" sites.${siteName};
+                  transit = requireAttrs "control_plane_model.data.${enterpriseName}.${siteName}.transit" (site.transit or null);
+                  adjacencies = requireList "control_plane_model.data.${enterpriseName}.${siteName}.transit.adjacencies" (transit.adjacencies or null);
+                in
+                builtins.concatLists (
+                  builtins.map
+                    (adj:
+                      if (adj.kind or null) == "p2p" then
+                        let
+                          canonicalId =
+                            if adj ? id && nonEmptyString adj.id then
+                              adj.id
+                            else
+                              throw "inventory lint error: CPM p2p adjacency is missing id";
+
+                          aliases =
+                            builtins.filter
+                              nonEmptyString
+                              [
+                                canonicalId
+                                (adj.link or null)
+                                (adj.name or null)
+                              ];
+                        in
+                        builtins.map
+                          (alias: {
+                            inherit siteKey alias canonicalId;
+                          })
+                          aliases
+                      else
+                        [ ])
+                    adjacencies
+                ))
+              siteNames
+          ))
+        enterpriseNames
+    );
+
+  cpmP2PAliasMapBySite =
+    builtins.foldl'
+      (acc: entry:
+        let
+          existingSiteAliases =
+            if hasAttr entry.siteKey acc then
+              acc.${entry.siteKey}
+            else
+              { };
+        in
+        acc
+        // {
+          ${entry.siteKey} =
+            existingSiteAliases
+            // {
+              ${entry.alias} = entry.canonicalId;
+            };
+        })
+      { }
+      cpmP2PAliasEntries;
+
+  cpmGlobalAliasToCanonicalIds =
+    builtins.foldl'
+      (acc: entry:
+        let
+          existing =
+            if hasAttr entry.alias acc then
+              acc.${entry.alias}
+            else
+              [ ];
+        in
+        acc
+        // {
+          ${entry.alias} = existing ++ [ entry.canonicalId ];
+        })
+      { }
+      cpmP2PAliasEntries;
+
+  cpmUniqueP2PAliasMap =
+    builtins.listToAttrs (
+      builtins.filter
+        (x: x != null)
+        (builtins.map
+          (alias:
+            let
+              canonicalIds = uniqueStringValues cpmGlobalAliasToCanonicalIds.${alias};
+            in
+            if builtins.length canonicalIds == 1 then
+              {
+                name = alias;
+                value = builtins.elemAt canonicalIds 0;
+              }
+            else
+              null)
+          (attrNames cpmGlobalAliasToCanonicalIds))
+    );
 
   cpmCanonicalP2PLinks =
     let
@@ -726,38 +910,77 @@ let
         enterpriseNames
     );
 
-  inventoryLinkAliasMap =
+  inventoryLinkAliasEntries =
     let
       realization = optionalAttrs (inventory.realization or null);
       links = optionalAttrs (realization.links or null);
       linkNames = attrNames links;
-      entries =
-        builtins.concatLists (
-          builtins.map
-            (linkName:
-              let
-                linkPath = "inventory.realization.links.${linkName}";
-                link = requireAttrs linkPath links.${linkName};
-                kind = requireString "${linkPath}.kind" (link.kind or null);
-                canonicalId = requireString "${linkPath}.id" (link.id or null);
-                realizedName = requireString "${linkPath}.link" (link.link or null);
-                aliases =
-                  builtins.filter
-                    nonEmptyString
-                    [ linkName realizedName canonicalId ];
-              in
-              builtins.map
-                (alias: {
-                  name = alias;
-                  value = {
-                    inherit kind canonicalId realizedName;
-                  };
-                })
-                aliases)
-            linkNames
-        );
     in
-    builtins.listToAttrs entries;
+    builtins.concatLists (
+      builtins.map
+        (linkName:
+          let
+            linkPath = "inventory.realization.links.${linkName}";
+            link = requireAttrs linkPath links.${linkName};
+            kind = requireString "${linkPath}.kind" (link.kind or null);
+            canonicalId = requireString "${linkPath}.id" (link.id or null);
+            realizedName = requireString "${linkPath}.link" (link.link or null);
+            aliases =
+              builtins.filter
+                nonEmptyString
+                [ linkName realizedName canonicalId ];
+          in
+          builtins.map
+            (alias: {
+              inherit alias;
+              value = {
+                inherit kind canonicalId realizedName;
+              };
+            })
+            aliases)
+        linkNames
+    );
+
+  inventoryLinkAliasMap =
+    let
+      aliasToCanonicalIds =
+        builtins.foldl'
+          (acc: entry:
+            let
+              existing =
+                if hasAttr entry.alias acc then
+                  acc.${entry.alias}
+                else
+                  [ ];
+            in
+            acc
+            // {
+              ${entry.alias} = existing ++ [ entry.value.canonicalId ];
+            })
+          { }
+          inventoryLinkAliasEntries;
+    in
+    builtins.listToAttrs (
+      builtins.filter
+        (x: x != null)
+        (builtins.map
+          (alias:
+            let
+              canonicalIds = uniqueStringValues aliasToCanonicalIds.${alias};
+              matchingEntries =
+                builtins.filter
+                  (entry: entry.alias == alias)
+                  inventoryLinkAliasEntries;
+            in
+            if builtins.length canonicalIds == 1 then
+              {
+                name = alias;
+                value = (builtins.elemAt matchingEntries 0).value;
+              }
+            else
+              null)
+          (attrNames aliasToCanonicalIds))
+    );
 
   classifyRefs = refs:
     builtins.map
@@ -769,9 +992,25 @@ let
             else
               null;
 
+          logicalScopedAliases =
+            if ref ? logicalNodeKey && hasAttr ref.logicalNodeKey cpmLogicalP2PAliasMap then
+              cpmLogicalP2PAliasMap.${ref.logicalNodeKey}
+            else
+              { };
+
+          siteScopedAliases =
+            if ref ? logicalSiteKey && hasAttr ref.logicalSiteKey cpmP2PAliasMapBySite then
+              cpmP2PAliasMapBySite.${ref.logicalSiteKey}
+            else
+              { };
+
           cpmP2P =
-            if hasAttr ref.link cpmP2PAliasMap then
-              cpmP2PAliasMap.${ref.link}
+            if hasAttr ref.link logicalScopedAliases then
+              logicalScopedAliases.${ref.link}
+            else if hasAttr ref.link siteScopedAliases then
+              siteScopedAliases.${ref.link}
+            else if hasAttr ref.link cpmUniqueP2PAliasMap then
+              cpmUniqueP2PAliasMap.${ref.link}
             else
               null;
         in
@@ -791,7 +1030,7 @@ let
           ref // {
             relationKind = "p2p";
             validateP2P = true;
-            canonicalLink = null;
+            canonicalLink = inventoryMeta.canonicalId;
           }
         else
           ref // {
@@ -804,11 +1043,20 @@ let
   validateDeclaredRefsExistInCPM = refs:
     let
       classified = classifyRefs refs;
+
       unknownRefs =
         builtins.filter
           (ref:
             (ref.relationKind or null) == null
-            || ((ref.validateP2P or false) && (ref.canonicalLink or null) == null))
+            && !(
+              (ref.source or null) == "realization"
+              && (ref ? logicalNodeKey)
+            ))
+          classified;
+
+      relevantRefs =
+        builtins.filter
+          (ref: (ref.relationKind or null) != null)
           classified;
     in
     if unknownRefs != [ ] then
@@ -818,7 +1066,7 @@ let
         ${builtins.toJSON unknownRefs}
       ''
     else
-      classified;
+      relevantRefs;
 
   validateFullP2PCoverage = refs:
     let

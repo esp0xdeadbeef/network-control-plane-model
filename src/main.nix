@@ -1,3 +1,4 @@
+# ./src/main.nix
 { input, inventory ? {}, lib }:
 
 let
@@ -6,19 +7,23 @@ let
 
   deriveCPM = import ./build-cpm.nix { lib = effectiveLib; };
 
-  cpm =
-    deriveCPM {
-      forwardingModel = input;
-      inherit inventory;
-    };
+  forwardingModelDump = builtins.toJSON input;
 
-  inventoryValidation = true;
+  cpm =
+    builtins.addErrorContext
+      ''
+        network-forwarding-model:
+        ${forwardingModelDump}
+      ''
+      (
+        deriveCPM {
+          forwardingModel = input;
+          inherit inventory;
+        }
+      );
 
   merged = {
     control_plane_model = cpm;
   };
-
 in
-builtins.seq cpm (
-  builtins.seq inventoryValidation merged
-)
+builtins.seq cpm merged
