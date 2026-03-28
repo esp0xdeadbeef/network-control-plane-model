@@ -1,9 +1,10 @@
-{ input, inventory ? {} }:
+{ input, inventory ? {}, lib }:
 
 let
-  lib = import ../lib/utils.nix;
+  localLib = import ../lib/utils.nix;
+  effectiveLib = lib // localLib;
 
-  deriveCPM = import ./build-cpm.nix { inherit lib; };
+  deriveCPM = import ./build-cpm.nix { lib = effectiveLib; };
 
   cpm =
     deriveCPM {

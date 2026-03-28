@@ -3,6 +3,8 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-network.url = "github:NixOS/nixpkgs/ac56c456ebe4901c561d3ebf1c98fbd970aea753";
+
     network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -11,6 +13,7 @@
     {
       self,
       nixpkgs,
+      nixpkgs-network,
       network-forwarding-model,
     }:
     let
@@ -21,7 +24,22 @@
 
       forAll = f: nixpkgs.lib.genAttrs systems f;
 
-      mkPkgs = system: import nixpkgs { inherit system; };
+      mkPkgs =
+        system:
+        let
+          patchedPkgs = import nixpkgs-network { inherit system; };
+          patchedNetwork = patchedPkgs.lib.network;
+        in
+        import nixpkgs {
+          inherit system;
+          overlays = [
+            (final: prev: {
+              lib = prev.lib // {
+                network = patchedNetwork;
+              };
+            })
+          ];
+        };
     in
     {
       lib = forAll (
@@ -29,6 +47,7 @@
           build = { input, inventory ? { } }:
             import ./src/main.nix {
               inherit input inventory;
+              lib = (mkPkgs system).lib;
             };
         }
       );

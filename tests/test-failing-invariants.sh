@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
 
 status=0
 
@@ -22,7 +23,13 @@ run_case() {
   stderr_file="$(mktemp)"
 
   local expr
-  expr="let input = import ${tmp_dir}/input.nix; inventory = import ${tmp_dir}/inventory.nix; in import ${repo_root}/src/main.nix { inherit input inventory; }"
+  expr="let
+    flake = builtins.getFlake (toString ${repo_root});
+    builder = flake.lib.${system}.build;
+    input = import ${tmp_dir}/input.nix;
+    inventory = import ${tmp_dir}/inventory.nix;
+  in
+    builder { inherit input inventory; }"
 
   if nix eval --show-trace --impure --json --expr "${expr}" >/dev/null 2>"${stderr_file}"; then
     echo "FAIL ${name}: evaluation unexpectedly succeeded"
