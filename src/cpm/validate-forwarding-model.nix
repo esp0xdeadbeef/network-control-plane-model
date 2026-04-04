@@ -50,35 +50,96 @@ let
     else
       [ ];
 
-  dedupeWarnings = warnings:
-    (
-      builtins.foldl'
-        (acc: warning:
-          if hasAttr warning.key acc.seen then
-            acc
-          else
-            {
-              seen =
-                acc.seen
-                // {
-                  ${warning.key} = true;
-                };
-              ordered = acc.ordered ++ [ warning ];
-            })
+  aggregateWarnings = warnings:
+    let
+      folded =
+        builtins.foldl'
+          (acc: warning:
+            let
+              key = warning.key;
+              contextKey = renderValue warning.context;
+              existing =
+                if hasAttr key acc.byKey then
+                  acc.byKey.${key}
+                else
+                  null;
+            in
+            if existing == null then
+              {
+                order = acc.order ++ [ key ];
+                byKey =
+                  acc.byKey
+                  // {
+                    ${key} = {
+                      key = key;
+                      message = warning.message;
+                      occurrences = 1;
+                      contextsByRender = {
+                        ${contextKey} = warning.context;
+                      };
+                    };
+                  };
+              }
+            else
+              {
+                order = acc.order;
+                byKey =
+                  acc.byKey
+                  // {
+                    ${key} =
+                      existing
+                      // {
+                        occurrences = existing.occurrences + 1;
+                        contextsByRender =
+                          if hasAttr contextKey existing.contextsByRender then
+                            existing.contextsByRender
+                          else
+                            existing.contextsByRender
+                            // {
+                              ${contextKey} = warning.context;
+                            };
+                      };
+                  };
+              })
+          {
+            order = [ ];
+            byKey = { };
+          }
+          warnings;
+    in
+    builtins.map
+      (key:
+        let
+          warning = folded.byKey.${key};
+        in
         {
-          seen = { };
-          ordered = [ ];
-        }
-        warnings
-    ).ordered;
+          key = key;
+          message = warning.message;
+          occurrences = warning.occurrences;
+          contexts =
+            builtins.map
+              (contextKey: warning.contextsByRender.${contextKey})
+              (sortedNames warning.contextsByRender);
+        })
+      folded.order;
 
   emitWarnings = warnings: value:
     builtins.seq
       (forceAll (
         builtins.map
           (warning:
+            let
+              contextPayload =
+                if warning.occurrences <= 1 then
+                  builtins.elemAt warning.contexts 0
+                else
+                  {
+                    occurrenceCount = warning.occurrences;
+                    contexts = warning.contexts;
+                  };
+            in
             builtins.trace
-              "migration warning: ${warning.message}\n--- offending input context ---\n${renderValue warning.context}"
+              "migration warning: ${warning.message}\n--- offending input context ---\n${renderValue contextPayload}"
               true)
           warnings
       ))
@@ -196,6 +257,7 @@ let
   collectInterfaceWarnings = sitePath: attachmentLookup: siteLinks: nodeName: node:
     let
       nodeAttrs = attrsOrEmpty node;
+      loopback = attrsOrEmpty (nodeAttrs.loopback or null);
       interfaces = attrsOrEmpty (nodeAttrs.interfaces or null);
       interfaceNames = sortedNames interfaces;
 
@@ -209,7 +271,32 @@ let
             && isNonEmptyString (iface.tenant or null))
           interfaceNames;
     in
-    builtins.concatLists (
+    (warningIf
+      (!builtins.isAttrs (nodeAttrs.interfaces or null))
+      (makeWarning
+        "invariant/forwarding-model-authority/node-interfaces-required"
+        "node interfaces must be explicit canonical authority; compatibility fallback is temporary"
+        {
+          site = sitePath;
+          node = nodeName;
+          nodeDefinition = nodeAttrs;
+        }))
+    ++
+    (warningIf
+      (!builtins.isAttrs (nodeAttrs.loopback or null)
+        || !isNonEmptyString (loopback.ipv4 or null)
+        || !isNonEmptyString (loopback.ipv6 or null))
+      (makeWarning
+        "invariant/no-inference/node-loopback-required"
+        "node loopback must be explicit; default loopback fallback behavior is temporary"
+        {
+          site = sitePath;
+          node = nodeName;
+          loopback = nodeAttrs.loopback or null;
+          nodeDefinition = nodeAttrs;
+        }))
+    ++
+    (builtins.concatLists (
       builtins.map
         (ifName:
           let
@@ -219,6 +306,7 @@ let
             interfaceValue = iface.interface or null;
             linkValue = iface.link or null;
             tenantValue = iface.tenant or null;
+            routes = attrsOrEmpty (iface.routes or null);
             attachmentKey =
               if isNonEmptyString tenantValue then
                 "${nodeName}|tenant|${tenantValue}"
@@ -242,6 +330,20 @@ let
             (makeWarning
               "invariant/no-inference/interface-name-required"
               "${ifacePath}.interface must be explicit; name-based fallback is temporary"
+              {
+                site = sitePath;
+                node = nodeName;
+                interfaceKey = ifName;
+                interfaceDefinition = iface;
+              }))
+          ++
+          (warningIf
+            (!builtins.isAttrs (iface.routes or null)
+              || !builtins.isList (routes.ipv4 or null)
+              || !builtins.isList (routes.ipv6 or null))
+            (makeWarning
+              "invariant/no-inference/interface-routes-required"
+              "interface routes must be explicit; empty-route fallback behavior is temporary"
               {
                 site = sitePath;
                 node = nodeName;
@@ -350,7 +452,7 @@ let
                 interfaceDefinition = iface;
               })))
         interfaceNames
-    )
+    ))
     ++
     (warningIf
       ((nodeAttrs.role or null) == "access" && !hasExplicitTenantInterface)
@@ -480,6 +582,19 @@ let
         builtins.isList orderingRaw
         && builtins.all isPairOrderingEntry orderingRaw;
 
+      linkIds =
+        builtins.filter
+          isNonEmptyString
+          (
+            builtins.map
+              (linkName:
+                let
+                  link = attrsOrEmpty siteLinks.${linkName};
+                in
+                link.id or null)
+              (sortedNames siteLinks)
+          );
+
       adjacencyIds =
         builtins.filter
           (value: value != null)
@@ -490,6 +605,22 @@ let
                   adjacency = attrsOrEmpty (builtins.elemAt adjacencies idx);
                 in
                 if isNonEmptyString (adjacency.id or null) then
+                  adjacency.id
+                else
+                  null)
+              (builtins.length adjacencies)
+          );
+
+      p2pAdjacencyIds =
+        builtins.filter
+          (value: value != null)
+          (
+            builtins.genList
+              (idx:
+                let
+                  adjacency = attrsOrEmpty (builtins.elemAt adjacencies idx);
+                in
+                if (adjacency.kind or null) == "p2p" && isNonEmptyString (adjacency.id or null) then
                   adjacency.id
                 else
                   null)
@@ -507,6 +638,11 @@ let
           (id: !(builtins.elem id adjacencyIds))
           orderingIds;
 
+      missingOrderedP2PIds =
+        builtins.filter
+          (id: !(builtins.elem id orderingIds))
+          p2pAdjacencyIds;
+
       linkWarnings =
         builtins.concatLists (
           builtins.map
@@ -514,7 +650,7 @@ let
               let
                 link = attrsOrEmpty siteLinks.${linkName};
               in
-              warningIf
+              (warningIf
                 (!isNonEmptyString (link.id or null))
                 (makeWarning
                   "invariant/stable-link-identity/link-id-required"
@@ -524,6 +660,17 @@ let
                     linkName = linkName;
                     link = link;
                   }))
+              ++
+              (warningIf
+                (!isNonEmptyString (link.kind or null))
+                (makeWarning
+                  "invariant/no-inference/link-kind-required"
+                  "site.links entries must declare explicit kind; topology-based recovery is temporary"
+                  {
+                    site = sitePath;
+                    linkName = linkName;
+                    link = link;
+                  })))
             (sortedNames siteLinks)
         );
 
@@ -544,6 +691,7 @@ let
                     attrsOrEmpty siteLinks.${linkName}
                   else
                     { };
+                endpoints = adjacency.endpoints or null;
               in
               (warningIf
                 (!isNonEmptyString (adjacency.id or null))
@@ -568,7 +716,7 @@ let
                   }))
               ++
               (warningIf
-                (!builtins.isList (adjacency.endpoints or null))
+                (!builtins.isList endpoints)
                 (makeWarning
                   "invariant/forwarding-model-authority/transit-endpoints-required"
                   "transit adjacency endpoints must be explicit; legacy transit shapes are running on migration fallback"
@@ -577,6 +725,82 @@ let
                     adjacencyIndex = idx;
                     adjacency = adjacency;
                   }))
+              ++
+              (warningIf
+                (builtins.isList endpoints && builtins.length endpoints != 2)
+                (makeWarning
+                  "invariant/no-inference/transit-endpoint-count-required"
+                  "transit adjacency endpoints must contain exactly 2 explicit endpoints; topology recovery is temporary"
+                  {
+                    site = sitePath;
+                    adjacencyIndex = idx;
+                    adjacency = adjacency;
+                  }))
+              ++
+              (warningIf
+                ((adjacency.kind or null) == "p2p" && !isNonEmptyString linkName)
+                (makeWarning
+                  "invariant/stable-link-identity/p2p-adjacency-link-required"
+                  "p2p transit adjacencies must reference an explicit site.links entry; compatibility recovery is temporary"
+                  {
+                    site = sitePath;
+                    adjacencyIndex = idx;
+                    adjacency = adjacency;
+                  }))
+              ++
+              (warningIf
+                (linkName != null && !hasAttr linkName siteLinks)
+                (makeWarning
+                  "invariant/stable-link-identity/transit-link-reference-required"
+                  "transit adjacency links must reference explicit site.links entries; compatibility recovery is temporary"
+                  {
+                    site = sitePath;
+                    adjacencyIndex = idx;
+                    adjacency = adjacency;
+                    linkName = linkName;
+                    knownLinks = sortedNames siteLinks;
+                  }))
+              ++
+              (if builtins.isList endpoints then
+                builtins.concatLists (
+                  builtins.genList
+                    (endpointIndex:
+                      let
+                        endpoint = attrsOrEmpty (builtins.elemAt endpoints endpointIndex);
+                        local = attrsOrEmpty (endpoint.local or null);
+                      in
+                      (warningIf
+                        (!isNonEmptyString (endpoint.unit or null))
+                        (makeWarning
+                          "invariant/no-inference/transit-endpoint-unit-required"
+                          "transit endpoints require explicit unit identity; compatibility recovery is temporary"
+                          {
+                            site = sitePath;
+                            adjacencyIndex = idx;
+                            endpointIndex = endpointIndex;
+                            endpoint = endpoint;
+                          }))
+                      ++
+                      (warningIf
+                        (!(endpoint ? local)
+                          || !builtins.isAttrs (endpoint.local or null)
+                          || !(
+                            isNonEmptyString (local.ipv4 or null)
+                            || isNonEmptyString (local.ipv6 or null)
+                          ))
+                        (makeWarning
+                          "invariant/no-inference/transit-endpoint-local-required"
+                          "transit endpoints require explicit local ipv4 or ipv6 identity; compatibility recovery is temporary"
+                          {
+                            site = sitePath;
+                            adjacencyIndex = idx;
+                            endpointIndex = endpointIndex;
+                            endpoint = endpoint;
+                          })))
+                    (builtins.length endpoints)
+                )
+              else
+                [ ])
               ++
               (warningIf
                 (
@@ -650,6 +874,16 @@ let
         }))
     ++
     (warningIf
+      (hasDuplicates linkIds)
+      (makeWarning
+        "invariant/stable-link-identity/duplicate-link-ids"
+        "links.*.id must be unique; duplicate stable link identities are running on migration fallback"
+        {
+          site = sitePath;
+          linkIds = linkIds;
+        }))
+    ++
+    (warningIf
       (hasDuplicates adjacencyIds)
       (makeWarning
         "invariant/stable-link-identity/duplicate-adjacency-ids"
@@ -679,6 +913,17 @@ let
           ordering = orderingIds;
           knownAdjacencyIds = adjacencyIds;
           unknownOrderingIds = unknownOrderingIds;
+        }))
+    ++
+    (warningIf
+      (missingOrderedP2PIds != [ ])
+      (makeWarning
+        "invariant/stable-link-identity/p2p-ordering-coverage"
+        "transit.ordering must include every p2p stable adjacency id exactly once; incomplete ordering is running on migration fallback"
+        {
+          site = sitePath;
+          ordering = orderingIds;
+          missingOrderedP2PIds = missingOrderedP2PIds;
         }))
     ++ linkWarnings ++ adjacencyWarnings;
 
@@ -1005,6 +1250,6 @@ let
     ++ collectEnterpriseWarnings inputAttrs;
 
   inputAttrs = attrsOrEmpty forwardingModel;
-  warnings = dedupeWarnings (collectInputWarnings inputAttrs);
+  warnings = aggregateWarnings (collectInputWarnings inputAttrs);
 in
 emitWarnings warnings true
