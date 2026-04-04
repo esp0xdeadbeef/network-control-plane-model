@@ -394,9 +394,9 @@ let
         else
           fail context "forwarding model input must be an attribute set";
 
-      meta = requireAttrs context "meta" (inputAttrs.meta or null);
+      meta = inputAttrs.meta or null;
       marker =
-        if builtins.isAttrs (meta.networkForwardingModel or null) then
+        if builtins.isAttrs meta && builtins.isAttrs (meta.networkForwardingModel or null) then
           meta.networkForwardingModel
         else
           fail context "forwarding model input requires meta.networkForwardingModel";
@@ -405,8 +405,8 @@ let
       enterprise = requireAttrs context "enterprise" (inputAttrs.enterprise or null);
       enterpriseNames = lib.attrNamesSorted enterprise;
     in
-    if schemaVersion != 6 then
-      fail context "unsupported forwarding model schema version '${toString schemaVersion}' (expected 6)"
+    if schemaVersion != 7 then
+      fail context "unsupported forwarding model schema version '${toString schemaVersion}' (expected 7)"
     else
       forceAll (
         builtins.map
@@ -457,7 +457,7 @@ let
                       true
                     else
                       fail ifaceContext "routes are required for renderer-ready interfaces")
-                    (iface.renderedIfName or null))))
+                    (iface.renderedIfName or null)))))
           interfaceNames;
     in
     builtins.seq

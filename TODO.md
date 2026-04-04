@@ -1,6 +1,4 @@
 
-Implement TODO point 1,2,3,4,5 and 6 of the core invariants, for now, only warn if there are errors, but please only warn once, not 30 times over the same error (isa-18 style).
-
 # TODO — network-control-plane-model
 
 ## Purpose
