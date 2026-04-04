@@ -82,13 +82,13 @@ EOF
 
 run_case \
   "unsupported-schema-version" \
-  "unsupported forwarding model schema version '5' (expected 6)" \
+  "unsupported forwarding model schema version '6' (expected 7)" \
   "$(cat <<'EOF'
 {
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 5;
+      schemaVersion = 6;
     };
   };
 
@@ -112,7 +112,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 6;
+      schemaVersion = 7;
     };
   };
 
@@ -142,7 +142,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 6;
+      schemaVersion = 7;
     };
   };
 
@@ -248,6 +248,14 @@ run_case \
               }
             ];
             ordering = [ "link::acme.ams::policy-access" ];
+          };
+
+          communicationContract = {
+            interfaceTags = {
+              tenant0 = "tenant-a";
+              wan0 = "wan";
+            };
+            allowedRelations = [];
           };
 
           nodes = {

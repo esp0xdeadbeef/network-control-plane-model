@@ -28,41 +28,34 @@ let
     };
 
   forwardingModelAttrs =
-    if builtins.isAttrs forwardingModel then
-      forwardingModel
-    else
-      { };
+    contractSupport.requireAttrs "forwardingModel" forwardingModel;
 
   _validated = validateForwardingModel forwardingModelAttrs;
 
   meta =
-    if builtins.isAttrs (forwardingModelAttrs.meta or null) then
-      forwardingModelAttrs.meta
-    else
-      { };
+    contractSupport.requireAttrs "forwardingModel.meta" (forwardingModelAttrs.meta or null);
 
   marker =
-    if builtins.isAttrs (meta.networkForwardingModel or null) then
-      meta.networkForwardingModel
-    else
-      {
-        name = "network-forwarding-model";
-        schemaVersion = 6;
-      };
+    contractSupport.requireAttrs
+      "forwardingModel.meta.networkForwardingModel"
+      (meta.networkForwardingModel or null);
 
-  enterprise = contractSupport.optionalAttrs (forwardingModelAttrs.enterprise or null);
+  enterprise =
+    contractSupport.requireAttrs "forwardingModel.enterprise" (forwardingModelAttrs.enterprise or null);
 
   cpmData =
     lib.mapAttrsSorted
       (enterpriseName: enterpriseValue:
         let
           enterpriseAttrs =
-            if builtins.isAttrs enterpriseValue then
-              enterpriseValue
-            else
-              { };
+            contractSupport.requireAttrs
+              "forwardingModel.enterprise.${enterpriseName}"
+              enterpriseValue;
 
-          sites = contractSupport.optionalAttrs (enterpriseAttrs.site or null);
+          sites =
+            contractSupport.requireAttrs
+              "forwardingModel.enterprise.${enterpriseName}.site"
+              (enterpriseAttrs.site or null);
         in
         lib.mapAttrsSorted
           (siteName: site:
@@ -76,8 +69,8 @@ let
     version = 1;
     source = "nix";
     inputContract = {
-      upstream = marker.name or "network-forwarding-model";
-      schemaVersion = marker.schemaVersion or 6;
+      upstream = marker.name;
+      schemaVersion = marker.schemaVersion;
     };
     data = cpmData;
   };
