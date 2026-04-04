@@ -4,10 +4,12 @@ forwardingModel:
 
 let
   inherit (helpers)
+    ensureUniqueEntries
     failWithContext
     forceAll
     hasAttr
     isNonEmptyString
+    renderValue
     requireAttrs
     requireAttrsIn
     requireList
@@ -17,6 +19,11 @@ let
     requireStringList
     requireStringListIn
     sortedNames;
+
+  warnWithContext = message: context:
+    builtins.trace
+      "migration warning: ${message}\n--- offending input context ---\n${renderValue context}"
+      true;
 
   makeStringSet = values:
     builtins.listToAttrs (
@@ -336,12 +343,82 @@ let
     in
     builtins.seq (forceAll adjacencyIds) (forceAll orderingMembership);
 
-  validateInterface = sitePath: nodeName: ifName: nodeAttrs: iface:
+  validateInterface = sitePath: attachmentLookup: siteLinks: nodeName: ifName: nodeAttrs: iface:
     let
       ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
       ifaceAttrs = requireAttrsIn nodeAttrs ifacePath iface;
       kind = ifaceAttrs.kind or null;
       interfaceValue = ifaceAttrs.interface or null;
+      linkValue = ifaceAttrs.link or null;
+
+      legacyTenantLinkWarning =
+        if kind == "tenant" && isNonEmptyString linkValue then
+          warnWithContext
+            "tenant interface declares legacy link field; keeping attachment-backed behavior"
+            {
+              site = sitePath;
+              node = nodeName;
+              interfaceKey = ifName;
+              interfaceDefinition = ifaceAttrs;
+            }
+        else
+          true;
+
+      legacyOverlayLinkWarning =
+        if kind == "overlay" && isNonEmptyString linkValue then
+          warnWithContext
+            "overlay interface declares legacy link field; keeping overlay-backed behavior"
+            {
+              site = sitePath;
+              node = nodeName;
+              interfaceKey = ifName;
+              interfaceDefinition = ifaceAttrs;
+            }
+        else
+          true;
+
+      tenantAttachmentCheck =
+        if kind == "tenant" then
+          let
+            tenantName =
+              requireStringIn
+                ifaceAttrs
+                "${ifacePath}.tenant"
+                (ifaceAttrs.tenant or null);
+            attachmentKey = "${nodeName}|tenant|${tenantName}";
+          in
+          if hasAttr attachmentKey attachmentLookup then
+            true
+          else
+            failWithContext
+              "tenant interface requires explicit site.attachments entry"
+              {
+                site = sitePath;
+                node = nodeName;
+                interfaceKey = ifName;
+                tenant = tenantName;
+                interfaceDefinition = ifaceAttrs;
+              }
+        else
+          true;
+
+      matchingLinkCheck =
+        if isNonEmptyString linkValue && kind != "tenant" && kind != "overlay" then
+          if hasAttr linkValue siteLinks then
+            true
+          else
+            failWithContext
+              "realized link interface requires explicit matching link"
+              {
+                site = sitePath;
+                node = nodeName;
+                interfaceKey = ifName;
+                link = linkValue;
+                knownLinks = sortedNames siteLinks;
+                interfaceDefinition = ifaceAttrs;
+              }
+        else
+          true;
     in
     if !isNonEmptyString kind then
       failWithContext
@@ -372,37 +449,51 @@ let
           interfaceDefinition = ifaceAttrs;
           nodeDefinition = nodeAttrs;
         }
-    else if kind == "tenant" && !isNonEmptyString (ifaceAttrs.tenant or null) then
-      failWithContext
-        "tenant interface requires explicit tenant"
-        {
-          site = sitePath;
-          node = nodeName;
-          interfaceKey = ifName;
-          interfaceDefinition = ifaceAttrs;
-        }
-    else if kind == "wan" && !isNonEmptyString (ifaceAttrs.upstream or null) then
-      failWithContext
-        "wan interface requires explicit upstream"
-        {
-          site = sitePath;
-          node = nodeName;
-          interfaceKey = ifName;
-          interfaceDefinition = ifaceAttrs;
-        }
-    else if kind == "overlay" && !isNonEmptyString (ifaceAttrs.overlay or null) then
-      failWithContext
-        "overlay interface requires explicit overlay"
-        {
-          site = sitePath;
-          node = nodeName;
-          interfaceKey = ifName;
-          interfaceDefinition = ifaceAttrs;
-        }
     else
-      true;
+      builtins.seq
+        legacyTenantLinkWarning
+        (builtins.seq
+          legacyOverlayLinkWarning
+          (if kind == "tenant" && !isNonEmptyString (ifaceAttrs.tenant or null) then
+            failWithContext
+              "tenant interface requires explicit tenant"
+              {
+                site = sitePath;
+                node = nodeName;
+                interfaceKey = ifName;
+                interfaceDefinition = ifaceAttrs;
+              }
+          else if kind == "wan" && !isNonEmptyString (ifaceAttrs.upstream or null) then
+            failWithContext
+              "wan interface requires explicit upstream"
+              {
+                site = sitePath;
+                node = nodeName;
+                interfaceKey = ifName;
+                interfaceDefinition = ifaceAttrs;
+              }
+          else if kind == "wan" && !isNonEmptyString linkValue then
+            failWithContext
+              "wan interface requires explicit link"
+              {
+                site = sitePath;
+                node = nodeName;
+                interfaceKey = ifName;
+                interfaceDefinition = ifaceAttrs;
+              }
+          else if kind == "overlay" && !isNonEmptyString (ifaceAttrs.overlay or null) then
+            failWithContext
+              "overlay interface requires explicit overlay"
+              {
+                site = sitePath;
+                node = nodeName;
+                interfaceKey = ifName;
+                interfaceDefinition = ifaceAttrs;
+              }
+          else
+            builtins.seq tenantAttachmentCheck matchingLinkCheck));
 
-  validateNode = sitePath: nodeName: node:
+  validateNode = sitePath: attachmentLookup: siteLinks: nodeName: node:
     let
       nodePath = "${sitePath}.nodes.${nodeName}";
       nodeAttrs = requireAttrsIn nodePath nodePath node;
@@ -417,7 +508,15 @@ let
       validatedInterfaces =
         if builtins.isAttrs interfaces then
           builtins.map
-            (ifName: validateInterface sitePath nodeName ifName nodeAttrs interfaces.${ifName})
+            (ifName:
+              validateInterface
+                sitePath
+                attachmentLookup
+                siteLinks
+                nodeName
+                ifName
+                nodeAttrs
+                interfaces.${ifName})
             interfaceNames
         else
           [ ];
@@ -469,6 +568,43 @@ let
         requireStringIn siteAttrs "${sitePath}.siteName" (siteAttrs.siteName or null);
       attachments =
         requireListIn siteAttrs "${sitePath}.attachments" (siteAttrs.attachments or null);
+
+      attachmentLookup =
+        ensureUniqueEntries
+          "${sitePath}.attachments"
+          (
+            builtins.genList
+              (idx:
+                let
+                  attachmentPath = "${sitePath}.attachments[${toString idx}]";
+                  attachment =
+                    requireAttrsIn
+                      siteAttrs
+                      attachmentPath
+                      (builtins.elemAt attachments idx);
+                  kind =
+                    requireStringIn
+                      attachment
+                      "${attachmentPath}.kind"
+                      (attachment.kind or null);
+                  name =
+                    requireStringIn
+                      attachment
+                      "${attachmentPath}.name"
+                      (attachment.name or null);
+                  unit =
+                    requireStringIn
+                      attachment
+                      "${attachmentPath}.unit"
+                      (attachment.unit or null);
+                in
+                {
+                  name = "${unit}|${kind}|${name}";
+                  value = attachment;
+                })
+              (builtins.length attachments)
+          );
+
       policyNodeName =
         requireStringIn
           siteAttrs
@@ -519,7 +655,13 @@ let
 
       validatedNodes =
         builtins.map
-          (nodeName: validateNode sitePath nodeName nodes.${nodeName})
+          (nodeName:
+            validateNode
+              sitePath
+              attachmentLookup
+              siteLinks
+              nodeName
+              nodes.${nodeName})
           (sortedNames nodes);
 
       validatedTransit =

@@ -204,6 +204,19 @@ run_case_from_golden \
 '
 
 run_case_from_golden \
+  "tenant-interface-requires-explicit-site-attachment" \
+  "tenant interface requires explicit site.attachments entry" \
+  replace \
+  '          attachments = [
+            {
+              kind = "tenant";
+              name = "tenant-a";
+              unit = "access-1";
+            }
+          ];' \
+  '          attachments = [ ];'
+
+run_case_from_golden \
   "access-node-missing-explicit-tenant-identity" \
   "access node requires at least one tenant interface with explicit tenant" \
   replace \
@@ -241,6 +254,13 @@ run_case_from_golden \
   "wan interface requires explicit upstream" \
   delete \
   '                  upstream = "wan";
+'
+
+run_case_from_golden \
+  "wan-interface-missing-explicit-link" \
+  "wan interface requires explicit link" \
+  delete \
+  '                  link = "wan-core";
 '
 
 run_case_from_golden \
@@ -311,5 +331,44 @@ run_case_from_golden \
                 };
                 action = "allow";
               }'
+
+run_case \
+  "realized-link-interface-requires-explicit-matching-link" \
+  "requires explicit port realization for backing link 'adj::acme.ams::policy-access'" \
+  "$(cat "${golden_input_file}")" \
+  "$(cat <<'EOF'
+{
+  deployment = {
+    hosts = {
+      hypervisor-a = {
+        uplinks = { };
+      };
+    };
+  };
+
+  realization = {
+    nodes = {
+      access-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "access-1";
+        };
+        ports = {
+          p2p0 = {
+            link = "unknown-link";
+            interface = {
+              name = "ens3";
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)"
 
 exit "${status}"

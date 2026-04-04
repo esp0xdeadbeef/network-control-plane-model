@@ -5,10 +5,10 @@
 let
   inherit (helpers)
     ensureUniqueEntries
-    firstOr
     hasAttr
     isNonEmptyString
     logicalKey
+    renderValue
     requireAttrs
     requireList
     requireRoutes
@@ -16,102 +16,16 @@ let
     requireStringList
     sortedNames;
 
+  warnWithContext = message: context:
+    builtins.trace
+      "migration warning: ${message}\n--- offending input context ---\n${renderValue context}"
+      true;
+
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
   siteAttrs = requireAttrs sitePath site;
 
   tenantPrefixOwners =
     requireAttrs "${sitePath}.tenantPrefixOwners" (siteAttrs.tenantPrefixOwners or null);
-
-  tenantPrefixLookup =
-    builtins.foldl'
-      (acc: ownerKey:
-        let
-          ownerPath = "${sitePath}.tenantPrefixOwners.${ownerKey}";
-          owner = requireAttrs ownerPath tenantPrefixOwners.${ownerKey};
-          family = owner.family or null;
-          tenantName = requireString "${ownerPath}.netName" (owner.netName or null);
-          dst = requireString "${ownerPath}.dst" (owner.dst or null);
-          previous = acc.${tenantName} or { };
-        in
-        acc
-        // {
-          ${tenantName} =
-            previous
-            // (
-              if family == 4 then
-                { ipv4 = dst; }
-              else if family == 6 then
-                { ipv6 = dst; }
-              else
-                { }
-            );
-        })
-      { }
-      (sortedNames tenantPrefixOwners);
-
-  ipv6Lib =
-    if lib ? network && lib.network ? ipv6 then
-      lib.network.ipv6
-    else
-      throw "runtime realization failure: lib.network.ipv6 is required";
-
-  mkFirstTenantHost4 = cidr:
-    let
-      m = builtins.match "^([0-9]+\\.[0-9]+\\.[0-9]+)\\.0/24$" cidr;
-    in
-    if m == null then
-      cidr
-    else
-      "${builtins.elemAt m 0}.1/24";
-
-  mkFirstTenantHost6 = cidr:
-    let
-      parsed = ipv6Lib.fromString cidr;
-      _parsedOk = builtins.deepSeq parsed true;
-      first = builtins.seq _parsedOk (ipv6Lib.firstAddress parsed);
-      _firstOk = builtins.deepSeq first true;
-      next = builtins.seq _firstOk (ipv6Lib.nextAddress first);
-    in
-    if next == null then
-      throw "runtime realization failure: could not derive first usable IPv6 host from '${cidr}'"
-    else
-      builtins.seq (builtins.deepSeq next true) next.addressCidr;
-
-  normalizeTenantAddr4 = tenantName: rawAddr4:
-    let
-      tenantPrefixes =
-        if hasAttr tenantName tenantPrefixLookup then
-          tenantPrefixLookup.${tenantName}
-        else
-          { };
-      tenantPrefix4 = tenantPrefixes.ipv4 or null;
-    in
-    if !isNonEmptyString rawAddr4 then
-      rawAddr4
-    else if !isNonEmptyString tenantPrefix4 then
-      rawAddr4
-    else if rawAddr4 != tenantPrefix4 then
-      rawAddr4
-    else
-      mkFirstTenantHost4 rawAddr4;
-
-  normalizeTenantAddr6 = tenantName: rawAddr6:
-    let
-      tenantPrefixes =
-        if hasAttr tenantName tenantPrefixLookup then
-          tenantPrefixLookup.${tenantName}
-        else
-          { };
-      tenantPrefix6 = tenantPrefixes.ipv6 or null;
-    in
-    if !isNonEmptyString rawAddr6 then
-      rawAddr6
-    else if !isNonEmptyString tenantPrefix6 then
-      rawAddr6
-    else if rawAddr6 != tenantPrefix6 then
-      rawAddr6
-    else
-      mkFirstTenantHost6 rawAddr6;
 
   buildSiteLinks =
     lib.mapAttrsSorted
@@ -160,60 +74,121 @@ let
     let
       ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
       kind = requireString "${ifacePath}.kind" (iface.kind or null);
+
       linkName =
         if isNonEmptyString (iface.link or null) then
           iface.link
         else
           null;
+
+      tenantName =
+        if isNonEmptyString (iface.tenant or null) then
+          iface.tenant
+        else
+          null;
+
       overlayName =
         if isNonEmptyString (iface.overlay or null) then
           iface.overlay
         else
           null;
-    in
-    if linkName != null && hasAttr linkName siteLinks then
-      let
-        link = siteLinks.${linkName};
-      in
-      {
-        kind = "link";
-        id = requireString "${sitePath}.links.${linkName}.id" (link.id or null);
-        name = linkName;
-      }
-    else if kind == "tenant" then
-      let
-        tenant = requireString "${ifacePath}.tenant" (iface.tenant or null);
-        attachmentKey = "${nodeName}|tenant|${tenant}";
-      in
-      if hasAttr attachmentKey attachmentLookup then
-        let
-          attachment = attachmentLookup.${attachmentKey};
-        in
-        {
-          kind = "attachment";
-          id = attachment.id;
-          name = attachment.name;
-        }
-      else
-        throw "runtime realization failure: ${ifacePath} could not resolve tenant attachment '${tenant}'"
-    else if kind == "overlay" then
-      let
-        resolvedOverlayName =
-          requireString "${ifacePath}.overlay" overlayName;
-      in
-      {
-        kind = "overlay";
-        id = "overlay::${enterpriseName}.${siteName}::${resolvedOverlayName}";
-        name = resolvedOverlayName;
-      }
-    else
-      throw ''
-        runtime realization failure: ${ifacePath} must resolve to exactly one backing reference
-          kind = ${toString (iface.kind or null)}
-          link = ${toString (iface.link or null)}
-      '';
 
-  buildInterfaceEntry = { nodeName, ifName, iface, portLinks, targetId }:
+      legacyTenantLinkWarning =
+        if kind == "tenant" && linkName != null then
+          warnWithContext
+            "tenant interface declares legacy link field; keeping attachment-backed behavior"
+            {
+              site = sitePath;
+              node = nodeName;
+              interfaceKey = ifName;
+              interfaceDefinition = iface;
+            }
+        else
+          true;
+
+      legacyOverlayLinkWarning =
+        if kind == "overlay" && linkName != null then
+          warnWithContext
+            "overlay interface declares legacy link field; keeping overlay-backed behavior"
+            {
+              site = sitePath;
+              node = nodeName;
+              interfaceKey = ifName;
+              interfaceDefinition = iface;
+            }
+        else
+          true;
+
+      linkCandidate =
+        if kind == "tenant" || kind == "overlay" || linkName == null then
+          null
+        else if hasAttr linkName siteLinks then
+          let
+            link = siteLinks.${linkName};
+          in
+          {
+            kind = "link";
+            id = requireString "${sitePath}.links.${linkName}.id" (link.id or null);
+            name = linkName;
+            linkKind = requireString "${sitePath}.links.${linkName}.kind" (link.kind or null);
+          }
+        else
+          throw "runtime realization failure: ${ifacePath}.link references unknown link '${linkName}'";
+
+      attachmentCandidate =
+        if kind != "tenant" then
+          null
+        else
+          let
+            tenant = requireString "${ifacePath}.tenant" tenantName;
+            attachmentKey = "${nodeName}|tenant|${tenant}";
+          in
+          if hasAttr attachmentKey attachmentLookup then
+            let
+              attachment = attachmentLookup.${attachmentKey};
+            in
+            {
+              kind = "attachment";
+              id = attachment.id;
+              name = attachment.name;
+            }
+          else
+            throw "runtime realization failure: ${ifacePath} could not resolve tenant attachment '${tenant}'";
+
+      overlayCandidate =
+        if kind != "overlay" then
+          null
+        else
+          let
+            resolvedOverlayName = requireString "${ifacePath}.overlay" overlayName;
+          in
+          {
+            kind = "overlay";
+            id = "overlay::${enterpriseName}.${siteName}::${resolvedOverlayName}";
+            name = resolvedOverlayName;
+          };
+
+      candidates =
+        builtins.filter
+          (candidate: candidate != null)
+          [
+            linkCandidate
+            attachmentCandidate
+            overlayCandidate
+          ];
+    in
+    builtins.seq
+      legacyTenantLinkWarning
+      (builtins.seq
+        legacyOverlayLinkWarning
+        (
+          if builtins.length candidates != 1 then
+            throw "runtime realization failure: ${ifacePath} must resolve to exactly one explicit backing reference"
+          else
+            builtins.elemAt candidates 0
+        ));
+
+  buildInterfaceEntry = { nodeName, ifName, iface, portLinks, targetId, realizedTarget }:
     let
       ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
       ifaceAttrs = requireAttrs ifacePath iface;
@@ -221,32 +196,26 @@ let
       sourceKind = requireString "${ifacePath}.kind" (ifaceAttrs.kind or null);
       sourceIfName = requireString "${ifacePath}.interface" (ifaceAttrs.interface or null);
 
-      tenantName =
-        if sourceKind == "tenant" then
-          requireString "${ifacePath}.tenant" (ifaceAttrs.tenant or null)
-        else
-          null;
-
-      rawAddr4 = ifaceAttrs.addr4 or null;
-      rawAddr6 = ifaceAttrs.addr6 or null;
-
-      normalizedAddr4 =
-        if tenantName == null then
-          rawAddr4
-        else
-          normalizeTenantAddr4 tenantName rawAddr4;
-
-      normalizedAddr6 =
-        if tenantName == null then
-          rawAddr6
-        else
-          normalizeTenantAddr6 tenantName rawAddr6;
+      requiresExplicitPortRealization =
+        realizedTarget
+        && (backingRef.kind or null) == "link"
+        && (backingRef.linkKind or null) == "p2p";
 
       portLink =
-        if (backingRef.kind or null) == "link" && hasAttr backingRef.id portLinks then
-          portLinks.${backingRef.id}
-        else if (backingRef.kind or null) == "link" && hasAttr backingRef.name portLinks then
-          portLinks.${backingRef.name}
+        if requiresExplicitPortRealization then
+          if hasAttr backingRef.id portLinks then
+            portLinks.${backingRef.id}
+          else if hasAttr backingRef.name portLinks then
+            portLinks.${backingRef.name}
+          else
+            throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires explicit port realization for backing link '${backingRef.id}'"
+        else if realizedTarget && (backingRef.kind or null) == "link" then
+          if hasAttr backingRef.id portLinks then
+            portLinks.${backingRef.id}
+          else if hasAttr backingRef.name portLinks then
+            portLinks.${backingRef.name}
+          else
+            null
         else
           null;
 
@@ -309,16 +278,20 @@ let
           sourceKind = sourceKind;
           runtimeIfName = runtimeIfName;
           renderedIfName = runtimeIfName;
-          addr4 = normalizedAddr4;
-          addr6 = normalizedAddr6;
+          addr4 = ifaceAttrs.addr4 or null;
+          addr6 = ifaceAttrs.addr6 or null;
           routes = requireRoutes ifacePath (ifaceAttrs.routes or null);
-          backingRef = backingRef;
+          backingRef =
+            if (backingRef.kind or null) == "link" then
+              builtins.removeAttrs backingRef [ "linkKind" ]
+            else
+              backingRef;
         }
         // wanModelExtras
         // wanInventoryExtras;
     };
 
-  buildTargetInterfaces = { nodeName, node, portLinks, targetId }:
+  buildTargetInterfaces = { nodeName, node, portLinks, targetId, realizedTarget }:
     let
       interfaces = requireAttrs "${sitePath}.nodes.${nodeName}.interfaces" (node.interfaces or null);
       entries =
@@ -330,6 +303,7 @@ let
               iface = interfaces.${ifName};
               portLinks = portLinks;
               targetId = targetId;
+              realizedTarget = realizedTarget;
             })
           (sortedNames interfaces);
     in
@@ -357,28 +331,40 @@ let
                       adjacency.link
                     else
                       null;
-                  displayName =
-                    if isNonEmptyString (adjacency.name or null) then
-                      adjacency.name
-                    else
-                      adjacencyId;
-                  linkId =
-                    if linkName != null && hasAttr linkName siteLinks then
-                      siteLinks.${linkName}.id
-                    else
-                      adjacencyId;
                 in
                 {
                   name = adjacencyId;
-                  value = {
-                    id = adjacencyId;
-                    kind = requireString "${adjacencyPath}.kind" (adjacency.kind or null);
-                    link = linkName;
-                    name = displayName;
-                    linkId = linkId;
-                    routingParticipation = adjacency.routingParticipation or false;
-                    endpoints = requireList "${adjacencyPath}.endpoints" (adjacency.endpoints or null);
-                  };
+                  value =
+                    {
+                      id = adjacencyId;
+                      kind = requireString "${adjacencyPath}.kind" (adjacency.kind or null);
+                      endpoints = requireList "${adjacencyPath}.endpoints" (adjacency.endpoints or null);
+                    }
+                    // (
+                      if linkName != null then
+                        {
+                          link = linkName;
+                          linkId = requireString "${sitePath}.links.${linkName}.id" (siteLinks.${linkName}.id or null);
+                        }
+                      else
+                        { }
+                    )
+                    // (
+                      if isNonEmptyString (adjacency.name or null) then
+                        {
+                          name = adjacency.name;
+                        }
+                      else
+                        { }
+                    )
+                    // (
+                      if adjacency ? routingParticipation then
+                        {
+                          routingParticipation = adjacency.routingParticipation;
+                        }
+                      else
+                        { }
+                    );
                 })
               (builtins.length adjacencies)
           );
@@ -413,21 +399,19 @@ let
         else
           targetDef.targetName;
 
-      availableContainers =
+      realizedTarget = targetDef != null;
+
+      nodeContainers =
         if builtins.isList (node.containers or null) then
           node.containers
         else
-          [ "default" ];
+          null;
 
       placement =
         if targetDef == null then
           {
             kind = "logical-node";
             runtimeTargetId = targetId;
-            host = null;
-            platform = null;
-            container = firstOr "default" availableContainers;
-            isolation = "default";
           }
         else
           {
@@ -435,46 +419,61 @@ let
             runtimeTargetId = targetId;
             host = requireString "${targetDef.nodePath}.host" (targetDef.node.host or null);
             platform = requireString "${targetDef.nodePath}.platform" (targetDef.node.platform or null);
-            container =
-              if isNonEmptyString (targetDef.node.container or null) then
-                targetDef.node.container
-              else
-                firstOr "default" availableContainers;
-            isolation =
-              if isNonEmptyString (targetDef.node.isolation or null) then
-                targetDef.node.isolation
-              else
-                "default";
-          };
+          }
+          // (
+            if isNonEmptyString (targetDef.node.container or null) then
+              {
+                container = targetDef.node.container;
+              }
+            else
+              { }
+          )
+          // (
+            if isNonEmptyString (targetDef.node.isolation or null) then
+              {
+                isolation = targetDef.node.isolation;
+              }
+            else
+              { }
+          );
 
       loopback = requireAttrs "${sitePath}.nodes.${nodeName}.loopback" (node.loopback or null);
     in
     {
       name = targetId;
-      value = {
-        runtimeTargetId = targetId;
-        role = node.role or null;
-        logicalNode = logical;
-        placement = placement;
-        availableContainers = availableContainers;
-        effectiveRuntimeRealization = {
-          loopback = {
-            addr4 = requireString "${sitePath}.nodes.${nodeName}.loopback.ipv4" (loopback.ipv4 or null);
-            addr6 = requireString "${sitePath}.nodes.${nodeName}.loopback.ipv6" (loopback.ipv6 or null);
-          };
-          interfaces =
-            buildTargetInterfaces {
-              nodeName = nodeName;
-              node = node;
-              portLinks =
-                if targetDef == null then
-                  { }
-                else
-                  targetDef.linkLookup;
-              targetId = targetId;
+      value =
+        {
+          runtimeTargetId = targetId;
+          role = node.role or null;
+          logicalNode = logical;
+          placement = placement;
+          effectiveRuntimeRealization = {
+            loopback = {
+              addr4 = requireString "${sitePath}.nodes.${nodeName}.loopback.ipv4" (loopback.ipv4 or null);
+              addr6 = requireString "${sitePath}.nodes.${nodeName}.loopback.ipv6" (loopback.ipv6 or null);
             };
-        };
-      };
+            interfaces =
+              buildTargetInterfaces {
+                nodeName = nodeName;
+                node = node;
+                portLinks =
+                  if targetDef == null then
+                    { }
+                  else
+                    targetDef.linkLookup;
+                targetId = targetId;
+                realizedTarget = realizedTarget;
+              };
+          };
+        }
+        // (
+          if nodeContainers != null then
+            {
+              availableContainers = nodeContainers;
+            }
+          else
+            { }
+        );
     };
 
   nodes = requireAttrs "${sitePath}.nodes" (siteAttrs.nodes or null);
