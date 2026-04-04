@@ -146,9 +146,17 @@ let
         id = link.id;
         name = linkName;
         linkKind = link.kind;
-      };
+      }
+      // (
+        if kind == "wan" then
+          {
+            upstreamAlias = requireString "${ifacePath}.upstream" (iface.upstream or null);
+          }
+        else
+          { }
+      );
 
-  buildInterfaceEntry = {
+  buildExplicitInterfaceEntry = {
     nodeName,
     ifName,
     iface,
@@ -169,19 +177,39 @@ let
         && (backingRef.kind or null) == "link"
         && (backingRef.linkKind or null) == "p2p";
 
+      portLinkByBackingId =
+        if hasAttr backingRef.id portLinks then
+          portLinks.${backingRef.id}
+        else
+          null;
+
+      portLinkByBackingName =
+        if hasAttr backingRef.name portLinks then
+          portLinks.${backingRef.name}
+        else
+          null;
+
+      portLinkByUpstreamAlias =
+        if sourceKind == "wan" && hasAttr (backingRef.upstreamAlias or "") portLinks then
+          portLinks.${backingRef.upstreamAlias}
+        else
+          null;
+
       portLink =
         if requiresExplicitPortRealization then
-          if hasAttr backingRef.id portLinks then
-            portLinks.${backingRef.id}
-          else if hasAttr backingRef.name portLinks then
-            portLinks.${backingRef.name}
+          if portLinkByBackingId != null then
+            portLinkByBackingId
+          else if portLinkByBackingName != null then
+            portLinkByBackingName
           else
             throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires explicit port realization for backing link '${backingRef.id}'"
         else if realizedTarget && (backingRef.kind or null) == "link" then
-          if hasAttr backingRef.id portLinks then
-            portLinks.${backingRef.id}
-          else if hasAttr backingRef.name portLinks then
-            portLinks.${backingRef.name}
+          if portLinkByBackingId != null then
+            portLinkByBackingId
+          else if portLinkByBackingName != null then
+            portLinkByBackingName
+          else if portLinkByUpstreamAlias != null then
+            portLinkByUpstreamAlias
           else
             null
         else
@@ -224,7 +252,7 @@ let
           addr4 = ifaceAttrs.addr4 or null;
           addr6 = ifaceAttrs.addr6 or null;
           routes = requireRoutes ifacePath (ifaceAttrs.routes or null);
-          backingRef = builtins.removeAttrs backingRef [ "linkKind" ];
+          backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
         }
         // (
           if sourceKind == "wan" then
@@ -271,6 +299,98 @@ let
       value = baseValue;
     };
 
+  buildUplinkInterfaceEntry = {
+    nodeName,
+    uplinkName,
+    uplink,
+    portLinks,
+    targetHostName,
+    targetId,
+    realizedTarget
+  }:
+    let
+      uplinkPath = "${sitePath}.nodes.${nodeName}.uplinks.${uplinkName}";
+      uplinkAttrs = requireAttrs uplinkPath uplink;
+
+      portLink =
+        if realizedTarget && hasAttr uplinkName portLinks then
+          portLinks.${uplinkName}
+        else
+          null;
+
+      runtimeIfName =
+        if portLink != null then
+          portLink.runtimeIfName
+        else
+          uplinkName;
+
+      resolvedHostUplink =
+        if portLink != null && builtins.isAttrs (portLink.hostUplink or null) then
+          portLink.hostUplink
+        else
+          null;
+
+      validatedHostUplink =
+        if resolvedHostUplink != null then
+          builtins.seq
+            (requireExplicitHostUplinkAddressing {
+              ifacePath = uplinkPath;
+              inherit targetHostName targetId;
+              hostUplink = resolvedHostUplink;
+            })
+            resolvedHostUplink
+        else
+          null;
+    in
+    {
+      name = uplinkName;
+      value =
+        {
+          runtimeTarget = targetId;
+          logicalNode = nodeName;
+          sourceInterface = uplinkName;
+          sourceKind = "wan";
+          runtimeIfName = runtimeIfName;
+          renderedIfName = runtimeIfName;
+          addr4 = null;
+          addr6 = null;
+          routes = {
+            ipv4 = [ ];
+            ipv6 = [ ];
+          };
+          backingRef = {
+            kind = "link";
+            id = uplinkName;
+            name = uplinkName;
+          };
+          upstream = uplinkName;
+          wan = uplinkAttrs;
+        }
+        // (
+          if validatedHostUplink != null then
+            {
+              hostUplink = {
+                name = validatedHostUplink.uplinkName or null;
+                bridge = validatedHostUplink.bridge or null;
+              };
+            }
+            // (
+              if builtins.isAttrs (validatedHostUplink.ipv4 or null) then
+                { ipv4 = validatedHostUplink.ipv4; }
+              else
+                { }
+            )
+            // (
+              if builtins.isAttrs (validatedHostUplink.ipv6 or null) then
+                { ipv6 = validatedHostUplink.ipv6; }
+              else
+                { }
+            )
+          else
+            { }
+        );
+    };
+
   buildTargetInterfaces = {
     nodeName,
     node,
@@ -281,16 +401,53 @@ let
   }:
     let
       interfaces = requireAttrs "${sitePath}.nodes.${nodeName}.interfaces" (node.interfaces or null);
+      uplinks =
+        if builtins.isAttrs (node.uplinks or null) then
+          node.uplinks
+        else
+          { };
+
+      interfaceNames = sortedNames interfaces;
+
+      explicitWANUpstreams =
+        builtins.filter
+          isNonEmptyString
+          (
+            builtins.map
+              (ifName:
+                let
+                  iface = requireAttrs "${sitePath}.nodes.${nodeName}.interfaces.${ifName}" interfaces.${ifName};
+                in
+                if (iface.kind or null) == "wan" then
+                  iface.upstream or null
+                else
+                  null)
+              interfaceNames
+          );
+
+      synthesizedUplinkNames =
+        builtins.filter
+          (uplinkName: !(builtins.elem uplinkName explicitWANUpstreams))
+          (sortedNames uplinks);
+
+      entries =
+        (builtins.map
+          (ifName:
+            buildExplicitInterfaceEntry {
+              inherit nodeName ifName portLinks targetHostName targetId realizedTarget;
+              iface = interfaces.${ifName};
+            })
+          interfaceNames)
+        ++
+        (builtins.map
+          (uplinkName:
+            buildUplinkInterfaceEntry {
+              inherit nodeName uplinkName portLinks targetHostName targetId realizedTarget;
+              uplink = uplinks.${uplinkName};
+            })
+          synthesizedUplinkNames);
     in
-    builtins.listToAttrs (
-      builtins.map
-        (ifName:
-          buildInterfaceEntry {
-            inherit nodeName ifName portLinks targetHostName targetId realizedTarget;
-            iface = interfaces.${ifName};
-          })
-        (sortedNames interfaces)
-    );
+    ensureUniqueEntries "${sitePath}.nodes.${nodeName}.effectiveRuntimeRealization.interfaces" entries;
 
   buildCanonicalTransit =
     let

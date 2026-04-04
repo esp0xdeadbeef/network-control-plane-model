@@ -178,12 +178,53 @@ minimal_input='{
   };
 }'
 
+minimal_inventory='{
+  deployment = {
+    hosts = {
+      hypervisor-a = {
+        uplinks = {
+          uplink0 = {
+            parent = "eno1";
+            bridge = "br-runtime-a";
+          };
+        };
+      };
+    };
+  };
+
+  realization = {
+    nodes = {
+      policy-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "policy-1";
+        };
+        ports = { };
+      };
+
+      upstream-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "upstream-1";
+        };
+        ports = { };
+      };
+    };
+  };
+}'
+
 pppoe_input="$minimal_input"
 hosted_input="$minimal_input"
-hosted_inventory='{}'
+hosted_inventory="$minimal_inventory"
 
-run_case "minimal-forwarding-model-v7" "$minimal_input" "{}" "minimal-forwarding-model-v7"
-run_case "minimal-forwarding-model-v7-pppoe" "$pppoe_input" "{}" "minimal-forwarding-model-v7-pppoe"
+run_case "minimal-forwarding-model-v7" "$minimal_input" "$minimal_inventory" "minimal-forwarding-model-v7"
+run_case "minimal-forwarding-model-v7-pppoe" "$pppoe_input" "$minimal_inventory" "minimal-forwarding-model-v7-pppoe"
 run_case "hosted-runtime-targets" "$hosted_input" "$hosted_inventory" "hosted-runtime-targets"
 
 run_external_examples

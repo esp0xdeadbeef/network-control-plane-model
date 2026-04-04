@@ -15,6 +15,11 @@ let
       helpers = contractSupport;
     };
 
+  validateInventory =
+    import ./validate-inventory.nix {
+      inherit lib;
+    };
+
   realizationIndex =
     import ./cpm/realization-index.nix {
       helpers = contractSupport;
@@ -76,7 +81,13 @@ let
   };
 
   _runtimeValidated = validateRuntimeModel { inherit cpm; };
+
+  _inventoryValidated = validateInventory {
+    inherit inventory cpm;
+  };
 in
 builtins.seq _validated (
-  builtins.seq _runtimeValidated cpm
+  builtins.seq _runtimeValidated (
+    builtins.seq _inventoryValidated cpm
+  )
 )

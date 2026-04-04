@@ -354,4 +354,307 @@ EOF
 )" \
   "${inventory_empty}"
 
+run_case \
+  "core-exit-intent-requires-realized-wan-interface-before-rendering" \
+  "control plane model validation failure: core exit intent requires a realized WAN interface before rendering" \
+  "$(cat <<'EOF'
+{
+  meta = {
+    networkForwardingModel = {
+      name = "network-forwarding-model";
+      schemaVersion = 7;
+    };
+  };
+
+  enterprise = {
+    acme = {
+      site = {
+        ams = {
+          siteId = "ams";
+          siteName = "acme.ams";
+          attachments = [ ];
+          policyNodeName = "policy-1";
+          upstreamSelectorNodeName = "upstream-1";
+          coreNodeNames = [ "core-1" ];
+          uplinkCoreNames = [ "core-1" ];
+          uplinkNames = [ "wan" ];
+          domains = {
+            tenants = [ ];
+            externals = [
+              {
+                name = "wan";
+              }
+            ];
+          };
+          tenantPrefixOwners = { };
+          links = {
+            link-core-upstream = {
+              id = "adj::acme.ams::core-upstream";
+              kind = "p2p";
+              members = [ "core-1" "upstream-1" ];
+              endpoints = {
+                core-1 = {
+                  node = "core-1";
+                  interface = "eth-upstream";
+                  addr4 = "169.254.12.0/31";
+                  addr6 = "fd00:12::0/127";
+                };
+                upstream-1 = {
+                  node = "upstream-1";
+                  interface = "eth-core";
+                  addr4 = "169.254.12.1/31";
+                  addr6 = "fd00:12::1/127";
+                };
+              };
+            };
+          };
+          transit = {
+            adjacencies = [
+              {
+                id = "adj::acme.ams::core-upstream";
+                kind = "p2p";
+                link = "link-core-upstream";
+                endpoints = [
+                  {
+                    unit = "core-1";
+                    local = {
+                      ipv4 = "169.254.12.0";
+                      ipv6 = "fd00:12::0";
+                    };
+                  }
+                  {
+                    unit = "upstream-1";
+                    local = {
+                      ipv4 = "169.254.12.1";
+                      ipv6 = "fd00:12::1";
+                    };
+                  }
+                ];
+              }
+            ];
+            ordering = [ "adj::acme.ams::core-upstream" ];
+          };
+          communicationContract = {
+            interfaceTags = { };
+            allowedRelations = [ ];
+          };
+          nodes = {
+            policy-1 = {
+              role = "policy";
+              loopback = {
+                ipv4 = "10.255.0.1/32";
+                ipv6 = "fd00:ff::1/128";
+              };
+              interfaces = { };
+            };
+
+            upstream-1 = {
+              role = "upstream-selector";
+              loopback = {
+                ipv4 = "10.255.0.2/32";
+                ipv6 = "fd00:ff::2/128";
+              };
+              interfaces = {
+                p2p-core = {
+                  interface = "eth-core";
+                  kind = "p2p";
+                  link = "link-core-upstream";
+                  addr4 = "169.254.12.1/31";
+                  addr6 = "fd00:12::1/127";
+                  routes = {
+                    ipv4 = [ ];
+                    ipv6 = [ ];
+                  };
+                };
+              };
+            };
+
+            core-1 = {
+              role = "core";
+              egressIntent = {
+                exit = true;
+                uplinks = [ "wan" ];
+                wanInterfaces = [ "wan" ];
+              };
+              loopback = {
+                ipv4 = "10.255.0.3/32";
+                ipv6 = "fd00:ff::3/128";
+              };
+              interfaces = {
+                p2p-upstream = {
+                  interface = "eth-upstream";
+                  kind = "p2p";
+                  link = "link-core-upstream";
+                  addr4 = "169.254.12.0/31";
+                  addr6 = "fd00:12::0/127";
+                  routes = {
+                    ipv4 = [ ];
+                    ipv6 = [ ];
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)" \
+  "${inventory_empty}"
+
+run_case \
+  "core-role-requires-two-adapters-before-rendering" \
+  "control plane model validation failure: core role requires at least two adapters before rendering" \
+  "$(cat <<'EOF'
+{
+  meta = {
+    networkForwardingModel = {
+      name = "network-forwarding-model";
+      schemaVersion = 7;
+    };
+  };
+
+  enterprise = {
+    acme = {
+      site = {
+        ams = {
+          siteId = "ams";
+          siteName = "acme.ams";
+          attachments = [ ];
+          policyNodeName = "policy-1";
+          upstreamSelectorNodeName = "upstream-1";
+          coreNodeNames = [ "core-1" ];
+          uplinkCoreNames = [ "core-1" ];
+          uplinkNames = [ "wan" ];
+          domains = {
+            tenants = [ ];
+            externals = [
+              {
+                name = "wan";
+              }
+            ];
+          };
+          tenantPrefixOwners = { };
+          links = {
+            wan-core = {
+              id = "link::acme.ams::wan-core";
+              kind = "wan";
+              members = [ "core-1" ];
+              endpoints = {
+                core-1 = {
+                  node = "core-1";
+                  interface = "wan0";
+                  addr4 = "192.0.2.2/31";
+                  addr6 = "2001:db8::2/127";
+                };
+              };
+            };
+          };
+          transit = {
+            adjacencies = [ ];
+            ordering = [ ];
+          };
+          communicationContract = {
+            interfaceTags = {
+              uplink0 = "wan";
+            };
+            allowedRelations = [ ];
+          };
+          nodes = {
+            policy-1 = {
+              role = "policy";
+              loopback = {
+                ipv4 = "10.255.0.1/32";
+                ipv6 = "fd00:ff::1/128";
+              };
+              interfaces = { };
+            };
+
+            upstream-1 = {
+              role = "upstream-selector";
+              loopback = {
+                ipv4 = "10.255.0.2/32";
+                ipv6 = "fd00:ff::2/128";
+              };
+              interfaces = { };
+            };
+
+            core-1 = {
+              role = "core";
+              loopback = {
+                ipv4 = "10.255.0.3/32";
+                ipv6 = "fd00:ff::3/128";
+              };
+              interfaces = {
+                uplink0 = {
+                  interface = "wan0";
+                  kind = "wan";
+                  link = "wan-core";
+                  upstream = "wan";
+                  addr4 = "192.0.2.2/31";
+                  addr6 = "2001:db8::2/127";
+                  routes = {
+                    ipv4 = [ ];
+                    ipv6 = [ ];
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)" \
+  "$(cat <<'EOF'
+{
+  deployment = {
+    hosts = {
+      hypervisor-a = {
+        uplinks = {
+          uplink0 = {
+            parent = "eno1";
+            bridge = "br-wan";
+            ipv4 = {
+              method = "dhcp";
+            };
+          };
+        };
+      };
+    };
+  };
+
+  realization = {
+    nodes = {
+      core-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "core-1";
+        };
+        ports = {
+          uplink0 = {
+            link = "wan-core";
+            attach = {
+              kind = "bridge";
+              bridge = "br-wan";
+            };
+            interface = {
+              name = "ens4";
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)"
+
 exit "${status}"

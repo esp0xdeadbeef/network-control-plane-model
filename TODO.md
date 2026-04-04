@@ -1,6 +1,3 @@
-
-# TODO — network-control-plane-model
-
 ## Purpose
 
 Consume **network-forwarding-model (v6)** and emit a **fully explicit, deterministic control-plane model**.
@@ -11,6 +8,7 @@ The control-plane model:
 * does not repair
 * does not guess intent
 * does not silently normalize ambiguous input
+* use the README.md as reference of what should happen.
 
 It validates explicit forwarding input and elevates it into explicit runtime semantics.
 

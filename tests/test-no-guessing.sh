@@ -153,6 +153,12 @@ run_case_from_golden() {
   run_case "$name" "$expected" "$(mutate_input "$@")" '{}'
 }
 
+run_case \
+  "missing-explicit-runtime-target-realization" \
+  "inventory.nix must explicitly realize every control_plane_model runtime target" \
+  "$(cat "${golden_input_file}")" \
+  '{}'
+
 run_case_from_golden \
   "pair-based-transit-ordering" \
   "transit.ordering must contain only stable adjacency IDs" \
