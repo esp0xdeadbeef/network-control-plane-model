@@ -70,6 +70,39 @@ let
         })
       links;
 
+  requireExplicitHostUplinkAddressing = {
+    ifacePath,
+    targetHostName,
+    targetId,
+    hostUplink
+  }:
+    let
+      uplinkName =
+        if isNonEmptyString (hostUplink.uplinkName or null) then
+          hostUplink.uplinkName
+        else if isNonEmptyString (hostUplink.name or null) then
+          hostUplink.name
+        else
+          throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' resolved an unnamed host uplink in inventory.deployment.hosts.${targetHostName}.uplinks";
+
+      requireFamilyMethod = familyName: familyValue:
+        if familyValue == null then
+          false
+        else if !builtins.isAttrs familyValue then
+          throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.${familyName} to be an attribute set"
+        else if !isNonEmptyString (familyValue.method or null) then
+          throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.${familyName}.method to be explicitly defined"
+        else
+          true;
+
+      hasIPv4 = requireFamilyMethod "ipv4" (hostUplink.ipv4 or null);
+      hasIPv6 = requireFamilyMethod "ipv6" (hostUplink.ipv6 or null);
+    in
+    if hasIPv4 || hasIPv6 then
+      true
+    else
+      throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires explicit upstream addressing in inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.ipv4 and/or ipv6";
+
   resolveBackingRef = nodeName: ifName: iface:
     let
       ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
@@ -115,7 +148,15 @@ let
         linkKind = link.kind;
       };
 
-  buildInterfaceEntry = { nodeName, ifName, iface, portLinks, targetId, realizedTarget }:
+  buildInterfaceEntry = {
+    nodeName,
+    ifName,
+    iface,
+    portLinks,
+    targetHostName,
+    targetId,
+    realizedTarget
+  }:
     let
       ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
       ifaceAttrs = requireAttrs ifacePath iface;
@@ -152,11 +193,25 @@ let
         else
           sourceIfName;
 
-      hostUplink =
+      resolvedHostUplink =
         if portLink != null && builtins.isAttrs (portLink.hostUplink or null) then
           portLink.hostUplink
         else
           null;
+
+      validatedHostUplink =
+        if realizedTarget && sourceKind == "wan" then
+          if resolvedHostUplink == null then
+            throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires explicit host uplink bridge mapping in inventory.deployment.hosts.${targetHostName}.uplinks"
+          else
+            builtins.seq
+              (requireExplicitHostUplinkAddressing {
+                inherit ifacePath targetHostName targetId;
+                hostUplink = resolvedHostUplink;
+              })
+              resolvedHostUplink
+        else
+          resolvedHostUplink;
 
       baseValue =
         {
@@ -188,22 +243,22 @@ let
             { }
         )
         // (
-          if sourceKind == "wan" && hostUplink != null then
+          if sourceKind == "wan" && validatedHostUplink != null then
             {
               hostUplink = {
-                name = hostUplink.uplinkName or null;
-                bridge = hostUplink.bridge or null;
+                name = validatedHostUplink.uplinkName or null;
+                bridge = validatedHostUplink.bridge or null;
               };
             }
             // (
-              if builtins.isAttrs (hostUplink.ipv4 or null) then
-                { ipv4 = hostUplink.ipv4; }
+              if builtins.isAttrs (validatedHostUplink.ipv4 or null) then
+                { ipv4 = validatedHostUplink.ipv4; }
               else
                 { }
             )
             // (
-              if builtins.isAttrs (hostUplink.ipv6 or null) then
-                { ipv6 = hostUplink.ipv6; }
+              if builtins.isAttrs (validatedHostUplink.ipv6 or null) then
+                { ipv6 = validatedHostUplink.ipv6; }
               else
                 { }
             )
@@ -216,7 +271,14 @@ let
       value = baseValue;
     };
 
-  buildTargetInterfaces = { nodeName, node, portLinks, targetId, realizedTarget }:
+  buildTargetInterfaces = {
+    nodeName,
+    node,
+    portLinks,
+    targetHostName,
+    targetId,
+    realizedTarget
+  }:
     let
       interfaces = requireAttrs "${sitePath}.nodes.${nodeName}.interfaces" (node.interfaces or null);
     in
@@ -224,7 +286,7 @@ let
       builtins.map
         (ifName:
           buildInterfaceEntry {
-            inherit nodeName ifName portLinks targetId realizedTarget;
+            inherit nodeName ifName portLinks targetHostName targetId realizedTarget;
             iface = interfaces.${ifName};
           })
         (sortedNames interfaces)
@@ -294,6 +356,12 @@ let
 
       realizedTarget = targetDef != null;
 
+      targetHostName =
+        if targetDef == null then
+          null
+        else
+          requireString "${targetDef.nodePath}.host" (targetDef.node.host or null);
+
       placement =
         if targetDef == null then
           {
@@ -304,7 +372,7 @@ let
           {
             kind = "inventory-realization";
             runtimeTargetId = targetId;
-            host = requireString "${targetDef.nodePath}.host" (targetDef.node.host or null);
+            host = targetHostName;
             platform = requireString "${targetDef.nodePath}.platform" (targetDef.node.platform or null);
           }
           // (
@@ -341,7 +409,7 @@ let
             };
             interfaces =
               buildTargetInterfaces {
-                inherit nodeName node targetId realizedTarget;
+                inherit nodeName node targetHostName targetId realizedTarget;
                 portLinks =
                   if targetDef == null then
                     { }
