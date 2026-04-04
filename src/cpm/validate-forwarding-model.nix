@@ -165,65 +165,81 @@ let
 
   validateCommunicationContract = sitePath: siteAttrs:
     let
-      communicationContract = requireAttrs "${sitePath}.communicationContract" (siteAttrs.communicationContract or null);
-      allowedRelations = requireList "${sitePath}.communicationContract.allowedRelations" (communicationContract.allowedRelations or null);
-      policy = attrsOrEmpty (siteAttrs.policy or null);
-
-      hasPolicyInterfaceTags = builtins.isAttrs (policy.interfaceTags or null);
-      hasContractInterfaceTags = builtins.isAttrs (communicationContract.interfaceTags or null);
-
-      interfaceTags =
-        if hasContractInterfaceTags then
-          communicationContract.interfaceTags
+      communicationContract =
+        if siteAttrs ? communicationContract then
+          requireAttrs "${sitePath}.communicationContract" siteAttrs.communicationContract
         else
-          { };
-
-      explicitTagSet =
-        makeStringSet (
-          builtins.filter
-            isNonEmptyString
-            (builtins.attrValues interfaceTags)
-        );
-
-      referencedTags =
-        builtins.concatLists (
-          builtins.genList
-            (idx:
-              let
-                relation = attrsOrEmpty (builtins.elemAt allowedRelations idx);
-              in
-              collectRelationEndpointTags relation "from"
-              ++ collectRelationEndpointTags relation "to")
-            (builtins.length allowedRelations)
-        );
-
-      uniqueUnmapped =
-        sortedNames (
-          builtins.listToAttrs (
-            builtins.map
-              (tag: {
-                name = tag;
-                value = true;
-              })
-              (
-                builtins.filter
-                  (tag: !hasAttr tag explicitTagSet)
-                  referencedTags
-              )
-          )
-        );
+          null;
     in
-    if hasPolicyInterfaceTags && hasContractInterfaceTags then
-      throw "exactly one canonical interfaceTags source is allowed; use communicationContract.interfaceTags"
-    else if allowedRelations != [ ] && !hasContractInterfaceTags then
-      throw "communicationContract.interfaceTags is required"
-    else if uniqueUnmapped != [ ] then
-      let
-        tag = builtins.elemAt uniqueUnmapped 0;
-      in
-      throw "communicationContract references tag '${tag}' with no explicit interfaceTags mapping"
+    if communicationContract == null then
+      true
     else
-      true;
+      let
+        allowedRelations =
+          requireList "${sitePath}.communicationContract.allowedRelations" (communicationContract.allowedRelations or null);
+
+        _legacyContractInterfaceTags =
+          if communicationContract ? interfaceTags then
+            throw "communicationContract.interfaceTags is not allowed; use site.policy.interfaceTags"
+          else
+            true;
+
+        policy =
+          if builtins.isAttrs (siteAttrs.policy or null) then
+            requireAttrs "${sitePath}.policy" siteAttrs.policy
+          else
+            throw "site.policy.interfaceTags is required";
+
+        interfaceTags =
+          if builtins.isAttrs (policy.interfaceTags or null) then
+            policy.interfaceTags
+          else
+            throw "site.policy.interfaceTags is required";
+
+        explicitTagSet =
+          makeStringSet (
+            builtins.filter
+              isNonEmptyString
+              (builtins.attrValues interfaceTags)
+          );
+
+        referencedTags =
+          builtins.concatLists (
+            builtins.genList
+              (idx:
+                let
+                  relation = attrsOrEmpty (builtins.elemAt allowedRelations idx);
+                in
+                collectRelationEndpointTags relation "from"
+                ++ collectRelationEndpointTags relation "to")
+              (builtins.length allowedRelations)
+          );
+
+        uniqueUnmapped =
+          sortedNames (
+            builtins.listToAttrs (
+              builtins.map
+                (tag: {
+                  name = tag;
+                  value = true;
+                })
+                (
+                  builtins.filter
+                    (tag: !hasAttr tag explicitTagSet)
+                    referencedTags
+                )
+            )
+          );
+      in
+      builtins.seq
+        _legacyContractInterfaceTags
+        (if uniqueUnmapped != [ ] then
+          let
+            tag = builtins.elemAt uniqueUnmapped 0;
+          in
+          throw "communicationContract references tag '${tag}' with no explicit site.policy.interfaceTags mapping"
+        else
+          true);
 
   validateTransport = sitePath: siteAttrs:
     let

@@ -82,13 +82,13 @@ EOF
 
 run_case \
   "unsupported-schema-version" \
-  "unsupported forwarding model schema version '6' (expected 7)" \
+  "unsupported forwarding model schema version '9' (expected 8)" \
   "$(cat <<'EOF'
 {
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 6;
+      schemaVersion = 9;
     };
   };
 
@@ -112,7 +112,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 7;
+      schemaVersion = 8;
     };
   };
 
@@ -142,7 +142,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 7;
+      schemaVersion = 8;
     };
   };
 
@@ -251,11 +251,14 @@ run_case \
           };
 
           communicationContract = {
+            allowedRelations = [];
+          };
+
+          policy = {
             interfaceTags = {
               tenant0 = "tenant-a";
               wan0 = "wan";
             };
-            allowedRelations = [];
           };
 
           nodes = {
@@ -362,7 +365,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 7;
+      schemaVersion = 8;
     };
   };
 
@@ -435,8 +438,10 @@ run_case \
             ordering = [ "adj::acme.ams::core-upstream" ];
           };
           communicationContract = {
-            interfaceTags = { };
             allowedRelations = [ ];
+          };
+          policy = {
+            interfaceTags = { };
           };
           nodes = {
             policy-1 = {
@@ -512,7 +517,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 7;
+      schemaVersion = 8;
     };
   };
 
@@ -557,10 +562,12 @@ run_case \
             ordering = [ ];
           };
           communicationContract = {
+            allowedRelations = [ ];
+          };
+          policy = {
             interfaceTags = {
               uplink0 = "wan";
             };
-            allowedRelations = [ ];
           };
           nodes = {
             policy-1 = {

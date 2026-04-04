@@ -2,7 +2,7 @@
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 7;
+      schemaVersion = 8;
     };
   };
 
@@ -29,8 +29,10 @@
             ordering = [ ];
           };
           communicationContract = {
-            interfaceTags = { };
             allowedRelations = [ ];
+          };
+          policy = {
+            interfaceTags = { };
           };
           nodes = {
             policy-1 = {
