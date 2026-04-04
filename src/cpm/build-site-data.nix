@@ -15,6 +15,11 @@ let
     requireStringList
     sortedNames;
 
+  deriveDefaultReachability =
+    import ./default-reachability-model.nix {
+      inherit helpers;
+    };
+
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
   siteAttrs = requireAttrs sitePath site;
 
@@ -449,7 +454,7 @@ let
     in
     ensureUniqueEntries "${sitePath}.nodes.${nodeName}.effectiveRuntimeRealization.interfaces" entries;
 
-  buildCanonicalTransit =
+  canonicalTransit =
     let
       adjacenciesRaw = requireList "${sitePath}.transit.adjacencies" (transitAttrs.adjacencies or null);
       ordering = requireStringList "${sitePath}.transit.ordering" (transitAttrs.ordering or null);
@@ -625,10 +630,21 @@ let
         );
     };
 
-  runtimeTargetEntries =
-    builtins.map
-      (nodeName: buildRuntimeTarget nodeName nodes.${nodeName})
-      (sortedNames nodes);
+  baseRuntimeTargets =
+    ensureUniqueEntries
+      "${sitePath}.runtimeTargets"
+      (
+        builtins.map
+          (nodeName: buildRuntimeTarget nodeName nodes.${nodeName})
+          (sortedNames nodes)
+      );
+
+  defaultReachabilityProjection =
+    deriveDefaultReachability {
+      inherit sitePath siteAttrs;
+      transit = canonicalTransit;
+      runtimeTargets = baseRuntimeTargets;
+    };
 in
 {
   siteId = requireString "${sitePath}.siteId" (siteAttrs.siteId or null);
@@ -642,8 +658,8 @@ in
   uplinkNames = requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
   domains = domains;
   tenantPrefixOwners = tenantPrefixOwners;
-  transit = buildCanonicalTransit;
-  runtimeTargets = ensureUniqueEntries "${sitePath}.runtimeTargets" runtimeTargetEntries;
+  transit = canonicalTransit;
+  runtimeTargets = defaultReachabilityProjection.runtimeTargets;
 }
 // (
   if builtins.isAttrs (siteAttrs.egressIntent or null) then
@@ -654,7 +670,11 @@ in
     { }
 )
 // (
-  if builtins.isAttrs (siteAttrs.forwardingSemantics or null) then
+  if builtins.isAttrs defaultReachabilityProjection.forwardingSemantics then
+    {
+      forwardingSemantics = defaultReachabilityProjection.forwardingSemantics;
+    }
+  else if builtins.isAttrs (siteAttrs.forwardingSemantics or null) then
     {
       forwardingSemantics = siteAttrs.forwardingSemantics;
     }
