@@ -282,38 +282,39 @@ run_case_from_golden \
 
 run_case_from_golden \
   "missing-canonical-interface-tags" \
-  "communicationContract.interfaceTags is required" \
+  "site.policy.interfaceTags is required" \
   delete \
-  '            interfaceTags = {
+  '          policy = {
+            interfaceTags = {
               tenant0 = "tenant-a";
               uplink0 = "wan";
             };
+          };
 '
 
 run_case_from_golden \
-  "multiple-interface-tags-sources" \
-  "exactly one canonical interfaceTags source is allowed; use communicationContract.interfaceTags" \
+  "legacy-contract-interface-tags-not-allowed" \
+  "communicationContract.interfaceTags is not allowed; use site.policy.interfaceTags" \
   replace \
-  '          nodes = {' \
-  '          policy = {
+  '          communicationContract = {
+            allowedRelations = [' \
+  '          communicationContract = {
             interfaceTags = {
               legacy-tenant0 = "tenant-a";
               legacy-uplink0 = "wan";
             };
-          };
-
-          nodes = {'
+            allowedRelations = ['
 
 run_case_from_golden \
   "policy-contract-references-unmapped-tenant-tag" \
-  "communicationContract references tag 'tenant-a' with no explicit interfaceTags mapping" \
+  "communicationContract references tag 'tenant-a' with no explicit site.policy.interfaceTags mapping" \
   replace \
   '              tenant0 = "tenant-a";' \
   '              tenant0 = "tenant-z";'
 
 run_case_from_golden \
   "external-reference-without-explicit-policy-mapping" \
-  "communicationContract references tag 'internet' with no explicit interfaceTags mapping" \
+  "communicationContract references tag 'internet' with no explicit site.policy.interfaceTags mapping" \
   replace \
   '              {
                 from = {

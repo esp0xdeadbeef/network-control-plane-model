@@ -2,7 +2,7 @@
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 7;
+      schemaVersion = 8;
     };
   };
 
@@ -201,10 +201,6 @@
           };
 
           communicationContract = {
-            interfaceTags = {
-              tenant0 = "tenant-a";
-              uplink0 = "wan";
-            };
             allowedRelations = [
               {
                 from = {
@@ -218,6 +214,13 @@
                 action = "allow";
               }
             ];
+          };
+
+          policy = {
+            interfaceTags = {
+              tenant0 = "tenant-a";
+              uplink0 = "wan";
+            };
           };
 
           nodes = {
@@ -548,10 +551,6 @@
           };
 
           communicationContract = {
-            interfaceTags = {
-              tenant0 = "tenant-b";
-              uplink0 = "wan";
-            };
             allowedRelations = [
               {
                 from = {
@@ -565,6 +564,13 @@
                 action = "allow";
               }
             ];
+          };
+
+          policy = {
+            interfaceTags = {
+              tenant0 = "tenant-b";
+              uplink0 = "wan";
+            };
           };
 
           nodes = {
@@ -873,9 +879,6 @@
           };
 
           communicationContract = {
-            interfaceTags = {
-              tenant0 = "tenant-c";
-            };
             allowedRelations = [
               {
                 from = {
@@ -886,6 +889,12 @@
                 action = "allow";
               }
             ];
+          };
+
+          policy = {
+            interfaceTags = {
+              tenant0 = "tenant-c";
+            };
           };
 
           nodes = {

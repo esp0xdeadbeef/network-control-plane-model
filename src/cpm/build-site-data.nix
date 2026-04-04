@@ -37,6 +37,30 @@ let
   tenantPrefixOwners =
     requireAttrs "${sitePath}.tenantPrefixOwners" (siteAttrs.tenantPrefixOwners or null);
 
+  communicationContract =
+    if builtins.isAttrs (siteAttrs.communicationContract or null) then
+      let
+        contract = requireAttrs "${sitePath}.communicationContract" siteAttrs.communicationContract;
+      in
+      {
+        allowedRelations =
+          requireList "${sitePath}.communicationContract.allowedRelations" (contract.allowedRelations or null);
+      }
+    else
+      null;
+
+  policyInterfaceTags =
+    if builtins.isAttrs (siteAttrs.policy or null) then
+      let
+        policy = requireAttrs "${sitePath}.policy" siteAttrs.policy;
+      in
+      if builtins.isAttrs (policy.interfaceTags or null) then
+        policy.interfaceTags
+      else
+        null
+    else
+      null;
+
   attachmentLookup =
     ensureUniqueEntries
       "${sitePath}.attachments"
@@ -661,6 +685,24 @@ in
   transit = canonicalTransit;
   runtimeTargets = defaultReachabilityProjection.runtimeTargets;
 }
+// (
+  if communicationContract != null then
+    {
+      inherit communicationContract;
+    }
+  else
+    { }
+)
+// (
+  if policyInterfaceTags != null then
+    {
+      policy = {
+        interfaceTags = policyInterfaceTags;
+      };
+    }
+  else
+    { }
+)
 // (
   if builtins.isAttrs (siteAttrs.egressIntent or null) then
     {
