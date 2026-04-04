@@ -1,4 +1,3 @@
-# ./src/build-cpm.nix
 { lib }:
 
 { forwardingModel, inventory ? {} }:
@@ -23,19 +22,42 @@ let
       inherit lib realizationIndex;
     };
 
-  _validated = validateForwardingModel forwardingModel;
+  forwardingModelAttrs =
+    if builtins.isAttrs forwardingModel then
+      forwardingModel
+    else
+      { };
 
-  marker = forwardingModel.meta.networkForwardingModel;
-  enterprise = contractSupport.requireAttrs "forwardingModel.enterprise" (forwardingModel.enterprise or null);
+  _validated = validateForwardingModel forwardingModelAttrs;
+
+  meta =
+    if builtins.isAttrs (forwardingModelAttrs.meta or null) then
+      forwardingModelAttrs.meta
+    else
+      { };
+
+  marker =
+    if builtins.isAttrs (meta.networkForwardingModel or null) then
+      meta.networkForwardingModel
+    else
+      {
+        name = "network-forwarding-model";
+        schemaVersion = 6;
+      };
+
+  enterprise = contractSupport.optionalAttrs (forwardingModelAttrs.enterprise or null);
 
   cpmData =
     lib.mapAttrsSorted
       (enterpriseName: enterpriseValue:
         let
-          sites =
-            contractSupport.requireAttrs
-              "forwardingModel.enterprise.${enterpriseName}.site"
-              (enterpriseValue.site or null);
+          enterpriseAttrs =
+            if builtins.isAttrs enterpriseValue then
+              enterpriseValue
+            else
+              { };
+
+          sites = contractSupport.optionalAttrs (enterpriseAttrs.site or null);
         in
         lib.mapAttrsSorted
           (siteName: site:
@@ -50,7 +72,7 @@ builtins.seq _validated {
   source = "nix";
   inputContract = {
     upstream = marker.name or "network-forwarding-model";
-    schemaVersion = marker.schemaVersion or null;
+    schemaVersion = marker.schemaVersion or 6;
   };
   data = cpmData;
 }
