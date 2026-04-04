@@ -6,17 +6,12 @@ let
   requireRoutes = path: value:
     let
       routes = contract.requireAttrs "${path}.routes" value;
-      ipv4 = routes.ipv4 or [ ];
-      ipv6 = routes.ipv6 or [ ];
+      ipv4 = contract.requireList "${path}.routes.ipv4" (routes.ipv4 or null);
+      ipv6 = contract.requireList "${path}.routes.ipv6" (routes.ipv6 or null);
     in
-    if !builtins.isList ipv4 then
-      throw "runtime realization failure: ${path}.routes.ipv4 must be a list"
-    else if !builtins.isList ipv6 then
-      throw "runtime realization failure: ${path}.routes.ipv6 must be a list"
-    else
-      {
-        inherit ipv4 ipv6;
-      };
+    {
+      inherit ipv4 ipv6;
+    };
 
   logicalKey = logical:
     "${logical.enterprise}|${logical.site}|${logical.name}";

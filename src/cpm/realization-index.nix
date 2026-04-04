@@ -15,6 +15,35 @@ let
   deploymentHosts = optionalAttrs (deploymentRoot.hosts or null);
   realizationRoot = optionalAttrs (inventoryRoot.realization or null);
   realizationNodes = optionalAttrs (realizationRoot.nodes or null);
+  realizationLinks = optionalAttrs (realizationRoot.links or null);
+
+  addCanonicalAlias = path: acc: alias: canonicalId:
+    if !(builtins.isString alias && alias != "") then
+      acc
+    else if hasAttr alias acc then
+      if acc.${alias} == canonicalId then
+        acc
+      else
+        throw "runtime realization failure: ${path} alias '${alias}' resolves to multiple realization.links ids"
+    else
+      acc // {
+        ${alias} = canonicalId;
+      };
+
+  realizationLinkCanonicalByAlias =
+    builtins.foldl'
+      (acc: linkName:
+        let
+          linkPath = "inventory.realization.links.${linkName}";
+          link = requireAttrs linkPath realizationLinks.${linkName};
+          canonicalId = requireString "${linkPath}.id" (link.id or null);
+          realizedName = requireString "${linkPath}.link" (link.link or null);
+          acc1 = addCanonicalAlias "${linkPath}" acc linkName canonicalId;
+          acc2 = addCanonicalAlias "${linkPath}.link" acc1 realizedName canonicalId;
+        in
+        addCanonicalAlias "${linkPath}.id" acc2 canonicalId canonicalId)
+      { }
+      (sortedNames realizationLinks);
 
   buildHostUplinkByBridge = hostPath: host:
     let
@@ -61,6 +90,11 @@ let
               port = requireAttrs portPath ports.${portName};
               interface = requireAttrs "${portPath}.interface" (port.interface or null);
               linkRef = requireString "${portPath}.link" (port.link or null);
+              canonicalLinkRef =
+                if hasAttr linkRef realizationLinkCanonicalByAlias then
+                  realizationLinkCanonicalByAlias.${linkRef}
+                else
+                  linkRef;
               runtimeIfName = requireString "${portPath}.interface.name" (interface.name or null);
               attach = port.attach or null;
 
@@ -77,7 +111,7 @@ let
                   null;
             in
             {
-              name = linkRef;
+              name = canonicalLinkRef;
               value = {
                 runtimePort = portName;
                 runtimeIfName = runtimeIfName;

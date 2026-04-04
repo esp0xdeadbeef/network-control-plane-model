@@ -1,5 +1,5 @@
 # ./src/main.nix
-{ input, inventory ? {}, lib }:
+{ input, inventory ? {}, lib ? {} }:
 
 let
   localLib = import ../lib/utils.nix;
