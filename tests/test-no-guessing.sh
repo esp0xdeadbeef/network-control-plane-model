@@ -371,4 +371,63 @@ run_case \
 EOF
 )"
 
+run_case \
+  "realized-wan-interface-requires-explicit-upstream-addressing" \
+  "requires explicit upstream addressing in inventory.deployment.hosts.hypervisor-a.uplinks.uplink0.ipv4 and/or ipv6" \
+  "$(cat "${golden_input_file}")" \
+  "$(cat <<'EOF'
+{
+  deployment = {
+    hosts = {
+      hypervisor-a = {
+        uplinks = {
+          uplink0 = {
+            parent = "eno1";
+            bridge = "br-wan";
+          };
+        };
+      };
+    };
+  };
+
+  realization = {
+    nodes = {
+      core-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "core-1";
+        };
+        ports = {
+          p2p-upstream = {
+            link = "link-core-upstream";
+            attach = {
+              kind = "bridge";
+              bridge = "br-wan";
+            };
+            interface = {
+              name = "ens3";
+            };
+          };
+
+          uplink0 = {
+            link = "wan-core";
+            attach = {
+              kind = "bridge";
+              bridge = "br-wan";
+            };
+            interface = {
+              name = "ens4";
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)"
+
 exit "${status}"
