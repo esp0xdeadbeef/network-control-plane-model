@@ -10,6 +10,11 @@ let
       helpers = contractSupport;
     };
 
+  validateRuntimeModel =
+    import ./cpm/validate-runtime-model.nix {
+      helpers = contractSupport;
+    };
+
   realizationIndex =
     import ./cpm/realization-index.nix {
       helpers = contractSupport;
@@ -66,13 +71,19 @@ let
             })
           sites)
       enterprise;
-in
-builtins.seq _validated {
-  version = 1;
-  source = "nix";
-  inputContract = {
-    upstream = marker.name or "network-forwarding-model";
-    schemaVersion = marker.schemaVersion or 6;
+
+  cpm = {
+    version = 1;
+    source = "nix";
+    inputContract = {
+      upstream = marker.name or "network-forwarding-model";
+      schemaVersion = marker.schemaVersion or 6;
+    };
+    data = cpmData;
   };
-  data = cpmData;
-}
+
+  _runtimeValidated = validateRuntimeModel { inherit cpm; };
+in
+builtins.seq _validated (
+  builtins.seq _runtimeValidated cpm
+)
