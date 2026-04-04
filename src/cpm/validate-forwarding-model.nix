@@ -11,6 +11,7 @@ let
     isNonEmptyString
     requireAttrs
     requireList
+    requireString
     sortedNames
     ;
 
@@ -224,14 +225,85 @@ let
     else
       true;
 
-  validateBGP = sitePath: siteAttrs:
+  validateTransport = sitePath: siteAttrs:
     let
-      bgp = attrsOrEmpty (siteAttrs.bgp or null);
+      transport = siteAttrs.transport or null;
     in
-    if (bgp.mode or null) == "bgp" && !builtins.isList (bgp.sessions or null) then
-      throw "bgp mode requires explicit site.bgp.sessions"
+    if transport == null then
+      true
+    else if !builtins.isAttrs transport then
+      throw "site.transport must be an attribute set"
     else
-      true;
+      let
+        overlays = transport.overlays or null;
+      in
+      if overlays == null || builtins.isAttrs overlays || builtins.isList overlays then
+        true
+      else
+        throw "site.transport.overlays must be an attribute set or list";
+
+  validateBGPSession = sitePath: nodeSet: sessionIndex: session:
+    let
+      sessionPath = "${sitePath}.bgp.sessions[${toString sessionIndex}]";
+      sessionAttrs = requireAttrs sessionPath session;
+      a = requireString "${sessionPath}.a" (sessionAttrs.a or null);
+      b = requireString "${sessionPath}.b" (sessionAttrs.b or null);
+
+      _nodeA =
+        if hasAttr a nodeSet then
+          true
+        else
+          throw "${sessionPath}.a references unknown node '${a}'";
+
+      _nodeB =
+        if hasAttr b nodeSet then
+          true
+        else
+          throw "${sessionPath}.b references unknown node '${b}'";
+
+      _rr =
+        if sessionAttrs ? rr then
+          let
+            rr = requireString "${sessionPath}.rr" (sessionAttrs.rr or null);
+          in
+          if hasAttr rr nodeSet then
+            true
+          else
+            throw "${sessionPath}.rr references unknown node '${rr}'"
+        else
+          true;
+    in
+    builtins.seq _nodeA (builtins.seq _nodeB _rr);
+
+  validateBGP = sitePath: siteAttrs: nodeSet:
+    let
+      bgp =
+        if siteAttrs ? bgp then
+          requireAttrs "${sitePath}.bgp" siteAttrs.bgp
+        else
+          null;
+    in
+    if bgp == null then
+      true
+    else if (bgp.mode or null) != "bgp" then
+      true
+    else
+      let
+        sessions =
+          if builtins.isList (bgp.sessions or null) then
+            bgp.sessions
+          else
+            throw "bgp mode requires explicit site.bgp.sessions";
+      in
+      if sessions == [ ] then
+        throw "bgp mode requires non-empty site.bgp.sessions"
+      else
+        forceAll (
+          builtins.genList
+            (sessionIndex:
+              validateBGPSession sitePath nodeSet sessionIndex (builtins.elemAt sessions sessionIndex))
+            (builtins.length sessions)
+        );
 
   validateSite = enterpriseName: siteName: site:
     let
@@ -241,16 +313,19 @@ let
       links = requireAttrs "${sitePath}.links" (siteAttrs.links or null);
       nodes = requireAttrs "${sitePath}.nodes" (siteAttrs.nodes or null);
       attachmentLookup = attachmentLookupForSite attachments;
+      nodeSet = makeStringSet (sortedNames nodes);
     in
     builtins.seq
-      (forceAll (
-        builtins.map
-          (nodeName: validateNode sitePath attachmentLookup links nodeName nodes.${nodeName})
-          (sortedNames nodes)
-      ))
+      (validateTransport sitePath siteAttrs)
       (builtins.seq
-        (validateCommunicationContract sitePath siteAttrs)
-        (validateBGP sitePath siteAttrs));
+        (forceAll (
+          builtins.map
+            (nodeName: validateNode sitePath attachmentLookup links nodeName nodes.${nodeName})
+            (sortedNames nodes)
+        ))
+        (builtins.seq
+          (validateCommunicationContract sitePath siteAttrs)
+          (validateBGP sitePath siteAttrs nodeSet)));
 
   validateEnterprises = inputAttrs:
     let

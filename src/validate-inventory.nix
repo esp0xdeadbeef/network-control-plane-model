@@ -1133,11 +1133,94 @@ let
     else
       true;
 
+  unrealizedRuntimeTargets =
+    let
+      data = requireAttrs "control_plane_model.data" (cpm.data or null);
+      enterpriseNames = attrNames data;
+    in
+    builtins.concatLists (
+      builtins.map
+        (enterpriseName:
+          let
+            sites = requireAttrs "control_plane_model.data.${enterpriseName}" data.${enterpriseName};
+            siteNames = attrNames sites;
+          in
+          builtins.concatLists (
+            builtins.map
+              (siteName:
+                let
+                  sitePath = "control_plane_model.data.${enterpriseName}.${siteName}";
+                  site = requireAttrs sitePath sites.${siteName};
+                  runtimeTargets = requireAttrs "${sitePath}.runtimeTargets" (site.runtimeTargets or null);
+                  targetNames = attrNames runtimeTargets;
+                in
+                builtins.concatLists (
+                  builtins.map
+                    (targetName:
+                      let
+                        targetPath = "${sitePath}.runtimeTargets.${targetName}";
+                        target = requireAttrs targetPath runtimeTargets.${targetName};
+                        placement = requireAttrs "${targetPath}.placement" (target.placement or null);
+                        logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
+                        logical = {
+                          enterprise = requireString "${targetPath}.logicalNode.enterprise" (logicalNode.enterprise or null);
+                          site = requireString "${targetPath}.logicalNode.site" (logicalNode.site or null);
+                          name = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
+                        };
+                        placementKind = placement.kind or null;
+                      in
+                      if placementKind == "inventory-realization" then
+                        [ ]
+                      else
+                        [
+                          {
+                            path = targetPath;
+                            runtimeTarget = targetName;
+                            actualPlacementKind = placementKind;
+                            expectedPlacementKind = "inventory-realization";
+                            logicalNode = logical;
+                          }
+                        ])
+                    targetNames
+                ))
+              siteNames
+          ))
+        enterpriseNames
+    );
+
+  validateRuntimeTargetCoverage =
+    if unrealizedRuntimeTargets != [ ] then
+      throw ''
+        inventory lint error: inventory.nix must explicitly realize every control_plane_model runtime target via inventory.realization.nodes.
+        Missing runtime target realizations:
+        ${builtins.toJSON unrealizedRuntimeTargets}
+      ''
+    else
+      true;
+
   inventoryAttrs =
     if inventory == { } then
       { }
     else
       requireAttrs "inventory" inventory;
+
+  realizationAttrs =
+    optionalAttrs (inventoryAttrs.realization or null);
+
+  hasLegacyFabric =
+    hasAttr "fabric" inventoryAttrs;
+
+  hasRealizationNodes =
+    hasAttr "nodes" realizationAttrs;
+
+  _legacyFabricSchemaExplicitlyRejected =
+    if hasLegacyFabric && !hasRealizationNodes then
+      throw ''
+        inventory lint error: inventory.nix uses legacy inventory.fabric and cannot explicitly realize control_plane_model runtime targets.
+        Use inventory.realization.nodes instead of inventory.fabric.
+      ''
+    else
+      true;
 
   deploymentInfo =
     if inventoryAttrs == { } then
@@ -1177,11 +1260,12 @@ let
     else
       validateDeclaredRefsExistInCPM allRefs;
 in
-if inventoryAttrs == { } then
-  true
-else
-  builtins.seq deploymentInfo (
-    builtins.seq _validatedRealizationLinks (
-      validateFullP2PCoverage classifiedRefs
+builtins.seq deploymentInfo (
+  builtins.seq _validatedRealizationLinks (
+    builtins.seq _legacyFabricSchemaExplicitlyRejected (
+      builtins.seq validateRuntimeTargetCoverage (
+        validateFullP2PCoverage classifiedRefs
+      )
     )
   )
+)
