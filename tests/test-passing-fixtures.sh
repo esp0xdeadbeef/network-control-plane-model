@@ -29,6 +29,61 @@ validate_output() {
       ' >/dev/null || fail "FAIL ${name}: validation failed"
       echo "PASS ${name}"
       ;;
+    default-egress-reachability)
+      OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+        let
+          data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+          site = data.control_plane_model.data.acme.ams;
+
+          hasRoute = routes: dst:
+            builtins.any (route: (route.dst or null) == dst) routes;
+
+          hasIPv4Via = routes: dst: via:
+            builtins.any
+              (route:
+                (route.dst or null) == dst
+                && (route.via4 or null) == via)
+              routes;
+
+          hasIPv6Via = routes: dst: via:
+            builtins.any
+              (route:
+                (route.dst or null) == dst
+                && (route.via6 or null) == via)
+              routes;
+
+          access = site.runtimeTargets.access-runtime;
+          policy = site.runtimeTargets.policy-runtime;
+          upstream = site.runtimeTargets.upstream-runtime;
+          core = site.runtimeTargets.core-runtime;
+
+          accessP2P = access.effectiveRuntimeRealization.interfaces.p2p0.routes;
+          accessTenant = access.effectiveRuntimeRealization.interfaces.tenant0.routes;
+          policyUpstream = policy.effectiveRuntimeRealization.interfaces.p2p-upstream.routes;
+          upstreamCore = upstream.effectiveRuntimeRealization.interfaces.p2p-core.routes;
+          coreWAN = core.effectiveRuntimeRealization.interfaces.uplink0.routes;
+        in
+          access.routingAuthority.defaultReachability
+          && policy.routingAuthority.defaultReachability
+          && upstream.routingAuthority.defaultReachability
+          && core.routingAuthority.defaultReachability
+          && site.forwardingSemantics.nodes.access-1.routingAuthority.defaultReachability
+          && site.forwardingSemantics.nodes.policy-1.routingAuthority.defaultReachability
+          && site.forwardingSemantics.nodes.upstream-1.routingAuthority.defaultReachability
+          && site.forwardingSemantics.nodes.core-1.routingAuthority.defaultReachability
+          && hasRoute coreWAN.ipv4 "0.0.0.0/0"
+          && hasRoute coreWAN.ipv6 "::/0"
+          && hasIPv4Via upstreamCore.ipv4 "0.0.0.0/0" "169.254.12.0"
+          && hasIPv6Via upstreamCore.ipv6 "::/0" "fd00:12::0"
+          && hasIPv4Via policyUpstream.ipv4 "0.0.0.0/0" "169.254.11.0"
+          && hasIPv6Via policyUpstream.ipv6 "::/0" "fd00:11::0"
+          && hasIPv4Via accessP2P.ipv4 "0.0.0.0/0" "169.254.10.1"
+          && hasIPv6Via accessP2P.ipv6 "::/0" "fd00:10::1"
+          && !(hasRoute accessTenant.ipv4 "0.0.0.0/0")
+          && !(hasRoute accessTenant.ipv6 "::/0")
+      ' >/dev/null || fail "FAIL ${name}: validation failed"
+      echo "PASS ${name}"
+      ;;
     *)
       echo "PASS ${name}"
       ;;
@@ -222,10 +277,13 @@ minimal_inventory='{
 pppoe_input="$minimal_input"
 hosted_input="$minimal_input"
 hosted_inventory="$minimal_inventory"
+default_egress_input="$(cat "${repo_root}/fixtures/passing/default-egress-reachability/input.nix")"
+default_egress_inventory="$(cat "${repo_root}/fixtures/passing/default-egress-reachability/inventory.nix")"
 
 run_case "minimal-forwarding-model-v7" "$minimal_input" "$minimal_inventory" "minimal-forwarding-model-v7"
 run_case "minimal-forwarding-model-v7-pppoe" "$pppoe_input" "$minimal_inventory" "minimal-forwarding-model-v7-pppoe"
 run_case "hosted-runtime-targets" "$hosted_input" "$hosted_inventory" "hosted-runtime-targets"
+run_case "default-egress-reachability" "$default_egress_input" "$default_egress_inventory" "default-egress-reachability"
 
 run_external_examples
 
