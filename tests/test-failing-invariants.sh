@@ -647,7 +647,8 @@ EOF
         };
         ports = {
           uplink0 = {
-            link = "wan-core";
+            external = true;
+            uplink = "wan";
             attach = {
               kind = "bridge";
               bridge = "br-wan";

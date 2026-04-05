@@ -20,6 +20,12 @@ let
       inherit helpers;
     };
 
+  failForwarding = path: message:
+    throw "forwarding-model update required: ${path}: ${message}";
+
+  failInventory = path: message:
+    throw "inventory.nix update required: ${path}: ${message}";
+
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
   siteAttrs = requireAttrs sitePath site;
 
@@ -46,6 +52,22 @@ let
         allowedRelations =
           requireList "${sitePath}.communicationContract.allowedRelations" (contract.allowedRelations or null);
       }
+      // (
+        if builtins.isList (contract.services or null) then
+          {
+            services = contract.services;
+          }
+        else
+          { }
+      )
+      // (
+        if builtins.isList (contract.trafficTypes or null) then
+          {
+            trafficTypes = contract.trafficTypes;
+          }
+        else
+          { }
+      )
     else
       null;
 
@@ -112,15 +134,21 @@ let
         else if isNonEmptyString (hostUplink.name or null) then
           hostUplink.name
         else
-          throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' resolved an unnamed host uplink in inventory.deployment.hosts.${targetHostName}.uplinks";
+          failInventory
+            "inventory.deployment.hosts.${targetHostName}.uplinks"
+            "runtime realization for ${ifacePath} on realized target '${targetId}' resolved an unnamed host uplink";
 
       requireFamilyMethod = familyName: familyValue:
         if familyValue == null then
           false
         else if !builtins.isAttrs familyValue then
-          throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.${familyName} to be an attribute set"
+          failInventory
+            "inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.${familyName}"
+            "runtime realization for ${ifacePath} on realized target '${targetId}' requires this value to be an attribute set"
         else if !isNonEmptyString (familyValue.method or null) then
-          throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.${familyName}.method to be explicitly defined"
+          failInventory
+            "inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.${familyName}.method"
+            "runtime realization for ${ifacePath} on realized target '${targetId}' requires this field to be explicitly defined"
         else
           true;
 
@@ -130,7 +158,9 @@ let
     if hasIPv4 || hasIPv6 then
       true
     else
-      throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires explicit upstream addressing in inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.ipv4 and/or ipv6";
+      failInventory
+        "inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}"
+        "runtime realization for ${ifacePath} on realized target '${targetId}' requires explicit upstream addressing in inventory.deployment.hosts.${targetHostName}.uplinks.${uplinkName}.ipv4 and/or ipv6";
 
   resolveBackingRef = nodeName: ifName: iface:
     let
@@ -145,7 +175,9 @@ let
           if hasAttr attachmentKey attachmentLookup then
             attachmentLookup.${attachmentKey}
           else
-            throw "tenant interface requires explicit site.attachments entry";
+            failForwarding
+              ifacePath
+              "tenant interface requires explicit site.attachments entry; add { kind = \"tenant\"; name = \"${tenantName}\"; unit = \"${nodeName}\"; } to ${sitePath}.attachments";
       in
       {
         kind = "attachment";
@@ -168,7 +200,9 @@ let
           if hasAttr linkName siteLinks then
             siteLinks.${linkName}
           else
-            throw "input contract failure: ${ifacePath}.link references unknown site link '${linkName}'";
+            failForwarding
+              "${ifacePath}.link"
+              "input contract failure: ${ifacePath}.link references unknown site link '${linkName}'";
       in
       {
         kind = "link";
@@ -189,7 +223,7 @@ let
     nodeName,
     ifName,
     iface,
-    portLinks,
+    portBindings,
     targetHostName,
     targetId,
     realizedTarget
@@ -201,65 +235,64 @@ let
       sourceIfName = requireString "${ifacePath}.interface" (ifaceAttrs.interface or null);
       backingRef = resolveBackingRef nodeName ifName ifaceAttrs;
 
-      requiresExplicitPortRealization =
-        realizedTarget
-        && (backingRef.kind or null) == "link"
-        && (backingRef.linkKind or null) == "p2p";
-
-      portLinkByBackingId =
-        if hasAttr backingRef.id portLinks then
-          portLinks.${backingRef.id}
-        else
-          null;
-
-      portLinkByBackingName =
-        if hasAttr backingRef.name portLinks then
-          portLinks.${backingRef.name}
-        else
-          null;
-
-      portLinkByUpstreamAlias =
-        if sourceKind == "wan" && hasAttr (backingRef.upstreamAlias or "") portLinks then
-          portLinks.${backingRef.upstreamAlias}
-        else
-          null;
-
-      portLink =
-        if requiresExplicitPortRealization then
-          if portLinkByBackingId != null then
-            portLinkByBackingId
-          else if portLinkByBackingName != null then
-            portLinkByBackingName
-          else
-            throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires explicit port realization for backing link '${backingRef.id}'"
-        else if realizedTarget && (backingRef.kind or null) == "link" then
-          if portLinkByBackingId != null then
-            portLinkByBackingId
-          else if portLinkByBackingName != null then
-            portLinkByBackingName
-          else if portLinkByUpstreamAlias != null then
-            portLinkByUpstreamAlias
+      portBinding =
+        if sourceKind == "p2p" then
+          if hasAttr backingRef.name portBindings.byLink then
+            portBindings.byLink.${backingRef.name}
           else
             null
+        else if sourceKind == "wan" then
+          if hasAttr (backingRef.upstreamAlias or "") portBindings.byUplink then
+            portBindings.byUplink.${backingRef.upstreamAlias}
+          else
+            null
+        else if sourceKind == "tenant" && hasAttr ifName portBindings.byLogicalInterface then
+          portBindings.byLogicalInterface.${ifName}
         else
           null;
 
+      requiresExplicitPortRealization =
+        realizedTarget
+        && (
+          sourceKind == "p2p"
+          || sourceKind == "wan"
+        );
+
+      _requiredPortBinding =
+        if requiresExplicitPortRealization && portBinding == null then
+          if sourceKind == "p2p" then
+            failInventory
+              "${targetId}.ports"
+              "${ifacePath} on realized target '${targetId}' requires explicit port realization for backing link '${backingRef.id}'"
+          else if sourceKind == "wan" then
+            failInventory
+              "${targetId}.ports"
+              "${ifacePath} on realized target '${targetId}' requires explicit uplink port realization for uplink '${backingRef.upstreamAlias}'"
+          else
+            failInventory
+              "${targetId}.ports"
+              "${ifacePath} on realized target '${targetId}' requires explicit port realization for logical interface '${ifName}'"
+        else
+          true;
+
       runtimeIfName =
-        if portLink != null then
-          portLink.runtimeIfName
+        if portBinding != null then
+          portBinding.runtimeIfName
         else
           sourceIfName;
 
       resolvedHostUplink =
-        if portLink != null && builtins.isAttrs (portLink.hostUplink or null) then
-          portLink.hostUplink
+        if portBinding != null && builtins.isAttrs (portBinding.hostUplink or null) then
+          portBinding.hostUplink
         else
           null;
 
       validatedHostUplink =
         if realizedTarget && sourceKind == "wan" then
           if resolvedHostUplink == null then
-            throw "runtime realization failure: ${ifacePath} on realized target '${targetId}' requires explicit host uplink bridge mapping in inventory.deployment.hosts.${targetHostName}.uplinks"
+            failInventory
+              "inventory.deployment.hosts.${targetHostName}.uplinks"
+              "${ifacePath} on realized target '${targetId}' requires explicit host uplink bridge mapping in inventory.deployment.hosts.${targetHostName}.uplinks"
           else
             builtins.seq
               (requireExplicitHostUplinkAddressing {
@@ -300,6 +333,14 @@ let
             { }
         )
         // (
+          if sourceKind == "tenant" && ((ifaceAttrs.logical or false) == true) then
+            {
+              logical = true;
+            }
+          else
+            { }
+        )
+        // (
           if sourceKind == "wan" && validatedHostUplink != null then
             {
               hostUplink = {
@@ -323,57 +364,83 @@ let
             { }
         );
     in
-    {
-      name = ifName;
-      value = baseValue;
-    };
+    builtins.seq
+      _requiredPortBinding
+      {
+        name = ifName;
+        value = baseValue;
+      };
 
-  buildUplinkInterfaceEntry = {
+  buildSyntheticUplinkInterfaceEntry = {
     nodeName,
     uplinkName,
-    uplink,
-    portLinks,
+    uplinkValue,
+    portBindings,
     targetHostName,
     targetId,
     realizedTarget
   }:
     let
       uplinkPath = "${sitePath}.nodes.${nodeName}.uplinks.${uplinkName}";
-      uplinkAttrs = requireAttrs uplinkPath uplink;
+      uplinkAttrs = requireAttrs uplinkPath uplinkValue;
 
-      portLink =
-        if realizedTarget && hasAttr uplinkName portLinks then
-          portLinks.${uplinkName}
+      portBinding =
+        if hasAttr uplinkName portBindings.byUplink then
+          portBindings.byUplink.${uplinkName}
         else
           null;
 
+      _requiredPortBinding =
+        if realizedTarget && portBinding == null then
+          failInventory
+            "${targetId}.ports"
+            "${uplinkPath} on realized target '${targetId}' requires explicit uplink port realization for uplink '${uplinkName}'"
+        else
+          true;
+
       runtimeIfName =
-        if portLink != null then
-          portLink.runtimeIfName
+        if portBinding != null then
+          portBinding.runtimeIfName
         else
           uplinkName;
 
       resolvedHostUplink =
-        if portLink != null && builtins.isAttrs (portLink.hostUplink or null) then
-          portLink.hostUplink
+        if portBinding != null && builtins.isAttrs (portBinding.hostUplink or null) then
+          portBinding.hostUplink
         else
           null;
 
       validatedHostUplink =
-        if resolvedHostUplink != null then
-          builtins.seq
-            (requireExplicitHostUplinkAddressing {
-              ifacePath = uplinkPath;
-              inherit targetHostName targetId;
-              hostUplink = resolvedHostUplink;
-            })
-            resolvedHostUplink
+        if realizedTarget then
+          if resolvedHostUplink == null then
+            failInventory
+              "inventory.deployment.hosts.${targetHostName}.uplinks"
+              "${uplinkPath} on realized target '${targetId}' requires explicit host uplink mapping in inventory.deployment.hosts.${targetHostName}.uplinks"
+          else
+            builtins.seq
+              (requireExplicitHostUplinkAddressing {
+                ifacePath = uplinkPath;
+                inherit targetHostName targetId;
+                hostUplink = resolvedHostUplink;
+              })
+              resolvedHostUplink
         else
-          null;
-    in
-    {
-      name = uplinkName;
-      value =
+          resolvedHostUplink;
+
+      wanIntent = {
+        ipv4 =
+          if builtins.isList (uplinkAttrs.ipv4 or null) then
+            builtins.filter isNonEmptyString uplinkAttrs.ipv4
+          else
+            [ ];
+        ipv6 =
+          if builtins.isList (uplinkAttrs.ipv6 or null) then
+            builtins.filter isNonEmptyString uplinkAttrs.ipv6
+          else
+            [ ];
+      };
+
+      baseValue =
         {
           runtimeTarget = targetId;
           logicalNode = nodeName;
@@ -389,11 +456,11 @@ let
           };
           backingRef = {
             kind = "link";
-            id = uplinkName;
+            id = "uplink::${enterpriseName}.${siteName}::${uplinkName}";
             name = uplinkName;
           };
           upstream = uplinkName;
-          wan = uplinkAttrs;
+          wan = wanIntent;
         }
         // (
           if validatedHostUplink != null then
@@ -418,63 +485,49 @@ let
           else
             { }
         );
-    };
+    in
+    builtins.seq
+      _requiredPortBinding
+      {
+        name = uplinkName;
+        value = baseValue;
+      };
 
   buildTargetInterfaces = {
     nodeName,
     node,
-    portLinks,
+    portBindings,
     targetHostName,
     targetId,
     realizedTarget
   }:
     let
       interfaces = requireAttrs "${sitePath}.nodes.${nodeName}.interfaces" (node.interfaces or null);
+      interfaceNames = sortedNames interfaces;
+
       uplinks =
         if builtins.isAttrs (node.uplinks or null) then
           node.uplinks
         else
           { };
 
-      interfaceNames = sortedNames interfaces;
-
-      explicitWANUpstreams =
-        builtins.filter
-          isNonEmptyString
-          (
-            builtins.map
-              (ifName:
-                let
-                  iface = requireAttrs "${sitePath}.nodes.${nodeName}.interfaces.${ifName}" interfaces.${ifName};
-                in
-                if (iface.kind or null) == "wan" then
-                  iface.upstream or null
-                else
-                  null)
-              interfaceNames
-          );
-
-      synthesizedUplinkNames =
-        builtins.filter
-          (uplinkName: !(builtins.elem uplinkName explicitWANUpstreams))
-          (sortedNames uplinks);
-
       entries =
         (builtins.map
           (ifName:
             buildExplicitInterfaceEntry {
-              inherit nodeName ifName portLinks targetHostName targetId realizedTarget;
+              inherit nodeName ifName portBindings targetHostName targetId realizedTarget;
               iface = interfaces.${ifName};
             })
           interfaceNames)
         ++
         (builtins.map
           (uplinkName:
-            buildUplinkInterfaceEntry {
-              inherit nodeName uplinkName portLinks targetHostName targetId realizedTarget;
-              uplink = uplinks.${uplinkName};
+            buildSyntheticUplinkInterfaceEntry {
+              inherit nodeName portBindings targetHostName targetId realizedTarget;
+              uplinkName = uplinkName;
+              uplinkValue = uplinks.${uplinkName};
             })
-          synthesizedUplinkNames);
+          (sortedNames uplinks));
     in
     ensureUniqueEntries "${sitePath}.nodes.${nodeName}.effectiveRuntimeRealization.interfaces" entries;
 
@@ -511,7 +564,9 @@ let
             if hasAttr adjacencyId adjacencyLookup then
               adjacencyLookup.${adjacencyId}
             else
-              throw "input contract failure: ${sitePath}.transit.ordering references unknown adjacency id '${adjacencyId}'")
+              failForwarding
+                "${sitePath}.transit.ordering"
+                "input contract failure: ${sitePath}.transit.ordering references unknown adjacency id '${adjacencyId}'")
           ordering;
     };
 
@@ -596,11 +651,15 @@ let
             interfaces =
               buildTargetInterfaces {
                 inherit nodeName node targetHostName targetId realizedTarget;
-                portLinks =
+                portBindings =
                   if targetDef == null then
-                    { }
+                    {
+                      byLink = { };
+                      byLogicalInterface = { };
+                      byUplink = { };
+                    }
                   else
-                    targetDef.linkLookup;
+                    targetDef.portBindings;
               };
           };
         }
@@ -707,6 +766,14 @@ in
   if builtins.isAttrs (siteAttrs.egressIntent or null) then
     {
       egressIntent = siteAttrs.egressIntent;
+    }
+  else
+    { }
+)
+// (
+  if builtins.isList (siteAttrs.services or null) then
+    {
+      services = siteAttrs.services;
     }
   else
     { }

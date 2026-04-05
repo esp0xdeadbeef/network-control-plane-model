@@ -76,16 +76,10 @@ let
     );
 
   forwardingSemantics =
-    if builtins.isAttrs (siteAttrs.forwardingSemantics or null) then
-      siteAttrs.forwardingSemantics
-    else
-      null;
+    attrsOrEmpty (siteAttrs.forwardingSemantics or null);
 
   forwardingSemanticsNodes =
-    if forwardingSemantics == null then
-      { }
-    else
-      attrsOrEmpty (forwardingSemantics.nodes or null);
+    attrsOrEmpty (forwardingSemantics.nodes or null);
 
   siteEgressIntent =
     attrsOrEmpty (siteAttrs.egressIntent or null);
@@ -132,16 +126,47 @@ let
     proto = "upstream";
   };
 
-  augmentWANInterfaceRoutes = iface:
+  selectedUplinkNamesForTarget = target:
+    let
+      egressIntent = attrsOrEmpty (target.egressIntent or null);
+    in
+    (if builtins.isList (egressIntent.uplinks or null) then
+      builtins.filter isNonEmptyString egressIntent.uplinks
+    else
+      [ ])
+    ++
+    (if builtins.isList (egressIntent.wanInterfaces or null) then
+      builtins.filter isNonEmptyString egressIntent.wanInterfaces
+    else
+      [ ]);
+
+  augmentWANInterfaceRoutes = selectedUplinkSet: selectedUplinkNames: iface:
     let
       routes = attrsOrEmpty (iface.routes or null);
+      hostUplink = attrsOrEmpty (iface.hostUplink or null);
       wan = attrsOrEmpty (iface.wan or null);
+      upstream = iface.upstream or null;
+
+      selected =
+        selectedUplinkNames == [ ]
+        || (isNonEmptyString upstream && hasAttr upstream selectedUplinkSet);
 
       ipv4Routes = listOrEmpty (routes.ipv4 or null);
       ipv6Routes = listOrEmpty (routes.ipv6 or null);
 
-      wantsIPv4Default = listContains "0.0.0.0/0" (wan.ipv4 or null);
-      wantsIPv6Default = listContains "::/0" (wan.ipv6 or null);
+      wantsIPv4Default =
+        selected
+        && (
+          builtins.isAttrs (hostUplink.ipv4 or null)
+          || listContains "0.0.0.0/0" (wan.ipv4 or null)
+        );
+
+      wantsIPv6Default =
+        selected
+        && (
+          builtins.isAttrs (hostUplink.ipv6 or null)
+          || listContains "::/0" (wan.ipv6 or null)
+        );
 
       updatedIPv4Routes =
         if wantsIPv4Default && !routesContainDefault 4 ipv4Routes then
@@ -168,41 +193,54 @@ let
   augmentWANRoutesForTarget = targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
-      effective =
-        requireAttrs
-          "${targetPath}.effectiveRuntimeRealization"
-          (target.effectiveRuntimeRealization or null);
-      interfaces =
-        requireAttrs
-          "${targetPath}.effectiveRuntimeRealization.interfaces"
-          (effective.interfaces or null);
-
-      updatedInterfaces =
-        builtins.listToAttrs (
-          builtins.map
-            (ifName:
-              let
-                iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
-              in
-              {
-                name = ifName;
-                value =
-                  if (iface.sourceKind or null) == "wan" then
-                    augmentWANInterfaceRoutes iface
-                  else
-                    iface;
-              })
-            (sortedNames interfaces)
-        );
+      logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
+      nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
+      selectedUplinkNames = selectedUplinkNamesForTarget target;
+      selectedUplinkSet = makeStringSet selectedUplinkNames;
+      exitEnabled = hasAttr nodeName exitNodeSet;
     in
-    target
-    // {
-      effectiveRuntimeRealization =
-        effective
-        // {
-          interfaces = updatedInterfaces;
-        };
-    };
+    if !exitEnabled then
+      target
+    else
+      let
+        effective =
+          requireAttrs
+            "${targetPath}.effectiveRuntimeRealization"
+            (target.effectiveRuntimeRealization or null);
+        interfaces =
+          requireAttrs
+            "${targetPath}.effectiveRuntimeRealization.interfaces"
+            (effective.interfaces or null);
+
+        updatedInterfaces =
+          builtins.listToAttrs (
+            builtins.map
+              (ifName:
+                let
+                  iface =
+                    requireAttrs
+                      "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}"
+                      interfaces.${ifName};
+                in
+                {
+                  name = ifName;
+                  value =
+                    if (iface.sourceKind or null) == "wan" then
+                      augmentWANInterfaceRoutes selectedUplinkSet selectedUplinkNames iface
+                    else
+                      iface;
+                })
+              (sortedNames interfaces)
+          );
+      in
+      target
+      // {
+        effectiveRuntimeRealization =
+          effective
+          // {
+            interfaces = updatedInterfaces;
+          };
+      };
 
   runtimeTargetsWithWANDefaults =
     builtins.listToAttrs (
@@ -537,31 +575,63 @@ let
     targetHasDefaultReachabilityForFamily 4 targetName target
     || targetHasDefaultReachabilityForFamily 6 targetName target;
 
+  updatedRoutingAuthority =
+    builtins.listToAttrs (
+      builtins.map
+        (targetName: {
+          name = targetName;
+          value = {
+            defaultReachability =
+              targetHasAnyDefaultReachability targetName runtimeTargetsWithSynthesizedDefaults.${targetName};
+          };
+        })
+        runtimeTargetNames
+    );
+
   runtimeTargetsWithUpdatedRoutingAuthority =
     builtins.listToAttrs (
       builtins.map
         (targetName:
           let
             target = runtimeTargetsWithSynthesizedDefaults.${targetName};
-            routingAuthority = target.routingAuthority or null;
-            hasDerivedDefault = targetHasAnyDefaultReachability targetName target;
+            existingRoutingAuthority =
+              if builtins.isAttrs (target.routingAuthority or null) then
+                target.routingAuthority
+              else
+                { };
+            resolvedRoutingAuthority =
+              if hasAttr targetName updatedRoutingAuthority then
+                let
+                  candidate = updatedRoutingAuthority.${targetName};
+                in
+                if builtins.isAttrs candidate then
+                  candidate
+                else
+                  { }
+              else
+                { };
+            defaultReachability =
+              if builtins.hasAttr "defaultReachability" resolvedRoutingAuthority then
+                resolvedRoutingAuthority.defaultReachability
+              else if builtins.hasAttr "defaultReachability" existingRoutingAuthority then
+                existingRoutingAuthority.defaultReachability
+              else if builtins.hasAttr "defaultReachability" target then
+                target.defaultReachability
+              else
+                false;
           in
           {
             name = targetName;
             value =
-              if builtins.isAttrs routingAuthority then
-                target
-                // {
-                  routingAuthority =
-                    routingAuthority
-                    // {
-                      defaultReachability =
-                        (routingAuthority.defaultReachability or false)
-                        || hasDerivedDefault;
-                    };
-                }
-              else
-                target;
+              target
+              // {
+                routingAuthority =
+                  existingRoutingAuthority
+                  // resolvedRoutingAuthority
+                  // {
+                    inherit defaultReachability;
+                  };
+              };
           })
         runtimeTargetNames
     );
@@ -578,53 +648,59 @@ let
           in
           {
             name = nodeName;
-            value = targetHasAnyDefaultReachability targetName target;
+            value = (target.routingAuthority.defaultReachability or false);
           })
         runtimeTargetNames
     );
 
+  forwardingSemanticsNodeNames =
+    sortedNames (
+      makeStringSet (
+        (sortedNames runtimeTargetsByNode)
+        ++ (sortedNames forwardingSemanticsNodes)
+      )
+    );
+
+  updatedForwardingSemanticsNodes =
+    builtins.listToAttrs (
+      builtins.map
+        (nodeName:
+          let
+            existingNodeSemantics =
+              if hasAttr nodeName forwardingSemanticsNodes then
+                attrsOrEmpty forwardingSemanticsNodes.${nodeName}
+              else
+                { };
+            existingRoutingAuthority =
+              attrsOrEmpty (existingNodeSemantics.routingAuthority or null);
+            defaultReachability =
+              if hasAttr nodeName defaultReachabilityByNode then
+                defaultReachabilityByNode.${nodeName}
+              else if builtins.hasAttr "defaultReachability" existingRoutingAuthority then
+                existingRoutingAuthority.defaultReachability
+              else
+                false;
+          in
+          {
+            name = nodeName;
+            value =
+              existingNodeSemantics
+              // {
+                routingAuthority =
+                  existingRoutingAuthority
+                  // {
+                    inherit defaultReachability;
+                  };
+              };
+          })
+        forwardingSemanticsNodeNames
+    );
+
   updatedForwardingSemantics =
-    if forwardingSemantics == null then
-      null
-    else
-      let
-        updatedNodes =
-          builtins.listToAttrs (
-            builtins.map
-              (nodeName:
-                let
-                  nodeSemantics = forwardingSemanticsNodes.${nodeName};
-                  routingAuthority = nodeSemantics.routingAuthority or null;
-                  hasDerivedDefault =
-                    if hasAttr nodeName defaultReachabilityByNode then
-                      defaultReachabilityByNode.${nodeName}
-                    else
-                      false;
-                in
-                {
-                  name = nodeName;
-                  value =
-                    if builtins.isAttrs routingAuthority then
-                      nodeSemantics
-                      // {
-                        routingAuthority =
-                          routingAuthority
-                          // {
-                            defaultReachability =
-                              (routingAuthority.defaultReachability or false)
-                              || hasDerivedDefault;
-                          };
-                      }
-                    else
-                      nodeSemantics;
-                })
-              (sortedNames forwardingSemanticsNodes)
-          );
-      in
-      forwardingSemantics
-      // {
-        nodes = updatedNodes;
-      };
+    forwardingSemantics
+    // {
+      nodes = updatedForwardingSemanticsNodes;
+    };
 in
 {
   runtimeTargets = runtimeTargetsWithUpdatedRoutingAuthority;

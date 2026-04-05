@@ -12,6 +12,7 @@ let
     requireAttrs
     requireList
     requireString
+    requireStringList
     sortedNames
     ;
 
@@ -44,6 +45,9 @@ let
         values
     );
 
+  failForwarding = path: message:
+    throw "forwarding-model update required: ${path}: ${message}";
+
   attachmentLookupForSite = attachments:
     makeStringSet (
       builtins.filter
@@ -65,35 +69,23 @@ let
         )
     );
 
-  collectRelationEndpointTags = relation: endpointName:
-    let
-      endpointRaw = relation.${endpointName} or null;
-      endpoint = attrsOrEmpty endpointRaw;
-      kind = endpoint.kind or null;
-    in
-    if endpointRaw == "any" then
-      [ ]
-    else if !builtins.isAttrs endpointRaw then
-      [ ]
-    else if kind == "tenant" || kind == "service" then
-      if isNonEmptyString (endpoint.name or null) then
-        [ endpoint.name ]
-      else
-        [ ]
-    else if kind == "external" then
-      if isNonEmptyString (endpoint.name or null) then
-        [ endpoint.name ]
-      else if builtins.isList (endpoint.uplinks or null) then
-        builtins.filter isNonEmptyString endpoint.uplinks
-      else
-        [ ]
-    else if kind == "tenant-set" then
-      if builtins.isList (endpoint.members or null) then
-        builtins.filter isNonEmptyString endpoint.members
-      else
-        [ ]
-    else
-      [ ];
+  collectNamesFromList = list:
+    builtins.filter
+      isNonEmptyString
+      (
+        builtins.map
+          (item:
+            let
+              attrs = attrsOrEmpty item;
+            in
+            attrs.name or null)
+          list
+      );
+
+  collectStringValues = attrs:
+    builtins.filter
+      isNonEmptyString
+      (builtins.attrValues attrs);
 
   validateRoutes = ifacePath: ifaceAttrs:
     let
@@ -115,32 +107,66 @@ let
       linkValue = ifaceAttrs.link or null;
     in
     if !isNonEmptyString kind then
-      throw "interface kind is required"
+      failForwarding ifacePath "interface kind is required"
     else if !isNonEmptyString interfaceValue then
-      throw "${ifacePath}.interface is required"
+      failForwarding "${ifacePath}.interface" "${ifacePath}.interface is required"
     else if kind == "tenant" && !isNonEmptyString tenantValue then
-      throw "tenant interface requires explicit tenant"
+      failForwarding "${ifacePath}.tenant" "tenant interface requires explicit tenant"
     else if kind == "tenant" && !hasAttr "${nodeName}|tenant|${tenantValue}" attachmentLookup then
-      throw "tenant interface requires explicit site.attachments entry"
+      failForwarding
+        ifacePath
+        "tenant interface requires explicit site.attachments entry; add { kind = \"tenant\"; name = \"${tenantValue}\"; unit = \"${nodeName}\"; } to ${sitePath}.attachments"
     else if kind == "overlay" && !isNonEmptyString overlayValue then
-      throw "overlay interface requires explicit overlay"
+      failForwarding "${ifacePath}.overlay" "overlay interface requires explicit overlay"
     else if kind == "wan" && !isNonEmptyString upstreamValue then
-      throw "wan interface requires explicit upstream"
+      failForwarding "${ifacePath}.upstream" "wan interface requires explicit upstream"
     else if kind == "wan" && !isNonEmptyString linkValue then
-      throw "wan interface requires explicit link"
+      failForwarding "${ifacePath}.link" "wan interface requires explicit link"
     else if kind == "wan" && !hasAttr linkValue links then
-      throw "${ifacePath}.link references unknown site link '${linkValue}'"
+      failForwarding "${ifacePath}.link" "${ifacePath}.link references unknown site link '${linkValue}'"
     else
       builtins.seq
         (validateRoutes ifacePath ifaceAttrs)
         true;
 
-  validateNode = sitePath: attachmentLookup: links: nodeName: node:
+  validateNodeUplink = sitePath: uplinkNameSet: nodeName: uplinkName: uplink:
+    let
+      uplinkPath = "${sitePath}.nodes.${nodeName}.uplinks.${uplinkName}";
+      uplinkAttrs = requireAttrs uplinkPath uplink;
+
+      _knownUplink =
+        if hasAttr uplinkName uplinkNameSet then
+          true
+        else
+          failForwarding uplinkPath "node uplink references unknown site uplink '${uplinkName}'";
+
+      _ipv4 =
+        if uplinkAttrs ? ipv4 then
+          requireStringList "${uplinkPath}.ipv4" uplinkAttrs.ipv4
+        else
+          true;
+
+      _ipv6 =
+        if uplinkAttrs ? ipv6 then
+          requireStringList "${uplinkPath}.ipv6" uplinkAttrs.ipv6
+        else
+          true;
+    in
+    builtins.seq _knownUplink (builtins.seq _ipv4 _ipv6);
+
+  validateNode = sitePath: attachmentLookup: links: uplinkNameSet: nodeName: node:
     let
       nodePath = "${sitePath}.nodes.${nodeName}";
       nodeAttrs = requireAttrs nodePath node;
+
       interfaces = requireAttrs "${nodePath}.interfaces" (nodeAttrs.interfaces or null);
       interfaceNames = sortedNames interfaces;
+
+      uplinks =
+        if builtins.isAttrs (nodeAttrs.uplinks or null) then
+          nodeAttrs.uplinks
+        else
+          { };
 
       hasExplicitTenantInterface =
         builtins.any
@@ -158,10 +184,19 @@ let
           (ifName: validateInterface sitePath attachmentLookup links nodeName ifName interfaces.${ifName})
           interfaceNames
       ))
-      (if (nodeAttrs.role or null) == "access" && !hasExplicitTenantInterface then
-        throw "access node requires at least one tenant interface with explicit tenant"
-      else
-        true);
+      (builtins.seq
+        (forceAll (
+          builtins.map
+            (uplinkName:
+              validateNodeUplink sitePath uplinkNameSet nodeName uplinkName uplinks.${uplinkName})
+            (sortedNames uplinks)
+        ))
+        (if (nodeAttrs.role or null) == "access" && !hasExplicitTenantInterface then
+          failForwarding
+            "${nodePath}.interfaces"
+            "access node requires at least one tenant interface with explicit tenant"
+        else
+          true));
 
   validateCommunicationContract = sitePath: siteAttrs:
     let
@@ -180,7 +215,9 @@ let
 
         _legacyContractInterfaceTags =
           if communicationContract ? interfaceTags then
-            throw "communicationContract.interfaceTags is not allowed; use site.policy.interfaceTags"
+            failForwarding
+              "${sitePath}.communicationContract.interfaceTags"
+              "communicationContract.interfaceTags is not allowed; use site.policy.interfaceTags"
           else
             true;
 
@@ -188,58 +225,145 @@ let
           if builtins.isAttrs (siteAttrs.policy or null) then
             requireAttrs "${sitePath}.policy" siteAttrs.policy
           else
-            throw "site.policy.interfaceTags is required";
+            failForwarding
+              "${sitePath}.policy.interfaceTags"
+              "site.policy.interfaceTags is required";
 
         interfaceTags =
           if builtins.isAttrs (policy.interfaceTags or null) then
             policy.interfaceTags
           else
-            throw "site.policy.interfaceTags is required";
+            failForwarding
+              "${sitePath}.policy.interfaceTags"
+              "site.policy.interfaceTags is required";
 
-        explicitTagSet =
+        domains = requireAttrs "${sitePath}.domains" (siteAttrs.domains or null);
+
+        tenantSet =
           makeStringSet (
-            builtins.filter
-              isNonEmptyString
-              (builtins.attrValues interfaceTags)
-          );
-
-        referencedTags =
-          builtins.concatLists (
-            builtins.genList
-              (idx:
-                let
-                  relation = attrsOrEmpty (builtins.elemAt allowedRelations idx);
-                in
-                collectRelationEndpointTags relation "from"
-                ++ collectRelationEndpointTags relation "to")
-              (builtins.length allowedRelations)
-          );
-
-        uniqueUnmapped =
-          sortedNames (
-            builtins.listToAttrs (
-              builtins.map
-                (tag: {
-                  name = tag;
-                  value = true;
-                })
-                (
-                  builtins.filter
-                    (tag: !hasAttr tag explicitTagSet)
-                    referencedTags
-                )
+            collectNamesFromList (
+              requireList "${sitePath}.domains.tenants" (domains.tenants or null)
             )
           );
+
+        uplinkNames =
+          requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
+
+        uplinkNameSet =
+          makeStringSet uplinkNames;
+
+        externalSet =
+          makeStringSet (
+            uplinkNames
+            ++ collectNamesFromList (
+              requireList "${sitePath}.domains.externals" (domains.externals or null)
+            )
+          );
+
+        serviceSet =
+          makeStringSet (
+            collectNamesFromList (
+              (if builtins.isList (communicationContract.services or null) then
+                communicationContract.services
+              else
+                [ ])
+              ++
+              (if builtins.isList (siteAttrs.services or null) then
+                siteAttrs.services
+              else
+                [ ])
+            )
+          );
+
+        explicitTagSet =
+          makeStringSet (collectStringValues interfaceTags);
+
+        useExplicitTagMapping =
+          sortedNames explicitTagSet != [ ];
+
+        validateExplicitTag = relationPath: tag:
+          if hasAttr tag explicitTagSet then
+            true
+          else
+            failForwarding
+              "${relationPath}"
+              "communicationContract references tag '${tag}' with no explicit site.policy.interfaceTags mapping";
+
+        validateTenantReference = relationPath: endpointPath: tenantName:
+          if useExplicitTagMapping then
+            validateExplicitTag relationPath tenantName
+          else if hasAttr tenantName tenantSet then
+            true
+          else
+            failForwarding endpointPath "communicationContract references unknown tenant '${tenantName}'";
+
+        validateServiceReference = relationPath: endpointPath: serviceName:
+          if useExplicitTagMapping then
+            validateExplicitTag relationPath serviceName
+          else if hasAttr serviceName serviceSet then
+            true
+          else
+            failForwarding endpointPath "communicationContract references unknown service '${serviceName}'";
+
+        validateExternalReference = relationPath: endpointPath: externalName:
+          if useExplicitTagMapping then
+            validateExplicitTag relationPath externalName
+          else if hasAttr externalName externalSet then
+            true
+          else
+            failForwarding endpointPath "communicationContract references unknown external '${externalName}'";
+
+        validateRelationEndpoint = relationIndex: relation: endpointName:
+          let
+            relationPath = "${sitePath}.communicationContract.allowedRelations[${toString relationIndex}]";
+            endpointPath = "${relationPath}.${endpointName}";
+            endpointRaw = relation.${endpointName} or null;
+            endpoint = attrsOrEmpty endpointRaw;
+            kind = endpoint.kind or null;
+          in
+          if endpointRaw == "any" then
+            true
+          else if !builtins.isAttrs endpointRaw then
+            true
+          else if kind == "tenant" then
+            validateTenantReference relationPath "${endpointPath}.name" (requireString "${endpointPath}.name" (endpoint.name or null))
+          else if kind == "service" then
+            validateServiceReference relationPath "${endpointPath}.name" (requireString "${endpointPath}.name" (endpoint.name or null))
+          else if kind == "external" then
+            if isNonEmptyString (endpoint.name or null) then
+              validateExternalReference relationPath "${endpointPath}.name" endpoint.name
+            else if builtins.isList (endpoint.uplinks or null) then
+              forceAll (
+                builtins.map
+                  (uplinkName:
+                    validateExternalReference relationPath "${endpointPath}.uplinks" uplinkName)
+                  (requireStringList "${endpointPath}.uplinks" endpoint.uplinks)
+              )
+            else
+              true
+          else if kind == "tenant-set" then
+            forceAll (
+              builtins.map
+                (tenantName:
+                  validateTenantReference relationPath "${endpointPath}.members" tenantName)
+                (requireStringList "${endpointPath}.members" (endpoint.members or null))
+            )
+          else
+            true;
       in
       builtins.seq
         _legacyContractInterfaceTags
-        (if uniqueUnmapped != [ ] then
-          let
-            tag = builtins.elemAt uniqueUnmapped 0;
-          in
-          throw "communicationContract references tag '${tag}' with no explicit site.policy.interfaceTags mapping"
-        else
-          true);
+        (forceAll (
+          builtins.genList
+            (relationIndex:
+              let
+                relation = attrsOrEmpty (builtins.elemAt allowedRelations relationIndex);
+              in
+              builtins.seq
+                (validateRelationEndpoint relationIndex relation "from")
+                (validateRelationEndpoint relationIndex relation "to"))
+            (builtins.length allowedRelations)
+        ));
 
   validateTransport = sitePath: siteAttrs:
     let
@@ -248,7 +372,7 @@ let
     if transport == null then
       true
     else if !builtins.isAttrs transport then
-      throw "site.transport must be an attribute set"
+      failForwarding "${sitePath}.transport" "site.transport must be an attribute set"
     else
       let
         overlays = transport.overlays or null;
@@ -256,7 +380,7 @@ let
       if overlays == null || builtins.isAttrs overlays || builtins.isList overlays then
         true
       else
-        throw "site.transport.overlays must be an attribute set or list";
+        failForwarding "${sitePath}.transport.overlays" "site.transport.overlays must be an attribute set or list";
 
   validateBGPSession = sitePath: nodeSet: sessionIndex: session:
     let
@@ -269,13 +393,13 @@ let
         if hasAttr a nodeSet then
           true
         else
-          throw "${sessionPath}.a references unknown node '${a}'";
+          failForwarding "${sessionPath}.a" "${sessionPath}.a references unknown node '${a}'";
 
       _nodeB =
         if hasAttr b nodeSet then
           true
         else
-          throw "${sessionPath}.b references unknown node '${b}'";
+          failForwarding "${sessionPath}.b" "${sessionPath}.b references unknown node '${b}'";
 
       _rr =
         if sessionAttrs ? rr then
@@ -285,7 +409,7 @@ let
           if hasAttr rr nodeSet then
             true
           else
-            throw "${sessionPath}.rr references unknown node '${rr}'"
+            failForwarding "${sessionPath}.rr" "${sessionPath}.rr references unknown node '${rr}'"
         else
           true;
     in
@@ -309,10 +433,10 @@ let
           if builtins.isList (bgp.sessions or null) then
             bgp.sessions
           else
-            throw "bgp mode requires explicit site.bgp.sessions";
+            failForwarding "${sitePath}.bgp.sessions" "bgp mode requires explicit site.bgp.sessions";
       in
       if sessions == [ ] then
-        throw "bgp mode requires non-empty site.bgp.sessions"
+        failForwarding "${sitePath}.bgp.sessions" "bgp mode requires non-empty site.bgp.sessions"
       else
         forceAll (
           builtins.genList
@@ -328,6 +452,10 @@ let
       attachments = requireList "${sitePath}.attachments" (siteAttrs.attachments or null);
       links = requireAttrs "${sitePath}.links" (siteAttrs.links or null);
       nodes = requireAttrs "${sitePath}.nodes" (siteAttrs.nodes or null);
+      uplinkNameSet =
+        makeStringSet (
+          requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null)
+        );
       attachmentLookup = attachmentLookupForSite attachments;
       nodeSet = makeStringSet (sortedNames nodes);
     in
@@ -336,7 +464,7 @@ let
       (builtins.seq
         (forceAll (
           builtins.map
-            (nodeName: validateNode sitePath attachmentLookup links nodeName nodes.${nodeName})
+            (nodeName: validateNode sitePath attachmentLookup links uplinkNameSet nodeName nodes.${nodeName})
             (sortedNames nodes)
         ))
         (builtins.seq
