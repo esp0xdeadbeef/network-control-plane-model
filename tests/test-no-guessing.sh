@@ -349,6 +349,9 @@ run_case \
     hosts = {
       hypervisor-a = {
         uplinks = { };
+        bridgeNetworks = {
+          br-transit = { };
+        };
       };
     };
   };
@@ -368,6 +371,10 @@ run_case \
             link = "unknown-link";
             interface = {
               name = "ens3";
+            };
+            attach = {
+              kind = "bridge";
+              bridge = "br-transit";
             };
           };
         };
@@ -420,7 +427,8 @@ run_case \
           };
 
           uplink0 = {
-            link = "wan-core";
+            external = true;
+            uplink = "wan";
             attach = {
               kind = "bridge";
               bridge = "br-wan";

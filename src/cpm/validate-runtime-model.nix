@@ -5,6 +5,7 @@
 let
   inherit (helpers)
     requireAttrs
+    requireString
     sortedNames
     ;
 
@@ -18,11 +19,17 @@ let
       };
     }).validateCPMData;
 
+  failForwarding = path: message:
+    throw "forwarding-model update required: ${path}: ${message}";
+
   validateCoreRuntimeTarget = enterpriseName: siteName: targetName: target:
     let
       targetPath = "control_plane_model.data.${enterpriseName}.${siteName}.runtimeTargets.${targetName}";
       targetAttrs = requireAttrs targetPath target;
       role = targetAttrs.role or null;
+      logicalNode = requireAttrs "${targetPath}.logicalNode" (targetAttrs.logicalNode or null);
+      logicalNodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
+      forwardingNodePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}.nodes.${logicalNodeName}";
     in
     if role != "core" then
       true
@@ -59,9 +66,13 @@ let
           && (egressIntent.exit or false) == true;
       in
       if exitEnabled && !hasUsableWANInterface then
-        throw "control plane model validation failure: core exit intent requires a realized WAN interface before rendering"
+        failForwarding
+          "${forwardingNodePath}.interfaces"
+          "control plane model validation failure: core exit intent requires a realized WAN interface before rendering"
       else if builtins.length interfaceNames < 2 then
-        throw "control plane model validation failure: core role requires at least two adapters before rendering"
+        failForwarding
+          "${forwardingNodePath}.interfaces"
+          "control plane model validation failure: core role requires at least two adapters before rendering"
       else
         true;
 

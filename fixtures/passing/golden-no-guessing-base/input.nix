@@ -290,6 +290,11 @@
 
             core-1 = {
               role = "core";
+              egressIntent = {
+                exit = true;
+                uplinks = [ "wan" ];
+                wanInterfaces = [ "wan" ];
+              };
               loopback = {
                 ipv4 = "10.255.0.3/32";
                 ipv6 = "fd00:ff:1::3/128";
@@ -640,6 +645,11 @@
 
             core-1 = {
               role = "core";
+              egressIntent = {
+                exit = true;
+                uplinks = [ "wan" ];
+                wanInterfaces = [ "wan" ];
+              };
               loopback = {
                 ipv4 = "10.255.1.3/32";
                 ipv6 = "fd00:ff:2::3/128";

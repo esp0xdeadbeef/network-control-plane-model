@@ -67,10 +67,6 @@ validate_output() {
           && policy.routingAuthority.defaultReachability
           && upstream.routingAuthority.defaultReachability
           && core.routingAuthority.defaultReachability
-          && site.forwardingSemantics.nodes.access-1.routingAuthority.defaultReachability
-          && site.forwardingSemantics.nodes.policy-1.routingAuthority.defaultReachability
-          && site.forwardingSemantics.nodes.upstream-1.routingAuthority.defaultReachability
-          && site.forwardingSemantics.nodes.core-1.routingAuthority.defaultReachability
           && hasRoute coreWAN.ipv4 "0.0.0.0/0"
           && hasRoute coreWAN.ipv6 "::/0"
           && hasIPv4Via upstreamCore.ipv4 "0.0.0.0/0" "169.254.12.0"
@@ -136,6 +132,11 @@ run_case() {
 }
 
 run_external_examples() {
+  if [[ ! -d "${examples_root}" ]]; then
+    log "Skipping external examples (missing ${examples_root})"
+    return 0
+  fi
+
   log "Running external examples"
 
   find "${examples_root}" -mindepth 1 -maxdepth 1 -type d | sort | while read -r dir; do
