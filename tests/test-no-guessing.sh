@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
 golden_input_file="${repo_root}/fixtures/passing/golden-no-guessing-base/input.nix"
+default_egress_inventory_file="${repo_root}/fixtures/passing/default-egress-reachability/inventory.nix"
 
 status=0
 
@@ -103,6 +104,56 @@ mutate_input() {
 
   local current_file="${work_dir}/current.nix"
   cp "${golden_input_file}" "${current_file}"
+
+  while (($# > 0)); do
+    local op="$1"
+    shift
+
+    case "$op" in
+      replace)
+        local old="$1"
+        local new="$2"
+        shift 2
+
+        local old_file="${work_dir}/old.txt"
+        local new_file="${work_dir}/new.txt"
+        local next_file="${work_dir}/next.nix"
+
+        printf '%s' "${old}" > "${old_file}"
+        printf '%s' "${new}" > "${new_file}"
+        mutate_once_with_nix "${current_file}" replace "${old_file}" "${new_file}" > "${next_file}"
+        mv "${next_file}" "${current_file}"
+        ;;
+      delete)
+        local old="$1"
+        shift
+
+        local old_file="${work_dir}/old.txt"
+        local next_file="${work_dir}/next.nix"
+
+        printf '%s' "${old}" > "${old_file}"
+        mutate_once_with_nix "${current_file}" delete "${old_file}" > "${next_file}"
+        mv "${next_file}" "${current_file}"
+        ;;
+      *)
+        echo "unknown mutation op: ${op}" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  cat "${current_file}"
+  trap - RETURN
+  rm -rf "${work_dir}"
+}
+
+mutate_inventory() {
+  local work_dir
+  work_dir="$(mktemp -d)"
+  trap 'rm -rf "$work_dir"' RETURN
+
+  local current_file="${work_dir}/current.nix"
+  cp "${default_egress_inventory_file}" "${current_file}"
 
   while (($# > 0)); do
     local op="$1"
@@ -444,5 +495,36 @@ run_case \
 }
 EOF
 )"
+
+run_case \
+  "missing-explicit-access-advertisements-realization" \
+  "access runtime target 'access-runtime' requires explicit advertisements realization" \
+  "$(cat "${repo_root}/fixtures/passing/default-egress-reachability/input.nix")" \
+  "$(mutate_inventory delete \
+'        advertisements = {
+          dhcp4 = {
+            tenant0 = {
+              enabled = true;
+              id = "tenant-a";
+              subnet = "10.20.0.0/24";
+              pool = {
+                start = "10.20.0.100";
+                end = "10.20.0.200";
+              };
+              router = "10.20.0.1";
+              dnsServers = [ "10.20.0.1" ];
+              domain = "lan.";
+            };
+          };
+          ipv6Ra = {
+            tenant0 = {
+              enabled = true;
+              prefixes = [ "fd00:20::/64" ];
+              rdnss = [ "fd00:20::1" ];
+              dnssl = [ "lan." ];
+            };
+          };
+        };
+')"
 
 exit "${status}"

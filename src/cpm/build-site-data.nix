@@ -13,12 +13,40 @@ let
     requireRoutes
     requireString
     requireStringList
-    sortedNames;
+    sortedNames
+    ;
 
   deriveDefaultReachability =
     import ./default-reachability-model.nix {
       inherit helpers;
     };
+
+  resolveAccessAdvertisements =
+    import ./resolve-access-advertisements.nix {
+      inherit helpers;
+    };
+
+  resolveFirewallIntent =
+    import ./resolve-firewall-intent.nix {
+      inherit helpers;
+    };
+
+  resolvePolicyEndpointBindings =
+    import ./resolve-policy-endpoint-bindings.nix {
+      inherit helpers;
+    };
+
+  attrsOrEmpty = value:
+    if builtins.isAttrs value then
+      value
+    else
+      { };
+
+  listOrEmpty = value:
+    if builtins.isList value then
+      value
+    else
+      [ ];
 
   failForwarding = path: message:
     throw "forwarding-model update required: ${path}: ${message}";
@@ -71,17 +99,11 @@ let
     else
       null;
 
-  policyInterfaceTags =
+  policyAttrs =
     if builtins.isAttrs (siteAttrs.policy or null) then
-      let
-        policy = requireAttrs "${sitePath}.policy" siteAttrs.policy;
-      in
-      if builtins.isAttrs (policy.interfaceTags or null) then
-        policy.interfaceTags
-      else
-        null
+      requireAttrs "${sitePath}.policy" siteAttrs.policy
     else
-      null;
+      { };
 
   attachmentLookup =
     ensureUniqueEntries
@@ -218,6 +240,20 @@ let
         else
           { }
       );
+
+  explicitUplinkRoute = family: dst:
+    {
+      inherit dst;
+      intent = {
+        kind =
+          if (family == 4 && dst == "0.0.0.0/0") || (family == 6 && dst == "::/0") then
+            "default-reachability"
+          else
+            "uplink-learned-reachability";
+        source = "explicit-uplink";
+      };
+      proto = "upstream";
+    };
 
   buildExplicitInterfaceEntry = {
     nodeName,
@@ -427,20 +463,28 @@ let
         else
           resolvedHostUplink;
 
-      wanIntent = {
+      routes = {
         ipv4 =
-          if builtins.isList (uplinkAttrs.ipv4 or null) then
-            builtins.filter isNonEmptyString uplinkAttrs.ipv4
-          else
-            [ ];
+          builtins.map
+            (dst: explicitUplinkRoute 4 dst)
+            (
+              if uplinkAttrs ? ipv4 then
+                requireStringList "${uplinkPath}.ipv4" uplinkAttrs.ipv4
+              else
+                [ ]
+            );
         ipv6 =
-          if builtins.isList (uplinkAttrs.ipv6 or null) then
-            builtins.filter isNonEmptyString uplinkAttrs.ipv6
-          else
-            [ ];
+          builtins.map
+            (dst: explicitUplinkRoute 6 dst)
+            (
+              if uplinkAttrs ? ipv6 then
+                requireStringList "${uplinkPath}.ipv6" uplinkAttrs.ipv6
+              else
+                [ ]
+            );
       };
 
-      baseValue =
+      value =
         {
           runtimeTarget = targetId;
           logicalNode = nodeName;
@@ -448,19 +492,27 @@ let
           sourceKind = "wan";
           runtimeIfName = runtimeIfName;
           renderedIfName = runtimeIfName;
-          addr4 = null;
-          addr6 = null;
-          routes = {
-            ipv4 = [ ];
-            ipv6 = [ ];
-          };
+          addr4 = uplinkAttrs.addr4 or null;
+          addr6 = uplinkAttrs.addr6 or null;
+          inherit routes;
           backingRef = {
             kind = "link";
             id = "uplink::${enterpriseName}.${siteName}::${uplinkName}";
             name = uplinkName;
           };
           upstream = uplinkName;
-          wan = wanIntent;
+          wan = {
+            ipv4 =
+              if uplinkAttrs ? ipv4 then
+                requireStringList "${uplinkPath}.ipv4" uplinkAttrs.ipv4
+              else
+                [ ];
+            ipv6 =
+              if uplinkAttrs ? ipv6 then
+                requireStringList "${uplinkPath}.ipv6" uplinkAttrs.ipv6
+              else
+                [ ];
+          };
         }
         // (
           if validatedHostUplink != null then
@@ -490,90 +542,30 @@ let
       _requiredPortBinding
       {
         name = uplinkName;
-        value = baseValue;
+        inherit value;
       };
 
-  buildTargetInterfaces = {
-    nodeName,
-    node,
-    portBindings,
-    targetHostName,
-    targetId,
-    realizedTarget
-  }:
-    let
-      interfaces = requireAttrs "${sitePath}.nodes.${nodeName}.interfaces" (node.interfaces or null);
-      interfaceNames = sortedNames interfaces;
+  defaultPortBindings = {
+    byLink = { };
+    byLogicalInterface = { };
+    byUplink = { };
+    portDefs = { };
+  };
 
-      uplinks =
-        if builtins.isAttrs (node.uplinks or null) then
-          node.uplinks
-        else
-          { };
+  hasExplicitWANForUplink = nodeInterfaces: uplinkName:
+    builtins.any
+      (ifName:
+        let
+          iface = requireAttrs "${sitePath}.nodes[*].interfaces.${ifName}" nodeInterfaces.${ifName};
+        in
+        (iface.kind or null) == "wan"
+        && (iface.upstream or null) == uplinkName)
+      (sortedNames nodeInterfaces);
 
-      entries =
-        (builtins.map
-          (ifName:
-            buildExplicitInterfaceEntry {
-              inherit nodeName ifName portBindings targetHostName targetId realizedTarget;
-              iface = interfaces.${ifName};
-            })
-          interfaceNames)
-        ++
-        (builtins.map
-          (uplinkName:
-            buildSyntheticUplinkInterfaceEntry {
-              inherit nodeName portBindings targetHostName targetId realizedTarget;
-              uplinkName = uplinkName;
-              uplinkValue = uplinks.${uplinkName};
-            })
-          (sortedNames uplinks));
-    in
-    ensureUniqueEntries "${sitePath}.nodes.${nodeName}.effectiveRuntimeRealization.interfaces" entries;
-
-  canonicalTransit =
-    let
-      adjacenciesRaw = requireList "${sitePath}.transit.adjacencies" (transitAttrs.adjacencies or null);
-      ordering = requireStringList "${sitePath}.transit.ordering" (transitAttrs.ordering or null);
-
-      adjacencyLookup =
-        ensureUniqueEntries
-          "${sitePath}.transit.adjacencies"
-          (
-            builtins.genList
-              (idx:
-                let
-                  adjacencyPath = "${sitePath}.transit.adjacencies[${toString idx}]";
-                  adjacency = requireAttrs adjacencyPath (builtins.elemAt adjacenciesRaw idx);
-                  id = requireString "${adjacencyPath}.id" (adjacency.id or null);
-                  _kind = requireString "${adjacencyPath}.kind" (adjacency.kind or null);
-                  _endpoints = requireList "${adjacencyPath}.endpoints" (adjacency.endpoints or null);
-                in
-                {
-                  name = id;
-                  value = adjacency;
-                })
-              (builtins.length adjacenciesRaw)
-          );
-    in
-    {
-      inherit ordering;
-      adjacencies =
-        builtins.map
-          (adjacencyId:
-            if hasAttr adjacencyId adjacencyLookup then
-              adjacencyLookup.${adjacencyId}
-            else
-              failForwarding
-                "${sitePath}.transit.ordering"
-                "input contract failure: ${sitePath}.transit.ordering references unknown adjacency id '${adjacencyId}'")
-          ordering;
-    };
-
-  buildRuntimeTarget = nodeName: nodeValue:
+  buildRuntimeTarget = nodeName:
     let
       nodePath = "${sitePath}.nodes.${nodeName}";
-      node = requireAttrs nodePath nodeValue;
+      nodeAttrs = requireAttrs nodePath nodes.${nodeName};
 
       logical = {
         enterprise = enterpriseName;
@@ -581,187 +573,273 @@ let
         name = nodeName;
       };
 
-      key = logicalKey logical;
+      logicalId = logicalKey logical;
+
+      realizedTarget =
+        hasAttr logicalId realizationIndex.byLogical;
+
+      targetId =
+        if realizedTarget then
+          realizationIndex.byLogical.${logicalId}
+        else
+          nodeName;
 
       targetDef =
-        if hasAttr key realizationIndex.byLogical then
-          realizationIndex.targetDefs.${realizationIndex.byLogical.${key}}
+        if realizedTarget then
+          realizationIndex.targetDefs.${targetId}
         else
           null;
 
-      targetId =
-        if targetDef == null then
-          nodeName
-        else
-          targetDef.targetName;
-
-      realizedTarget = targetDef != null;
-
       targetHostName =
-        if targetDef == null then
-          null
+        if realizedTarget then
+          requireString "${targetDef.nodePath}.host" (targetDef.node.host or null)
         else
-          requireString "${targetDef.nodePath}.host" (targetDef.node.host or null);
+          null;
 
-      placement =
-        if targetDef == null then
-          {
-            kind = "logical-node";
-            runtimeTargetId = targetId;
-          }
+      targetPlatform =
+        if realizedTarget then
+          requireString "${targetDef.nodePath}.platform" (targetDef.node.platform or null)
         else
-          {
-            kind = "inventory-realization";
-            runtimeTargetId = targetId;
-            host = targetHostName;
-            platform = requireString "${targetDef.nodePath}.platform" (targetDef.node.platform or null);
-          }
-          // (
-            if isNonEmptyString (targetDef.node.container or null) then
-              {
-                container = targetDef.node.container;
-              }
-            else
-              { }
-          )
-          // (
-            if isNonEmptyString (targetDef.node.isolation or null) then
-              {
-                isolation = targetDef.node.isolation;
-              }
-            else
-              { }
+          null;
+
+      portBindings =
+        if realizedTarget then
+          targetDef.portBindings
+        else
+          defaultPortBindings;
+
+      nodeInterfaces = requireAttrs "${nodePath}.interfaces" (nodeAttrs.interfaces or null);
+
+      explicitEntries =
+        builtins.map
+          (ifName:
+            buildExplicitInterfaceEntry {
+              inherit nodeName ifName portBindings targetHostName targetId realizedTarget;
+              iface = nodeInterfaces.${ifName};
+            })
+          (sortedNames nodeInterfaces);
+
+      uplinkAttrs =
+        if builtins.isAttrs (nodeAttrs.uplinks or null) then
+          nodeAttrs.uplinks
+        else
+          { };
+
+      syntheticEntries =
+        builtins.map
+          (uplinkName:
+            buildSyntheticUplinkInterfaceEntry {
+              inherit nodeName uplinkName portBindings targetHostName targetId realizedTarget;
+              uplinkValue = uplinkAttrs.${uplinkName};
+            })
+          (
+            builtins.filter
+              (uplinkName: !hasExplicitWANForUplink nodeInterfaces uplinkName)
+              (sortedNames uplinkAttrs)
           );
 
-      loopback = requireAttrs "${nodePath}.loopback" (node.loopback or null);
-    in
-    {
-      name = targetId;
+      runtimeInterfaces =
+        builtins.listToAttrs (explicitEntries ++ syntheticEntries);
+
+      loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
+
+      placement =
+        if realizedTarget then
+          {
+            kind = "inventory-realization";
+            target = targetId;
+            host = targetHostName;
+            platform = targetPlatform;
+          }
+        else
+          {
+            kind = "logical-node";
+            target = nodeName;
+          };
+
       value =
         {
-          runtimeTargetId = targetId;
-          role = node.role or null;
           logicalNode = logical;
+          role = nodeAttrs.role or null;
           placement = placement;
           effectiveRuntimeRealization = {
             loopback = {
               addr4 = requireString "${nodePath}.loopback.ipv4" (loopback.ipv4 or null);
               addr6 = requireString "${nodePath}.loopback.ipv6" (loopback.ipv6 or null);
             };
-            interfaces =
-              buildTargetInterfaces {
-                inherit nodeName node targetHostName targetId realizedTarget;
-                portBindings =
-                  if targetDef == null then
-                    {
-                      byLink = { };
-                      byLogicalInterface = { };
-                      byUplink = { };
-                    }
-                  else
-                    targetDef.portBindings;
-              };
+            interfaces = runtimeInterfaces;
           };
         }
         // (
-          if builtins.isList (node.containers or null) then
+          if builtins.isAttrs (nodeAttrs.egressIntent or null) then
             {
-              availableContainers = node.containers;
+              egressIntent = nodeAttrs.egressIntent;
             }
           else
             { }
         )
         // (
-          if builtins.isAttrs (node.egressIntent or null) then
+          if builtins.isAttrs (nodeAttrs.forwardingResponsibility or null) then
             {
-              egressIntent = node.egressIntent;
+              forwardingResponsibility = nodeAttrs.forwardingResponsibility;
             }
           else
             { }
         )
         // (
-          if builtins.isList (node.forwardingFunctions or null) then
+          if builtins.isAttrs (nodeAttrs.routingAuthority or null) then
             {
-              forwardingFunctions = node.forwardingFunctions;
+              routingAuthority = nodeAttrs.routingAuthority;
             }
           else
             { }
         )
         // (
-          if builtins.isAttrs (node.forwardingResponsibility or null) then
+          if builtins.isAttrs (nodeAttrs.traversalParticipation or null) then
             {
-              forwardingResponsibility = node.forwardingResponsibility;
+              traversalParticipation = nodeAttrs.traversalParticipation;
             }
           else
             { }
         )
         // (
-          if builtins.isAttrs (node.routingAuthority or null) then
+          if builtins.isList (nodeAttrs.forwardingFunctions or null) then
             {
-              routingAuthority = node.routingAuthority;
+              forwardingFunctions = nodeAttrs.forwardingFunctions;
             }
           else
             { }
         )
         // (
-          if builtins.isAttrs (node.traversalParticipation or null) then
+          if builtins.isList (nodeAttrs.attachments or null) then
             {
-              traversalParticipation = node.traversalParticipation;
+              attachments = nodeAttrs.attachments;
+            }
+          else
+            { }
+        )
+        // (
+          if builtins.isList (nodeAttrs.containers or null) then
+            {
+              containers = nodeAttrs.containers;
+            }
+          else
+            { }
+        )
+        // (
+          if builtins.isAttrs (nodeAttrs.networks or null) then
+            {
+              networks = nodeAttrs.networks;
             }
           else
             { }
         );
+    in
+    {
+      name = targetId;
+      inherit value;
     };
 
-  baseRuntimeTargets =
-    ensureUniqueEntries
-      "${sitePath}.runtimeTargets"
-      (
-        builtins.map
-          (nodeName: buildRuntimeTarget nodeName nodes.${nodeName})
-          (sortedNames nodes)
-      );
+  initialRuntimeTargets =
+    builtins.listToAttrs (
+      builtins.map
+        buildRuntimeTarget
+        (sortedNames nodes)
+    );
 
-  defaultReachabilityProjection =
+  defaultReachability =
     deriveDefaultReachability {
       inherit sitePath siteAttrs;
-      transit = canonicalTransit;
-      runtimeTargets = baseRuntimeTargets;
+      transit = transitAttrs;
+      runtimeTargets = initialRuntimeTargets;
     };
+
+  accessAdvertisements =
+    resolveAccessAdvertisements {
+      inherit sitePath siteAttrs realizationIndex;
+      runtimeTargets = defaultReachability.runtimeTargets;
+    };
+
+  firewallIntent =
+    resolveFirewallIntent {
+      inherit sitePath siteAttrs;
+      runtimeTargets = defaultReachability.runtimeTargets;
+    };
+
+  policyEndpointBindings =
+    resolvePolicyEndpointBindings {
+      inherit sitePath siteAttrs attachments domains;
+      runtimeTargets = defaultReachability.runtimeTargets;
+    };
+
+  runtimeTargets =
+    builtins.listToAttrs (
+      builtins.map
+        (targetName:
+          let
+            target = defaultReachability.runtimeTargets.${targetName};
+          in
+          {
+            name = targetName;
+            value =
+              target
+              // (
+                if hasAttr targetName firewallIntent.natByTarget then
+                  {
+                    natIntent = firewallIntent.natByTarget.${targetName};
+                  }
+                else
+                  { }
+              )
+              // (
+                if hasAttr targetName firewallIntent.forwardingByTarget then
+                  {
+                    forwardingIntent = firewallIntent.forwardingByTarget.${targetName};
+                  }
+                else
+                  { }
+              )
+              // (
+                if hasAttr targetName accessAdvertisements then
+                  {
+                    advertisements = accessAdvertisements.${targetName};
+                  }
+                else
+                  { }
+              );
+          })
+        (sortedNames defaultReachability.runtimeTargets)
+    );
+
+  resolvedServices =
+    builtins.map
+      (serviceName: policyEndpointBindings.services.${serviceName})
+      (sortedNames policyEndpointBindings.services);
 in
 {
   siteId = requireString "${sitePath}.siteId" (siteAttrs.siteId or null);
   siteName = requireString "${sitePath}.siteName" (siteAttrs.siteName or null);
-  attachments = attachments;
   policyNodeName = requireString "${sitePath}.policyNodeName" (siteAttrs.policyNodeName or null);
-  upstreamSelectorNodeName =
-    requireString "${sitePath}.upstreamSelectorNodeName" (siteAttrs.upstreamSelectorNodeName or null);
+  upstreamSelectorNodeName = requireString "${sitePath}.upstreamSelectorNodeName" (siteAttrs.upstreamSelectorNodeName or null);
   coreNodeNames = requireStringList "${sitePath}.coreNodeNames" (siteAttrs.coreNodeNames or null);
   uplinkCoreNames = requireStringList "${sitePath}.uplinkCoreNames" (siteAttrs.uplinkCoreNames or null);
   uplinkNames = requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
-  domains = domains;
+  attachments = attachments;
+  domains = domainsValue;
   tenantPrefixOwners = tenantPrefixOwners;
-  transit = canonicalTransit;
-  runtimeTargets = defaultReachabilityProjection.runtimeTargets;
+  transit = transitAttrs;
+  runtimeTargets = runtimeTargets;
+  forwardingSemantics = defaultReachability.forwardingSemantics;
+  relations = policyEndpointBindings.relations;
+  services = resolvedServices;
+  policy =
+    policyAttrs
+    // {
+      interfaceTags = policyEndpointBindings.interfaceTags;
+      endpointBindings =
+        builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
+    };
 }
-// (
-  if communicationContract != null then
-    {
-      inherit communicationContract;
-    }
-  else
-    { }
-)
-// (
-  if policyInterfaceTags != null then
-    {
-      policy = {
-        interfaceTags = policyInterfaceTags;
-      };
-    }
-  else
-    { }
-)
 // (
   if builtins.isAttrs (siteAttrs.egressIntent or null) then
     {
@@ -771,21 +849,49 @@ in
     { }
 )
 // (
-  if builtins.isList (siteAttrs.services or null) then
+  if communicationContract != null then
     {
-      services = siteAttrs.services;
+      communicationContract = communicationContract;
     }
   else
     { }
 )
 // (
-  if builtins.isAttrs defaultReachabilityProjection.forwardingSemantics then
+  if builtins.isAttrs (siteAttrs.addressPools or null) then
     {
-      forwardingSemantics = defaultReachabilityProjection.forwardingSemantics;
+      addressPools = siteAttrs.addressPools;
     }
-  else if builtins.isAttrs (siteAttrs.forwardingSemantics or null) then
+  else
+    { }
+)
+// (
+  if builtins.isAttrs (siteAttrs.ownership or null) then
     {
-      forwardingSemantics = siteAttrs.forwardingSemantics;
+      ownership = siteAttrs.ownership;
+    }
+  else
+    { }
+)
+// (
+  if builtins.isAttrs (siteAttrs.overlayReachability or null) then
+    {
+      overlayReachability = siteAttrs.overlayReachability;
+    }
+  else
+    { }
+)
+// (
+  if builtins.isAttrs (siteAttrs.topology or null) then
+    {
+      topology = siteAttrs.topology;
+    }
+  else
+    { }
+)
+// (
+  if isNonEmptyString (siteAttrs.enterprise or null) then
+    {
+      enterprise = siteAttrs.enterprise;
     }
   else
     { }
