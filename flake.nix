@@ -40,17 +40,34 @@
             })
           ];
         };
-    in
-    {
-      lib = forAll (
-        system: {
+
+      mkSystemLib =
+        system:
+        let
+          lib = (mkPkgs system).lib;
+          buildCPM = import ./src/build-cpm.nix { inherit lib; };
+        in
+        {
           build = { input, inventory ? { } }:
             import ./src/main.nix {
-              inherit input inventory;
-              lib = (mkPkgs system).lib;
+              inherit input inventory lib;
             };
-        }
-      );
+
+          get_CPM = { input, inventory ? { } }:
+            buildCPM {
+              forwardingModel = input;
+              inherit inventory;
+            };
+
+          getCPM = { input, inventory ? { } }:
+            buildCPM {
+              forwardingModel = input;
+              inherit inventory;
+            };
+        };
+    in
+    {
+      lib = forAll mkSystemLib;
 
       packages = forAll (
         system:
@@ -110,7 +127,7 @@
               )"
 
               json="$(
-                INPUT="$INPUT" INVENTORY="$INVENTORY" nix eval --impure --json --expr "$expr"
+                INPUT="$INPUT" INVENTORY="$INVENTORY" nix eval --impure --no-write-lock-file --json --expr "$expr"
               )"
 
               gitRev="$(${pkgs.git}/bin/git rev-parse HEAD 2>/dev/null || echo "unknown")"
@@ -165,12 +182,12 @@
               FORWARDING_JSON="$(mktemp --suffix .json)"
               trap 'rm -f "$FORWARDING_JSON"' EXIT
 
-              nix run --no-warn-dirty ${network-forwarding-model}#compile-and-build-forwarding-model -- "$INPUTS_NIX" > "$FORWARDING_JSON"
+              nix run --no-warn-dirty --no-write-lock-file ${network-forwarding-model}#compile-and-build-forwarding-model -- "$INPUTS_NIX" > "$FORWARDING_JSON"
 
               if [ -n "$INVENTORY" ]; then
-                nix run --no-warn-dirty ${self}#debug -- "$FORWARDING_JSON" "$INVENTORY" "$OUTPUT"
+                nix run --no-warn-dirty --no-write-lock-file ${self}#debug -- "$FORWARDING_JSON" "$INVENTORY" "$OUTPUT"
               else
-                nix run --no-warn-dirty ${self}#debug -- "$FORWARDING_JSON" "" "$OUTPUT"
+                nix run --no-warn-dirty --no-write-lock-file ${self}#debug -- "$FORWARDING_JSON" "" "$OUTPUT"
               fi
             '';
           };
