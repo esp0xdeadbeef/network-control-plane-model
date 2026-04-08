@@ -103,8 +103,8 @@
               input,
               inventory ? { },
             }:
-            buildCPM {
-              forwardingModel = forwardingLib.buildFromCompilerInputs { inherit input; };
+            build {
+              input = forwardingLib.buildFromCompilerInputs { inherit input; };
               inherit inventory;
             };
 
