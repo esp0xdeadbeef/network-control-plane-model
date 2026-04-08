@@ -24,6 +24,25 @@
 
       forAll = f: nixpkgs.lib.genAttrs systems f;
 
+      readValue =
+        valueOrPath:
+        if builtins.isPath valueOrPath then
+          readValue (builtins.toString valueOrPath)
+        else if builtins.isString valueOrPath then
+          if valueOrPath == "" then
+            { }
+          else if builtins.match ".*\\.json$" valueOrPath != null then
+            builtins.fromJSON (builtins.readFile valueOrPath)
+          else
+            let
+              value = import valueOrPath;
+            in
+            if builtins.isFunction value then value { } else value
+        else if builtins.isFunction valueOrPath then
+          valueOrPath { }
+        else
+          valueOrPath;
+
       mkPkgs =
         system:
         let
@@ -44,30 +63,95 @@
       mkSystemLib =
         system:
         let
-          lib = (mkPkgs system).lib;
+          pkgs = mkPkgs system;
+          lib = pkgs.lib;
+
           buildCPM = import ./src/build-cpm.nix { inherit lib; };
+
+          forwardingLib =
+            if network-forwarding-model ? libBySystem then
+              network-forwarding-model.libBySystem.${system}
+            else
+              throw "network-control-plane-model: network-forwarding-model.libBySystem.${system} is required for compileAndBuild";
         in
-        {
-          build = { input, inventory ? { } }:
+        rec {
+          build =
+            {
+              input,
+              inventory ? { },
+            }:
             import ./src/main.nix {
               inherit input inventory lib;
             };
 
-          get_CPM = { input, inventory ? { } }:
+          get_CPM =
+            {
+              input,
+              inventory ? { },
+            }:
             buildCPM {
               forwardingModel = input;
               inherit inventory;
             };
 
-          getCPM = { input, inventory ? { } }:
+          getCPM = get_CPM;
+
+          readInput = readValue;
+
+          compileAndBuild =
+            {
+              input,
+              inventory ? { },
+            }:
             buildCPM {
-              forwardingModel = input;
+              forwardingModel = forwardingLib.buildFromCompilerInputs { inherit input; };
               inherit inventory;
             };
+
+          compileAndBuildFromPaths =
+            {
+              inputPath,
+              inventoryPath ? null,
+            }:
+            compileAndBuild {
+              input = readValue inputPath;
+              inventory =
+                if inventoryPath == null then
+                  { }
+                else
+                  readValue inventoryPath;
+            };
+
+          writeJSON =
+            {
+              input,
+              inventory ? { },
+              name ? "output-control-plane-model.json",
+            }:
+            pkgs.writeText name (builtins.toJSON (build { inherit input inventory; }));
+
+          writeCompileAndBuildJSON =
+            {
+              inputPath,
+              inventoryPath ? null,
+              name ? "output-control-plane-model.json",
+            }:
+            pkgs.writeText name (
+              builtins.toJSON (
+                compileAndBuildFromPaths {
+                  inherit
+                    inputPath
+                    inventoryPath
+                    ;
+                }
+              )
+            );
         };
     in
     {
       lib = forAll mkSystemLib;
+
+      libBySystem = forAll mkSystemLib;
 
       packages = forAll (
         system:
