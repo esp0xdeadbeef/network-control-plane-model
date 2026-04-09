@@ -16,8 +16,10 @@ OUTPUT="output-control-plane-model.json"
 
 
 # TEMP OVERWRITES:
-#INPUT_INVENTORY="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-core/inventory.nix"
+INPUT_INVENTORY="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-core/inventory.nix"
+INPUT_INVENTORY="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/inventory.nix"
 #INPUT="/home/deadbeef/github/nixos/library/100-fabric-routing/inputs/intent.nix"
+INPUT="/home/deadbeef/github/nixos/library/100-fabric-routing/inputs/intent.nix"
 
 
 
