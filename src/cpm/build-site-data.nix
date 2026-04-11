@@ -365,6 +365,14 @@ let
           backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
         }
         // (
+          if portBinding != null && builtins.isAttrs (portBinding.attach or null) then
+            {
+              attach = portBinding.attach;
+            }
+          else
+            { }
+        )
+        // (
           if sourceKind == "wan" then
             {
               upstream = requireString "${ifacePath}.upstream" (ifaceAttrs.upstream or null);
@@ -526,6 +534,14 @@ let
                 [ ];
           };
         }
+        // (
+          if portBinding != null && builtins.isAttrs (portBinding.attach or null) then
+            {
+              attach = portBinding.attach;
+            }
+          else
+            { }
+        )
         // (
           if validatedHostUplink != null then
             {

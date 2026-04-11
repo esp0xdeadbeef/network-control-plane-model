@@ -63,6 +63,8 @@ validate_output() {
           upstreamCore = upstream.effectiveRuntimeRealization.interfaces.p2p-core.routes;
           coreWAN = core.effectiveRuntimeRealization.interfaces.uplink0.routes;
 
+          accessP2PAttach = access.effectiveRuntimeRealization.interfaces.p2p0.attach;
+
           accessDhcp4 = builtins.elemAt access.advertisements.dhcp4 0;
           accessIpv6Ra = builtins.elemAt access.advertisements.ipv6Ra 0;
         in
@@ -80,6 +82,10 @@ validate_output() {
           && hasIPv6Via accessP2P.ipv6 "::/0" "fd00:10::1"
           && !(hasRoute accessTenant.ipv4 "0.0.0.0/0")
           && !(hasRoute accessTenant.ipv6 "::/0")
+          && accessP2PAttach.kind == "bridge"
+          && accessP2PAttach.bridge == "br-transit"
+          && accessP2PAttach.vlan == 100
+          && accessP2PAttach.parentUplink == "uplink0"
           && accessDhcp4.interface == "tenant0"
           && accessDhcp4.bindInterface == "tenant-a"
           && accessDhcp4.tenant == "tenant-a"
