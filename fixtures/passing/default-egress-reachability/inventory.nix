@@ -52,13 +52,10 @@
           dhcp4 = {
             tenant0 = {
               enabled = true;
-              id = "tenant-a";
-              subnet = "10.20.0.0/24";
               pool = {
                 start = "10.20.0.100";
                 end = "10.20.0.200";
               };
-              router = "10.20.0.1";
               dnsServers = [ "10.20.0.1" ];
               domain = "lan.";
             };
@@ -66,7 +63,6 @@
           ipv6Ra = {
             tenant0 = {
               enabled = true;
-              prefixes = [ "fd00:20::/64" ];
               rdnss = [ "fd00:20::1" ];
               dnssl = [ "lan." ];
             };
@@ -198,13 +194,10 @@
           dhcp4 = {
             tenant0 = {
               enabled = true;
-              id = "tenant-b";
-              subnet = "10.30.0.0/24";
               pool = {
                 start = "10.30.0.100";
                 end = "10.30.0.200";
               };
-              router = "10.30.0.1";
               dnsServers = [ "10.30.0.1" ];
               domain = "lan.";
             };
@@ -212,7 +205,6 @@
           ipv6Ra = {
             tenant0 = {
               enabled = true;
-              prefixes = [ "fd00:30::/64" ];
               rdnss = [ "fd00:30::1" ];
               dnssl = [ "lan." ];
             };
@@ -344,13 +336,10 @@
           dhcp4 = {
             tenant0 = {
               enabled = true;
-              id = "tenant-c";
-              subnet = "10.40.0.0/24";
               pool = {
                 start = "10.40.0.100";
                 end = "10.40.0.200";
               };
-              router = "10.40.0.1";
               dnsServers = [ "10.40.0.1" ];
               domain = "lan.";
             };
@@ -358,7 +347,6 @@
           ipv6Ra = {
             tenant0 = {
               enabled = true;
-              prefixes = [ "fd00:40::/64" ];
               rdnss = [ "fd00:40::1" ];
               dnssl = [ "lan." ];
             };

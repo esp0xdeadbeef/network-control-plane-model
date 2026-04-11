@@ -6,6 +6,7 @@ let
   inherit (helpers)
     hasAttr
     requireAttrs
+    requireList
     requireString
     requireStringList
     sortedNames
@@ -23,8 +24,37 @@ let
     else
       fallback;
 
+  isNonEmptyString = value:
+    builtins.isString value && value != "";
+
+  stripMask = addr:
+    if isNonEmptyString addr then
+      builtins.elemAt (builtins.split "/" addr) 0
+    else
+      null;
+
   failInventory = path: message:
     throw "inventory.nix update required: ${path}: ${message}";
+
+  failForwarding = path: message:
+    throw "forwarding-model update required: ${path}: ${message}";
+
+  siteDomains = requireAttrs "${sitePath}.domains" (siteAttrs.domains or null);
+
+  tenantDefinitions =
+    builtins.listToAttrs (
+      builtins.map
+        (tenant:
+          let
+            tenantAttrs = requireAttrs "${sitePath}.domains.tenants[*]" tenant;
+            tenantName = requireString "${sitePath}.domains.tenants[*].name" (tenantAttrs.name or null);
+          in
+          {
+            name = tenantName;
+            value = tenantAttrs;
+          })
+        (requireList "${sitePath}.domains.tenants" (siteDomains.tenants or null))
+    );
 
   getRuntimeTargetInterfaces = targetPath: target:
     let
@@ -87,78 +117,219 @@ let
         tenantInterfaceNames)
       true;
 
+  validateOptionalStringMatch = entryPath: fieldName: value: expected: message:
+    if value == null then
+      true
+    else
+      let
+        rendered = requireString "${entryPath}.${fieldName}" value;
+      in
+      if rendered == expected then
+        true
+      else
+        failInventory "${entryPath}.${fieldName}" message;
+
+  validateOptionalStringListMatch = entryPath: fieldName: value: expected: message:
+    if value == null then
+      true
+    else
+      let
+        rendered = requireStringList "${entryPath}.${fieldName}" value;
+      in
+      if rendered == expected then
+        true
+      else
+        failInventory "${entryPath}.${fieldName}" message;
+
+  resolveTenantAdvertisementContext = targetPath: target: interfaceName:
+    let
+      runtimeInterface = getRuntimeTargetInterface targetPath target interfaceName;
+      backingRef = attrsOrEmpty (runtimeInterface.backingRef or null);
+      tenantName =
+        if (backingRef.kind or null) == "attachment" then
+          requireString
+            "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.backingRef.name"
+            (backingRef.name or null)
+        else
+          failForwarding
+            "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.backingRef"
+            "access advertisements require an explicit tenant-backed interface realization";
+
+      tenantDefinition =
+        if hasAttr tenantName tenantDefinitions then
+          tenantDefinitions.${tenantName}
+        else
+          failForwarding
+            "${sitePath}.domains.tenants"
+            "tenant '${tenantName}' requires an explicit site.domains.tenants entry for advertisement derivation";
+    in
+    {
+      inherit runtimeInterface tenantName tenantDefinition;
+      interfaceAddr4 = stripMask (runtimeInterface.addr4 or null);
+      interfaceAddr6 = stripMask (runtimeInterface.addr6 or null);
+      tenantIPv4Prefix = tenantDefinition.ipv4 or null;
+      tenantIPv6Prefix = tenantDefinition.ipv6 or null;
+    };
+
   buildExplicitDHCP4Entry = targetDef: targetPath: target: interfaceName: entry:
     let
       entryPath = "${targetDef.nodePath}.advertisements.dhcp4.${interfaceName}";
       attrs = requireAttrs entryPath entry;
       enabled = boolOr true (attrs.enabled or null);
-      runtimeInterface = getRuntimeTargetInterface targetPath target interfaceName;
+
+      tenantContext =
+        resolveTenantAdvertisementContext targetPath target interfaceName;
+
+      routerAddress =
+        if enabled then
+          if isNonEmptyString tenantContext.interfaceAddr4 then
+            tenantContext.interfaceAddr4
+          else
+            failForwarding
+              "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.addr4"
+              "tenant interface requires explicit ipv4 address for DHCP advertisement derivation"
+        else
+          tenantContext.interfaceAddr4;
+
+      subnet =
+        if enabled then
+          if isNonEmptyString tenantContext.tenantIPv4Prefix then
+            tenantContext.tenantIPv4Prefix
+          else
+            failForwarding
+              "${sitePath}.domains.tenants"
+              "tenant '${tenantContext.tenantName}' requires explicit ipv4 prefix for DHCP advertisement derivation"
+        else
+          tenantContext.tenantIPv4Prefix;
+
+      _idMatch =
+        validateOptionalStringMatch
+          entryPath
+          "id"
+          (attrs.id or null)
+          tenantContext.tenantName
+          "must match tenant identity '${tenantContext.tenantName}' derived from the forwarding model";
+
+      _subnetMatch =
+        validateOptionalStringMatch
+          entryPath
+          "subnet"
+          (attrs.subnet or null)
+          subnet
+          "must match tenant IPv4 prefix '${subnet}' derived from the forwarding model";
+
+      _routerMatch =
+        validateOptionalStringMatch
+          entryPath
+          "router"
+          (attrs.router or null)
+          routerAddress
+          "must match realized tenant interface address '${routerAddress}'";
+
       pool =
         if enabled then
           requireAttrs "${entryPath}.pool" (attrs.pool or null)
         else
           { };
     in
-    if !enabled then
-      {
-        interface = interfaceName;
-        bindInterface =
-          requireString
-            "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
-            (runtimeInterface.runtimeIfName or null);
-        enabled = false;
-      }
-    else
-      {
-        interface = interfaceName;
-        bindInterface =
-          requireString
-            "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
-            (runtimeInterface.runtimeIfName or null);
-        tenant =
-          (attrsOrEmpty (runtimeInterface.backingRef or null)).name or null;
-        enabled = true;
-        id = requireString "${entryPath}.id" (attrs.id or null);
-        subnet = requireString "${entryPath}.subnet" (attrs.subnet or null);
-        pool = {
-          start = requireString "${entryPath}.pool.start" (pool.start or null);
-          end = requireString "${entryPath}.pool.end" (pool.end or null);
-        };
-        router = requireString "${entryPath}.router" (attrs.router or null);
-        dnsServers = requireStringList "${entryPath}.dnsServers" (attrs.dnsServers or null);
-        domain = requireString "${entryPath}.domain" (attrs.domain or null);
-      };
+    builtins.seq
+      _idMatch
+      (builtins.seq
+        _subnetMatch
+        (builtins.seq
+          _routerMatch
+          (
+            {
+              interface = interfaceName;
+              bindInterface =
+                requireString
+                  "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
+                  (tenantContext.runtimeInterface.runtimeIfName or null);
+              tenant = tenantContext.tenantName;
+              routerInterfaceAddress = routerAddress;
+              enabled = enabled;
+            }
+            // (
+              if !enabled then
+                { }
+              else
+                {
+                  id = tenantContext.tenantName;
+                  subnet = subnet;
+                  pool = {
+                    start = requireString "${entryPath}.pool.start" (pool.start or null);
+                    end = requireString "${entryPath}.pool.end" (pool.end or null);
+                  };
+                  router = routerAddress;
+                  dnsServers = requireStringList "${entryPath}.dnsServers" (attrs.dnsServers or null);
+                  domain = requireString "${entryPath}.domain" (attrs.domain or null);
+                }
+            )
+          )));
 
   buildExplicitIPv6RaEntry = targetDef: targetPath: target: interfaceName: entry:
     let
       entryPath = "${targetDef.nodePath}.advertisements.ipv6Ra.${interfaceName}";
       attrs = requireAttrs entryPath entry;
       enabled = boolOr true (attrs.enabled or null);
-      runtimeInterface = getRuntimeTargetInterface targetPath target interfaceName;
+
+      tenantContext =
+        resolveTenantAdvertisementContext targetPath target interfaceName;
+
+      routerAddress =
+        if enabled then
+          if isNonEmptyString tenantContext.interfaceAddr6 then
+            tenantContext.interfaceAddr6
+          else
+            failForwarding
+              "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.addr6"
+              "tenant interface requires explicit ipv6 address for router advertisement derivation"
+        else
+          tenantContext.interfaceAddr6;
+
+      prefixes =
+        if enabled then
+          if isNonEmptyString tenantContext.tenantIPv6Prefix then
+            [ tenantContext.tenantIPv6Prefix ]
+          else
+            failForwarding
+              "${sitePath}.domains.tenants"
+              "tenant '${tenantContext.tenantName}' requires explicit ipv6 prefix for router advertisement derivation"
+        else
+          [ ];
+
+      _prefixMatch =
+        validateOptionalStringListMatch
+          entryPath
+          "prefixes"
+          (attrs.prefixes or null)
+          prefixes
+          "must match tenant IPv6 prefix '${tenantContext.tenantIPv6Prefix}' derived from the forwarding model";
     in
-    if !enabled then
-      {
-        interface = interfaceName;
-        bindInterface =
-          requireString
-            "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
-            (runtimeInterface.runtimeIfName or null);
-        enabled = false;
-      }
-    else
-      {
-        interface = interfaceName;
-        bindInterface =
-          requireString
-            "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
-            (runtimeInterface.runtimeIfName or null);
-        tenant =
-          (attrsOrEmpty (runtimeInterface.backingRef or null)).name or null;
-        enabled = true;
-        prefixes = requireStringList "${entryPath}.prefixes" (attrs.prefixes or null);
-        rdnss = requireStringList "${entryPath}.rdnss" (attrs.rdnss or null);
-        dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
-      };
+    builtins.seq
+      _prefixMatch
+      (
+        {
+          interface = interfaceName;
+          bindInterface =
+            requireString
+              "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
+              (tenantContext.runtimeInterface.runtimeIfName or null);
+          tenant = tenantContext.tenantName;
+          routerInterfaceAddress = routerAddress;
+          enabled = enabled;
+        }
+        // (
+          if !enabled then
+            { }
+          else
+            {
+              prefixes = prefixes;
+              rdnss = requireStringList "${entryPath}.rdnss" (attrs.rdnss or null);
+              dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
+            }
+        )
+      );
 
   buildAccessTargetEntry = targetName:
     let
