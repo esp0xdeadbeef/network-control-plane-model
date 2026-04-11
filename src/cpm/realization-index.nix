@@ -155,43 +155,76 @@ let
 
       transitBridges =
         if builtins.isAttrs (host.transitBridges or null) then
-          let
-            bridges = host.transitBridges;
-            _validated =
-              builtins.map
-                (bridgeName:
-                  let
-                    bridgePath = "${hostPath}.transitBridges.${bridgeName}";
-                    bridge = requireAttrs bridgePath bridges.${bridgeName};
-                    parentUplink =
-                      requireString
-                        "${bridgePath}.parentUplink"
-                        (bridge.parentUplink or null);
-
-                    _nameCheck =
-                      if bridge ? name then
-                        if bridge.name == bridgeName then
-                          true
-                        else
-                          failInventory "${bridgePath}.name" "must equal the attribute name"
-                      else
-                        true;
-
-                    _vlanCheck =
-                      requireInt "${bridgePath}.vlan" (bridge.vlan or null);
-
-                    _parentCheck =
-                      if builtins.elem parentUplink uplinkNames then
-                        true
-                      else
-                        failInventory "${bridgePath}.parentUplink" "references unknown uplink '${parentUplink}'";
-                  in
-                  builtins.seq _nameCheck (builtins.seq _vlanCheck _parentCheck))
-                (sortedNames bridges);
-          in
-          builtins.seq _validated bridges
+          host.transitBridges
         else
           { };
+
+      bridgeByName =
+        builtins.listToAttrs (
+          (builtins.map
+            (entry: {
+              name = entry.value.bridge;
+              value = {
+                kind = "uplink";
+                bridge = entry.value.bridge;
+                uplinkName = entry.value.uplinkName;
+              };
+            })
+            uplinkDataEntries)
+          ++
+          (builtins.map
+            (bridgeName: {
+              name = bridgeName;
+              value = {
+                kind = "bridgeNetwork";
+                bridge = bridgeName;
+              };
+            })
+            (sortedNames bridgeNetworks))
+          ++
+          (builtins.map
+            (bridgeName:
+              let
+                bridgePath = "${hostPath}.transitBridges.${bridgeName}";
+                bridge = requireAttrs bridgePath transitBridges.${bridgeName};
+                parentUplink =
+                  requireString
+                    "${bridgePath}.parentUplink"
+                    (bridge.parentUplink or null);
+
+                _nameCheck =
+                  if bridge ? name then
+                    if bridge.name == bridgeName then
+                      true
+                    else
+                      failInventory "${bridgePath}.name" "must equal the attribute name"
+                  else
+                    true;
+
+                vlan =
+                  requireInt "${bridgePath}.vlan" (bridge.vlan or null);
+
+                _parentCheck =
+                  if builtins.elem parentUplink uplinkNames then
+                    true
+                  else
+                    failInventory "${bridgePath}.parentUplink" "references unknown uplink '${parentUplink}'";
+              in
+              builtins.seq
+                _nameCheck
+                (builtins.seq
+                  _parentCheck
+                  {
+                    name = bridgeName;
+                    value = {
+                      kind = "transitBridge";
+                      bridge = bridgeName;
+                      vlan = vlan;
+                      parentUplink = parentUplink;
+                    };
+                  }))
+            (sortedNames transitBridges))
+        );
 
       hostBridgeSet =
         builtins.listToAttrs (
@@ -200,17 +233,14 @@ let
               name = bridgeName;
               value = true;
             })
-            (
-              (sortedNames uplinkByBridge)
-              ++ (sortedNames bridgeNetworks)
-              ++ (sortedNames transitBridges)
-            )
+            (sortedNames bridgeByName)
         );
     in
     {
       hostPath = hostPath;
       uplinkByName = uplinkByName;
       uplinkByBridge = uplinkByBridge;
+      bridgeByName = bridgeByName;
       hostBridgeSet = hostBridgeSet;
     };
 
@@ -291,27 +321,29 @@ let
       interfaceAddr6 =
         requireOptionalString "${portPath}.interface.addr6" (interface.addr6 or null);
 
-      _attachKind =
-        requireString "${portPath}.attach.kind" (attach.kind or null);
-
-      _attachBridge =
-        if (attach.kind or null) == "bridge" then
-          let
-            bridge =
-              requireString "${portPath}.attach.bridge" (attach.bridge or null);
-          in
-          if hasAttr bridge hostData.hostBridgeSet then
-            true
-          else
-            failInventory "${portPath}.attach.bridge" "references unknown bridge '${bridge}'"
-        else
-          true;
-
       bridgeName =
         if builtins.isString (attach.bridge or null) && attach.bridge != "" then
           attach.bridge
         else
           null;
+
+      attachBridge =
+        if bridgeName != null && hasAttr bridgeName hostData.bridgeByName then
+          hostData.bridgeByName.${bridgeName}
+        else
+          null;
+
+      _attachKind =
+        requireString "${portPath}.attach.kind" (attach.kind or null);
+
+      _attachBridge =
+        if (attach.kind or null) == "bridge" then
+          if attachBridge != null then
+            true
+          else
+            failInventory "${portPath}.attach.bridge" "references unknown bridge '${bridgeName}'"
+        else
+          true;
 
       explicitHostUplinkName =
         if builtins.isString (port.upstream or null) && port.upstream != "" then
@@ -328,8 +360,12 @@ let
           failInventory "${portPath}.upstream" "references unknown host uplink '${explicitHostUplinkName}'";
 
       bridgeResolvedHostUplink =
-        if bridgeName != null && hasAttr bridgeName hostData.uplinkByBridge then
-          hostData.uplinkByBridge.${bridgeName}
+        if attachBridge == null then
+          null
+        else if (attachBridge.kind or null) == "uplink" then
+          hostData.uplinkByName.${attachBridge.uplinkName}
+        else if (attachBridge.kind or null) == "transitBridge" then
+          hostData.uplinkByName.${attachBridge.parentUplink}
         else
           null;
 
@@ -353,6 +389,31 @@ let
           failInventory "${portPath}.upstream" "uplink realization must explicitly resolve a host uplink via upstream or attach.bridge"
         else
           true;
+
+      resolvedAttach =
+        if (attach.kind or null) == "bridge" && attachBridge != null then
+          attach
+          // {
+            bridge = bridgeName;
+          }
+          // (
+            if attachBridge ? vlan then
+              {
+                vlan = attachBridge.vlan;
+              }
+            else
+              { }
+          )
+          // (
+            if attachBridge ? parentUplink then
+              {
+                parentUplink = attachBridge.parentUplink;
+              }
+            else
+              { }
+          )
+        else
+          attach;
     in
     builtins.seq
       _attachKind
@@ -369,7 +430,7 @@ let
                 runtimeIfName = runtimeIfName;
                 interfaceAddr4 = interfaceAddr4;
                 interfaceAddr6 = interfaceAddr6;
-                attach = attach;
+                attach = resolvedAttach;
                 hostUplink = hostUplink;
                 selector = selector;
               };
