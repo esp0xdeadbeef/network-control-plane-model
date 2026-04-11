@@ -41,6 +41,12 @@ let
     else
       failInventory path "must be an integer";
 
+  requireOptionalString = path: value:
+    if value == null then
+      null
+    else
+      requireString path value;
+
   validateFamilyMethod = path: value:
     let
       attrs = requireAttrs path value;
@@ -279,6 +285,12 @@ let
       runtimeIfName =
         requireString "${portPath}.interface.name" (interface.name or null);
 
+      interfaceAddr4 =
+        requireOptionalString "${portPath}.interface.addr4" (interface.addr4 or null);
+
+      interfaceAddr6 =
+        requireOptionalString "${portPath}.interface.addr6" (interface.addr6 or null);
+
       _attachKind =
         requireString "${portPath}.attach.kind" (attach.kind or null);
 
@@ -355,6 +367,8 @@ let
               value = {
                 runtimePort = portName;
                 runtimeIfName = runtimeIfName;
+                interfaceAddr4 = interfaceAddr4;
+                interfaceAddr6 = interfaceAddr6;
                 attach = attach;
                 hostUplink = hostUplink;
                 selector = selector;

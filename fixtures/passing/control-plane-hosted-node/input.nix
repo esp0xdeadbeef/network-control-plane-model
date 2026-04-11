@@ -2,7 +2,7 @@
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 8;
+      schemaVersion = 9;
     };
   };
 

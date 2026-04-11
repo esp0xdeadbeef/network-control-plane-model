@@ -405,8 +405,8 @@ let
       enterprise = requireAttrs context "enterprise" (inputAttrs.enterprise or null);
       enterpriseNames = lib.attrNamesSorted enterprise;
     in
-    if schemaVersion != 8 then
-      fail context "unsupported forwarding model schema version '${toString schemaVersion}' (expected 8)"
+    if schemaVersion != 9 then
+      fail context "unsupported forwarding model schema version '${toString schemaVersion}' (expected 9)"
     else
       forceAll (
         builtins.map

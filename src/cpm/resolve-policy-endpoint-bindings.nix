@@ -104,6 +104,15 @@ let
   siteUplinkNames =
     requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
 
+  declaredExternalNames =
+    builtins.map
+      (external:
+        let
+          externalAttrs = requireAttrs "${sitePath}.domains.externals[*]" external;
+        in
+        requireString "${sitePath}.domains.externals[*].name" (externalAttrs.name or null))
+      domains.externals;
+
   attachmentsByTenant =
     builtins.foldl'
       (acc: attachment:
@@ -179,7 +188,7 @@ let
       { }
       (sortedNames runtimeTargets);
 
-  runtimeExternalBindingsByUplink =
+  runtimeExternalBindingsByName =
     builtins.foldl'
       (acc: targetName:
         let
@@ -204,21 +213,51 @@ let
                 requireAttrs
                   "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}"
                   interfaces.${ifName};
-              uplinkName = iface.upstream or null;
+              backingRef = attrsOrEmpty (iface.backingRef or null);
+              sourceKind = iface.sourceKind or null;
             in
-            if (iface.sourceKind or null) != "wan" || !isNonEmptyString uplinkName then
-              inner
+            if sourceKind == "wan" then
+              let
+                externalName = iface.upstream or null;
+              in
+              if !isNonEmptyString externalName then
+                inner
+              else
+                appendListValue inner externalName {
+                  runtimeTarget = targetName;
+                  logicalNode = nodeName;
+                  sourceInterface = ifName;
+                  runtimeInterface =
+                    requireString
+                      "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName"
+                      (iface.runtimeIfName or null);
+                  sourceKind = "wan";
+                  externalName = externalName;
+                  uplink = externalName;
+                  exit = (egressIntent.exit or false) == true;
+                }
+            else if sourceKind == "overlay" then
+              let
+                externalName = backingRef.name or null;
+              in
+              if !isNonEmptyString externalName then
+                inner
+              else
+                appendListValue inner externalName {
+                  runtimeTarget = targetName;
+                  logicalNode = nodeName;
+                  sourceInterface = ifName;
+                  runtimeInterface =
+                    requireString
+                      "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName"
+                      (iface.runtimeIfName or null);
+                  sourceKind = "overlay";
+                  externalName = externalName;
+                  overlay = externalName;
+                  exit = false;
+                }
             else
-              appendListValue inner uplinkName {
-                runtimeTarget = targetName;
-                logicalNode = nodeName;
-                sourceInterface = ifName;
-                runtimeInterface =
-                  requireString
-                    "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName"
-                    (iface.runtimeIfName or null);
-                exit = (egressIntent.exit or false) == true;
-              })
+              inner)
           acc
           (sortedNames interfaces))
       { }
@@ -293,7 +332,9 @@ let
   externalNames =
     uniqueStrings (
       siteUplinkNames
+      ++ declaredExternalNames
       ++ relationExternalNames
+      ++ (sortedNames runtimeExternalBindingsByName)
     );
 
   serviceNames =
@@ -352,28 +393,55 @@ let
   externalBindings =
     builtins.listToAttrs (
       builtins.map
-        (uplinkName:
+        (externalName:
           let
             runtimeBindingList =
-              if hasAttr uplinkName runtimeExternalBindingsByUplink then
-                runtimeExternalBindingsByUplink.${uplinkName}
+              if hasAttr externalName runtimeExternalBindingsByName then
+                runtimeExternalBindingsByName.${externalName}
               else
                 [ ];
 
+            hasRuntimeWANBinding =
+              builtins.any
+                (binding: (binding.sourceKind or null) == "wan")
+                runtimeBindingList;
+
+            hasRuntimeOverlayBinding =
+              builtins.any
+                (binding: (binding.sourceKind or null) == "overlay")
+                runtimeBindingList;
+
+            isDeclaredUplink =
+              builtins.elem externalName siteUplinkNames;
+
             _requiredBinding =
-              if hasAttr uplinkName relationExternalSet && runtimeBindingList == [ ] then
-                failForwarding
-                  "${sitePath}.uplinkNames"
-                  "canonical policy endpoint binding for uplink '${uplinkName}' requires an explicit realized WAN binding"
+              if hasAttr externalName relationExternalSet && runtimeBindingList == [ ] then
+                if isDeclaredUplink then
+                  failForwarding
+                    "${sitePath}.uplinkNames"
+                    "canonical policy endpoint binding for uplink '${externalName}' requires an explicit realized WAN binding"
+                else
+                  failForwarding
+                    "${sitePath}.nodes"
+                    "canonical policy endpoint binding for external '${externalName}' requires an explicit realized overlay or WAN binding"
               else
                 true;
           in
           builtins.seq
             _requiredBinding
             {
-              name = uplinkName;
+              name = externalName;
               value = {
-                uplinks = [ uplinkName ];
+                uplinks =
+                  if isDeclaredUplink || hasRuntimeWANBinding then
+                    [ externalName ]
+                  else
+                    [ ];
+                overlays =
+                  if hasRuntimeOverlayBinding then
+                    [ externalName ]
+                  else
+                    [ ];
                 runtimeBindings = runtimeBindingList;
               };
             })

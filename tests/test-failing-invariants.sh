@@ -82,13 +82,13 @@ EOF
 
 run_case \
   "unsupported-schema-version" \
-  "unsupported forwarding model schema version '9' (expected 8)" \
+  "unsupported forwarding model schema version '8' (expected 9)" \
   "$(cat <<'EOF'
 {
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 9;
+      schemaVersion = 8;
     };
   };
 
@@ -112,7 +112,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 8;
+      schemaVersion = 9;
     };
   };
 
@@ -142,7 +142,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 8;
+      schemaVersion = 9;
     };
   };
 
@@ -365,7 +365,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 8;
+      schemaVersion = 9;
     };
   };
 
@@ -517,7 +517,7 @@ run_case \
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 8;
+      schemaVersion = 9;
     };
   };
 

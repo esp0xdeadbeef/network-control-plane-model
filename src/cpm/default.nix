@@ -20,9 +20,14 @@ let
       inherit helpers inventory;
     };
 
+  endpointInventoryIndex =
+    import ./inventory-endpoint-index.nix {
+      inherit helpers inventory;
+    };
+
   buildSiteData =
     import ./build-site-data.nix {
-      inherit lib helpers realizationIndex;
+      inherit lib helpers realizationIndex endpointInventoryIndex;
     };
 
   enterpriseRoot =
@@ -66,7 +71,7 @@ let
     );
 
   cpm = {
-    version = 1;
+    version = 2;
     data = cpmData;
   };
 

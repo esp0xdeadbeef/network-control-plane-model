@@ -85,12 +85,30 @@ validate_output() {
           && accessDhcp4.tenant == "tenant-a"
           && accessDhcp4.id == "tenant-a"
           && accessDhcp4.subnet == "10.20.0.0/24"
-          && accessDhcp4.routerInterfaceAddress == "10.20.0.1"
           && accessDhcp4.router == "10.20.0.1"
+          && accessDhcp4.routerAddress == "10.20.0.1"
+          && accessDhcp4.routerInterfaceAddress == "10.20.0.1"
+          && accessDhcp4.authoritativeRouterAddress == "10.20.0.1"
+          && accessDhcp4.routerInterface.logicalInterface == "tenant0"
+          && accessDhcp4.routerInterface.bindInterface == "tenant-a"
+          && accessDhcp4.routerInterface.tenant == "tenant-a"
+          && accessDhcp4.routerInterface.address4 == "10.20.0.1"
+          && accessDhcp4.routerInterface.address6 == "fd00:20::1"
+          && accessDhcp4.routerInterface.subnet4 == "10.20.0.0/24"
+          && accessDhcp4.routerInterface.subnet6 == "fd00:20::/64"
           && accessIpv6Ra.interface == "tenant0"
           && accessIpv6Ra.bindInterface == "tenant-a"
           && accessIpv6Ra.tenant == "tenant-a"
+          && accessIpv6Ra.routerAddress == "fd00:20::1"
           && accessIpv6Ra.routerInterfaceAddress == "fd00:20::1"
+          && accessIpv6Ra.authoritativeRouterAddress == "fd00:20::1"
+          && accessIpv6Ra.routerInterface.logicalInterface == "tenant0"
+          && accessIpv6Ra.routerInterface.bindInterface == "tenant-a"
+          && accessIpv6Ra.routerInterface.tenant == "tenant-a"
+          && accessIpv6Ra.routerInterface.address4 == "10.20.0.1"
+          && accessIpv6Ra.routerInterface.address6 == "fd00:20::1"
+          && accessIpv6Ra.routerInterface.subnet4 == "10.20.0.0/24"
+          && accessIpv6Ra.routerInterface.subnet6 == "fd00:20::/64"
           && accessIpv6Ra.prefixes == [ "fd00:20::/64" ]
       ' >/dev/null || fail "FAIL ${name}: validation failed"
       echo "PASS ${name}"
@@ -201,7 +219,7 @@ minimal_input='{
   meta = {
     networkForwardingModel = {
       name = "network-forwarding-model";
-      schemaVersion = 8;
+      schemaVersion = 9;
     };
   };
 

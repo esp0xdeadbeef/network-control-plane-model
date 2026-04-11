@@ -1,6 +1,6 @@
 { helpers }:
 
-{ sitePath, siteAttrs, runtimeTargets, realizationIndex }:
+{ sitePath, siteAttrs, runtimeTargets, realizationIndex, endpointInventoryIndex }:
 
 let
   inherit (helpers)
@@ -26,6 +26,15 @@ let
 
   isNonEmptyString = value:
     builtins.isString value && value != "";
+
+  isIPv4Literal = value:
+    builtins.isString value
+    && builtins.match "([0-9]{1,3}\\.){3}[0-9]{1,3}" value != null;
+
+  isIPv6Literal = value:
+    builtins.isString value
+    && builtins.match ".*:.*" value != null
+    && builtins.match "[0-9A-Fa-f:.]+" value != null;
 
   stripMask = addr:
     if isNonEmptyString addr then
@@ -129,6 +138,23 @@ let
       else
         failInventory "${entryPath}.${fieldName}" message;
 
+  validateOptionalResolvedIPv4Match = entryPath: fieldName: value: expected: message:
+    if value == null then
+      true
+    else
+      let
+        rendered = requireString "${entryPath}.${fieldName}" value;
+        resolved =
+          if rendered == "router-self" then
+            expected
+          else
+            rendered;
+      in
+      if resolved == expected then
+        true
+      else
+        failInventory "${entryPath}.${fieldName}" message;
+
   validateOptionalStringListMatch = entryPath: fieldName: value: expected: message:
     if value == null then
       true
@@ -140,6 +166,74 @@ let
         true
       else
         failInventory "${entryPath}.${fieldName}" message;
+
+  resolveAdvertisedIPv4Target = entryPath: fieldName: routerAddress: index: rawValue:
+    let
+      address =
+        requireString
+          "${entryPath}.${fieldName}[${toString index}]"
+          rawValue;
+    in
+    if address == "router-self" then
+      routerAddress
+    else if address == routerAddress || hasAttr address endpointInventoryIndex.byIPv4 || isIPv4Literal address then
+      address
+    else
+      failInventory
+        "${entryPath}.${fieldName}[${toString index}]"
+        "must resolve to an explicit router interface address, 'router-self', inventory.endpoints IPv4 address, or explicit IPv4 literal; '${address}' is not explicitly defined";
+
+  resolveAdvertisedIPv6Target = entryPath: fieldName: routerAddress: index: rawValue:
+    let
+      address =
+        requireString
+          "${entryPath}.${fieldName}[${toString index}]"
+          rawValue;
+    in
+    if address == "router-self" then
+      routerAddress
+    else if address == routerAddress || hasAttr address endpointInventoryIndex.byIPv6 || isIPv6Literal address then
+      address
+    else
+      failInventory
+        "${entryPath}.${fieldName}[${toString index}]"
+        "must resolve to an explicit router interface address, 'router-self', inventory.endpoints IPv6 address, or explicit IPv6 literal; '${address}' is not explicitly defined";
+
+  resolveAdvertisedIPv4Targets = entryPath: fieldName: routerAddress: rawValue:
+    let
+      configured =
+        if rawValue == null then
+          [ "router-self" ]
+        else
+          requireStringList "${entryPath}.${fieldName}" rawValue;
+    in
+    builtins.genList
+      (idx:
+        resolveAdvertisedIPv4Target
+          entryPath
+          fieldName
+          routerAddress
+          idx
+          (builtins.elemAt configured idx))
+      (builtins.length configured);
+
+  resolveAdvertisedIPv6Targets = entryPath: fieldName: routerAddress: rawValue:
+    let
+      configured =
+        if rawValue == null then
+          [ "router-self" ]
+        else
+          requireStringList "${entryPath}.${fieldName}" rawValue;
+    in
+    builtins.genList
+      (idx:
+        resolveAdvertisedIPv6Target
+          entryPath
+          fieldName
+          routerAddress
+          idx
+          (builtins.elemAt configured idx))
+      (builtins.length configured);
 
   resolveTenantAdvertisementContext = targetPath: target: interfaceName:
     let
@@ -219,18 +313,58 @@ let
           "must match tenant IPv4 prefix '${subnet}' derived from the forwarding model";
 
       _routerMatch =
-        validateOptionalStringMatch
+        validateOptionalResolvedIPv4Match
           entryPath
           "router"
           (attrs.router or null)
           routerAddress
-          "must match realized tenant interface address '${routerAddress}'";
+          "must match realized tenant interface address '${routerAddress}' or use 'router-self'";
 
       pool =
         if enabled then
           requireAttrs "${entryPath}.pool" (attrs.pool or null)
         else
           { };
+
+      dnsServers =
+        if enabled then
+          resolveAdvertisedIPv4Targets
+            entryPath
+            "dnsServers"
+            routerAddress
+            (attrs.dnsServers or null)
+        else
+          [ ];
+
+      bindInterface =
+        requireString
+          "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
+          (tenantContext.runtimeInterface.runtimeIfName or null);
+
+      routerInterface =
+        {
+          interface = interfaceName;
+          bindInterface = bindInterface;
+          tenant = tenantContext.tenantName;
+          address4 = routerAddress;
+          subnet4 = subnet;
+        }
+        // (
+          if isNonEmptyString tenantContext.interfaceAddr6 then
+            {
+              address6 = tenantContext.interfaceAddr6;
+            }
+          else
+            { }
+        )
+        // (
+          if isNonEmptyString tenantContext.tenantIPv6Prefix then
+            {
+              subnet6 = tenantContext.tenantIPv6Prefix;
+            }
+          else
+            { }
+        );
     in
     builtins.seq
       _idMatch
@@ -238,34 +372,30 @@ let
         _subnetMatch
         (builtins.seq
           _routerMatch
-          (
-            {
-              interface = interfaceName;
-              bindInterface =
-                requireString
-                  "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
-                  (tenantContext.runtimeInterface.runtimeIfName or null);
-              tenant = tenantContext.tenantName;
-              routerInterfaceAddress = routerAddress;
-              enabled = enabled;
-            }
-            // (
-              if !enabled then
-                { }
-              else
-                {
-                  id = tenantContext.tenantName;
-                  subnet = subnet;
-                  pool = {
-                    start = requireString "${entryPath}.pool.start" (pool.start or null);
-                    end = requireString "${entryPath}.pool.end" (pool.end or null);
-                  };
-                  router = routerAddress;
-                  dnsServers = requireStringList "${entryPath}.dnsServers" (attrs.dnsServers or null);
-                  domain = requireString "${entryPath}.domain" (attrs.domain or null);
-                }
-            )
-          )));
+          ({
+            interface = interfaceName;
+            bindInterface = bindInterface;
+            tenant = tenantContext.tenantName;
+            routerInterfaceAddress = routerAddress;
+            enabled = enabled;
+            inherit routerInterface;
+          }
+          // (
+            if !enabled then
+              { }
+            else
+              {
+                id = tenantContext.tenantName;
+                subnet = subnet;
+                pool = {
+                  start = requireString "${entryPath}.pool.start" (pool.start or null);
+                  end = requireString "${entryPath}.pool.end" (pool.end or null);
+                };
+                router = routerAddress;
+                dnsServers = dnsServers;
+                domain = requireString "${entryPath}.domain" (attrs.domain or null);
+              }
+          ))));
 
   buildExplicitIPv6RaEntry = targetDef: targetPath: target: interfaceName: entry:
     let
@@ -305,31 +435,67 @@ let
           (attrs.prefixes or null)
           prefixes
           "must match tenant IPv6 prefix '${tenantContext.tenantIPv6Prefix}' derived from the forwarding model";
+
+      rdnss =
+        if enabled then
+          resolveAdvertisedIPv6Targets
+            entryPath
+            "rdnss"
+            routerAddress
+            (attrs.rdnss or null)
+        else
+          [ ];
+
+      bindInterface =
+        requireString
+          "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
+          (tenantContext.runtimeInterface.runtimeIfName or null);
+
+      routerInterface =
+        {
+          interface = interfaceName;
+          bindInterface = bindInterface;
+          tenant = tenantContext.tenantName;
+          address6 = routerAddress;
+          subnet6 = tenantContext.tenantIPv6Prefix;
+        }
+        // (
+          if isNonEmptyString tenantContext.interfaceAddr4 then
+            {
+              address4 = tenantContext.interfaceAddr4;
+            }
+          else
+            { }
+        )
+        // (
+          if isNonEmptyString tenantContext.tenantIPv4Prefix then
+            {
+              subnet4 = tenantContext.tenantIPv4Prefix;
+            }
+          else
+            { }
+        );
     in
     builtins.seq
       _prefixMatch
-      (
-        {
-          interface = interfaceName;
-          bindInterface =
-            requireString
-              "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
-              (tenantContext.runtimeInterface.runtimeIfName or null);
-          tenant = tenantContext.tenantName;
-          routerInterfaceAddress = routerAddress;
-          enabled = enabled;
-        }
-        // (
-          if !enabled then
-            { }
-          else
-            {
-              prefixes = prefixes;
-              rdnss = requireStringList "${entryPath}.rdnss" (attrs.rdnss or null);
-              dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
-            }
-        )
-      );
+      ({
+        interface = interfaceName;
+        bindInterface = bindInterface;
+        tenant = tenantContext.tenantName;
+        routerInterfaceAddress = routerAddress;
+        enabled = enabled;
+        inherit routerInterface;
+      }
+      // (
+        if !enabled then
+          { }
+        else
+          {
+            prefixes = prefixes;
+            rdnss = rdnss;
+            dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
+          }
+      ));
 
   buildAccessTargetEntry = targetName:
     let
