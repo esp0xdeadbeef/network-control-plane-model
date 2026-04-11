@@ -505,13 +505,10 @@ run_case \
           dhcp4 = {
             tenant0 = {
               enabled = true;
-              id = "tenant-a";
-              subnet = "10.20.0.0/24";
               pool = {
                 start = "10.20.0.100";
                 end = "10.20.0.200";
               };
-              router = "10.20.0.1";
               dnsServers = [ "10.20.0.1" ];
               domain = "lan.";
             };
@@ -519,12 +516,30 @@ run_case \
           ipv6Ra = {
             tenant0 = {
               enabled = true;
-              prefixes = [ "fd00:20::/64" ];
               rdnss = [ "fd00:20::1" ];
               dnssl = [ "lan." ];
             };
           };
         };
+')"
+
+run_case \
+  "access-dhcp-router-must-match-realized-interface-address" \
+  "must match realized tenant interface address '10.20.0.1'" \
+  "$(cat "${repo_root}/fixtures/passing/default-egress-reachability/input.nix")" \
+  "$(mutate_inventory replace \
+'              pool = {
+                start = "10.20.0.100";
+                end = "10.20.0.200";
+              };
+              dnsServers = [ "10.20.0.1" ];
+' \
+'              pool = {
+                start = "10.20.0.100";
+                end = "10.20.0.200";
+              };
+              router = "10.20.0.254";
+              dnsServers = [ "10.20.0.1" ];
 ')"
 
 exit "${status}"

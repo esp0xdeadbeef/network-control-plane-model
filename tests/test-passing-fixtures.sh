@@ -62,6 +62,9 @@ validate_output() {
           policyUpstream = policy.effectiveRuntimeRealization.interfaces.p2p-upstream.routes;
           upstreamCore = upstream.effectiveRuntimeRealization.interfaces.p2p-core.routes;
           coreWAN = core.effectiveRuntimeRealization.interfaces.uplink0.routes;
+
+          accessDhcp4 = builtins.elemAt access.advertisements.dhcp4 0;
+          accessIpv6Ra = builtins.elemAt access.advertisements.ipv6Ra 0;
         in
           access.routingAuthority.defaultReachability
           && policy.routingAuthority.defaultReachability
@@ -77,6 +80,18 @@ validate_output() {
           && hasIPv6Via accessP2P.ipv6 "::/0" "fd00:10::1"
           && !(hasRoute accessTenant.ipv4 "0.0.0.0/0")
           && !(hasRoute accessTenant.ipv6 "::/0")
+          && accessDhcp4.interface == "tenant0"
+          && accessDhcp4.bindInterface == "tenant-a"
+          && accessDhcp4.tenant == "tenant-a"
+          && accessDhcp4.id == "tenant-a"
+          && accessDhcp4.subnet == "10.20.0.0/24"
+          && accessDhcp4.routerInterfaceAddress == "10.20.0.1"
+          && accessDhcp4.router == "10.20.0.1"
+          && accessIpv6Ra.interface == "tenant0"
+          && accessIpv6Ra.bindInterface == "tenant-a"
+          && accessIpv6Ra.tenant == "tenant-a"
+          && accessIpv6Ra.routerInterfaceAddress == "fd00:20::1"
+          && accessIpv6Ra.prefixes == [ "fd00:20::/64" ]
       ' >/dev/null || fail "FAIL ${name}: validation failed"
       echo "PASS ${name}"
       ;;
