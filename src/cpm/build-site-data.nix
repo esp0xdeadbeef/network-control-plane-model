@@ -1,4 +1,4 @@
-{ lib, helpers, realizationIndex }:
+{ lib, helpers, realizationIndex, endpointInventoryIndex }:
 
 { enterpriseName, siteName, site }:
 
@@ -317,6 +317,18 @@ let
         else
           sourceIfName;
 
+      effectiveAddr4 =
+        if portBinding != null && isNonEmptyString (portBinding.interfaceAddr4 or null) then
+          portBinding.interfaceAddr4
+        else
+          ifaceAttrs.addr4 or null;
+
+      effectiveAddr6 =
+        if portBinding != null && isNonEmptyString (portBinding.interfaceAddr6 or null) then
+          portBinding.interfaceAddr6
+        else
+          ifaceAttrs.addr6 or null;
+
       resolvedHostUplink =
         if portBinding != null && builtins.isAttrs (portBinding.hostUplink or null) then
           portBinding.hostUplink
@@ -347,8 +359,8 @@ let
           sourceKind = sourceKind;
           runtimeIfName = runtimeIfName;
           renderedIfName = runtimeIfName;
-          addr4 = ifaceAttrs.addr4 or null;
-          addr6 = ifaceAttrs.addr6 or null;
+          addr4 = effectiveAddr4;
+          addr6 = effectiveAddr6;
           routes = requireRoutes ifacePath (ifaceAttrs.routes or null);
           backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
         }
@@ -737,7 +749,7 @@ let
     in
     {
       name = targetId;
-      inherit value;
+      value = value;
     };
 
   initialRuntimeTargets =
@@ -756,7 +768,7 @@ let
 
   accessAdvertisements =
     resolveAccessAdvertisements {
-      inherit sitePath siteAttrs realizationIndex;
+      inherit sitePath siteAttrs realizationIndex endpointInventoryIndex;
       runtimeTargets = defaultReachability.runtimeTargets;
     };
 

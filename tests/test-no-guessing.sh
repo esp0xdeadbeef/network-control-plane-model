@@ -509,14 +509,14 @@ run_case \
                 start = "10.20.0.100";
                 end = "10.20.0.200";
               };
-              dnsServers = [ "10.20.0.1" ];
+              dnsServers = [ "router-self" ];
               domain = "lan.";
             };
           };
           ipv6Ra = {
             tenant0 = {
               enabled = true;
-              rdnss = [ "fd00:20::1" ];
+              rdnss = [ "router-self" ];
               dnssl = [ "lan." ];
             };
           };
@@ -532,14 +532,14 @@ run_case \
                 start = "10.20.0.100";
                 end = "10.20.0.200";
               };
-              dnsServers = [ "10.20.0.1" ];
+              dnsServers = [ "router-self" ];
 ' \
 '              pool = {
                 start = "10.20.0.100";
                 end = "10.20.0.200";
               };
               router = "10.20.0.254";
-              dnsServers = [ "10.20.0.1" ];
+              dnsServers = [ "router-self" ];
 ')"
 
 exit "${status}"
