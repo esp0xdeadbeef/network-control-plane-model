@@ -22,10 +22,29 @@ validate_output() {
   local validator="$3"
 
   case "${validator}" in
-    minimal-forwarding-model-v7)
+    minimal-forwarding-model)
       OUTPUT_JSON="${output_json}" nix eval --impure --expr '
-        let data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
-        in data.control_plane_model.version == 1
+        let
+          data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+          cpm = data.control_plane_model;
+          site = cpm.data.acme.ams;
+          policy = site.runtimeTargets.policy-runtime;
+          upstream = site.runtimeTargets.upstream-runtime;
+        in
+          builtins.isAttrs cpm
+          && builtins.isAttrs cpm.data
+          && builtins.isAttrs site
+          && site.siteId == "ams"
+          && site.siteName == "acme.ams"
+          && builtins.isAttrs site.runtimeTargets
+          && builtins.isAttrs policy
+          && builtins.isAttrs upstream
+          && policy.logicalNode.enterprise == "acme"
+          && policy.logicalNode.site == "ams"
+          && policy.logicalNode.name == "policy-1"
+          && upstream.logicalNode.enterprise == "acme"
+          && upstream.logicalNode.site == "ams"
+          && upstream.logicalNode.name == "upstream-1"
       ' >/dev/null || fail "FAIL ${name}: validation failed"
       echo "PASS ${name}"
       ;;
@@ -322,8 +341,8 @@ hosted_inventory="$minimal_inventory"
 default_egress_input="$(cat "${repo_root}/fixtures/passing/default-egress-reachability/input.nix")"
 default_egress_inventory="$(cat "${repo_root}/fixtures/passing/default-egress-reachability/inventory.nix")"
 
-run_case "minimal-forwarding-model-v7" "$minimal_input" "$minimal_inventory" "minimal-forwarding-model-v7"
-run_case "minimal-forwarding-model-v7-pppoe" "$pppoe_input" "$minimal_inventory" "minimal-forwarding-model-v7-pppoe"
+run_case "minimal-forwarding-model" "$minimal_input" "$minimal_inventory" "minimal-forwarding-model"
+run_case "minimal-forwarding-model-pppoe" "$pppoe_input" "$minimal_inventory" "minimal-forwarding-model-pppoe"
 run_case "hosted-runtime-targets" "$hosted_input" "$hosted_inventory" "hosted-runtime-targets"
 run_case "default-egress-reachability" "$default_egress_input" "$default_egress_inventory" "default-egress-reachability"
 
