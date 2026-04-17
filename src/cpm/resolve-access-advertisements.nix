@@ -343,7 +343,7 @@ let
 
       routerInterface =
         {
-          interface = interfaceName;
+          logicalInterface = interfaceName;
           bindInterface = bindInterface;
           tenant = tenantContext.tenantName;
           address4 = routerAddress;
@@ -376,7 +376,10 @@ let
             interface = interfaceName;
             bindInterface = bindInterface;
             tenant = tenantContext.tenantName;
+            router = routerAddress;
+            routerAddress = routerAddress;
             routerInterfaceAddress = routerAddress;
+            authoritativeRouterAddress = routerAddress;
             enabled = enabled;
             inherit routerInterface;
           }
@@ -391,7 +394,6 @@ let
                   start = requireString "${entryPath}.pool.start" (pool.start or null);
                   end = requireString "${entryPath}.pool.end" (pool.end or null);
                 };
-                router = routerAddress;
                 dnsServers = dnsServers;
                 domain = requireString "${entryPath}.domain" (attrs.domain or null);
               }
@@ -453,7 +455,7 @@ let
 
       routerInterface =
         {
-          interface = interfaceName;
+          logicalInterface = interfaceName;
           bindInterface = bindInterface;
           tenant = tenantContext.tenantName;
           address6 = routerAddress;
@@ -482,7 +484,9 @@ let
         interface = interfaceName;
         bindInterface = bindInterface;
         tenant = tenantContext.tenantName;
+        routerAddress = routerAddress;
         routerInterfaceAddress = routerAddress;
+        authoritativeRouterAddress = routerAddress;
         enabled = enabled;
         inherit routerInterface;
       }

@@ -71,7 +71,7 @@ let
     );
 
   cpm = {
-    version = 2;
+    version = 1;
     data = cpmData;
   };
 
