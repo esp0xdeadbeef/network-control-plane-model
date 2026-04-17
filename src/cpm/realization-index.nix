@@ -4,36 +4,15 @@ let
   inherit (helpers)
     ensureUniqueEntries
     hasAttr
-    logicalKey
+    isNonEmptyString
     optionalAttrs
     requireAttrs
     requireString
-    sortedNames;
+    sortedNames
+    ;
 
   failInventory = path: message:
     throw "inventory.nix update required: ${path}: ${message}";
-
-  inventoryRoot = optionalAttrs inventory;
-  deploymentRoot = optionalAttrs (inventoryRoot.deployment or null);
-  realizationRoot = optionalAttrs (inventoryRoot.realization or null);
-
-  _legacyFabric =
-    if inventoryRoot ? fabric then
-      failInventory "inventory.fabric" "legacy inventory.fabric is not supported; use inventory.realization.nodes"
-    else
-      true;
-
-  _legacyDeploymentHost =
-    if deploymentRoot ? host then
-      failInventory "inventory.deployment.host" "legacy deployment.host is not supported; use inventory.deployment.hosts"
-    else
-      true;
-
-  _legacyRealizationLinks =
-    if realizationRoot ? links then
-      failInventory "inventory.realization.links" "legacy realization.links is not supported; declare selectors directly in inventory.realization.nodes.<target>.ports"
-    else
-      true;
 
   requireInt = path: value:
     if builtins.isInt value then
@@ -41,519 +20,524 @@ let
     else
       failInventory path "must be an integer";
 
-  requireOptionalString = path: value:
-    if value == null then
-      null
-    else
-      requireString path value;
+  inventoryRoot = optionalAttrs inventory;
 
-  validateFamilyMethod = path: value:
+  deployment =
+    requireAttrs
+      "inventory.deployment"
+      (inventoryRoot.deployment or { });
+
+  hostsRoot =
+    requireAttrs
+      "inventory.deployment.hosts"
+      (deployment.hosts or { });
+
+  realization =
+    requireAttrs
+      "inventory.realization"
+      (inventoryRoot.realization or { });
+
+  nodesRoot =
+    requireAttrs
+      "inventory.realization.nodes"
+      (realization.nodes or { });
+
+  buildHostUplinkIndex = hostPath: host:
     let
-      attrs = requireAttrs path value;
-    in
-    requireString "${path}.method" (attrs.method or null);
-
-  buildHostData = hostName: hostValue:
-    let
-      hostPath = "inventory.deployment.hosts.${hostName}";
-      host = requireAttrs hostPath hostValue;
-      uplinks = requireAttrs "${hostPath}.uplinks" (host.uplinks or null);
-      uplinkNames = sortedNames uplinks;
-
-      uplinkDataEntries =
-        builtins.map
-          (uplinkName:
-            let
-              uplinkPath = "${hostPath}.uplinks.${uplinkName}";
-              uplink = requireAttrs uplinkPath uplinks.${uplinkName};
-              parent = requireString "${uplinkPath}.parent" (uplink.parent or null);
-              bridge = requireString "${uplinkPath}.bridge" (uplink.bridge or null);
-
-              _modeCheck =
-                if builtins.isString (uplink.mode or null) && uplink.mode != "" then
-                  requireString "${uplinkPath}.mode" uplink.mode
-                else
-                  true;
-
-              _vlanCheck =
-                if (uplink.mode or null) == "vlan" then
-                  requireInt "${uplinkPath}.vlan" (uplink.vlan or null)
-                else
-                  true;
-
-              _ipv4Check =
-                if builtins.isAttrs (uplink.ipv4 or null) then
-                  validateFamilyMethod "${uplinkPath}.ipv4" uplink.ipv4
-                else
-                  true;
-
-              _ipv6Check =
-                if builtins.isAttrs (uplink.ipv6 or null) then
-                  validateFamilyMethod "${uplinkPath}.ipv6" uplink.ipv6
-                else
-                  true;
-
-              value = {
-                uplinkName = uplinkName;
-                bridge = bridge;
-                ipv4 =
-                  if builtins.isAttrs (uplink.ipv4 or null) then
-                    uplink.ipv4
-                  else
-                    null;
-                ipv6 =
-                  if builtins.isAttrs (uplink.ipv6 or null) then
-                    uplink.ipv6
-                  else
-                    null;
-              };
-            in
-            builtins.seq
-              parent
-              (builtins.seq
-                _modeCheck
-                (builtins.seq
-                  _vlanCheck
-                  (builtins.seq
-                    _ipv4Check
-                    (builtins.seq
-                      _ipv6Check
-                      {
-                        name = uplinkName;
-                        value = value;
-                      })))))
-          uplinkNames;
-
-      uplinkByName =
-        builtins.listToAttrs uplinkDataEntries;
-
-      uplinkByBridge =
-        ensureUniqueEntries
-          "${hostPath}.uplinks[*].bridge"
-          (
-            builtins.map
-              (entry: {
-                name = entry.value.bridge;
-                value = entry.value;
-              })
-              uplinkDataEntries
-          );
-
-      bridgeNetworks =
-        if builtins.isAttrs (host.bridgeNetworks or null) then
-          let
-            networks = host.bridgeNetworks;
-            _validated =
-              builtins.map
-                (bridgeName:
-                  requireAttrs "${hostPath}.bridgeNetworks.${bridgeName}" networks.${bridgeName})
-                (sortedNames networks);
-          in
-          builtins.seq _validated networks
+      uplinks =
+        if builtins.isAttrs (host.uplinks or null) then
+          requireAttrs "${hostPath}.uplinks" host.uplinks
         else
           { };
+    in
+    builtins.listToAttrs (
+      builtins.map
+        (uplinkName:
+          let
+            uplinkPath = "${hostPath}.uplinks.${uplinkName}";
+            uplink = requireAttrs uplinkPath uplinks.${uplinkName};
+          in
+          {
+            name = uplinkName;
+            value =
+              {
+                uplinkName = uplinkName;
+                name = uplinkName;
+                parent = requireString "${uplinkPath}.parent" (uplink.parent or null);
+                bridge = requireString "${uplinkPath}.bridge" (uplink.bridge or null);
+              }
+              // (
+                if builtins.isAttrs (uplink.ipv4 or null) then
+                  { ipv4 = uplink.ipv4; }
+                else
+                  { }
+              )
+              // (
+                if builtins.isAttrs (uplink.ipv6 or null) then
+                  { ipv6 = uplink.ipv6; }
+                else
+                  { }
+              );
+          })
+        (sortedNames uplinks)
+    );
 
+  buildTransitBridgeIndex = hostPath: uplinkIndex: host:
+    let
       transitBridges =
         if builtins.isAttrs (host.transitBridges or null) then
-          host.transitBridges
+          requireAttrs "${hostPath}.transitBridges" host.transitBridges
+        else
+          { };
+    in
+    builtins.listToAttrs (
+      builtins.map
+        (bridgeName:
+          let
+            bridgePath = "${hostPath}.transitBridges.${bridgeName}";
+            bridge = requireAttrs bridgePath transitBridges.${bridgeName};
+            parentUplink =
+              requireString
+                "${bridgePath}.parentUplink"
+                (bridge.parentUplink or null);
+
+            _nameCheck =
+              if bridge ? name then
+                if bridge.name == bridgeName then
+                  true
+                else
+                  failInventory "${bridgePath}.name" "must equal the attribute name"
+              else
+                true;
+
+            vlan =
+              requireInt "${bridgePath}.vlan" (bridge.vlan or null);
+
+            _parentCheck =
+              if hasAttr parentUplink uplinkIndex then
+                true
+              else
+                failInventory "${bridgePath}.parentUplink" "references unknown uplink '${parentUplink}'";
+          in
+          builtins.seq
+            _nameCheck
+            (builtins.seq
+              _parentCheck
+              {
+                name = bridgeName;
+                value = {
+                  kind = "transitBridge";
+                  bridge = bridgeName;
+                  vlan = vlan;
+                  parentUplink = parentUplink;
+                };
+              }))
+        (sortedNames transitBridges)
+    );
+
+  buildGenericBridgeIndex = hostPath: host:
+    let
+      bridgeNetworks =
+        if builtins.isAttrs (host.bridgeNetworks or null) then
+          requireAttrs "${hostPath}.bridgeNetworks" host.bridgeNetworks
+        else
+          { };
+    in
+    builtins.listToAttrs (
+      builtins.map
+        (bridgeName:
+          let
+            bridgePath = "${hostPath}.bridgeNetworks.${bridgeName}";
+            bridge = requireAttrs bridgePath bridgeNetworks.${bridgeName};
+          in
+          {
+            name = bridgeName;
+            value = {
+              kind = "bridgeNetwork";
+              bridge = bridgeName;
+            }
+            // (
+              if isNonEmptyString (bridge.parentUplink or null) then
+                { parentUplink = bridge.parentUplink; }
+              else
+                { }
+            )
+            // (
+              if builtins.isInt (bridge.vlan or null) then
+                { vlan = bridge.vlan; }
+              else
+                { }
+            );
+          })
+        (sortedNames bridgeNetworks)
+    );
+
+  buildUplinkBridgeIndex = uplinkIndex:
+    builtins.listToAttrs (
+      builtins.map
+        (uplinkName:
+          let
+            uplink = uplinkIndex.${uplinkName};
+          in
+          {
+            name = uplink.bridge;
+            value = {
+              kind = "uplinkBridge";
+              bridge = uplink.bridge;
+              parentUplink = uplinkName;
+            };
+          })
+        (sortedNames uplinkIndex)
+    );
+
+  mergeBridgeIndexes = indexes:
+    ensureUniqueEntries
+      "inventory.deployment.hosts.*.(transitBridges|bridgeNetworks|uplinks[*].bridge)"
+      (builtins.concatLists (
+        builtins.map
+          (attrs:
+            builtins.map
+              (name: {
+                inherit name;
+                value = attrs.${name};
+              })
+              (sortedNames attrs))
+          indexes
+      ));
+
+  buildHostIndex = hostName:
+    let
+      hostPath = "inventory.deployment.hosts.${hostName}";
+      host = requireAttrs hostPath hostsRoot.${hostName};
+
+      uplinks = buildHostUplinkIndex hostPath host;
+      transitBridges = buildTransitBridgeIndex hostPath uplinks host;
+      bridgeNetworks = buildGenericBridgeIndex hostPath host;
+      uplinkBridges = buildUplinkBridgeIndex uplinks;
+      bridges = mergeBridgeIndexes [ transitBridges bridgeNetworks uplinkBridges ];
+    in
+    {
+      name = hostName;
+      value = {
+        uplinks = uplinks;
+        bridges = bridges;
+      };
+    };
+
+  hostIndex =
+    builtins.listToAttrs (
+      builtins.map
+        buildHostIndex
+        (sortedNames hostsRoot)
+    );
+
+  resolveHostUplinkFromBridge = targetHostName: portPath: bridgeName:
+    let
+      hostDef =
+        if hasAttr targetHostName hostIndex then
+          hostIndex.${targetHostName}
+        else
+          failInventory "inventory.deployment.hosts.${targetHostName}" "missing host definition for realized target";
+
+      bridgeDef =
+        if hasAttr bridgeName hostDef.bridges then
+          hostDef.bridges.${bridgeName}
+        else
+          failInventory "${portPath}.attach.bridge" "references unknown host bridge '${bridgeName}'";
+
+      parentUplink = bridgeDef.parentUplink or null;
+    in
+    if isNonEmptyString parentUplink then
+      if hasAttr parentUplink hostDef.uplinks then
+        hostDef.uplinks.${parentUplink}
+      else
+        failInventory "${portPath}.attach.bridge" "resolved parent uplink '${parentUplink}' is not declared on host '${targetHostName}'"
+    else
+      null;
+
+  normalizeAttach = targetHostName: attachPath: attach:
+    let
+      attachAttrs = requireAttrs attachPath attach;
+      kind = requireString "${attachPath}.kind" (attachAttrs.kind or null);
+    in
+    if kind != "bridge" then
+      failInventory "${attachPath}.kind" "only bridge attachment is supported"
+    else
+      let
+        bridgeName = requireString "${attachPath}.bridge" (attachAttrs.bridge or null);
+        hostDef =
+          if hasAttr targetHostName hostIndex then
+            hostIndex.${targetHostName}
+          else
+            failInventory "inventory.deployment.hosts.${targetHostName}" "missing host definition for realized target";
+        bridgeDef =
+          if hasAttr bridgeName hostDef.bridges then
+            hostDef.bridges.${bridgeName}
+          else
+            failInventory "${attachPath}.bridge" "references unknown host bridge '${bridgeName}'";
+      in
+      {
+        kind = "bridge";
+        bridge = bridgeName;
+      }
+      // (
+        if builtins.isInt (bridgeDef.vlan or null) then
+          { vlan = bridgeDef.vlan; }
+        else
+          { }
+      )
+      // (
+        if isNonEmptyString (bridgeDef.parentUplink or null) then
+          { parentUplink = bridgeDef.parentUplink; }
+        else
+          { }
+      );
+
+  normalizeContainerBinding = targetPath: containerName: container:
+    let
+      containerPath = "${targetPath}.containers.${containerName}";
+      containerAttrs = requireAttrs containerPath container;
+      runtimeName =
+        requireString "${containerPath}.runtimeName" (containerAttrs.runtimeName or null);
+    in
+    {
+      name = containerName;
+      value = {
+        logicalName = containerName;
+        runtimeName = runtimeName;
+      };
+    };
+
+  normalizePortBinding = targetPath: targetHostName: portName: port:
+    let
+      portPath = "${targetPath}.ports.${portName}";
+      portAttrs = requireAttrs portPath port;
+
+      interfaceAttrs =
+        requireAttrs "${portPath}.interface" (portAttrs.interface or null);
+
+      runtimeIfName =
+        requireString "${portPath}.interface.name" (interfaceAttrs.name or null);
+
+      attach =
+        if builtins.isAttrs (portAttrs.attach or null) then
+          normalizeAttach targetHostName "${portPath}.attach" portAttrs.attach
+        else
+          null;
+
+      interfaceAddr4 =
+        if isNonEmptyString (interfaceAttrs.addr4 or null) then
+          interfaceAttrs.addr4
+        else
+          null;
+
+      interfaceAddr6 =
+        if isNonEmptyString (interfaceAttrs.addr6 or null) then
+          interfaceAttrs.addr6
+        else
+          null;
+
+      selector =
+        if isNonEmptyString (portAttrs.link or null) then
+          {
+            kind = "link";
+            key = portAttrs.link;
+          }
+        else if isNonEmptyString (portAttrs.logicalInterface or null) then
+          {
+            kind = "logicalInterface";
+            key = portAttrs.logicalInterface;
+          }
+        else if (portAttrs.external or false) == true then
+          {
+            kind = "uplink";
+            key = requireString "${portPath}.uplink" (portAttrs.uplink or null);
+          }
+        else if isNonEmptyString (portAttrs.uplink or null) then
+          {
+            kind = "uplink";
+            key = portAttrs.uplink;
+          }
+        else
+          failInventory
+            portPath
+            "port must declare exactly one selector via link, logicalInterface, or uplink/external";
+
+      hostUplink =
+        if selector.kind == "uplink" && attach != null then
+          resolveHostUplinkFromBridge targetHostName portPath attach.bridge
+        else if selector.kind == "uplink" then
+          let
+            hostDef =
+              if hasAttr targetHostName hostIndex then
+                hostIndex.${targetHostName}
+              else
+                failInventory "inventory.deployment.hosts.${targetHostName}" "missing host definition for realized target";
+            uplinkName = selector.key;
+          in
+          if hasAttr uplinkName hostDef.uplinks then
+            hostDef.uplinks.${uplinkName}
+          else
+            null
+        else if attach != null then
+          resolveHostUplinkFromBridge targetHostName portPath attach.bridge
+        else
+          null;
+    in
+    {
+      name = portName;
+      value =
+        {
+          selector = selector;
+          runtimeIfName = runtimeIfName;
+        }
+        // (
+          if attach != null then
+            { attach = attach; }
+          else
+            { }
+        )
+        // (
+          if interfaceAddr4 != null then
+            { interfaceAddr4 = interfaceAddr4; }
+          else
+            { }
+        )
+        // (
+          if interfaceAddr6 != null then
+            { interfaceAddr6 = interfaceAddr6; }
+          else
+            { }
+        )
+        // (
+          if hostUplink != null then
+            { hostUplink = hostUplink; }
+          else
+            { }
+        );
+    };
+
+  buildSelectorIndex = targetPath: portDefs: kind:
+    ensureUniqueEntries
+      "${targetPath}.ports"
+      (
+        builtins.filter
+          (entry: entry != null)
+          (builtins.map
+            (portName:
+              let
+                portDef = portDefs.${portName};
+              in
+              if portDef.selector.kind == kind then
+                {
+                  name = portDef.selector.key;
+                  value = portDef;
+                }
+              else
+                null)
+            (sortedNames portDefs))
+      );
+
+  buildTargetDef = targetName:
+    let
+      targetPath = "inventory.realization.nodes.${targetName}";
+      target = requireAttrs targetPath nodesRoot.${targetName};
+
+      targetHostName =
+        requireString "${targetPath}.host" (target.host or null);
+
+      _hostExists =
+        if hasAttr targetHostName hostIndex then
+          true
+        else
+          failInventory "${targetPath}.host" "references unknown deployment host '${targetHostName}'";
+
+      platform =
+        requireString "${targetPath}.platform" (target.platform or null);
+
+      logicalNode =
+        requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
+
+      logical = {
+        enterprise =
+          requireString "${targetPath}.logicalNode.enterprise" (logicalNode.enterprise or null);
+        site =
+          requireString "${targetPath}.logicalNode.site" (logicalNode.site or null);
+        name =
+          requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
+      };
+
+      ports =
+        if builtins.isAttrs (target.ports or null) then
+          requireAttrs "${targetPath}.ports" target.ports
         else
           { };
 
-      bridgeByName =
-        builtins.listToAttrs (
-          (builtins.map
-            (entry: {
-              name = entry.value.bridge;
-              value = {
-                kind = "uplink";
-                bridge = entry.value.bridge;
-                uplinkName = entry.value.uplinkName;
-              };
-            })
-            uplinkDataEntries)
-          ++
-          (builtins.map
-            (bridgeName: {
-              name = bridgeName;
-              value = {
-                kind = "bridgeNetwork";
-                bridge = bridgeName;
-              };
-            })
-            (sortedNames bridgeNetworks))
-          ++
-          (builtins.map
-            (bridgeName:
-              let
-                bridgePath = "${hostPath}.transitBridges.${bridgeName}";
-                bridge = requireAttrs bridgePath transitBridges.${bridgeName};
-                parentUplink =
-                  requireString
-                    "${bridgePath}.parentUplink"
-                    (bridge.parentUplink or null);
-
-                _nameCheck =
-                  if bridge ? name then
-                    if bridge.name == bridgeName then
-                      true
-                    else
-                      failInventory "${bridgePath}.name" "must equal the attribute name"
-                  else
-                    true;
-
-                vlan =
-                  requireInt "${bridgePath}.vlan" (bridge.vlan or null);
-
-                _parentCheck =
-                  if builtins.elem parentUplink uplinkNames then
-                    true
-                  else
-                    failInventory "${bridgePath}.parentUplink" "references unknown uplink '${parentUplink}'";
-              in
-              builtins.seq
-                _nameCheck
-                (builtins.seq
-                  _parentCheck
-                  {
-                    name = bridgeName;
-                    value = {
-                      kind = "transitBridge";
-                      bridge = bridgeName;
-                      vlan = vlan;
-                      parentUplink = parentUplink;
-                    };
-                  }))
-            (sortedNames transitBridges))
-        );
-
-      hostBridgeSet =
-        builtins.listToAttrs (
-          builtins.map
-            (bridgeName: {
-              name = bridgeName;
-              value = true;
-            })
-            (sortedNames bridgeByName)
-        );
-    in
-    {
-      hostPath = hostPath;
-      uplinkByName = uplinkByName;
-      uplinkByBridge = uplinkByBridge;
-      bridgeByName = bridgeByName;
-      hostBridgeSet = hostBridgeSet;
-    };
-
-  deploymentHostsRaw =
-    if builtins.isAttrs (deploymentRoot.hosts or null) then
-      deploymentRoot.hosts
-    else
-      { };
-
-  deploymentHosts =
-    builtins.seq
-      _legacyDeploymentHost
-      (builtins.listToAttrs (
-        builtins.map
-          (hostName: {
-            name = hostName;
-            value = buildHostData hostName deploymentHostsRaw.${hostName};
-          })
-          (sortedNames deploymentHostsRaw)
-      ));
-
-  selectPortTarget = portPath: port:
-    let
-      linkValue =
-        if builtins.isString (port.link or null) && port.link != "" then
-          port.link
-        else
-          null;
-
-      logicalInterfaceValue =
-        if builtins.isString (port.logicalInterface or null) && port.logicalInterface != "" then
-          port.logicalInterface
-        else
-          null;
-
-      uplinkValue =
-        if builtins.isString (port.uplink or null) && port.uplink != "" then
-          port.uplink
-        else
-          null;
-
-      hostUplinkValue =
-        if builtins.isString (port.upstream or null) && port.upstream != "" then
-          port.upstream
-        else
-          null;
-
-      selectors =
-        builtins.filter
-          (selector: selector != null)
-          [
-            (if logicalInterfaceValue != null then { kind = "logicalInterface"; key = logicalInterfaceValue; } else null)
-            (if uplinkValue != null then { kind = "uplink"; key = uplinkValue; } else null)
-            (if linkValue != null && hostUplinkValue != null && uplinkValue == null then { kind = "uplink"; key = linkValue; } else null)
-            (if linkValue != null && hostUplinkValue == null then { kind = "link"; key = linkValue; } else null)
-          ];
-    in
-    if builtins.length selectors != 1 then
-      failInventory portPath "must declare exactly one of link, logicalInterface, uplink"
-    else
-      builtins.elemAt selectors 0;
-
-  normalizePortBinding = nodePath: hostData: portName: portValue:
-    let
-      portPath = "${nodePath}.ports.${portName}";
-      port = requireAttrs portPath portValue;
-
-      selector = selectPortTarget portPath port;
-      attach = requireAttrs "${portPath}.attach" (port.attach or null);
-      interface = requireAttrs "${portPath}.interface" (port.interface or null);
-
-      runtimeIfName =
-        requireString "${portPath}.interface.name" (interface.name or null);
-
-      interfaceAddr4 =
-        requireOptionalString "${portPath}.interface.addr4" (interface.addr4 or null);
-
-      interfaceAddr6 =
-        requireOptionalString "${portPath}.interface.addr6" (interface.addr6 or null);
-
-      bridgeName =
-        if builtins.isString (attach.bridge or null) && attach.bridge != "" then
-          attach.bridge
-        else
-          null;
-
-      attachBridge =
-        if bridgeName != null && hasAttr bridgeName hostData.bridgeByName then
-          hostData.bridgeByName.${bridgeName}
-        else
-          null;
-
-      _attachKind =
-        requireString "${portPath}.attach.kind" (attach.kind or null);
-
-      _attachBridge =
-        if (attach.kind or null) == "bridge" then
-          if attachBridge != null then
-            true
-          else
-            failInventory "${portPath}.attach.bridge" "references unknown bridge '${bridgeName}'"
-        else
-          true;
-
-      explicitHostUplinkName =
-        if builtins.isString (port.upstream or null) && port.upstream != "" then
-          port.upstream
-        else
-          null;
-
-      explicitHostUplink =
-        if explicitHostUplinkName == null then
-          null
-        else if hasAttr explicitHostUplinkName hostData.uplinkByName then
-          hostData.uplinkByName.${explicitHostUplinkName}
-        else
-          failInventory "${portPath}.upstream" "references unknown host uplink '${explicitHostUplinkName}'";
-
-      bridgeResolvedHostUplink =
-        if attachBridge == null then
-          null
-        else if (attachBridge.kind or null) == "uplink" then
-          hostData.uplinkByName.${attachBridge.uplinkName}
-        else if (attachBridge.kind or null) == "transitBridge" then
-          hostData.uplinkByName.${attachBridge.parentUplink}
-        else
-          null;
-
-      _hostUplinkBridgeMatch =
-        if explicitHostUplink != null && bridgeResolvedHostUplink != null then
-          if explicitHostUplink.uplinkName == bridgeResolvedHostUplink.uplinkName then
-            true
-          else
-            failInventory "${portPath}.upstream" "does not match host uplink resolved from attach.bridge '${bridgeName}'"
-        else
-          true;
-
-      hostUplink =
-        if explicitHostUplink != null then
-          explicitHostUplink
-        else
-          bridgeResolvedHostUplink;
-
-      _uplinkHostBinding =
-        if selector.kind == "uplink" && hostUplink == null then
-          failInventory "${portPath}.upstream" "uplink realization must explicitly resolve a host uplink via upstream or attach.bridge"
-        else
-          true;
-
-      resolvedAttach =
-        if (attach.kind or null) == "bridge" && attachBridge != null then
-          attach
-          // {
-            bridge = bridgeName;
-          }
-          // (
-            if attachBridge ? vlan then
-              {
-                vlan = attachBridge.vlan;
-              }
-            else
-              { }
-          )
-          // (
-            if attachBridge ? parentUplink then
-              {
-                parentUplink = attachBridge.parentUplink;
-              }
-            else
-              { }
-          )
-        else
-          attach;
-    in
-    builtins.seq
-      _attachKind
-      (builtins.seq
-        _attachBridge
-        (builtins.seq
-          _hostUplinkBridgeMatch
-          (builtins.seq
-            _uplinkHostBinding
-            {
-              name = portName;
-              value = {
-                runtimePort = portName;
-                runtimeIfName = runtimeIfName;
-                interfaceAddr4 = interfaceAddr4;
-                interfaceAddr6 = interfaceAddr6;
-                attach = resolvedAttach;
-                hostUplink = hostUplink;
-                selector = selector;
-              };
-            })));
-
-  buildPortBindings = nodePath: hostData: ports:
-    let
       portDefs =
         builtins.listToAttrs (
           builtins.map
             (portName:
-              normalizePortBinding nodePath hostData portName ports.${portName})
+              normalizePortBinding targetPath targetHostName portName ports.${portName})
             (sortedNames ports)
         );
 
-      insertBinding = acc: portName:
-        let
-          binding = portDefs.${portName};
-          selector = binding.selector;
-          bucketName =
-            if selector.kind == "link" then
-              "byLink"
-            else if selector.kind == "logicalInterface" then
-              "byLogicalInterface"
-            else
-              "byUplink";
-
-          existingBucket = acc.${bucketName};
-        in
-        if hasAttr selector.key existingBucket then
-          failInventory "${nodePath}.ports.${portName}" "selector '${selector.kind}=${selector.key}' is realized more than once on the same runtime target"
+      containers =
+        if builtins.isAttrs (target.containers or null) then
+          requireAttrs "${targetPath}.containers" target.containers
         else
-          acc
-          // {
-            ${bucketName} =
-              existingBucket
-              // {
-                ${selector.key} = binding;
-              };
-          };
+          { };
+
+      containerBindings =
+        builtins.listToAttrs (
+          builtins.map
+            (containerName:
+              normalizeContainerBinding targetPath containerName containers.${containerName})
+            (sortedNames containers)
+        );
     in
-    (builtins.foldl'
-      insertBinding
+    builtins.seq
+      _hostExists
       {
-        byLink = { };
-        byLogicalInterface = { };
-        byUplink = { };
-      }
-      (sortedNames portDefs))
-    // {
-      portDefs = portDefs;
-    };
-
-  realizationNodes =
-    if builtins.isAttrs (realizationRoot.nodes or null) then
-      realizationRoot.nodes
-    else
-      { };
-in
-builtins.seq
-  _legacyFabric
-  (builtins.seq
-    _legacyRealizationLinks
-    (builtins.foldl'
-      (acc: targetName:
-        let
-          nodePath = "inventory.realization.nodes.${targetName}";
-          node = requireAttrs nodePath realizationNodes.${targetName};
-          hostName = requireString "${nodePath}.host" (node.host or null);
-
-          hostData =
-            if hasAttr hostName deploymentHosts then
-              deploymentHosts.${hostName}
-            else
-              failInventory "${nodePath}.host" "references unknown deployment host '${hostName}'";
-
-          _platform =
-            requireString "${nodePath}.platform" (node.platform or null);
-
-          logicalNode =
-            requireAttrs "${nodePath}.logicalNode" (node.logicalNode or null);
-
-          logical = {
-            enterprise =
-              requireString "${nodePath}.logicalNode.enterprise" (logicalNode.enterprise or null);
-            site =
-              requireString "${nodePath}.logicalNode.site" (logicalNode.site or null);
-            name =
-              requireString "${nodePath}.logicalNode.name" (logicalNode.name or null);
+        name = targetName;
+        value = {
+          node = target;
+          nodePath = targetPath;
+          host = targetHostName;
+          platform = platform;
+          logical = logical;
+          portBindings = {
+            portDefs = portDefs;
+            byLink = buildSelectorIndex targetPath portDefs "link";
+            byLogicalInterface = buildSelectorIndex targetPath portDefs "logicalInterface";
+            byUplink = buildSelectorIndex targetPath portDefs "uplink";
           };
+          containerBindings = containerBindings;
+        };
+      };
 
-          key = logicalKey logical;
+  targetDefs =
+    builtins.listToAttrs (
+      builtins.map
+        buildTargetDef
+        (sortedNames nodesRoot)
+    );
 
-          ports =
-            requireAttrs "${nodePath}.ports" (node.ports or null);
-
-          portBindings =
-            buildPortBindings nodePath hostData ports;
-        in
-        if hasAttr key acc.byLogical then
-          failInventory nodePath "logical node '${key}' is realized by multiple runtime targets"
-        else
-          {
-            byLogical =
-              acc.byLogical
-              // {
-                ${key} = targetName;
-              };
-
-            targetDefs =
-              acc.targetDefs
-              // {
-                ${targetName} = {
-                  targetName = targetName;
-                  nodePath = nodePath;
-                  node = node;
-                  logical = logical;
-                  portBindings = portBindings;
-                };
-              };
-          })
-      {
-        byLogical = { };
-        targetDefs = { };
-      }
-      (sortedNames realizationNodes)))
+  byLogical =
+    ensureUniqueEntries
+      "inventory.realization.nodes.*.logicalNode"
+      (
+        builtins.map
+          (targetName:
+            let
+              logical = targetDefs.${targetName}.logical;
+            in
+            {
+              name = "${logical.enterprise}|${logical.site}|${logical.name}";
+              value = targetName;
+            })
+          (sortedNames targetDefs)
+      );
+in
+{
+  inherit targetDefs byLogical;
+}
