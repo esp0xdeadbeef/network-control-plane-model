@@ -399,23 +399,24 @@ let
         // (
           if sourceKind == "wan" && validatedHostUplink != null then
             {
-              hostUplink = {
-                name = validatedHostUplink.uplinkName or null;
-                bridge = validatedHostUplink.bridge or null;
-              };
+              hostUplink = validatedHostUplink;
             }
-            // (
-              if builtins.isAttrs (validatedHostUplink.ipv4 or null) then
-                { ipv4 = validatedHostUplink.ipv4; }
-              else
-                { }
-            )
-            // (
-              if builtins.isAttrs (validatedHostUplink.ipv6 or null) then
-                { ipv6 = validatedHostUplink.ipv6; }
-              else
-                { }
-            )
+          else
+            { }
+        )
+        // (
+          if sourceKind == "wan" && builtins.isAttrs (validatedHostUplink.ipv4 or null) then
+            {
+              ipv4 = validatedHostUplink.ipv4;
+            }
+          else
+            { }
+        )
+        // (
+          if sourceKind == "wan" && builtins.isAttrs (validatedHostUplink.ipv6 or null) then
+            {
+              ipv6 = validatedHostUplink.ipv6;
+            }
           else
             { }
         );
@@ -545,23 +546,24 @@ let
         // (
           if validatedHostUplink != null then
             {
-              hostUplink = {
-                name = validatedHostUplink.uplinkName or null;
-                bridge = validatedHostUplink.bridge or null;
-              };
+              hostUplink = validatedHostUplink;
             }
-            // (
-              if builtins.isAttrs (validatedHostUplink.ipv4 or null) then
-                { ipv4 = validatedHostUplink.ipv4; }
-              else
-                { }
-            )
-            // (
-              if builtins.isAttrs (validatedHostUplink.ipv6 or null) then
-                { ipv6 = validatedHostUplink.ipv6; }
-              else
-                { }
-            )
+          else
+            { }
+        )
+        // (
+          if builtins.isAttrs (validatedHostUplink.ipv4 or null) then
+            {
+              ipv4 = validatedHostUplink.ipv4;
+            }
+          else
+            { }
+        )
+        // (
+          if builtins.isAttrs (validatedHostUplink.ipv6 or null) then
+            {
+              ipv6 = validatedHostUplink.ipv6;
+            }
           else
             { }
         );
