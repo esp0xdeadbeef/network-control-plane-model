@@ -320,16 +320,26 @@ run_case_from_golden \
   '                  link = "wan-core";
 '
 
-run_case_from_golden \
-  "bgp-mode-without-explicit-sessions" \
-  "bgp mode requires explicit site.bgp.sessions" \
-  replace \
-  '          communicationContract = {' \
-  '          bgp = {
-            mode = "bgp";
+run_case \
+  "bgp-mode-without-explicit-asn" \
+  "bgp mode requires integer 'asn'" \
+  "$(cat "${golden_input_file}")" \
+  '{
+    controlPlane = {
+      sites = {
+        acme = {
+          ams = {
+            routing = {
+              mode = "bgp";
+              bgp = {
+                topology = "policy-rr";
+              };
+            };
           };
-
-          communicationContract = {'
+        };
+      };
+    };
+  }'
 
 run_case_from_golden \
   "missing-canonical-interface-tags" \

@@ -382,69 +382,6 @@ let
       else
         failForwarding "${sitePath}.transport.overlays" "site.transport.overlays must be an attribute set or list";
 
-  validateBGPSession = sitePath: nodeSet: sessionIndex: session:
-    let
-      sessionPath = "${sitePath}.bgp.sessions[${toString sessionIndex}]";
-      sessionAttrs = requireAttrs sessionPath session;
-      a = requireString "${sessionPath}.a" (sessionAttrs.a or null);
-      b = requireString "${sessionPath}.b" (sessionAttrs.b or null);
-
-      _nodeA =
-        if hasAttr a nodeSet then
-          true
-        else
-          failForwarding "${sessionPath}.a" "${sessionPath}.a references unknown node '${a}'";
-
-      _nodeB =
-        if hasAttr b nodeSet then
-          true
-        else
-          failForwarding "${sessionPath}.b" "${sessionPath}.b references unknown node '${b}'";
-
-      _rr =
-        if sessionAttrs ? rr then
-          let
-            rr = requireString "${sessionPath}.rr" (sessionAttrs.rr or null);
-          in
-          if hasAttr rr nodeSet then
-            true
-          else
-            failForwarding "${sessionPath}.rr" "${sessionPath}.rr references unknown node '${rr}'"
-        else
-          true;
-    in
-    builtins.seq _nodeA (builtins.seq _nodeB _rr);
-
-  validateBGP = sitePath: siteAttrs: nodeSet:
-    let
-      bgp =
-        if siteAttrs ? bgp then
-          requireAttrs "${sitePath}.bgp" siteAttrs.bgp
-        else
-          null;
-    in
-    if bgp == null then
-      true
-    else if (bgp.mode or null) != "bgp" then
-      true
-    else
-      let
-        sessions =
-          if builtins.isList (bgp.sessions or null) then
-            bgp.sessions
-          else
-            failForwarding "${sitePath}.bgp.sessions" "bgp mode requires explicit site.bgp.sessions";
-      in
-      if sessions == [ ] then
-        failForwarding "${sitePath}.bgp.sessions" "bgp mode requires non-empty site.bgp.sessions"
-      else
-        forceAll (
-          builtins.genList
-            (sessionIndex:
-              validateBGPSession sitePath nodeSet sessionIndex (builtins.elemAt sessions sessionIndex))
-            (builtins.length sessions)
-        );
-
   validateSite = enterpriseName: siteName: site:
     let
       sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
@@ -457,7 +394,6 @@ let
           requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null)
         );
       attachmentLookup = attachmentLookupForSite attachments;
-      nodeSet = makeStringSet (sortedNames nodes);
     in
     builtins.seq
       (validateTransport sitePath siteAttrs)
@@ -467,9 +403,7 @@ let
             (nodeName: validateNode sitePath attachmentLookup links uplinkNameSet nodeName nodes.${nodeName})
             (sortedNames nodes)
         ))
-        (builtins.seq
-          (validateCommunicationContract sitePath siteAttrs)
-          (validateBGP sitePath siteAttrs nodeSet)));
+        (validateCommunicationContract sitePath siteAttrs));
 
   validateEnterprises = inputAttrs:
     let

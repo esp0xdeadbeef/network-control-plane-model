@@ -122,7 +122,7 @@ This project does **not**:
 * invent missing tenant identity
 * invent missing overlay membership
 * invent missing policy tags
-* invent missing BGP peers
+* invent missing routing protocol configuration
 * invent missing uplink intent
 * generate Cisco configuration
 * generate Junos configuration
@@ -402,22 +402,23 @@ The resolved WAN interface is then rendered into the final `control_plane_model`
 
 ---
 
-# Explicit BGP session intent
+# Explicit routing protocol intent (inventory)
 
-If `site.bgp.mode = "bgp"`, then `site.bgp.sessions` is required and must be non-empty.
+Routing protocol selection is a control-plane decision and therefore belongs in `inventory.nix`
+(not in the forwarding model).
 
-Each session must declare explicit endpoint node names:
+This repository accepts:
 
-* `a`
-* `b`
+* `inventory.controlPlane.sites.<enterprise>.<site>.routing.mode = "static"` (default)
+* `inventory.controlPlane.sites.<enterprise>.<site>.routing.mode = "bgp"`
 
-Optional:
+If `routing.mode = "bgp"`, then:
 
-* `rr`
+* `inventory.controlPlane.sites.<enterprise>.<site>.routing.bgp.asn` is required (integer)
+* `inventory.controlPlane.sites.<enterprise>.<site>.routing.bgp.topology` is supported as `"policy-rr"` only (for now)
 
-Every referenced node must exist in `site.nodes`.
-
-Role-derived BGP sessions are not accepted.
+In `"policy-rr"` mode, the control-plane model deterministically constructs iBGP neighbors by
+peering every router node to the site policy node (route-reflector).
 
 ---
 
@@ -432,7 +433,7 @@ It does not infer:
 * missing tenant identity
 * missing overlay identity
 * missing policy tags
-* missing BGP peers
+* missing routing protocol configuration (mode/ASN/etc.)
 * missing uplink intent
 * missing realization coverage
 

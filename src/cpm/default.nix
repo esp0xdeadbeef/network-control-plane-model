@@ -27,7 +27,7 @@ let
 
   buildSiteData =
     import ./build-site-data.nix {
-      inherit lib helpers realizationIndex endpointInventoryIndex;
+      inherit lib helpers realizationIndex endpointInventoryIndex inventory;
     };
 
   enterpriseRoot =

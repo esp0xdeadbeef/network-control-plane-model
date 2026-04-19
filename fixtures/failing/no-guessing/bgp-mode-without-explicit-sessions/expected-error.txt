@@ -1,1 +1,1 @@
-bgp mode requires explicit site.bgp.sessions
+bgp mode requires integer 'asn'
