@@ -1,4 +1,4 @@
-{ lib, helpers, realizationIndex, endpointInventoryIndex }:
+{ lib, helpers, realizationIndex, endpointInventoryIndex, inventory ? { } }:
 
 { enterpriseName, siteName, site }:
 
@@ -104,6 +104,41 @@ let
       requireAttrs "${sitePath}.policy" siteAttrs.policy
     else
       { };
+
+  inventoryAttrs = attrsOrEmpty inventory;
+
+  # Control-plane routing decisions live in inventory (not forwarding-model).
+  siteRouting =
+    let
+      cp = attrsOrEmpty (inventoryAttrs.controlPlane or null);
+      sitesCfg = attrsOrEmpty (cp.sites or null);
+      enterpriseCfg = attrsOrEmpty (sitesCfg.${enterpriseName} or null);
+      siteCfg = attrsOrEmpty (enterpriseCfg.${siteName} or null);
+    in
+    attrsOrEmpty (siteCfg.routing or null);
+
+  routingMode =
+    let
+      v = siteRouting.mode or "static";
+    in
+    if v == "bgp" || v == "static" then v else "static";
+
+  bgpSite =
+    if routingMode == "bgp" then
+      attrsOrEmpty (siteRouting.bgp or null)
+    else
+      { };
+
+  bgpSiteAsn = bgpSite.asn or null;
+  bgpTopology = bgpSite.topology or "policy-rr";
+
+  routerRoleSet = {
+    access = true;
+    core = true;
+    downstream-selector = true;
+    policy = true;
+    upstream-selector = true;
+  };
 
   attachmentLookup =
     ensureUniqueEntries
@@ -742,10 +777,126 @@ let
         _noUnexpected
         merged);
 
+  _validateSiteRouting =
+    if routingMode == "bgp" then
+      if !builtins.isInt bgpSiteAsn then
+        failInventory "inventory.controlPlane.sites.${enterpriseName}.${siteName}.routing.bgp.asn" "bgp mode requires integer 'asn'"
+      else if bgpTopology != "policy-rr" then
+        failInventory "inventory.controlPlane.sites.${enterpriseName}.${siteName}.routing.bgp.topology" "only 'policy-rr' is supported right now"
+      else
+        true
+    else
+      true;
+
+  loopbacksByNode =
+    builtins.listToAttrs (
+      builtins.map
+        (nodeName:
+          let
+            nodePath = "${sitePath}.nodes.${nodeName}";
+            nodeAttrs = requireAttrs nodePath nodes.${nodeName};
+            loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
+          in
+          {
+            name = nodeName;
+            value = {
+              addr4 = requireString "${nodePath}.loopback.ipv4" (loopback.ipv4 or null);
+              addr6 = requireString "${nodePath}.loopback.ipv6" (loopback.ipv6 or null);
+            };
+          })
+        (sortedNames nodes)
+    );
+
+  isHostRoute4 = dst: builtins.isString dst && lib.hasSuffix "/32" dst;
+  isHostRoute6 = dst: builtins.isString dst && lib.hasSuffix "/128" dst;
+
+  filterRoutesForBgp =
+    routes:
+    let
+      routesAttrs = attrsOrEmpty routes;
+      v4 = listOrEmpty (routesAttrs.ipv4 or null);
+      v6 = listOrEmpty (routesAttrs.ipv6 or null);
+      keep4 = r:
+        let
+          dst = r.dst or null;
+          proto = r.proto or null;
+        in
+        builtins.isAttrs r
+        && builtins.isString dst
+        && (
+          dst == "0.0.0.0/0"
+          || proto == "uplink"
+          || isHostRoute4 dst
+        );
+      keep6 = r:
+        let
+          dst = r.dst or null;
+          proto = r.proto or null;
+        in
+        builtins.isAttrs r
+        && builtins.isString dst
+        && (
+          dst == "::/0"
+          || proto == "uplink"
+          || isHostRoute6 dst
+        );
+    in
+    {
+      ipv4 = builtins.filter keep4 v4;
+      ipv6 = builtins.filter keep6 v6;
+    };
+
+  bgpNeighborsForNode =
+    nodeName:
+    let
+      isRouterNodeName =
+        n:
+        let
+          nodePath = "${sitePath}.nodes.${n}";
+          nodeAttrs = requireAttrs nodePath nodes.${n};
+          roleRaw = nodeAttrs.role or null;
+          role = if builtins.isString roleRaw then roleRaw else "";
+        in
+        isNonEmptyString role && hasAttr role routerRoleSet;
+
+      routerNodeNames = builtins.filter isRouterNodeName (sortedNames nodes);
+
+      isPolicy = nodeName == policyNodeName;
+      peerNames =
+        if isPolicy then
+          builtins.filter (n: n != policyNodeName) routerNodeNames
+        else
+          [ policyNodeName ];
+    in
+    builtins.map
+      (peerName:
+        let
+          peerLoop = loopbacksByNode.${peerName};
+        in
+        {
+          peer_name = peerName;
+          peer_asn = bgpSiteAsn;
+          peer_addr4 = peerLoop.addr4;
+          peer_addr6 = peerLoop.addr6;
+          update_source = "lo";
+          route_reflector_client = isPolicy;
+        })
+      peerNames;
+
   buildRuntimeTarget = nodeName:
     let
       nodePath = "${sitePath}.nodes.${nodeName}";
       nodeAttrs = requireAttrs nodePath nodes.${nodeName};
+
+      nodeRoleRaw = nodeAttrs.role or null;
+      nodeRole = if builtins.isString nodeRoleRaw then nodeRoleRaw else "";
+
+      isBgpRouter =
+        routingMode == "bgp"
+        && isNonEmptyString nodeRole
+        && hasAttr nodeRole routerRoleSet;
+
+      effectiveRoutingMode = if isBgpRouter then "bgp" else "static";
 
       logical = {
         enterprise = enterpriseName;
@@ -821,6 +972,12 @@ let
       runtimeInterfaces =
         builtins.listToAttrs (explicitEntries ++ syntheticEntries);
 
+      effectiveRuntimeInterfaces =
+        if isBgpRouter then
+          lib.mapAttrs (_ifName: iface: iface // { routes = filterRoutesForBgp (iface.routes or { }); }) runtimeInterfaces
+        else
+          runtimeInterfaces;
+
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
 
       placement =
@@ -846,15 +1003,27 @@ let
         {
           logicalNode = logical;
           role = nodeAttrs.role or null;
+          routingMode = effectiveRoutingMode;
           placement = placement;
           effectiveRuntimeRealization = {
             loopback = {
               addr4 = requireString "${nodePath}.loopback.ipv4" (loopback.ipv4 or null);
               addr6 = requireString "${nodePath}.loopback.ipv6" (loopback.ipv6 or null);
             };
-            interfaces = runtimeInterfaces;
+            interfaces = effectiveRuntimeInterfaces;
           };
         }
+        // (
+          if isBgpRouter then
+            {
+              bgp = {
+                asn = bgpSiteAsn;
+                neighbors = bgpNeighborsForNode nodeName;
+              };
+            }
+          else
+            { }
+        )
         // (
           if runtimeContainers != [ ] then
             {
@@ -934,11 +1103,13 @@ let
     };
 
   initialRuntimeTargets =
-    builtins.listToAttrs (
-      builtins.map
-        buildRuntimeTarget
-        (sortedNames nodes)
-    );
+    builtins.seq
+      _validateSiteRouting
+      (builtins.listToAttrs (
+        builtins.map
+          buildRuntimeTarget
+          (sortedNames nodes)
+      ));
 
   defaultReachability =
     deriveDefaultReachability {
@@ -1021,6 +1192,21 @@ in
   domains = domainsValue;
   tenantPrefixOwners = tenantPrefixOwners;
   transit = transitAttrs;
+  routing =
+    {
+      mode = routingMode;
+    }
+    // (
+      if routingMode == "bgp" then
+        {
+          bgp = {
+            asn = bgpSiteAsn;
+            topology = bgpTopology;
+          };
+        }
+      else
+        { }
+    );
   runtimeTargets = runtimeTargets;
   forwardingSemantics = defaultReachability.forwardingSemantics;
   relations = policyEndpointBindings.relations;
