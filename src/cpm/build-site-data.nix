@@ -57,6 +57,14 @@ let
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
   siteAttrs = requireAttrs sitePath site;
 
+  siteId = requireString "${sitePath}.siteId" (siteAttrs.siteId or null);
+  siteDisplayName = requireString "${sitePath}.siteName" (siteAttrs.siteName or null);
+  policyNodeName = requireString "${sitePath}.policyNodeName" (siteAttrs.policyNodeName or null);
+  upstreamSelectorNodeName = requireString "${sitePath}.upstreamSelectorNodeName" (siteAttrs.upstreamSelectorNodeName or null);
+  coreNodeNames = requireStringList "${sitePath}.coreNodeNames" (siteAttrs.coreNodeNames or null);
+  uplinkCoreNames = requireStringList "${sitePath}.uplinkCoreNames" (siteAttrs.uplinkCoreNames or null);
+  uplinkNames = requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
+
   attachments = requireList "${sitePath}.attachments" (siteAttrs.attachments or null);
   links = requireAttrs "${sitePath}.links" (siteAttrs.links or null);
   nodes = requireAttrs "${sitePath}.nodes" (siteAttrs.nodes or null);
@@ -1181,13 +1189,13 @@ let
       (sortedNames policyEndpointBindings.services);
 in
 {
-  siteId = requireString "${sitePath}.siteId" (siteAttrs.siteId or null);
-  siteName = requireString "${sitePath}.siteName" (siteAttrs.siteName or null);
-  policyNodeName = requireString "${sitePath}.policyNodeName" (siteAttrs.policyNodeName or null);
-  upstreamSelectorNodeName = requireString "${sitePath}.upstreamSelectorNodeName" (siteAttrs.upstreamSelectorNodeName or null);
-  coreNodeNames = requireStringList "${sitePath}.coreNodeNames" (siteAttrs.coreNodeNames or null);
-  uplinkCoreNames = requireStringList "${sitePath}.uplinkCoreNames" (siteAttrs.uplinkCoreNames or null);
-  uplinkNames = requireStringList "${sitePath}.uplinkNames" (siteAttrs.uplinkNames or null);
+  siteId = siteId;
+  siteName = siteDisplayName;
+  policyNodeName = policyNodeName;
+  upstreamSelectorNodeName = upstreamSelectorNodeName;
+  coreNodeNames = coreNodeNames;
+  uplinkCoreNames = uplinkCoreNames;
+  uplinkNames = uplinkNames;
   attachments = attachments;
   domains = domainsValue;
   tenantPrefixOwners = tenantPrefixOwners;
