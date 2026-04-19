@@ -309,8 +309,8 @@ It is not a thing the control-plane layer may reconstruct from naming, topology 
 
 This stage is where explicit forwarding intent meets explicit realization.
 
-When the forwarding-model emits multiple transit adjacencies between the same two units (policy-driven “dedicated lanes”, e.g. via
-`transit.dedicatedLanes = true`), the control-plane model must:
+When the forwarding-model emits multiple transit adjacencies between the same two units (policy-driven “dedicated lanes”),
+the control-plane model must:
 
 * preserve each lane’s stable identity in `control_plane_model.data.<enterprise>.<site>.transit.adjacencies`
 * require `inventory.nix` to explicitly realize each lane (VLAN/subif/etc is an inventory concern)
