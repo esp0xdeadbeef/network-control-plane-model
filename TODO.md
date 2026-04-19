@@ -11,23 +11,13 @@
 
 Goal: keep all “mode”/policy decisions upstream and keep renderers as pure consumers.
 
-When `network-forwarding-model` starts emitting multiple transit adjacencies between the same node pair (lane-aware p2p),
-CPM must be able to bind those explicit adjacencies to explicit realization inputs without guessing.
+`network-forwarding-model` now emits lane-aware transit adjacencies (multiple p2p links between the same staged units).
 
-Required work:
+What we must preserve:
 
 - Inventory binding:
-  - allow inventory to bind transit lanes by stable adjacency `id` (or a stable lane key),
-    mapping to concrete interface/VLAN/subif/etc (implementation detail is inventory-owned).
-  - fail hard if any required lane lacks realization coverage.
-
-- CPM output:
-  - preserve lane identities and emit them explicitly in `control_plane_model.data.<enterprise>.<site>.transit`.
-  - ensure any per-interface policy tagging is driven by explicit lane metadata (from forwarding model),
-    not inferred from naming conventions.
+  - keep strict per-lane realization requirements (missing any lane must hard-fail).
+  - consider (future) allowing binding by adjacency `id` in addition to link name, to decouple realization from naming.
 
 - Tests:
-  - add a fixture that expects multiple `transit.adjacencies[]` between the same two units and validates:
-    - stable ids are preserved
-    - inventory binding is required per lane
-    - mismatch fails (no collapse / no “pick one”)
+  - add a negative fixture that omits exactly one required lane binding and asserts a hard failure.
