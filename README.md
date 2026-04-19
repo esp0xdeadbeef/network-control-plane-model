@@ -305,6 +305,19 @@ It is not a thing the control-plane layer may reconstruct from naming, topology 
 
 ---
 
+# Dedicated transit lanes (future)
+
+This stage is where explicit forwarding intent meets explicit realization.
+
+As the forwarding-model evolves to emit multiple transit adjacencies between the same two units (policy-driven “dedicated lanes”),
+the control-plane model must:
+
+* preserve each lane’s stable identity in `control_plane_model.data.<enterprise>.<site>.transit.adjacencies`
+* require `inventory.nix` to explicitly realize each lane (VLAN/subif/etc is an inventory concern)
+* fail hard if any required lane is missing realization coverage (no guessing / no collapse)
+
+---
+
 # Explicit overlays
 
 `site.transport.overlays` must be either:
@@ -532,6 +545,22 @@ Direct test entrypoints:
 
 ---
 
+# Running
+
+Build a control-plane model from `intent.nix` + `inventory.nix`:
+
+```bash
+nix run .#compile-and-build-control-plane-model -- ./intent.nix ./inventory.nix ./output-control-plane-model.json
+```
+
+Or build from a precomputed forwarding-model JSON (plus optional inventory):
+
+```bash
+nix run .#debug -- ./output-network-forwarding-model.json ./inventory.nix ./output-control-plane-model.json
+```
+
+---
+
 # Running tests
 
 ```bash
@@ -569,4 +598,3 @@ The control-plane model joins those two things and crashes when they do not line
 
 That is the point.
 Not a side effect.
-
