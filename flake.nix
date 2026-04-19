@@ -263,6 +263,13 @@
                   ;;
               esac
 
+              # Nix path coercion is strict: inventory and input paths must be absolute.
+              # Make the wrapper resilient so docs and scripts can use relative paths.
+              INPUTS_NIX="$(realpath "$INPUTS_NIX")"
+              if [ -n "$INVENTORY" ]; then
+                INVENTORY="$(realpath "$INVENTORY")"
+              fi
+
               FORWARDING_JSON="$(mktemp --suffix .json)"
               trap 'rm -f "$FORWARDING_JSON"' EXIT
 
