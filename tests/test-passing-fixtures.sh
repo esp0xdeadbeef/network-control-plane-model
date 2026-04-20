@@ -3,7 +3,23 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
-examples_root="${repo_root}/../network-labs/examples"
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd jq
+
+flake_input_path() {
+  local input_name="$1"
+  nix flake archive --json "path:${repo_root}" \
+    | jq -er ".inputs[\"${input_name}\"].path"
+}
+
+examples_root="$(flake_input_path network-labs)/examples"
 
 status=0
 
