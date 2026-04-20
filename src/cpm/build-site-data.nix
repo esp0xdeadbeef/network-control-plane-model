@@ -142,27 +142,16 @@ let
   bgpSiteAsn = bgpSite.asn or null;
   bgpTopology = bgpSite.topology or "policy-rr";
 
-  transportAttrs = attrsOrEmpty (siteAttrs.transport or null);
-  overlaysRaw = transportAttrs.overlays or null;
-  overlaysList =
-    if overlaysRaw == null then
-      [ ]
-    else if builtins.isList overlaysRaw then
-      overlaysRaw
-    else if builtins.isAttrs overlaysRaw then
-      builtins.attrValues overlaysRaw
-    else
-      [ ];
+  overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
+  overlayNames = sortedNames overlayReachability;
 
   overlayProvisioning =
     builtins.listToAttrs (
       builtins.map
-        (overlayValue:
+        (overlayName:
           let
-            overlayPath = "${sitePath}.transport.overlays";
-            overlayAttrs = requireAttrs overlayPath overlayValue;
-            overlayName = requireString "${overlayPath}.name" (overlayAttrs.name or null);
-            terminateOn = requireString "${overlayPath}.terminateOn" (overlayAttrs.terminateOn or null);
+            overlayPath = "${sitePath}.overlayReachability.${overlayName}";
+            ov = requireAttrs overlayPath overlayReachability.${overlayName};
             cfg = attrsOrEmpty (siteOverlays.${overlayName} or null);
           in
           {
@@ -170,17 +159,15 @@ let
             value =
               {
                 name = overlayName;
-                inherit terminateOn;
-                peerSite = overlayAttrs.peerSite or null;
-                mustTraverse = listOrEmpty (overlayAttrs.mustTraverse or null);
-                ingressSubject = overlayAttrs.ingressSubject or null;
+                peerSite = ov.peerSite or null;
+                terminateOn = listOrEmpty (ov.terminateOn or null);
               }
               // lib.optionalAttrs (isNonEmptyString (cfg.provider or null)) { provider = cfg.provider; }
               // lib.optionalAttrs (isNonEmptyString (cfg.addr4 or null)) { addr4 = cfg.addr4; }
               // lib.optionalAttrs (isNonEmptyString (cfg.addr6 or null)) { addr6 = cfg.addr6; }
               // lib.optionalAttrs (builtins.isAttrs (cfg.nebula or null)) { nebula = cfg.nebula; };
           })
-        overlaysList
+        overlayNames
     );
 
   routerRoleSet = {
