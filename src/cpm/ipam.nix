@@ -1,6 +1,8 @@
 { lib }:
 
 let
+  mod = a: b: a - (builtins.div a b) * b;
+
   digits = [
     "0"
     "1"
@@ -72,11 +74,11 @@ let
     n:
     let
       a = builtins.div n 16777216;
-      r1 = builtins.mod n 16777216;
+      r1 = mod n 16777216;
       b = builtins.div r1 65536;
-      r2 = builtins.mod r1 65536;
+      r2 = mod r1 65536;
       c = builtins.div r2 256;
-      d = builtins.mod r2 256;
+      d = mod r2 256;
     in
     [ a b c d ];
 
@@ -179,7 +181,7 @@ let
         let
           cur = acc.cur;
           out = acc.out;
-          h = builtins.mod cur 65536;
+          h = mod cur 65536;
           next = builtins.div cur 65536;
         in
         {
@@ -202,7 +204,7 @@ let
           if x < 16 then
             builtins.elemAt digits x
           else
-            (go (builtins.div x 16)) + (builtins.elemAt digits (builtins.mod x 16));
+            (go (builtins.div x 16)) + (builtins.elemAt digits (mod x 16));
       in
       go n;
 
@@ -291,4 +293,3 @@ in
     allocOne
     ;
 }
-
