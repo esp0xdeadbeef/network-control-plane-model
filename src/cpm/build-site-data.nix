@@ -116,14 +116,16 @@ let
   inventoryAttrs = attrsOrEmpty inventory;
 
   # Control-plane routing decisions live in inventory (not forwarding-model).
-  siteRouting =
+  siteControlPlaneCfg =
     let
       cp = attrsOrEmpty (inventoryAttrs.controlPlane or null);
       sitesCfg = attrsOrEmpty (cp.sites or null);
       enterpriseCfg = attrsOrEmpty (sitesCfg.${enterpriseName} or null);
-      siteCfg = attrsOrEmpty (enterpriseCfg.${siteName} or null);
     in
-    attrsOrEmpty (siteCfg.routing or null);
+    attrsOrEmpty (enterpriseCfg.${siteName} or null);
+
+  siteRouting = attrsOrEmpty (siteControlPlaneCfg.routing or null);
+  siteOverlays = attrsOrEmpty (siteControlPlaneCfg.overlays or null);
 
   routingMode =
     let
@@ -139,6 +141,47 @@ let
 
   bgpSiteAsn = bgpSite.asn or null;
   bgpTopology = bgpSite.topology or "policy-rr";
+
+  transportAttrs = attrsOrEmpty (siteAttrs.transport or null);
+  overlaysRaw = transportAttrs.overlays or null;
+  overlaysList =
+    if overlaysRaw == null then
+      [ ]
+    else if builtins.isList overlaysRaw then
+      overlaysRaw
+    else if builtins.isAttrs overlaysRaw then
+      builtins.attrValues overlaysRaw
+    else
+      [ ];
+
+  overlayProvisioning =
+    builtins.listToAttrs (
+      builtins.map
+        (overlayValue:
+          let
+            overlayPath = "${sitePath}.transport.overlays";
+            overlayAttrs = requireAttrs overlayPath overlayValue;
+            overlayName = requireString "${overlayPath}.name" (overlayAttrs.name or null);
+            terminateOn = requireString "${overlayPath}.terminateOn" (overlayAttrs.terminateOn or null);
+            cfg = attrsOrEmpty (siteOverlays.${overlayName} or null);
+          in
+          {
+            name = overlayName;
+            value =
+              {
+                name = overlayName;
+                inherit terminateOn;
+                peerSite = overlayAttrs.peerSite or null;
+                mustTraverse = listOrEmpty (overlayAttrs.mustTraverse or null);
+                ingressSubject = overlayAttrs.ingressSubject or null;
+              }
+              // lib.optionalAttrs (isNonEmptyString (cfg.provider or null)) { provider = cfg.provider; }
+              // lib.optionalAttrs (isNonEmptyString (cfg.addr4 or null)) { addr4 = cfg.addr4; }
+              // lib.optionalAttrs (isNonEmptyString (cfg.addr6 or null)) { addr6 = cfg.addr6; }
+              // lib.optionalAttrs (builtins.isAttrs (cfg.nebula or null)) { nebula = cfg.nebula; };
+          })
+        overlaysList
+    );
 
   routerRoleSet = {
     access = true;
@@ -361,13 +404,33 @@ let
           sourceIfName;
 
       effectiveAddr4 =
-        if portBinding != null && isNonEmptyString (portBinding.interfaceAddr4 or null) then
+        let
+          overlayCfg =
+            if sourceKind == "overlay" then
+              attrsOrEmpty (siteOverlays.${backingRef.name} or null)
+            else
+              { };
+          overlayAddr4 = overlayCfg.addr4 or null;
+        in
+        if sourceKind == "overlay" && isNonEmptyString overlayAddr4 then
+          overlayAddr4
+        else if portBinding != null && isNonEmptyString (portBinding.interfaceAddr4 or null) then
           portBinding.interfaceAddr4
         else
           ifaceAttrs.addr4 or null;
 
       effectiveAddr6 =
-        if portBinding != null && isNonEmptyString (portBinding.interfaceAddr6 or null) then
+        let
+          overlayCfg =
+            if sourceKind == "overlay" then
+              attrsOrEmpty (siteOverlays.${backingRef.name} or null)
+            else
+              { };
+          overlayAddr6 = overlayCfg.addr6 or null;
+        in
+        if sourceKind == "overlay" && isNonEmptyString overlayAddr6 then
+          overlayAddr6
+        else if portBinding != null && isNonEmptyString (portBinding.interfaceAddr6 or null) then
           portBinding.interfaceAddr6
         else
           ifaceAttrs.addr6 or null;
@@ -1217,6 +1280,7 @@ in
     );
   runtimeTargets = runtimeTargets;
   forwardingSemantics = defaultReachability.forwardingSemantics;
+  overlays = overlayProvisioning;
   relations = policyEndpointBindings.relations;
   services = resolvedServices;
   policy =
