@@ -265,9 +265,6 @@ let
                 nodeIpamCfg = attrsOrEmpty (overlayIpamNodesCfg.${nodeName} or null);
                 nodeOverrideAddr4 = nodeCfg.addr4 or (nodeIpamCfg.addr4 or null);
                 nodeOverrideAddr6 = nodeCfg.addr6 or (nodeIpamCfg.addr6 or null);
-
-                legacyAddr4 = cfg.addr4 or null;
-                legacyAddr6 = cfg.addr6 or null;
               in
               if family == 4 then
                 if isNonEmptyString nodeOverrideAddr4 then
@@ -279,13 +276,6 @@ let
                     perNodePrefixLength = ipamV4PerNodePrefixLength;
                     offset = ipamV4OffsetStart + idx;
                   }
-                else if isNonEmptyString legacyAddr4 then
-                  if builtins.length terminateOn != 1 then
-                    failInventory
-                      "inventory.controlPlane.sites.${enterpriseName}.${siteName}.overlays.${overlayName}"
-                      "legacy overlays.<name>.addr4 is ambiguous with multiple terminateOn nodes; use overlays.<name>.ipam or overlays.<name>.nodes.<node>.addr4"
-                  else
-                    legacyAddr4
                 else
                   null
               else if family == 6 then
@@ -298,13 +288,6 @@ let
                     perNodePrefixLength = ipamV6PerNodePrefixLength;
                     offset = ipamV6OffsetStart + idx;
                   }
-                else if isNonEmptyString legacyAddr6 then
-                  if builtins.length terminateOn != 1 then
-                    failInventory
-                      "inventory.controlPlane.sites.${enterpriseName}.${siteName}.overlays.${overlayName}"
-                      "legacy overlays.<name>.addr6 is ambiguous with multiple terminateOn nodes; use overlays.<name>.ipam or overlays.<name>.nodes.<node>.addr6"
-                  else
-                    legacyAddr6
                 else
                   null
               else
