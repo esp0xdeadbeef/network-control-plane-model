@@ -331,6 +331,35 @@ Overlay membership, endpoint identity, and attachment semantics must already be 
 
 No overlay repair from inventory, naming conventions, link shape, or forwarding heuristics is accepted.
 
+## Overlay provisioning (inventory -> CPM output)
+
+This repository can emit renderer-consumable overlay provisioning hints:
+
+- which logical nodes terminate each overlay (`terminateOn`)
+- which overlay IP(s) those termination nodes should use (`nodes.<node>.addr4/addr6`)
+
+Inventory contract (technique-specific data belongs here, not in compiler/forwarding-model):
+
+- `inventory.controlPlane.sites.<enterprise>.<site>.overlays.<overlayName>.provider` (optional)
+- `inventory.controlPlane.sites.<enterprise>.<site>.overlays.<overlayName>.nebula = { ... }` (optional; opaque)
+
+Overlay address planning options:
+
+- Deterministic per-site IPAM (good for single-site overlays):
+  - `...overlays.<overlayName>.ipam.ipv4.prefix = "<cidr>"`
+  - optional: `.ipam.ipv4.offsetStart` (default: 10)
+  - optional: `.ipam.ipv4.perNodePrefixLength` (default: 32)
+  - and/or the `.ipam.ipv6.*` equivalents
+
+- Explicit per-node addresses (good for multi-site overlays where per-site allocators would collide):
+  - `...overlays.<overlayName>.nodes.<nodeName>.addr4 = "<cidr>"`
+  - `...overlays.<overlayName>.nodes.<nodeName>.addr6 = "<cidr>"`
+
+CPM output:
+
+- `control_plane_model.data.<enterprise>.<site>.overlays.<overlayName>.terminateOn`
+- `control_plane_model.data.<enterprise>.<site>.overlays.<overlayName>.nodes.<nodeName>.addr4/addr6`
+
 ---
 
 # Explicit interface semantics
@@ -419,6 +448,53 @@ If `routing.mode = "bgp"`, then:
 
 In `"policy-rr"` mode, the control-plane model deterministically constructs iBGP neighbors by
 peering every router node to the site policy node (route-reflector).
+
+## Explicit uplink egress routing (inventory)
+
+Uplink egress behavior (static vs eBGP to an ISP, etc.) is also a control-plane decision and therefore belongs in `inventory.nix`.
+
+This repository accepts (optional):
+
+- `inventory.controlPlane.sites.<enterprise>.<site>.uplinks.<uplinkName>.egress.mode = "static" | "bgp"`
+
+For `mode = "bgp"`:
+
+- `...uplinks.<uplinkName>.egress.bgp.peerAsn` (integer, required)
+- `...uplinks.<uplinkName>.egress.bgp.peerAddr4` and/or `peerAddr6` (string, required at least one)
+
+For `mode = "static"`:
+
+- optional: `...uplinks.<uplinkName>.egress.static.routes.ipv4` / `.ipv6` (lists; renderer-consumed, not interpreted here)
+
+CPM output:
+
+- `control_plane_model.data.<enterprise>.<site>.routing.uplinks.<uplinkName>`
+- For BGP sites, eBGP neighbors are appended to `control_plane_model.data.<enterprise>.<site>.runtimeTargets.<node>.bgp.neighbors`
+
+## IPv6 prefix delegation (PD) planning (inventory -> CPM output)
+
+If a core WAN receives a delegated prefix (dynamic), tenant-facing segments still need deterministic, auditable IPv6 prefixes
+and advertisement behavior.
+
+The forwarding-model stays technique-agnostic; PD planning is driven from `inventory.nix` and emitted explicitly by CPM.
+
+Inventory contract (optional):
+
+- Enable PD planning:
+  - `inventory.controlPlane.sites.<enterprise>.<site>.ipv6.pd.uplink = "<uplinkName>"`
+  - `...ipv6.pd.delegatedPrefixLength = 56` (example; required when PD enabled)
+  - optional: `...ipv6.pd.perTenantPrefixLength = 64` (default: 64)
+
+- Per-tenant behavior:
+  - `inventory.controlPlane.sites.<enterprise>.<site>.tenants.<tenant>.ipv6.mode = "slaac" | "dhcpv6" | "static"`
+  - For `static`: `...tenants.<tenant>.ipv6.prefixes = [ "<prefix>/64" ... ]`
+
+CPM output (only when PD enabled):
+
+- `control_plane_model.data.<enterprise>.<site>.ipv6.pd` (constraints + deterministic slot plan)
+- `control_plane_model.data.<enterprise>.<site>.ipv6.tenants.<tenant>` (mode + either static prefixes or PD slot assignment)
+
+Renderers must not invent PD allocation or advertisement behavior. They must consume these explicit outputs.
 
 ---
 
