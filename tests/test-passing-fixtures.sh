@@ -38,6 +38,32 @@ validate_output() {
   local validator="$3"
 
   case "${validator}" in
+    single-wan-ipv6-pd)
+      OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+        let
+          data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+          site = data.control_plane_model.data.esp0xdeadbeef."site-a";
+          ipv6 = site.ipv6;
+          slots = ipv6.pd.tenantSlots;
+          admin = ipv6.tenants.admin;
+          client = ipv6.tenants.client;
+          mgmt = ipv6.tenants.mgmt;
+        in
+          builtins.isAttrs ipv6
+          && ipv6.pd.uplink == "wan"
+          && ipv6.pd.delegatedPrefixLength == 56
+          && ipv6.pd.perTenantPrefixLength == 64
+          && slots.admin == 0
+          && slots.client == 1
+          && admin.mode == "slaac"
+          && (admin.pd.slot == 0)
+          && client.mode == "dhcpv6"
+          && (client.pd.slot == 1)
+          && mgmt.mode == "static"
+          && mgmt.prefixes == [ "2001:db8:10::/64" ]
+      ' >/dev/null || fail "FAIL ${name}: validation failed"
+      echo "PASS ${name}"
+      ;;
     minimal-forwarding-model)
       OUTPUT_JSON="${output_json}" nix eval --impure --expr '
         let
@@ -251,7 +277,14 @@ run_external_examples() {
       }
 
     print_warnings_if_any "network-labs-example:${name}" "${stderr_file}"
-    validate_output "network-labs-example:${name}" "${tmp_out}" "network-labs-example"
+    case "${name}" in
+      single-wan-ipv6-pd)
+        validate_output "network-labs-example:${name}" "${tmp_out}" "single-wan-ipv6-pd"
+        ;;
+      *)
+        validate_output "network-labs-example:${name}" "${tmp_out}" "network-labs-example"
+        ;;
+    esac
     rm -rf "${tmp_dir}"
   done
 }
