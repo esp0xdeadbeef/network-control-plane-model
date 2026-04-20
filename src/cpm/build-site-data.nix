@@ -36,6 +36,11 @@ let
       inherit helpers;
     };
 
+  ipam =
+    import ./ipam.nix {
+      inherit lib;
+    };
+
   attrsOrEmpty = value:
     if builtins.isAttrs value then
       value
@@ -126,6 +131,7 @@ let
 
   siteRouting = attrsOrEmpty (siteControlPlaneCfg.routing or null);
   siteOverlays = attrsOrEmpty (siteControlPlaneCfg.overlays or null);
+  siteUplinksCfg = attrsOrEmpty (siteControlPlaneCfg.uplinks or null);
   siteTenantsCfg = attrsOrEmpty (siteControlPlaneCfg.tenants or null);
   siteIpv6Cfg = attrsOrEmpty (siteControlPlaneCfg.ipv6 or null);
 
@@ -144,6 +150,63 @@ let
   bgpSiteAsn = bgpSite.asn or null;
   bgpTopology = bgpSite.topology or "policy-rr";
 
+  normalizeEgressMode = v:
+    if v == "static" || v == "bgp" then v else "static";
+
+  uplinkRouting =
+    builtins.listToAttrs (
+      builtins.map
+        (uplinkName:
+          let
+            uplinkPath = "inventory.controlPlane.sites.${enterpriseName}.${siteName}.uplinks.${uplinkName}.egress";
+            uplinkCfg = attrsOrEmpty (siteUplinksCfg.${uplinkName} or null);
+            egress = attrsOrEmpty (uplinkCfg.egress or null);
+            modeRaw = egress.mode or "static";
+            mode = normalizeEgressMode modeRaw;
+
+            staticCfg = attrsOrEmpty (egress.static or null);
+            staticRoutes = attrsOrEmpty (staticCfg.routes or null);
+
+            bgpCfg = attrsOrEmpty (egress.bgp or null);
+            bgpPeerAsn = bgpCfg.peerAsn or null;
+            bgpPeerAddr4 = bgpCfg.peerAddr4 or null;
+            bgpPeerAddr6 = bgpCfg.peerAddr6 or null;
+
+            _bgpValid =
+              if mode != "bgp" then
+                true
+              else if !builtins.isInt bgpPeerAsn then
+                failInventory "${uplinkPath}.bgp.peerAsn" "bgp uplink egress requires integer peerAsn"
+              else if !(isNonEmptyString bgpPeerAddr4 || isNonEmptyString bgpPeerAddr6) then
+                failInventory "${uplinkPath}.bgp" "bgp uplink egress requires peerAddr4 and/or peerAddr6"
+              else
+                true;
+          in
+          builtins.seq _bgpValid {
+            name = uplinkName;
+            value =
+              {
+                mode = mode;
+              }
+              // lib.optionalAttrs (mode == "static" && builtins.isAttrs (staticCfg.routes or null)) {
+                static = {
+                  routes = {
+                    ipv4 = requireList "${uplinkPath}.static.routes.ipv4" (staticRoutes.ipv4 or [ ]);
+                    ipv6 = requireList "${uplinkPath}.static.routes.ipv6" (staticRoutes.ipv6 or [ ]);
+                  };
+                };
+              }
+              // lib.optionalAttrs (mode == "bgp") {
+                bgp = {
+                  peerAsn = bgpPeerAsn;
+                }
+                // lib.optionalAttrs (isNonEmptyString bgpPeerAddr4) { peerAddr4 = bgpPeerAddr4; }
+                // lib.optionalAttrs (isNonEmptyString bgpPeerAddr6) { peerAddr6 = bgpPeerAddr6; };
+              };
+          })
+        uplinkNames
+    );
+
   overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
   overlayNames = sortedNames overlayReachability;
 
@@ -155,6 +218,115 @@ let
             overlayPath = "${sitePath}.overlayReachability.${overlayName}";
             ov = requireAttrs overlayPath overlayReachability.${overlayName};
             cfg = attrsOrEmpty (siteOverlays.${overlayName} or null);
+
+            terminateOn =
+              lib.sort (a: b: a < b) (
+                map toString (listOrEmpty (ov.terminateOn or null))
+              );
+
+            overlayNodesCfg = attrsOrEmpty (cfg.nodes or null);
+            overlayIpamCfg = attrsOrEmpty (cfg.ipam or null);
+            overlayIpamNodesCfg = attrsOrEmpty (overlayIpamCfg.nodes or null);
+
+            overlayIpamV4 = attrsOrEmpty (overlayIpamCfg.ipv4 or null);
+            overlayIpamV6 = attrsOrEmpty (overlayIpamCfg.ipv6 or null);
+
+            ipamV4Prefix = if isNonEmptyString (overlayIpamV4.prefix or null) then overlayIpamV4.prefix else null;
+            ipamV6Prefix = if isNonEmptyString (overlayIpamV6.prefix or null) then overlayIpamV6.prefix else null;
+
+            ipamV4PerNodePrefixLength =
+              if builtins.isInt (overlayIpamV4.perNodePrefixLength or null) then
+                overlayIpamV4.perNodePrefixLength
+              else
+                32;
+
+            ipamV6PerNodePrefixLength =
+              if builtins.isInt (overlayIpamV6.perNodePrefixLength or null) then
+                overlayIpamV6.perNodePrefixLength
+              else
+                128;
+
+            ipamV4OffsetStart =
+              if builtins.isInt (overlayIpamV4.offsetStart or null) then
+                overlayIpamV4.offsetStart
+              else
+                10;
+
+            ipamV6OffsetStart =
+              if builtins.isInt (overlayIpamV6.offsetStart or null) then
+                overlayIpamV6.offsetStart
+              else
+                10;
+
+            resolveOverlayAddr =
+              { family, nodeName, idx }:
+              let
+                nodeCfg = attrsOrEmpty (overlayNodesCfg.${nodeName} or null);
+                nodeIpamCfg = attrsOrEmpty (overlayIpamNodesCfg.${nodeName} or null);
+                nodeOverrideAddr4 = nodeCfg.addr4 or (nodeIpamCfg.addr4 or null);
+                nodeOverrideAddr6 = nodeCfg.addr6 or (nodeIpamCfg.addr6 or null);
+
+                legacyAddr4 = cfg.addr4 or null;
+                legacyAddr6 = cfg.addr6 or null;
+              in
+              if family == 4 then
+                if isNonEmptyString nodeOverrideAddr4 then
+                  nodeOverrideAddr4
+                else if ipamV4Prefix != null then
+                  ipam.allocOne {
+                    family = 4;
+                    prefix = ipamV4Prefix;
+                    perNodePrefixLength = ipamV4PerNodePrefixLength;
+                    offset = ipamV4OffsetStart + idx;
+                  }
+                else if isNonEmptyString legacyAddr4 then
+                  if builtins.length terminateOn != 1 then
+                    failInventory
+                      "inventory.controlPlane.sites.${enterpriseName}.${siteName}.overlays.${overlayName}"
+                      "legacy overlays.<name>.addr4 is ambiguous with multiple terminateOn nodes; use overlays.<name>.ipam or overlays.<name>.nodes.<node>.addr4"
+                  else
+                    legacyAddr4
+                else
+                  null
+              else if family == 6 then
+                if isNonEmptyString nodeOverrideAddr6 then
+                  nodeOverrideAddr6
+                else if ipamV6Prefix != null then
+                  ipam.allocOne {
+                    family = 6;
+                    prefix = ipamV6Prefix;
+                    perNodePrefixLength = ipamV6PerNodePrefixLength;
+                    offset = ipamV6OffsetStart + idx;
+                  }
+                else if isNonEmptyString legacyAddr6 then
+                  if builtins.length terminateOn != 1 then
+                    failInventory
+                      "inventory.controlPlane.sites.${enterpriseName}.${siteName}.overlays.${overlayName}"
+                      "legacy overlays.<name>.addr6 is ambiguous with multiple terminateOn nodes; use overlays.<name>.ipam or overlays.<name>.nodes.<node>.addr6"
+                  else
+                    legacyAddr6
+                else
+                  null
+              else
+                null;
+
+            overlayNodeAddrs =
+              builtins.listToAttrs (
+                lib.imap0
+                  (idx: nodeName:
+                    let
+                      addr4 = resolveOverlayAddr { family = 4; inherit nodeName idx; };
+                      addr6 = resolveOverlayAddr { family = 6; inherit nodeName idx; };
+                    in
+                    {
+                      name = nodeName;
+                      value =
+                        { }
+                        // lib.optionalAttrs (isNonEmptyString addr4) { addr4 = addr4; }
+                        // lib.optionalAttrs (isNonEmptyString addr6) { addr6 = addr6; };
+                    })
+                  terminateOn
+              );
           in
           {
             name = overlayName;
@@ -162,11 +334,10 @@ let
               {
                 name = overlayName;
                 peerSite = ov.peerSite or null;
-                terminateOn = listOrEmpty (ov.terminateOn or null);
+                terminateOn = terminateOn;
+                nodes = overlayNodeAddrs;
               }
               // lib.optionalAttrs (isNonEmptyString (cfg.provider or null)) { provider = cfg.provider; }
-              // lib.optionalAttrs (isNonEmptyString (cfg.addr4 or null)) { addr4 = cfg.addr4; }
-              // lib.optionalAttrs (isNonEmptyString (cfg.addr6 or null)) { addr6 = cfg.addr6; }
               // lib.optionalAttrs (builtins.isAttrs (cfg.nebula or null)) { nebula = cfg.nebula; };
           })
         overlayNames
@@ -589,12 +760,16 @@ let
 
       effectiveAddr4 =
         let
-          overlayCfg =
-            if sourceKind == "overlay" then
-              attrsOrEmpty (siteOverlays.${backingRef.name} or null)
+          overlayNodes =
+            if sourceKind == "overlay" && hasAttr (backingRef.name or "") overlayProvisioning then
+              attrsOrEmpty (overlayProvisioning.${backingRef.name}.nodes or null)
             else
               { };
-          overlayAddr4 = overlayCfg.addr4 or null;
+          overlayAddr4 =
+            if sourceKind == "overlay" && hasAttr nodeName overlayNodes then
+              overlayNodes.${nodeName}.addr4 or null
+            else
+              null;
         in
         if sourceKind == "overlay" && isNonEmptyString overlayAddr4 then
           overlayAddr4
@@ -605,12 +780,16 @@ let
 
       effectiveAddr6 =
         let
-          overlayCfg =
-            if sourceKind == "overlay" then
-              attrsOrEmpty (siteOverlays.${backingRef.name} or null)
+          overlayNodes =
+            if sourceKind == "overlay" && hasAttr (backingRef.name or "") overlayProvisioning then
+              attrsOrEmpty (overlayProvisioning.${backingRef.name}.nodes or null)
             else
               { };
-          overlayAddr6 = overlayCfg.addr6 or null;
+          overlayAddr6 =
+            if sourceKind == "overlay" && hasAttr nodeName overlayNodes then
+              overlayNodes.${nodeName}.addr6 or null
+            else
+              null;
         in
         if sourceKind == "overlay" && isNonEmptyString overlayAddr6 then
           overlayAddr6
@@ -1233,6 +1412,43 @@ let
         else
           runtimeInterfaces;
 
+      ebgpNeighbors =
+        if !isBgpRouter then
+          [ ]
+        else
+          lib.concatMap (
+            ifName:
+            let
+              iface = effectiveRuntimeInterfaces.${ifName};
+              upstream = iface.upstream or null;
+              uplinkCfg =
+                if isNonEmptyString upstream && hasAttr upstream uplinkRouting then
+                  uplinkRouting.${upstream}
+                else
+                  null;
+              uplinkMode = if uplinkCfg == null then null else uplinkCfg.mode or null;
+              uplinkBgp = if uplinkCfg == null then { } else attrsOrEmpty (uplinkCfg.bgp or null);
+              peerAsn = uplinkBgp.peerAsn or null;
+              peerAddr4 = uplinkBgp.peerAddr4 or null;
+              peerAddr6 = uplinkBgp.peerAddr6 or null;
+            in
+            if (iface.sourceKind or null) != "wan" || uplinkMode != "bgp" then
+              [ ]
+            else
+              [
+                (
+                  {
+                    peer_name = "uplink-${upstream}";
+                    peer_asn = peerAsn;
+                    update_source = iface.runtimeIfName or null;
+                    route_reflector_client = false;
+                  }
+                  // lib.optionalAttrs (isNonEmptyString peerAddr4) { peer_addr4 = peerAddr4; }
+                  // lib.optionalAttrs (isNonEmptyString peerAddr6) { peer_addr6 = peerAddr6; }
+                )
+              ]
+          ) (sortedNames effectiveRuntimeInterfaces);
+
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
 
       placement =
@@ -1273,7 +1489,7 @@ let
             {
               bgp = {
                 asn = bgpSiteAsn;
-                neighbors = bgpNeighborsForNode nodeName;
+                neighbors = (bgpNeighborsForNode nodeName) ++ ebgpNeighbors;
               };
             }
           else
@@ -1450,6 +1666,7 @@ in
   routing =
     {
       mode = routingMode;
+      uplinks = uplinkRouting;
     }
     // (
       if routingMode == "bgp" then
