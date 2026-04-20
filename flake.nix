@@ -220,11 +220,13 @@
               )"
 
               gitRev="$(${pkgs.git}/bin/git rev-parse HEAD 2>/dev/null || echo "unknown")"
-
-              if ${pkgs.git}/bin/git diff --quiet && ${pkgs.git}/bin/git diff --cached --quiet; then
-                gitDirty=false
-              else
-                gitDirty=true
+              gitDirty=false
+              if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                if ${pkgs.git}/bin/git diff --quiet >/dev/null 2>&1 && ${pkgs.git}/bin/git diff --cached --quiet >/dev/null 2>&1; then
+                  gitDirty=false
+                else
+                  gitDirty=true
+                fi
               fi
 
               echo "$json" | ${pkgs.jq}/bin/jq -S -c \
