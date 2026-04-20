@@ -260,9 +260,7 @@ let
       attachAttrs = requireAttrs attachPath attach;
       kind = requireString "${attachPath}.kind" (attachAttrs.kind or null);
     in
-    if kind != "bridge" then
-      failInventory "${attachPath}.kind" "only bridge attachment is supported"
-    else
+    if kind == "bridge" then
       let
         bridgeName = requireString "${attachPath}.bridge" (attachAttrs.bridge or null);
         hostDef =
@@ -291,7 +289,13 @@ let
           { parentUplink = bridgeDef.parentUplink; }
         else
           { }
-      );
+      )
+    else if kind == "direct" then
+      {
+        kind = "direct";
+      }
+    else
+      failInventory "${attachPath}.kind" "attach.kind must be one of: \"bridge\", \"direct\"";
 
   normalizeContainerBinding = targetPath: containerName: container:
     let
@@ -364,7 +368,7 @@ let
             "port must declare exactly one selector via link, logicalInterface, or uplink/external";
 
       hostUplink =
-        if selector.kind == "uplink" && attach != null then
+        if selector.kind == "uplink" && attach != null && (attach.kind or null) == "bridge" then
           resolveHostUplinkFromBridge targetHostName portPath attach.bridge
         else if selector.kind == "uplink" then
           let
@@ -379,7 +383,7 @@ let
             hostDef.uplinks.${uplinkName}
           else
             null
-        else if attach != null then
+        else if attach != null && (attach.kind or null) == "bridge" then
           resolveHostUplinkFromBridge targetHostName portPath attach.bridge
         else
           null;
