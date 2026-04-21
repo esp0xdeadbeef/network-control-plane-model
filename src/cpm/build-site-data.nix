@@ -1549,6 +1549,14 @@ let
             }
           else
             { }
+        )
+        // (
+          if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then
+            {
+              services = targetDef.node.services;
+            }
+          else
+            { }
         );
     in
     {
