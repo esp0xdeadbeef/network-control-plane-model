@@ -180,6 +180,71 @@ validate_output() {
       ' >/dev/null || fail "FAIL ${name}: validation failed"
       echo "PASS ${name}"
       ;;
+    multi-wan)
+      OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+        let
+          data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+          site = data.control_plane_model.data.esp0xdeadbeef."site-a";
+          upstream =
+            site.runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector";
+          accessMgmt =
+            site.runtimeTargets."esp0xdeadbeef-site-a-s-router-access-mgmt";
+          upstreamA =
+            upstream.effectiveRuntimeRealization.interfaces."p2p-s-router-core-isp-a-s-router-upstream-selector".routes;
+          upstreamB =
+            upstream.effectiveRuntimeRealization.interfaces."p2p-s-router-core-isp-b-s-router-upstream-selector".routes;
+          accessP2P =
+            accessMgmt.effectiveRuntimeRealization.interfaces."p2p-s-router-access-mgmt-s-router-downstream-selector".routes;
+
+          hasIPv4Via = routes: dst: via:
+            builtins.any
+              (route:
+                (route.dst or null) == dst
+                && (route.via4 or null) == via)
+              routes;
+
+          hasIPv6Via = routes: dst: via:
+            builtins.any
+              (route:
+                (route.dst or null) == dst
+                && (route.via6 or null) == via)
+              routes;
+
+          metricForIPv4Via = routes: dst: via:
+            let
+              matches = builtins.filter
+                (route:
+                  (route.dst or null) == dst
+                  && (route.via4 or null) == via)
+                routes;
+            in
+            if matches == [ ] then null else ((builtins.elemAt matches 0).metric or null);
+
+          metricForIPv6Via = routes: dst: via:
+            let
+              matches = builtins.filter
+                (route:
+                  (route.dst or null) == dst
+                  && (route.via6 or null) == via)
+                routes;
+            in
+            if matches == [ ] then null else ((builtins.elemAt matches 0).metric or null);
+        in
+          site.uplinkCoreNames == [ "s-router-core-isp-a" "s-router-core-isp-b" ]
+          && site.uplinkNames == [ "isp-a" "isp-b" ]
+          && hasIPv4Via upstreamA.ipv4 "0.0.0.0/0" "10.10.0.6"
+          && hasIPv4Via upstreamB.ipv4 "0.0.0.0/0" "10.10.0.8"
+          && hasIPv6Via upstreamA.ipv6 "::/0" "fd42:dead:beef:1000:0:0:0:6"
+          && hasIPv6Via upstreamB.ipv6 "::/0" "fd42:dead:beef:1000:0:0:0:8"
+          && metricForIPv4Via upstreamA.ipv4 "0.0.0.0/0" "10.10.0.6" == 100
+          && metricForIPv4Via upstreamB.ipv4 "0.0.0.0/0" "10.10.0.8" == 200
+          && metricForIPv6Via upstreamA.ipv6 "::/0" "fd42:dead:beef:1000:0:0:0:6" == 100
+          && metricForIPv6Via upstreamB.ipv6 "::/0" "fd42:dead:beef:1000:0:0:0:8" == 200
+          && hasIPv4Via accessP2P.ipv4 "0.0.0.0/0" "10.10.0.5"
+          && hasIPv6Via accessP2P.ipv6 "::/0" "fd42:dead:beef:1000:0:0:0:5"
+      ' >/dev/null || fail "FAIL ${name}: validation failed"
+      echo "PASS ${name}"
+      ;;
     *)
       echo "PASS ${name}"
       ;;
@@ -280,6 +345,9 @@ run_external_examples() {
     case "${name}" in
       single-wan-ipv6-pd)
         validate_output "network-labs-example:${name}" "${tmp_out}" "single-wan-ipv6-pd"
+        ;;
+      multi-wan)
+        validate_output "network-labs-example:${name}" "${tmp_out}" "multi-wan"
         ;;
       *)
         validate_output "network-labs-example:${name}" "${tmp_out}" "network-labs-example"
