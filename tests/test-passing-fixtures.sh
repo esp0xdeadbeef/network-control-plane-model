@@ -464,5 +464,6 @@ run_case "hosted-runtime-targets" "$hosted_input" "$hosted_inventory" "hosted-ru
 run_case "default-egress-reachability" "$default_egress_input" "$default_egress_inventory" "default-egress-reachability"
 
 run_external_examples
+"${repo_root}/tests/test-dual-wan-branch-overlay.sh"
 
 exit 0
