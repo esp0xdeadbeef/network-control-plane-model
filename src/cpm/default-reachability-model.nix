@@ -367,14 +367,6 @@ let
       { }
       (listOrEmpty (transit.adjacencies or null));
 
-  pickBetterPath = current: candidate:
-    if current == null then
-      candidate
-    else if builtins.length candidate.steps < builtins.length current.steps then
-      candidate
-    else
-      current;
-
   findCandidatePaths = family: sourceSet: nodeName: visited:
     if hasAttr nodeName sourceSet then
       [
@@ -423,11 +415,17 @@ let
           neighbors
       );
 
-  findBestPath = family: sourceSet: nodeName:
-    builtins.foldl'
-      pickBetterPath
-      null
-      (findCandidatePaths family sourceSet nodeName { });
+  compareCandidatePaths =
+    left: right:
+    if builtins.length left.steps < builtins.length right.steps then
+      true
+    else if builtins.length left.steps > builtins.length right.steps then
+      false
+    else
+      left.sourceNode < right.sourceNode;
+
+  sortedCandidatePaths = family: sourceSet: nodeName:
+    builtins.sort compareCandidatePaths (findCandidatePaths family sourceSet nodeName { });
 
   findInterfaceNameForAdjacency = targetName: target: adjacencyId:
     let
@@ -457,7 +455,8 @@ let
     else
       builtins.elemAt matchingNames 0;
 
-  buildInternalDefaultRoute = family: sourceNode: via:
+  buildInternalDefaultRoute =
+    family: sourceNode: via: metric:
     {
       dst = defaultDst family;
       intent = {
@@ -466,6 +465,7 @@ let
         exitNode = sourceNode;
       };
       proto = "internal";
+      inherit metric;
     }
     // {
       ${if family == 4 then "via4" else "via6"} = via;
@@ -481,79 +481,88 @@ let
       target
     else
       let
-        bestPath = findBestPath family sourceSet nodeName;
+        candidatePaths = sortedCandidatePaths family sourceSet nodeName;
       in
-      if bestPath == null || bestPath.steps == [ ] then
+      if candidatePaths == [ ] then
         target
       else
         let
-          firstStep = builtins.elemAt bestPath.steps 0;
-          interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
+          effective =
+            requireAttrs
+              "${targetPath}.effectiveRuntimeRealization"
+              (target.effectiveRuntimeRealization or null);
+          interfaces =
+            requireAttrs
+              "${targetPath}.effectiveRuntimeRealization.interfaces"
+              (effective.interfaces or null);
+
+          updateForCandidate =
+            state: candidate:
+            let
+              candidateIndex = state.index;
+              firstStep = builtins.elemAt candidate.steps 0;
+              interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
+            in
+            if interfaceName == null then
+              state // { index = candidateIndex + 1; }
+            else
+              let
+                iface =
+                  requireAttrs
+                    "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}"
+                    state.interfaces.${interfaceName};
+                routes = attrsOrEmpty (iface.routes or null);
+                existingFamilyRoutes =
+                  if family == 4 then
+                    listOrEmpty (routes.ipv4 or null)
+                  else
+                    listOrEmpty (routes.ipv6 or null);
+                routeMetric = 100 + (candidateIndex * 100);
+                newRoute = buildInternalDefaultRoute family candidate.sourceNode firstStep.via routeMetric;
+                updatedFamilyRoutes = existingFamilyRoutes ++ [ newRoute ];
+                updatedIface =
+                  iface
+                  // {
+                    routes =
+                      routes
+                      // (
+                        if family == 4 then
+                          {
+                            ipv4 = updatedFamilyRoutes;
+                          }
+                        else
+                          {
+                            ipv6 = updatedFamilyRoutes;
+                          }
+                      );
+                  };
+              in
+              {
+                index = candidateIndex + 1;
+                interfaces =
+                  state.interfaces
+                  // {
+                    ${interfaceName} = updatedIface;
+                  };
+              };
+
+          updated =
+            builtins.foldl'
+              updateForCandidate
+              {
+                index = 0;
+                inherit interfaces;
+              }
+              (builtins.filter (candidate: candidate.steps != [ ]) candidatePaths);
         in
-        if interfaceName == null then
-          target
-        else
-          let
-            effective =
-              requireAttrs
-                "${targetPath}.effectiveRuntimeRealization"
-                (target.effectiveRuntimeRealization or null);
-            interfaces =
-              requireAttrs
-                "${targetPath}.effectiveRuntimeRealization.interfaces"
-                (effective.interfaces or null);
-            iface =
-              requireAttrs
-                "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}"
-                interfaces.${interfaceName};
-            routes = attrsOrEmpty (iface.routes or null);
-
-            existingFamilyRoutes =
-              if family == 4 then
-                listOrEmpty (routes.ipv4 or null)
-              else
-                listOrEmpty (routes.ipv6 or null);
-
-            updatedFamilyRoutes =
-              if routesContainDefault family existingFamilyRoutes then
-                existingFamilyRoutes
-              else
-                existingFamilyRoutes
-                ++ [
-                  (buildInternalDefaultRoute family bestPath.sourceNode firstStep.via)
-                ];
-
-            updatedIface =
-              iface
-              // {
-                routes =
-                  routes
-                  // (
-                    if family == 4 then
-                      {
-                        ipv4 = updatedFamilyRoutes;
-                      }
-                    else
-                      {
-                        ipv6 = updatedFamilyRoutes;
-                      }
-                  );
-              };
-
-            updatedInterfaces =
-              interfaces
-              // {
-                ${interfaceName} = updatedIface;
-              };
-          in
-          target
-          // {
-            effectiveRuntimeRealization =
-              effective
-              // {
-                interfaces = updatedInterfaces;
-              };
-          };
+        target
+        // {
+          effectiveRuntimeRealization =
+            effective
+            // {
+              interfaces = updated.interfaces;
+            };
+        };
 
   runtimeTargetsWithSynthesizedDefaults =
     builtins.listToAttrs (
