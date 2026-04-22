@@ -32,6 +32,17 @@ run_one() {
       overlayB = siteB.overlays."east-west";
       rtA = siteA.runtimeTargets."enterpriseA-site-a-s-router-core-isp-b";
       rtB = siteB.runtimeTargets."enterpriseB-site-b-b-router-core";
+      hasRoute = rt: family: dst:
+        let
+          interfaces = rt.effectiveRuntimeRealization.interfaces;
+          ifNames = builtins.attrNames interfaces;
+        in
+        builtins.any
+          (ifName:
+            builtins.any
+              (route: (route.dst or null) == dst)
+              (((interfaces.${ifName}.routes or { }).${family} or [ ])))
+          ifNames;
     in
       overlayA.terminateOn == [ "s-router-core-isp-b" ]
       && overlayB.terminateOn == [ "b-router-core" ]
@@ -39,6 +50,10 @@ run_one() {
       && overlayB.nodes."b-router-core".addr4 == "100.96.10.2/32"
       && builtins.hasAttr "overlay-east-west" rtA.effectiveRuntimeRealization.interfaces
       && builtins.hasAttr "overlay-east-west" rtB.effectiveRuntimeRealization.interfaces
+      && hasRoute rtB "ipv4" "10.20.20.0/24"
+      && hasRoute rtB "ipv6" "fd42:dead:beef:20::/64"
+      && hasRoute rtA "ipv4" "10.60.10.0/24"
+      && hasRoute rtA "ipv6" "fd42:dead:feed:10::/64"
       && (
         if builtins.hasAttr "routing" siteA then
           siteA.routing.mode == "bgp"

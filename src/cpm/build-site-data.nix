@@ -1241,28 +1241,39 @@ let
       routesAttrs = attrsOrEmpty routes;
       v4 = listOrEmpty (routesAttrs.ipv4 or null);
       v6 = listOrEmpty (routesAttrs.ipv6 or null);
+      routeIntentKind = r:
+        if builtins.isAttrs (r.intent or null) then
+          r.intent.kind or null
+        else
+          null;
       keep4 = r:
         let
           dst = r.dst or null;
           proto = r.proto or null;
+          intentKind = routeIntentKind r;
         in
         builtins.isAttrs r
         && builtins.isString dst
         && (
           dst == "0.0.0.0/0"
           || proto == "uplink"
+          || proto == "overlay"
+          || intentKind == "overlay-reachability"
           || isHostRoute4 dst
         );
       keep6 = r:
         let
           dst = r.dst or null;
           proto = r.proto or null;
+          intentKind = routeIntentKind r;
         in
         builtins.isAttrs r
         && builtins.isString dst
         && (
           dst == "::/0"
           || proto == "uplink"
+          || proto == "overlay"
+          || intentKind == "overlay-reachability"
           || isHostRoute6 dst
         );
     in
@@ -1270,6 +1281,69 @@ let
       ipv4 = builtins.filter keep4 v4;
       ipv6 = builtins.filter keep6 v6;
     };
+
+  normalizeDnsService = servicesPath: dnsValue:
+    let
+      dnsPath = "${servicesPath}.dns";
+      dns = requireAttrs dnsPath dnsValue;
+
+      normalizeStringList = fieldName:
+        let
+          path = "${dnsPath}.${fieldName}";
+          value = dns.${fieldName} or [ ];
+        in
+        builtins.map
+          (entry:
+            let
+              rendered = requireString "${path}[*]" entry;
+            in
+            if isNonEmptyString rendered then
+              rendered
+            else
+              failInventory path "must not contain empty strings")
+          (requireList path value);
+
+      listen = normalizeStringList "listen";
+      allowFrom = normalizeStringList "allowFrom";
+      forwarders =
+        if dns ? forwarders then
+          normalizeStringList "forwarders"
+        else if dns ? upstreams then
+          normalizeStringList "upstreams"
+        else
+          [ ];
+
+      _forwarderConflict =
+        if dns ? forwarders && dns ? upstreams then
+          failInventory dnsPath "must define only one of 'forwarders' or 'upstreams'"
+        else
+          true;
+    in
+    builtins.seq _forwarderConflict (
+      { }
+      // lib.optionalAttrs (listen != [ ]) { listen = listen; }
+      // lib.optionalAttrs (allowFrom != [ ]) { allowFrom = allowFrom; }
+      // lib.optionalAttrs (forwarders != [ ]) { forwarders = forwarders; }
+    );
+
+  normalizeRuntimeServices = targetDef:
+    let
+      servicesPath = "${targetDef.nodePath}.services";
+      services = requireAttrs servicesPath (targetDef.node.services or null);
+      serviceNames = sortedNames services;
+    in
+    builtins.listToAttrs (
+      builtins.map
+        (serviceName: {
+          name = serviceName;
+          value =
+            if serviceName == "dns" then
+              normalizeDnsService servicesPath services.${serviceName}
+            else
+              services.${serviceName};
+        })
+        serviceNames
+    );
 
   bgpNeighborsForNode =
     nodeName:
@@ -1461,6 +1535,12 @@ let
           inherit nodePath nodeName realizedTarget targetId targetDef nodeAttrs;
         };
 
+      runtimeServices =
+        if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then
+          normalizeRuntimeServices targetDef
+        else
+          null;
+
       value =
         {
           logicalNode = logical;
@@ -1559,9 +1639,9 @@ let
             { }
         )
         // (
-          if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then
+          if runtimeServices != null then
             {
-              services = targetDef.node.services;
+              services = runtimeServices;
             }
           else
             { }
