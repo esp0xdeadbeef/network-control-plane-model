@@ -817,6 +817,14 @@ let
           backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
         }
         // (
+          if portBinding != null && isNonEmptyString (portBinding.adapterName or null) then
+            {
+              adapterName = portBinding.adapterName;
+            }
+          else
+            { }
+        )
+        // (
           if portBinding != null && builtins.isAttrs (portBinding.attach or null) then
             {
               attach = portBinding.attach;

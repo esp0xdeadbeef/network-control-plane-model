@@ -52,6 +52,7 @@
         ports = {
           wan0 = {
             link = "transit-policy-edge";
+            adapterName = "adp-s-router-policy-wan0";
             attach = {
               kind = "bridge";
               bridge = "br-transit-a";
@@ -76,6 +77,7 @@
         ports = {
           wan0 = {
             link = "transit-policy-edge";
+            adapterName = "adp-s-router-edge-wan0";
             attach = {
               kind = "bridge";
               bridge = "br-transit-b";

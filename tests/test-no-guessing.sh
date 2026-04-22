@@ -321,6 +321,22 @@ run_case_from_golden \
 '
 
 run_case \
+  "link-port-missing-explicit-adapter-name" \
+  "inventory.realization.nodes.access-runtime.ports.p2p0.adapterName is required" \
+  "$(cat "${golden_input_file}")" \
+  "$(mutate_inventory delete \
+'            adapterName = "adp-access-runtime-p2p0";
+')"
+
+run_case \
+  "link-port-adapter-name-must-be-unique-per-host" \
+  "inventory.realization.nodes.*.ports.*.adapterName (must be unique per deployment host for link selectors) contains duplicate identities" \
+  "$(cat "${golden_input_file}")" \
+  "$(mutate_inventory replace \
+'            adapterName = "adp-policy-runtime-p2p-access";' \
+'            adapterName = "adp-access-runtime-p2p0";')"
+
+run_case \
   "bgp-mode-without-explicit-asn" \
   "bgp mode requires integer 'asn'" \
   "$(cat "${golden_input_file}")" \
@@ -430,6 +446,7 @@ run_case \
         ports = {
           p2p0 = {
             link = "unknown-link";
+            adapterName = "adp-access-runtime-p2p0";
             interface = {
               name = "ens3";
             };
@@ -478,6 +495,7 @@ run_case \
         ports = {
           p2p-upstream = {
             link = "link-core-upstream";
+            adapterName = "adp-core-runtime-p2p-upstream";
             attach = {
               kind = "bridge";
               bridge = "br-wan";
