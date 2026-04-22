@@ -39,6 +39,7 @@
         ports = {
           p2p0 = {
             link = "link-policy-access";
+            adapterName = "adp-access-runtime-p2p0";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -81,6 +82,7 @@
         ports = {
           p2p-access = {
             link = "link-policy-access";
+            adapterName = "adp-policy-runtime-p2p-access";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -92,6 +94,7 @@
 
           p2p-upstream = {
             link = "link-upstream-policy";
+            adapterName = "adp-policy-runtime-p2p-upstream";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -114,6 +117,7 @@
         ports = {
           p2p-core = {
             link = "link-core-upstream";
+            adapterName = "adp-upstream-runtime-p2p-core";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -125,6 +129,7 @@
 
           p2p-policy = {
             link = "link-upstream-policy";
+            adapterName = "adp-upstream-runtime-p2p-policy";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -147,6 +152,7 @@
         ports = {
           p2p-upstream = {
             link = "link-core-upstream";
+            adapterName = "adp-core-runtime-p2p-upstream";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -181,6 +187,7 @@
         ports = {
           p2p0 = {
             link = "link-policy-access";
+            adapterName = "adp-globex-nyc-access-runtime-p2p0";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -223,6 +230,7 @@
         ports = {
           p2p-access = {
             link = "link-policy-access";
+            adapterName = "adp-globex-nyc-policy-runtime-p2p-access";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -234,6 +242,7 @@
 
           p2p-upstream = {
             link = "link-upstream-policy";
+            adapterName = "adp-globex-nyc-policy-runtime-p2p-upstream";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -256,6 +265,7 @@
         ports = {
           p2p-core = {
             link = "link-core-upstream";
+            adapterName = "adp-globex-nyc-upstream-runtime-p2p-core";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -267,6 +277,7 @@
 
           p2p-policy = {
             link = "link-upstream-policy";
+            adapterName = "adp-globex-nyc-upstream-runtime-p2p-policy";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -289,6 +300,7 @@
         ports = {
           p2p-upstream = {
             link = "link-core-upstream";
+            adapterName = "adp-globex-nyc-core-runtime-p2p-upstream";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -323,6 +335,7 @@
         ports = {
           p2p0 = {
             link = "link-policy-access";
+            adapterName = "adp-globex-lon-access-runtime-p2p0";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -365,6 +378,7 @@
         ports = {
           p2p-access = {
             link = "link-policy-access";
+            adapterName = "adp-globex-lon-policy-runtime-p2p-access";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -376,6 +390,7 @@
 
           p2p-upstream = {
             link = "link-upstream-policy";
+            adapterName = "adp-globex-lon-policy-runtime-p2p-upstream";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -398,6 +413,7 @@
         ports = {
           p2p-core = {
             link = "link-core-upstream";
+            adapterName = "adp-globex-lon-upstream-runtime-p2p-core";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -409,6 +425,7 @@
 
           p2p-policy = {
             link = "link-upstream-policy";
+            adapterName = "adp-globex-lon-upstream-runtime-p2p-policy";
             attach = {
               kind = "bridge";
               bridge = "br-transit";
@@ -431,6 +448,7 @@
         ports = {
           p2p-upstream = {
             link = "link-core-upstream";
+            adapterName = "adp-globex-lon-core-runtime-p2p-upstream";
             attach = {
               kind = "bridge";
               bridge = "br-transit";

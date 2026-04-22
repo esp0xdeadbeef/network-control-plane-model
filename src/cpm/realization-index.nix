@@ -14,6 +14,9 @@ let
   failInventory = path: message:
     throw "inventory.nix update required: ${path}: ${message}";
 
+  validAdapterName = value:
+    builtins.isString value && builtins.match "^[a-z][a-z0-9-]*$" value != null;
+
   requireInt = path: value:
     if builtins.isInt value then
       value
@@ -367,6 +370,23 @@ let
             portPath
             "port must declare exactly one selector via link, logicalInterface, or uplink/external";
 
+      adapterName =
+        if selector.kind == "link" then
+          let
+            requiredAdapterName =
+              requireString "${portPath}.adapterName" (portAttrs.adapterName or null);
+          in
+          if validAdapterName requiredAdapterName then
+            requiredAdapterName
+          else
+            failInventory
+              "${portPath}.adapterName"
+              "must match ^[a-z][a-z0-9-]*$ (example: br-isp-a)"
+        else if isNonEmptyString (portAttrs.adapterName or null) then
+          failInventory "${portPath}.adapterName" "is only supported for ports that select a p2p link via .link"
+        else
+          null;
+
       hostUplink =
         if selector.kind == "uplink" && attach != null && (attach.kind or null) == "bridge" then
           resolveHostUplinkFromBridge targetHostName portPath attach.bridge
@@ -416,6 +436,12 @@ let
         // (
           if hostUplink != null then
             { hostUplink = hostUplink; }
+          else
+            { }
+        )
+        // (
+          if adapterName != null then
+            { adapterName = adapterName; }
           else
             { }
         );
@@ -526,6 +552,44 @@ let
         (sortedNames nodesRoot)
     );
 
+  _validateUniqueLinkAdapterNamesPerHost =
+    ensureUniqueEntries
+      "inventory.realization.nodes.*.ports.*.adapterName (must be unique per deployment host for link selectors)"
+      (
+        builtins.concatLists (
+          builtins.map
+            (targetName:
+              let
+                targetDef = targetDefs.${targetName};
+                hostName = targetDef.host;
+                targetPath = targetDef.nodePath;
+              in
+              builtins.concatLists (
+                builtins.map
+                  (portName:
+                    let
+                      portDef = targetDef.portBindings.portDefs.${portName};
+                    in
+                    if portDef.selector.kind == "link" then
+                      [
+                        {
+                          name = "${hostName}|${portDef.adapterName}";
+                          value = {
+                            host = hostName;
+                            target = targetName;
+                            port = portName;
+                            path = "${targetPath}.ports.${portName}.adapterName";
+                          };
+                        }
+                      ]
+                    else
+                      [ ])
+                  (sortedNames targetDef.portBindings.portDefs)
+              ))
+            (sortedNames targetDefs)
+        )
+      );
+
   byLogical =
     ensureUniqueEntries
       "inventory.realization.nodes.*.logicalNode"
@@ -542,6 +606,6 @@ let
           (sortedNames targetDefs)
       );
 in
-{
+builtins.seq _validateUniqueLinkAdapterNamesPerHost {
   inherit targetDefs byLogical;
 }
