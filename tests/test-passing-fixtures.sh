@@ -314,10 +314,10 @@ run_external_examples() {
 
     name="$(basename "$dir")"
     intent="${dir}/intent.nix"
-    inventory="${dir}/inventory.nix"
+    inventory="${dir}/inventory-nixos.nix"
 
     [[ -f "$intent" ]] || { echo "SKIP ${name} (no intent.nix)"; continue; }
-    [[ -f "$inventory" ]] || { echo "SKIP ${name} (no inventory.nix)"; continue; }
+    [[ -f "$inventory" ]] || { echo "SKIP ${name} (no inventory-nixos.nix)"; continue; }
 
     log "Example ${name}"
 

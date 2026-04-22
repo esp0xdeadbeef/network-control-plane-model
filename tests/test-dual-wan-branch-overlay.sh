@@ -9,10 +9,10 @@ fail() { echo "$1" >&2; exit 1; }
 run_one() {
   local example_name="$1"
   local intent_path="${example_root}/${example_name}/intent.nix"
-  local inventory_path="${example_root}/${example_name}/inventory.nix"
+  local inventory_path="${example_root}/${example_name}/inventory-nixos.nix"
 
   [[ -f "${intent_path}" ]] || fail "missing intent.nix: ${intent_path}"
-  [[ -f "${inventory_path}" ]] || fail "missing inventory.nix: ${inventory_path}"
+  [[ -f "${inventory_path}" ]] || fail "missing inventory-nixos.nix: ${inventory_path}"
 
   local output_json
   output_json="$(mktemp)"
