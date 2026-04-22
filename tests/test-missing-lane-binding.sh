@@ -23,14 +23,19 @@ labs_root="$(flake_input_path network-labs)"
 case_dir="${labs_root}/examples/single-wan"
 
 intent_path="${case_dir}/intent.nix"
-inventory_path="${case_dir}/inventory.nix"
+inventory_path="${case_dir}/inventory-nixos.nix"
+inventory_base_path="${case_dir}/inventory-base.nix"
 
 if [[ ! -f "${intent_path}" ]]; then
   echo "missing intent.nix at ${intent_path}" >&2
   exit 1
 fi
 if [[ ! -f "${inventory_path}" ]]; then
-  echo "missing inventory.nix at ${inventory_path}" >&2
+  echo "missing inventory-nixos.nix at ${inventory_path}" >&2
+  exit 1
+fi
+if [[ ! -f "${inventory_base_path}" ]]; then
+  echo "missing inventory-base.nix at ${inventory_base_path}" >&2
   exit 1
 fi
 
@@ -38,22 +43,23 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 cp -f "${intent_path}" "${tmp_dir}/intent.nix"
-cp -f "${inventory_path}" "${tmp_dir}/inventory.nix"
-chmod u+w "${tmp_dir}/inventory.nix"
+cp -f "${inventory_path}" "${tmp_dir}/inventory-nixos.nix"
+cp -f "${inventory_base_path}" "${tmp_dir}/inventory-base.nix"
+chmod u+w "${tmp_dir}/inventory-base.nix"
 
 # Break exactly one required dedicated-lane port realization:
 # downstream-selector <-> policy lane for access-client.
 (cd "${tmp_dir}" && python3 - <<'PY'
 from pathlib import Path
 
-p = Path("inventory.nix")
+p = Path("inventory-base.nix")
 text = p.read_text()
 
 old = 'link = "p2p-s-router-downstream-selector-s-router-policy--access-s-router-access-client";'
 new = 'link = "p2p-s-router-downstream-selector-s-router-policy--access-s-router-access-client--BROKEN";'
 
 if old not in text:
-    raise SystemExit("expected lane link string not found in inventory.nix")
+    raise SystemExit("expected lane link string not found in inventory-base.nix")
 
 text = text.replace(
     old,
@@ -71,7 +77,7 @@ if nix run \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \
   "${tmp_dir}/intent.nix" \
-  "${tmp_dir}/inventory.nix" \
+  "${tmp_dir}/inventory-nixos.nix" \
   "${tmp_dir}/out.json" \
   >/dev/null 2>"${stderr_file}"; then
   echo "FAIL missing-lane-binding: unexpectedly succeeded" >&2
