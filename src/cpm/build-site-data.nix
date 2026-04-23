@@ -53,6 +53,19 @@ let
     else
       [ ];
 
+  uniqueStrings =
+    values:
+    sortedNames (
+      builtins.listToAttrs (
+        builtins.map
+          (value: {
+            name = value;
+            value = true;
+          })
+          (builtins.filter isNonEmptyString values)
+      )
+    );
+
   failForwarding = path: message:
     throw "forwarding-model update required: ${path}: ${message}";
 
@@ -119,6 +132,142 @@ let
       { };
 
   inventoryAttrs = attrsOrEmpty inventory;
+  inventoryEndpoints = attrsOrEmpty (inventoryAttrs.endpoints or null);
+
+  serviceDefinitions =
+    if communicationContract != null && builtins.isList (communicationContract.services or null) then
+      builtins.listToAttrs (
+        builtins.genList
+          (idx:
+            let
+              servicePath = "${sitePath}.communicationContract.services[${toString idx}]";
+              service = requireAttrs servicePath (builtins.elemAt communicationContract.services idx);
+              serviceName = requireString "${servicePath}.name" (service.name or null);
+            in
+            {
+              name = serviceName;
+              value = service;
+            })
+          (builtins.length communicationContract.services)
+      )
+    else
+      { };
+
+  allowedRelations =
+    if communicationContract != null && builtins.isList (communicationContract.allowedRelations or null) then
+      communicationContract.allowedRelations
+    else
+      [ ];
+
+  relationEndpointMatchesTenant =
+    tenantName: endpoint:
+    if endpoint == "any" then
+      true
+    else if builtins.isString endpoint then
+      endpoint == tenantName
+    else if builtins.isList endpoint then
+      lib.any (item: relationEndpointMatchesTenant tenantName item) endpoint
+    else if builtins.isAttrs endpoint then
+      let
+        kind = endpoint.kind or null;
+      in
+      if kind == "tenant" then
+        (endpoint.name or null) == tenantName
+      else if kind == "tenant-set" && builtins.isList (endpoint.members or null) then
+        builtins.elem tenantName endpoint.members
+      else
+        false
+    else
+      false;
+
+  effectiveTrafficTypeForRelation =
+    relation: serviceDef:
+    let
+      relationTrafficType = relation.trafficType or null;
+      serviceTrafficType = serviceDef.trafficType or null;
+    in
+    if isNonEmptyString relationTrafficType then relationTrafficType else serviceTrafficType;
+
+  providerAddressesForDnsService =
+    providerName:
+    let
+      endpointPath = "inventory.endpoints.${providerName}";
+      endpoint = attrsOrEmpty (inventoryEndpoints.${providerName} or null);
+    in
+    if endpoint == { } then
+      failInventory
+        endpointPath
+        "DNS service provider '${providerName}' requires explicit inventory.endpoints.${providerName}.ipv4 and/or ipv6 for policy-derived DNS upstreams"
+    else
+      uniqueStrings (
+        (if builtins.isList (endpoint.ipv4 or null) then requireStringList "${endpointPath}.ipv4" endpoint.ipv4 else [ ])
+        ++ (if builtins.isList (endpoint.ipv6 or null) then requireStringList "${endpointPath}.ipv6" endpoint.ipv6 else [ ])
+      );
+
+  policyDerivedDnsForwardersForTenants =
+    tenantNames:
+    uniqueStrings (
+      lib.concatMap
+        (tenantName:
+          let
+            allowedDnsServices =
+              uniqueStrings (
+                builtins.map
+                  (relation:
+                    let
+                      serviceName = relation.to.name or null;
+                    in
+                    serviceName)
+                  (
+                    builtins.filter
+                      (relation:
+                        let
+                          relationAttrs =
+                            if builtins.isAttrs relation then
+                              relation
+                            else
+                              { };
+                          serviceName =
+                            if
+                              builtins.isAttrs (relationAttrs.to or null)
+                              && builtins.isString (relationAttrs.to.name or null)
+                            then
+                              relationAttrs.to.name
+                            else
+                              null;
+                          serviceDef =
+                            if serviceName != null && hasAttr serviceName serviceDefinitions then
+                              serviceDefinitions.${serviceName}
+                            else
+                              { };
+                        in
+                        (relationAttrs.action or "allow") == "allow"
+                        && builtins.isAttrs (relationAttrs.to or null)
+                        && (relationAttrs.to.kind or null) == "service"
+                        && serviceName != null
+                        && hasAttr serviceName serviceDefinitions
+                        && effectiveTrafficTypeForRelation relationAttrs serviceDef == "dns"
+                        && relationEndpointMatchesTenant tenantName (relationAttrs.from or null))
+                      allowedRelations
+                  )
+              );
+          in
+          lib.concatMap
+            (serviceName:
+              let
+                serviceDef = serviceDefinitions.${serviceName};
+                providers =
+                  if builtins.isList (serviceDef.providers or null) then
+                    requireStringList
+                      "${sitePath}.communicationContract.services.${serviceName}.providers"
+                      serviceDef.providers
+                  else
+                    [ ];
+              in
+              lib.concatMap providerAddressesForDnsService providers)
+            allowedDnsServices)
+        tenantNames
+    );
 
   # Control-plane routing decisions live in inventory (not forwarding-model).
   siteControlPlaneCfg =
@@ -1345,6 +1494,75 @@ let
         serviceNames
     );
 
+  tenantAttachmentsForNode =
+    nodePath: nodeName: nodeAttrs:
+    uniqueStrings (
+      (builtins.map
+        (attachment:
+          let
+            attachmentAttrs = requireAttrs "${sitePath}.attachments[*]" attachment;
+          in
+          if
+            (attachmentAttrs.kind or null) == "tenant"
+            && (attachmentAttrs.unit or null) == nodeName
+            && isNonEmptyString (attachmentAttrs.name or null)
+          then
+            attachmentAttrs.name
+          else
+            "")
+        attachments)
+      ++ (
+        if builtins.isList (nodeAttrs.attachments or null) then
+          builtins.map
+            (attachment:
+              let
+                attachmentAttrs = requireAttrs "${nodePath}.attachments[*]" attachment;
+              in
+              if
+                (attachmentAttrs.kind or null) == "tenant"
+                && isNonEmptyString (attachmentAttrs.name or null)
+              then
+                attachmentAttrs.name
+              else
+                "")
+            nodeAttrs.attachments
+        else
+          [ ]
+      )
+    );
+
+  resolveRuntimeServices =
+    {
+      nodePath,
+      nodeName,
+      nodeAttrs,
+      targetDef,
+    }:
+    let
+      normalized = normalizeRuntimeServices targetDef;
+      dnsService = attrsOrEmpty (normalized.dns or null);
+      explicitForwarders =
+        if builtins.isList (dnsService.forwarders or null) then
+          requireStringList "${targetDef.nodePath}.services.dns.forwarders" dnsService.forwarders
+        else
+          [ ];
+      tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
+      derivedForwarders = policyDerivedDnsForwardersForTenants tenantNames;
+      mergedForwarders =
+        if derivedForwarders == [ ] then
+          explicitForwarders
+        else
+          uniqueStrings (derivedForwarders ++ explicitForwarders);
+    in
+    normalized
+    // lib.optionalAttrs (dnsService != { }) {
+      dns =
+        dnsService
+        // lib.optionalAttrs (mergedForwarders != [ ]) {
+          forwarders = mergedForwarders;
+        };
+    };
+
   bgpNeighborsForNode =
     nodeName:
     let
@@ -1537,7 +1755,10 @@ let
 
       runtimeServices =
         if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then
-          normalizeRuntimeServices targetDef
+          resolveRuntimeServices {
+            inherit nodePath;
+            inherit nodeName nodeAttrs targetDef;
+          }
         else
           null;
 
