@@ -66,6 +66,49 @@ let
       )
     );
 
+  pow2 = n: builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) n);
+
+  ipv4ToInt =
+    octets:
+    let
+      a = builtins.elemAt octets 0;
+      b = builtins.elemAt octets 1;
+      c = builtins.elemAt octets 2;
+      d = builtins.elemAt octets 3;
+    in
+    a * 16777216 + b * 65536 + c * 256 + d;
+
+  ipv4NetworkBaseInt =
+    { addrInt, prefixLen }:
+    let
+      hostBits = 32 - prefixLen;
+      block = pow2 hostBits;
+    in
+    (builtins.div addrInt block) * block;
+
+  cidrContainsAddress =
+    cidr: address:
+    let
+      parsedCidr = ipam.splitCIDR cidr;
+    in
+    if parsedCidr == null then
+      false
+    else
+      let
+        cidrAddr = ipam.parseIPv4 parsedCidr.addr;
+        addr = ipam.parseIPv4 address;
+      in
+      cidrAddr != null
+      && addr != null
+      && ipv4NetworkBaseInt {
+        addrInt = ipv4ToInt addr;
+        prefixLen = parsedCidr.prefixLen;
+      }
+      == ipv4NetworkBaseInt {
+        addrInt = ipv4ToInt cidrAddr;
+        prefixLen = parsedCidr.prefixLen;
+      };
+
   failForwarding = path: message:
     throw "forwarding-model update required: ${path}: ${message}";
 
@@ -74,6 +117,7 @@ let
 
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
   siteAttrs = requireAttrs sitePath site;
+  ownership = attrsOrEmpty (siteAttrs.ownership or null);
 
   siteId = requireString "${sitePath}.siteId" (siteAttrs.siteId or null);
   siteDisplayName = requireString "${sitePath}.siteName" (siteAttrs.siteName or null);
@@ -225,6 +269,54 @@ let
         ++ lib.optional (isNonEmptyString (tenantDef.ipv6 or null))
           (requireString "${tenantPath}.ipv6" tenantDef.ipv6)
       );
+
+  tenantNameForAddress =
+    address:
+    let
+      matchingTenants =
+        lib.filter
+          (tenant:
+            let
+              tenantName = requireString "${sitePath}.domains.tenants[*].name" (tenant.name or null);
+              tenantPath = "${sitePath}.domains.tenants.${tenantName}";
+              prefixes =
+                lib.optional (isNonEmptyString (tenant.ipv4 or null))
+                  (requireString "${tenantPath}.ipv4" tenant.ipv4);
+            in
+            lib.any (prefix: cidrContainsAddress prefix address) prefixes)
+          domains.tenants;
+    in
+    if builtins.length matchingTenants == 1 then
+      (builtins.head matchingTenants).name
+    else
+      null;
+
+  providerTenantsForServiceProvider =
+    providerName:
+    let
+      ownershipMatches =
+        if builtins.isList (ownership.endpoints or null) then
+          lib.filter
+            (endpoint:
+              builtins.isAttrs endpoint
+              && (endpoint.name or null) == providerName
+              && isNonEmptyString (endpoint.tenant or null))
+            ownership.endpoints
+        else
+          [ ];
+      inventoryEndpoint = attrsOrEmpty (inventoryEndpoints.${providerName} or null);
+      inventoryAddresses =
+        uniqueStrings (
+          (if builtins.isList (inventoryEndpoint.ipv4 or null) then
+             requireStringList "inventory.endpoints.${providerName}.ipv4" inventoryEndpoint.ipv4
+           else
+             [ ])
+        );
+    in
+    uniqueStrings (
+      (map (endpoint: endpoint.tenant) ownershipMatches)
+      ++ lib.filter (tenant: tenant != null) (map tenantNameForAddress inventoryAddresses)
+    );
 
   tenantNamesForRelationEndpoint =
     endpoint:
@@ -2066,7 +2158,24 @@ let
 
   resolvedServices =
     builtins.map
-      (serviceName: policyEndpointBindings.services.${serviceName})
+      (
+        serviceName:
+        let
+          resolvedService = policyEndpointBindings.services.${serviceName};
+          providerNames =
+            if builtins.isList (resolvedService.providers or null) then
+              requireStringList "${sitePath}.services.${serviceName}.providers" resolvedService.providers
+            else
+              [ ];
+        in
+        resolvedService
+        // {
+          name = serviceName;
+          providerTenants = uniqueStrings (
+            lib.concatMap providerTenantsForServiceProvider providerNames
+          );
+        }
+      )
       (sortedNames policyEndpointBindings.services);
 in
 {

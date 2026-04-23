@@ -157,6 +157,13 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     core = site.runtimeTargets.core-runtime;
     dns = access.services.dns;
     providerDns = core.services.dns;
+    serviceDefs = site.services or [ ];
+    siteDns =
+      builtins.head (
+        builtins.filter
+          (service: builtins.isAttrs service && (service.name or null) == "site-dns")
+          serviceDefs
+      );
     forwarders = dns.forwarders or [ ];
     providerAllowFrom = providerDns.allowFrom or [ ];
   in
@@ -170,6 +177,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && builtins.elem "fd00:10::/64" providerAllowFrom
     && builtins.elem "10.20.0.0/24" providerAllowFrom
     && builtins.elem "fd00:20::/64" providerAllowFrom
+    && builtins.elem "mgmt" (siteDns.providerTenants or [ ])
     && !(site.runtimeTargets.policy-runtime ? services)
     && !(site.runtimeTargets.upstream-runtime ? services)
 ' >/dev/null || {
