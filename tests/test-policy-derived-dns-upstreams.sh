@@ -129,6 +129,25 @@ base
                 ];
               };
             };
+
+          globex-nyc-access-runtime =
+            base.realization.nodes.globex-nyc-access-runtime
+            // {
+              services.dns = {
+                listen = [
+                  "10.30.0.1"
+                  "fd00:30::1"
+                ];
+                allowFrom = [
+                  "10.30.0.0/24"
+                  "fd00:30::/64"
+                ];
+                forwarders = [
+                  "10.20.10.10"
+                  "fd00:10::10"
+                ];
+              };
+            };
         };
     };
 }
@@ -179,6 +198,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && builtins.elem "fd00:20::/64" providerAllowFrom
     && builtins.elem "169.254.10.0/31" providerAllowFrom
     && builtins.elem "fd00:10::0/127" providerAllowFrom
+    && builtins.elem "10.30.0.0/24" providerAllowFrom
+    && builtins.elem "fd00:30::/64" providerAllowFrom
+    && builtins.elem "169.254.20.0/31" providerAllowFrom
+    && builtins.elem "fd00:20::0/127" providerAllowFrom
     && builtins.elem "mgmt" (siteDns.providerTenants or [ ])
     && !(site.runtimeTargets.policy-runtime ? services)
     && !(site.runtimeTargets.upstream-runtime ? services)
