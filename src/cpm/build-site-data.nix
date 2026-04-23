@@ -204,6 +204,49 @@ let
         ++ (if builtins.isList (endpoint.ipv6 or null) then requireStringList "${endpointPath}.ipv6" endpoint.ipv6 else [ ])
       );
 
+  tenantPrefixesForName =
+    tenantName:
+    let
+      tenantDef =
+        lib.findFirst
+          (tenant:
+            builtins.isAttrs tenant
+            && (tenant.name or null) == tenantName)
+          null
+          domains.tenants;
+      tenantPath = "${sitePath}.domains.tenants.${tenantName}";
+    in
+    if tenantDef == null then
+      [ ]
+    else
+      uniqueStrings (
+        lib.optional (isNonEmptyString (tenantDef.ipv4 or null))
+          (requireString "${tenantPath}.ipv4" tenantDef.ipv4)
+        ++ lib.optional (isNonEmptyString (tenantDef.ipv6 or null))
+          (requireString "${tenantPath}.ipv6" tenantDef.ipv6)
+      );
+
+  tenantNamesForRelationEndpoint =
+    endpoint:
+    if endpoint == "any" then
+      builtins.map (tenant: tenant.name) domains.tenants
+    else if builtins.isString endpoint then
+      [ endpoint ]
+    else if builtins.isList endpoint then
+      uniqueStrings (lib.concatMap tenantNamesForRelationEndpoint endpoint)
+    else if builtins.isAttrs endpoint then
+      let
+        kind = endpoint.kind or null;
+      in
+      if kind == "tenant" && isNonEmptyString (endpoint.name or null) then
+        [ endpoint.name ]
+      else if kind == "tenant-set" && builtins.isList (endpoint.members or null) then
+        requireStringList "${sitePath}.communicationContract.allowedRelations[*].from.members" endpoint.members
+      else
+        [ ]
+    else
+      [ ];
+
   policyDerivedDnsForwardersForTenants =
     tenantNames:
     uniqueStrings (
@@ -267,6 +310,63 @@ let
               lib.concatMap providerAddressesForDnsService providers)
             allowedDnsServices)
         tenantNames
+    );
+
+  policyDerivedDnsAllowFromForListeners =
+    listenAddrs:
+    let
+      listenSet = uniqueStrings listenAddrs;
+      serviceNames = sortedNames serviceDefinitions;
+      hostedDnsServices =
+        builtins.filter
+          (serviceName:
+            let
+              serviceDef = serviceDefinitions.${serviceName};
+              trafficType = serviceDef.trafficType or null;
+              providers =
+                if builtins.isList (serviceDef.providers or null) then
+                  requireStringList
+                    "${sitePath}.communicationContract.services.${serviceName}.providers"
+                    serviceDef.providers
+                else
+                  [ ];
+              providerAddresses = lib.concatMap providerAddressesForDnsService providers;
+            in
+            trafficType == "dns" && lib.any (addr: builtins.elem addr listenSet) providerAddresses)
+          serviceNames;
+    in
+    uniqueStrings (
+      lib.concatMap
+        (serviceName:
+          lib.concatMap
+            (relation:
+              let
+                relationAttrs =
+                  if builtins.isAttrs relation then
+                    relation
+                  else
+                    { };
+                relationServiceName =
+                  if
+                    builtins.isAttrs (relationAttrs.to or null)
+                    && builtins.isString (relationAttrs.to.name or null)
+                  then
+                    relationAttrs.to.name
+                  else
+                    null;
+              in
+              if
+                (relationAttrs.action or "allow") == "allow"
+                && builtins.isAttrs (relationAttrs.to or null)
+                && (relationAttrs.to.kind or null) == "service"
+                && relationServiceName == serviceName
+                && effectiveTrafficTypeForRelation relationAttrs serviceDefinitions.${serviceName} == "dns"
+              then
+                lib.concatMap tenantPrefixesForName (tenantNamesForRelationEndpoint (relationAttrs.from or null))
+              else
+                [ ])
+            allowedRelations)
+        hostedDnsServices
     );
 
   # Control-plane routing decisions live in inventory (not forwarding-model).
@@ -1546,18 +1646,36 @@ let
           requireStringList "${targetDef.nodePath}.services.dns.forwarders" dnsService.forwarders
         else
           [ ];
+      explicitAllowFrom =
+        if builtins.isList (dnsService.allowFrom or null) then
+          requireStringList "${targetDef.nodePath}.services.dns.allowFrom" dnsService.allowFrom
+        else
+          [ ];
       tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
       derivedForwarders = policyDerivedDnsForwardersForTenants tenantNames;
+      derivedAllowFrom =
+        if builtins.isList (dnsService.listen or null) then
+          policyDerivedDnsAllowFromForListeners dnsService.listen
+        else
+          [ ];
       mergedForwarders =
         if derivedForwarders == [ ] then
           explicitForwarders
         else
           uniqueStrings (derivedForwarders ++ explicitForwarders);
+      mergedAllowFrom =
+        if derivedAllowFrom == [ ] then
+          explicitAllowFrom
+        else
+          uniqueStrings (explicitAllowFrom ++ derivedAllowFrom);
     in
     normalized
     // lib.optionalAttrs (dnsService != { }) {
       dns =
         dnsService
+        // lib.optionalAttrs (mergedAllowFrom != [ ]) {
+          allowFrom = mergedAllowFrom;
+        }
         // lib.optionalAttrs (mergedForwarders != [ ]) {
           forwarders = mergedForwarders;
         };

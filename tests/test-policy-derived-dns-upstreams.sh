@@ -92,6 +92,25 @@ base
       nodes =
         base.realization.nodes
         // {
+          core-runtime =
+            base.realization.nodes.core-runtime
+            // {
+              services.dns = {
+                listen = [
+                  "10.20.10.10"
+                  "fd00:10::10"
+                ];
+                allowFrom = [
+                  "10.20.10.0/24"
+                  "fd00:10::/64"
+                ];
+                forwarders = [
+                  "1.1.1.1"
+                  "2606:4700:4700::1111"
+                ];
+              };
+            };
+
           access-runtime =
             base.realization.nodes.access-runtime
             // {
@@ -135,8 +154,11 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     site = data.control_plane_model.data.acme.ams;
     access = site.runtimeTargets.access-runtime;
+    core = site.runtimeTargets.core-runtime;
     dns = access.services.dns;
+    providerDns = core.services.dns;
     forwarders = dns.forwarders or [ ];
+    providerAllowFrom = providerDns.allowFrom or [ ];
   in
     builtins.elem "10.20.10.10" forwarders
     && builtins.elem "fd00:10::10" forwarders
@@ -144,9 +166,12 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && builtins.elem "2606:4700:4700::1111" forwarders
     && dns.listen == [ "10.20.0.1" "fd00:20::1" ]
     && dns.allowFrom == [ "10.20.0.0/24" "fd00:20::/64" ]
+    && builtins.elem "10.20.10.0/24" providerAllowFrom
+    && builtins.elem "fd00:10::/64" providerAllowFrom
+    && builtins.elem "10.20.0.0/24" providerAllowFrom
+    && builtins.elem "fd00:20::/64" providerAllowFrom
     && !(site.runtimeTargets.policy-runtime ? services)
     && !(site.runtimeTargets.upstream-runtime ? services)
-    && !(site.runtimeTargets.core-runtime ? services)
 ' >/dev/null || {
   echo "FAIL policy-derived-dns-upstreams" >&2
   exit 1
