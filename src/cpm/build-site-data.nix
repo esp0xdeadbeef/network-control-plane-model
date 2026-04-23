@@ -676,6 +676,19 @@ let
               else
                 10;
 
+            explicitOverlayNodeNames =
+              lib.sort (a: b: a < b) (
+                lib.unique (
+                  (sortedNames overlayNodesCfg)
+                  ++ (sortedNames overlayIpamNodesCfg)
+                )
+              );
+
+            overlayNodeNames =
+              lib.sort (a: b: a < b) (
+                lib.unique (terminateOn ++ explicitOverlayNodeNames)
+              );
+
             resolveOverlayAddr =
               { family, nodeName, idx }:
               let
@@ -726,7 +739,7 @@ let
                         // lib.optionalAttrs (isNonEmptyString addr4) { addr4 = addr4; }
                         // lib.optionalAttrs (isNonEmptyString addr6) { addr6 = addr6; };
                     })
-                  terminateOn
+                  overlayNodeNames
               );
           in
           {

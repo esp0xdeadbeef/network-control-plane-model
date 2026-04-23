@@ -47,7 +47,9 @@ run_one() {
       overlayA.terminateOn == [ "s-router-core-isp-b" ]
       && overlayB.terminateOn == [ "b-router-core" ]
       && overlayA.nodes."s-router-core-isp-b".addr4 == "100.96.10.1/32"
+      && overlayA.nodes."nebula-core".addr4 == "100.96.10.10/32"
       && overlayB.nodes."b-router-core".addr4 == "100.96.10.2/32"
+      && overlayB.nodes."branch-node01".addr4 == "100.96.10.20/32"
       && builtins.hasAttr "overlay-east-west" rtA.effectiveRuntimeRealization.interfaces
       && builtins.hasAttr "overlay-east-west" rtB.effectiveRuntimeRealization.interfaces
       && hasRoute rtB "ipv4" "10.20.20.0/24"
