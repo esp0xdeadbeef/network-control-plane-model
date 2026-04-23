@@ -358,7 +358,7 @@ No overlay repair from inventory, naming conventions, link shape, or forwarding 
 This repository can emit renderer-consumable overlay provisioning hints:
 
 - which logical nodes terminate each overlay (`terminateOn`)
-- which overlay IP(s) those termination nodes should use (`nodes.<node>.addr4/addr6`)
+- which overlay IP(s) modeled overlay nodes should use (`nodes.<node>.addr4/addr6`)
 
 Inventory contract (technique-specific data belongs here, not in compiler/forwarding-model):
 
@@ -381,6 +381,9 @@ CPM output:
 
 - `control_plane_model.data.<enterprise>.<site>.overlays.<overlayName>.terminateOn`
 - `control_plane_model.data.<enterprise>.<site>.overlays.<overlayName>.nodes.<nodeName>.addr4/addr6`
+
+`nodes.<nodeName>` can include explicit non-terminating runtime consumers in addition to
+the overlay termination nodes listed in `terminateOn`.
 
 ---
 
