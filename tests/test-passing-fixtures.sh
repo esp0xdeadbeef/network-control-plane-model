@@ -466,5 +466,6 @@ run_case "default-egress-reachability" "$default_egress_input" "$default_egress_
 run_external_examples
 bash "${repo_root}/tests/test-dual-wan-branch-overlay.sh"
 bash "${repo_root}/tests/test-policy-derived-dns-upstreams.sh"
+bash "${repo_root}/tests/test-preferred-uplink-defaults.sh"
 
 exit 0

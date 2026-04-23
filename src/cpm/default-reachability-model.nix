@@ -34,6 +34,17 @@ let
         values
     );
 
+  uplinkNameFromAdjacencyId =
+    adjacencyId:
+    let
+      marker = "--uplink-";
+      parts = builtins.filter isNonEmptyString (builtins.split marker adjacencyId);
+    in
+    if builtins.length parts < 2 then
+      null
+    else
+      builtins.elemAt parts ((builtins.length parts) - 1);
+
   defaultDst = family:
     if family == 4 then
       "0.0.0.0/0"
@@ -326,6 +337,38 @@ let
   explicitDefaultSourceSet6 =
     makeStringSet (explicitDefaultSourceNodeNamesForFamily 6);
 
+  preferredFirstHopMatchesSource =
+    candidate:
+    let
+      sourceEntry =
+        if hasAttr candidate.sourceNode runtimeTargetsWithWANDefaultsByNode then
+          runtimeTargetsWithWANDefaultsByNode.${candidate.sourceNode}
+        else
+          null;
+
+      selectedUplinkNames =
+        if sourceEntry == null then
+          [ ]
+        else
+          selectedUplinkNamesForTarget sourceEntry.target;
+
+      firstStep =
+        if builtins.length candidate.steps == 0 then
+          null
+        else
+          builtins.elemAt candidate.steps 0;
+
+      uplinkName =
+        if firstStep == null then
+          null
+        else
+          uplinkNameFromAdjacencyId firstStep.adjacencyId;
+    in
+    if selectedUplinkNames == [ ] || firstStep == null || uplinkName == null then
+      true
+    else
+      listContains uplinkName selectedUplinkNames;
+
   addNeighbor = acc: nodeName: neighborRecord:
     let
       existing =
@@ -481,7 +524,8 @@ let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
       logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
       nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
-      candidatePaths = sortedCandidatePaths family sourceSet nodeName;
+      candidatePaths =
+        builtins.filter preferredFirstHopMatchesSource (sortedCandidatePaths family sourceSet nodeName);
     in
     if hasAttr nodeName sourceSet || candidatePaths == [ ] then
       target
