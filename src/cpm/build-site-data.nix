@@ -270,6 +270,76 @@ let
           (requireString "${tenantPath}.ipv6" tenantDef.ipv6)
       );
 
+  attachedNodeNamesForTenant =
+    tenantName:
+    uniqueStrings (
+      (builtins.map
+        (attachment:
+          let
+            attachmentAttrs = requireAttrs "${sitePath}.attachments[*]" attachment;
+          in
+          if
+            (attachmentAttrs.kind or null) == "tenant"
+            && (attachmentAttrs.name or null) == tenantName
+            && isNonEmptyString (attachmentAttrs.unit or null)
+          then
+            attachmentAttrs.unit
+          else
+            "")
+        attachments)
+      ++ (
+        builtins.map
+          (nodeName:
+            let
+              nodePath = "${sitePath}.nodes.${nodeName}";
+              nodeAttrs = requireAttrs nodePath nodes.${nodeName};
+              attachedTenants =
+                if builtins.isList (nodeAttrs.attachments or null) then
+                  builtins.map
+                    (attachment:
+                      let
+                        attachmentAttrs = requireAttrs "${nodePath}.attachments[*]" attachment;
+                      in
+                      if
+                        (attachmentAttrs.kind or null) == "tenant"
+                        && isNonEmptyString (attachmentAttrs.name or null)
+                      then
+                        attachmentAttrs.name
+                      else
+                        "")
+                    nodeAttrs.attachments
+                else
+                  [ ];
+            in
+            if builtins.elem tenantName attachedTenants then nodeName else "")
+          (sortedNames nodes)
+      )
+    );
+
+  interfaceCidrsForNode =
+    nodeName:
+    let
+      nodePath = "${sitePath}.nodes.${nodeName}";
+      nodeAttrs = requireAttrs nodePath nodes.${nodeName};
+      nodeInterfaces = requireAttrs "${nodePath}.interfaces" (nodeAttrs.interfaces or null);
+    in
+    uniqueStrings (
+      lib.concatMap
+        (ifName:
+          let
+            iface = requireAttrs "${nodePath}.interfaces.${ifName}" nodeInterfaces.${ifName};
+          in
+          lib.optional (isNonEmptyString (iface.addr4 or null))
+            (requireString "${nodePath}.interfaces.${ifName}.addr4" iface.addr4)
+          ++ lib.optional (isNonEmptyString (iface.addr6 or null))
+            (requireString "${nodePath}.interfaces.${ifName}.addr6" iface.addr6))
+        (sortedNames nodeInterfaces)
+    );
+
+  consumerInterfaceCidrsForTenant =
+    tenantName:
+    uniqueStrings (lib.concatMap interfaceCidrsForNode (attachedNodeNamesForTenant tenantName));
+
   tenantNameForAddress =
     address:
     let
@@ -454,7 +524,14 @@ let
                 && relationServiceName == serviceName
                 && effectiveTrafficTypeForRelation relationAttrs serviceDefinitions.${serviceName} == "dns"
               then
-                lib.concatMap tenantPrefixesForName (tenantNamesForRelationEndpoint (relationAttrs.from or null))
+                let
+                  tenantNames = tenantNamesForRelationEndpoint (relationAttrs.from or null);
+                in
+                lib.concatMap
+                  (tenantName:
+                    (tenantPrefixesForName tenantName)
+                    ++ (consumerInterfaceCidrsForTenant tenantName))
+                  tenantNames
               else
                 [ ])
             allowedRelations)

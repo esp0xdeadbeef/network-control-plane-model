@@ -177,6 +177,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && builtins.elem "fd00:10::/64" providerAllowFrom
     && builtins.elem "10.20.0.0/24" providerAllowFrom
     && builtins.elem "fd00:20::/64" providerAllowFrom
+    && builtins.elem "169.254.10.0/31" providerAllowFrom
+    && builtins.elem "fd00:10::0/127" providerAllowFrom
     && builtins.elem "mgmt" (siteDns.providerTenants or [ ])
     && !(site.runtimeTargets.policy-runtime ? services)
     && !(site.runtimeTargets.upstream-runtime ? services)
