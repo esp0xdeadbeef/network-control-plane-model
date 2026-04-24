@@ -2017,6 +2017,11 @@ let
           requireStringList "${targetDef.nodePath}.services.dns.allowFrom" dnsService.allowFrom
         else
           [ ];
+      listenAddresses =
+        if builtins.isList (dnsService.listen or null) then
+          requireStringList "${targetDef.nodePath}.services.dns.listen" dnsService.listen
+        else
+          [ ];
       tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
       derivedForwarders = policyDerivedDnsForwardersForTenants tenantNames;
       derivedAllowFrom =
@@ -2028,7 +2033,9 @@ let
         if derivedForwarders == [ ] then
           explicitForwarders
         else
-          uniqueStrings (derivedForwarders ++ explicitForwarders);
+          builtins.filter
+            (addr: !(builtins.elem addr listenAddresses))
+            (uniqueStrings (derivedForwarders ++ explicitForwarders));
       mergedAllowFrom =
         if derivedAllowFrom == [ ] then
           explicitAllowFrom
