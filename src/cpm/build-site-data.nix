@@ -751,6 +751,29 @@ let
                 terminateOn = terminateOn;
                 nodes = overlayNodeAddrs;
               }
+              // lib.optionalAttrs (ipamV4Prefix != null || ipamV6Prefix != null) {
+                ipam =
+                  lib.optionalAttrs (ipamV4Prefix != null) {
+                    ipv4 =
+                      { prefix = ipamV4Prefix; }
+                      // lib.optionalAttrs (builtins.isInt (overlayIpamV4.perNodePrefixLength or null)) {
+                        perNodePrefixLength = overlayIpamV4.perNodePrefixLength;
+                      }
+                      // lib.optionalAttrs (builtins.isInt (overlayIpamV4.offsetStart or null)) {
+                        offsetStart = overlayIpamV4.offsetStart;
+                      };
+                  }
+                  // lib.optionalAttrs (ipamV6Prefix != null) {
+                    ipv6 =
+                      { prefix = ipamV6Prefix; }
+                      // lib.optionalAttrs (builtins.isInt (overlayIpamV6.perNodePrefixLength or null)) {
+                        perNodePrefixLength = overlayIpamV6.perNodePrefixLength;
+                      }
+                      // lib.optionalAttrs (builtins.isInt (overlayIpamV6.offsetStart or null)) {
+                        offsetStart = overlayIpamV6.offsetStart;
+                      };
+                  };
+              }
               // lib.optionalAttrs (isNonEmptyString (cfg.provider or null)) { provider = cfg.provider; }
               // lib.optionalAttrs (builtins.isAttrs (cfg.nebula or null)) { nebula = cfg.nebula; };
           })
