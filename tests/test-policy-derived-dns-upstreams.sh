@@ -184,6 +184,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           serviceDefs
       );
     forwarders = dns.forwarders or [ ];
+    providerForwarders = providerDns.forwarders or [ ];
     providerAllowFrom = providerDns.allowFrom or [ ];
   in
     builtins.elem "10.20.10.10" forwarders
@@ -192,6 +193,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && builtins.elem "2606:4700:4700::1111" forwarders
     && dns.listen == [ "10.20.0.1" "fd00:20::1" ]
     && dns.allowFrom == [ "10.20.0.0/24" "fd00:20::/64" ]
+    && providerForwarders == [ "1.1.1.1" "2606:4700:4700::1111" ]
     && builtins.elem "10.20.10.0/24" providerAllowFrom
     && builtins.elem "fd00:10::/64" providerAllowFrom
     && builtins.elem "10.20.0.0/24" providerAllowFrom
