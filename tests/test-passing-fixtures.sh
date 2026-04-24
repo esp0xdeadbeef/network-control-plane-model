@@ -467,5 +467,6 @@ run_external_examples
 bash "${repo_root}/tests/test-dual-wan-branch-overlay.sh"
 bash "${repo_root}/tests/test-policy-derived-dns-upstreams.sh"
 bash "${repo_root}/tests/test-preferred-uplink-defaults.sh"
+bash "${repo_root}/tests/test-realized-interface-routes.sh"
 
 exit 0

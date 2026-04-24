@@ -53,6 +53,12 @@ let
     else
       [ ];
 
+  mergeRoutes =
+    base: extra: {
+      ipv4 = listOrEmpty (base.ipv4 or [ ]) ++ listOrEmpty (extra.ipv4 or [ ]);
+      ipv6 = listOrEmpty (base.ipv6 or [ ]) ++ listOrEmpty (extra.ipv6 or [ ]);
+    };
+
   uniqueStrings =
     values:
     sortedNames (
@@ -1258,6 +1264,14 @@ let
           resolvedHostUplink;
 
       baseValue =
+        let
+          interfaceRoutes = requireRoutes ifacePath (ifaceAttrs.routes or null);
+          effectiveRoutes =
+            if portBinding != null && builtins.isAttrs (portBinding.interfaceRoutes or null) then
+              mergeRoutes interfaceRoutes portBinding.interfaceRoutes
+            else
+              interfaceRoutes;
+        in
         {
           runtimeTarget = targetId;
           logicalNode = nodeName;
@@ -1267,7 +1281,7 @@ let
           renderedIfName = runtimeIfName;
           addr4 = effectiveAddr4;
           addr6 = effectiveAddr6;
-          routes = requireRoutes ifacePath (ifaceAttrs.routes or null);
+          routes = effectiveRoutes;
           backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
         }
         // (
@@ -1713,6 +1727,7 @@ let
           || proto == "uplink"
           || proto == "overlay"
           || intentKind == "overlay-reachability"
+          || intentKind == "realized-interface-route"
           || isHostRoute4 dst
         );
       keep6 = r:
@@ -1728,6 +1743,7 @@ let
           || proto == "uplink"
           || proto == "overlay"
           || intentKind == "overlay-reachability"
+          || intentKind == "realized-interface-route"
           || isHostRoute6 dst
         );
     in
