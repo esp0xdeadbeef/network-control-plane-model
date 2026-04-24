@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd jq
+require_cmd python
+
+flake_input_path() {
+  local input_name="$1"
+  nix flake archive --json "path:${repo_root}" \
+    | jq -er ".inputs[\"${input_name}\"].path"
+}
+
+examples_root="$(flake_input_path network-labs)/examples"
+example_root="${examples_root}/single-wan-uplink-static-egress"
+intent_path="${example_root}/intent.nix"
+
+[[ -f "${intent_path}" ]] || {
+  echo "missing intent fixture: ${intent_path}" >&2
+  exit 1
+}
+
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "'"${tmp_dir}"'"' EXIT
+
+cp "${example_root}/inventory-base.nix" "${tmp_dir}/inventory-base.nix"
+chmod u+w "${tmp_dir}/inventory-base.nix"
+cat > "${tmp_dir}/inventory.nix" <<'EOF'
+import ./inventory-base.nix
+EOF
+
+python - <<'PY' "${tmp_dir}/inventory-base.nix"
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+needle = """          wan = {
+            uplink = "wan";
+            external = true;
+            attach = {
+              kind = "bridge";
+              bridge = "br-uplink0";
+            };
+            interface = {
+              name = "ens4";
+            };
+          };"""
+replacement = """          wan = {
+            uplink = "wan";
+            external = true;
+            attach = {
+              kind = "bridge";
+              bridge = "br-uplink0";
+            };
+            interface = {
+              name = "ens4";
+              routes = {
+                ipv4 = [ { prefix = "198.51.100.0/24"; via = "192.0.2.1"; } ];
+                ipv6 = [ { prefix = "2001:db8:51::/64"; via = "2001:db8::1"; } ];
+              };
+            };
+          };"""
+if needle not in source:
+    raise SystemExit("failed to patch single-wan-uplink-static-egress inventory-base.nix")
+path.write_text(source.replace(needle, replacement, 1))
+PY
+
+output_json="${tmp_dir}/out.json"
+nix eval --impure --json --expr '
+  let
+    flake = builtins.getFlake "'"path:${repo_root}"'";
+    out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
+      inputPath = "'"${intent_path}"'";
+      inventoryPath = "'"${tmp_dir}/inventory.nix"'";
+    };
+  in
+    out
+' > "${output_json}"
+
+OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+  let
+    data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+    site = data.control_plane_model.data.esp0xdeadbeef."site-a";
+    core = site.runtimeTargets."esp0xdeadbeef-site-a-s-router-core-wan";
+    routes = core.effectiveRuntimeRealization.interfaces.wan.routes;
+    hasRoute = family: dst: via:
+      builtins.any
+        (route:
+          (route.dst or null) == dst
+          && (
+            if family == "ipv4" then
+              (route.via4 or null) == via
+            else
+              (route.via6 or null) == via
+          )
+          && ((route.intent or { }).kind or null) == "realized-interface-route"
+        )
+        (routes.${family} or [ ]);
+  in
+    hasRoute "ipv4" "198.51.100.0/24" "192.0.2.1"
+    && hasRoute "ipv6" "2001:db8:51::/64" "2001:db8::1"
+' >/dev/null
+
+echo "PASS realized-interface-routes"
