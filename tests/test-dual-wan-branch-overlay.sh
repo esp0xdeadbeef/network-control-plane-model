@@ -46,6 +46,10 @@ run_one() {
     in
       overlayA.terminateOn == [ "s-router-core-isp-b" ]
       && overlayB.terminateOn == [ "b-router-core" ]
+      && overlayA.ipam.ipv4.prefix == "100.96.10.0/24"
+      && overlayA.ipam.ipv6.prefix == "fd42:dead:beef:ee::/64"
+      && overlayB.ipam.ipv4.prefix == "100.96.10.0/24"
+      && overlayB.ipam.ipv6.prefix == "fd42:dead:beef:ee::/64"
       && overlayA.nodes."s-router-core-isp-b".addr4 == "100.96.10.1/32"
       && overlayA.nodes."nebula-core".addr4 == "100.96.10.10/32"
       && overlayB.nodes."b-router-core".addr4 == "100.96.10.2/32"
