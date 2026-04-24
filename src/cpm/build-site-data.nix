@@ -1788,13 +1788,156 @@ let
           failInventory dnsPath "must define only one of 'forwarders' or 'upstreams'"
         else
           true;
+
+      localZones =
+        let
+          path = "${dnsPath}.localZones";
+          value = dns.localZones or [ ];
+        in
+        builtins.map
+          (
+            entry:
+            let
+              zone = requireAttrs "${path}[*]" entry;
+              name = requireString "${path}[*].name" (zone.name or null);
+              zoneType =
+                if isNonEmptyString (zone.type or null) then
+                  zone.type
+                else
+                  "static";
+            in
+            if isNonEmptyString name then
+              {
+                inherit name;
+                type = zoneType;
+              }
+            else
+              failInventory "${path}[*].name" "must not be empty"
+          )
+          (requireList path value);
+
+      localRecords =
+        let
+          path = "${dnsPath}.localRecords";
+          value = dns.localRecords or [ ];
+        in
+        builtins.map
+          (
+            record:
+            let
+              recordPath = "${path}[*]";
+              attrs = requireAttrs recordPath record;
+              name = requireString "${recordPath}.name" (attrs.name or null);
+              a =
+                builtins.map
+                  (entry:
+                    let
+                      rendered = requireString "${recordPath}.a[*]" entry;
+                    in
+                    if isNonEmptyString rendered then
+                      rendered
+                    else
+                      failInventory "${recordPath}.a" "must not contain empty strings")
+                  (requireList "${recordPath}.a" (attrs.a or [ ]));
+              aaaa =
+                builtins.map
+                  (entry:
+                    let
+                      rendered = requireString "${recordPath}.aaaa[*]" entry;
+                    in
+                    if isNonEmptyString rendered then
+                      rendered
+                    else
+                      failInventory "${recordPath}.aaaa" "must not contain empty strings")
+                  (requireList "${recordPath}.aaaa" (attrs.aaaa or [ ]));
+              _hasData =
+                if a == [ ] && aaaa == [ ] then
+                  failInventory recordPath "must define at least one of 'a' or 'aaaa'"
+                else
+                  true;
+            in
+            builtins.seq _hasData (
+              { name = name; }
+              // lib.optionalAttrs (a != [ ]) { a = a; }
+              // lib.optionalAttrs (aaaa != [ ]) { aaaa = aaaa; }
+            )
+          )
+          (requireList path value);
     in
     builtins.seq _forwarderConflict (
       { }
       // lib.optionalAttrs (listen != [ ]) { listen = listen; }
       // lib.optionalAttrs (allowFrom != [ ]) { allowFrom = allowFrom; }
       // lib.optionalAttrs (forwarders != [ ]) { forwarders = forwarders; }
+      // lib.optionalAttrs (localZones != [ ]) { localZones = localZones; }
+      // lib.optionalAttrs (localRecords != [ ]) { localRecords = localRecords; }
     );
+
+  normalizeMdnsService = servicesPath: mdnsValue:
+    let
+      mdnsPath = "${servicesPath}.mdns";
+      mdns = requireAttrs mdnsPath mdnsValue;
+
+      normalizeStringList = fieldName:
+        let
+          path = "${mdnsPath}.${fieldName}";
+          value = mdns.${fieldName} or [ ];
+        in
+        builtins.map
+          (entry:
+            let
+              rendered = requireString "${path}[*]" entry;
+            in
+            if isNonEmptyString rendered then
+              rendered
+            else
+              failInventory path "must not contain empty strings")
+          (requireList path value);
+
+      reflector =
+        if builtins.isBool (mdns.reflector or null) then
+          mdns.reflector
+        else
+          false;
+      allowInterfaces = normalizeStringList "allowInterfaces";
+      denyInterfaces = normalizeStringList "denyInterfaces";
+      publish =
+        if mdns ? publish then
+          let
+            publishPath = "${mdnsPath}.publish";
+            publishAttrs = requireAttrs publishPath mdns.publish;
+            boolField =
+              fieldName:
+              if builtins.isBool (publishAttrs.${fieldName} or null) then
+                publishAttrs.${fieldName}
+              else
+                false;
+          in
+          { }
+          // lib.optionalAttrs (publishAttrs ? enable) {
+            enable = boolField "enable";
+          }
+          // lib.optionalAttrs (publishAttrs ? addresses) {
+            addresses = boolField "addresses";
+          }
+          // lib.optionalAttrs (publishAttrs ? userServices) {
+            userServices = boolField "userServices";
+          }
+          // lib.optionalAttrs (publishAttrs ? workstation) {
+            workstation = boolField "workstation";
+          }
+          // lib.optionalAttrs (publishAttrs ? domain) {
+            domain = boolField "domain";
+          }
+        else
+          { };
+    in
+    {
+      inherit reflector;
+    }
+    // lib.optionalAttrs (allowInterfaces != [ ]) { allowInterfaces = allowInterfaces; }
+    // lib.optionalAttrs (denyInterfaces != [ ]) { denyInterfaces = denyInterfaces; }
+    // lib.optionalAttrs (publish != { }) { publish = publish; };
 
   normalizeRuntimeServices = targetDef:
     let
@@ -1809,6 +1952,8 @@ let
           value =
             if serviceName == "dns" then
               normalizeDnsService servicesPath services.${serviceName}
+            else if serviceName == "mdns" then
+              normalizeMdnsService servicesPath services.${serviceName}
             else
               services.${serviceName};
         })
