@@ -210,8 +210,17 @@ let
       true
     else
       let
+        relationPathRoot =
+          if builtins.isList (communicationContract.relations or null) then
+            "${sitePath}.communicationContract.relations"
+          else
+            "${sitePath}.communicationContract.allowedRelations";
+
         allowedRelations =
-          requireList "${sitePath}.communicationContract.allowedRelations" (communicationContract.allowedRelations or null);
+          if builtins.isList (communicationContract.relations or null) then
+            requireList relationPathRoot communicationContract.relations
+          else
+            requireList relationPathRoot (communicationContract.allowedRelations or null);
 
         _legacyContractInterfaceTags =
           if communicationContract ? interfaceTags then
@@ -315,7 +324,7 @@ let
 
         validateRelationEndpoint = relationIndex: relation: endpointName:
           let
-            relationPath = "${sitePath}.communicationContract.allowedRelations[${toString relationIndex}]";
+            relationPath = "${relationPathRoot}[${toString relationIndex}]";
             endpointPath = "${relationPath}.${endpointName}";
             endpointRaw = relation.${endpointName} or null;
             endpoint = attrsOrEmpty endpointRaw;
