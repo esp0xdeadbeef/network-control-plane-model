@@ -969,6 +969,45 @@ let
       (route: builtins.isAttrs route && (route.dst or null) == destination)
       (listOrEmpty routes);
 
+  routeWithDstAndGatewayPresent =
+    family: routes: destination: gateway:
+    builtins.any
+      (route:
+        builtins.isAttrs route
+        && (route.dst or null) == destination
+        && (
+          if family == 4 then
+            (route.via4 or null) == gateway
+          else
+            (route.via6 or null) == gateway
+        ))
+      (listOrEmpty routes);
+
+  routeForExactDstWithGateway =
+    family: routes: destination:
+    lib.findFirst
+      (route:
+        builtins.isAttrs route
+        && (route.dst or null) == destination
+        && (
+          if family == 4 then
+            isNonEmptyString (route.via4 or null)
+          else
+            isNonEmptyString (route.via6 or null)
+        ))
+      null
+      (listOrEmpty routes);
+
+  familyPrefixes =
+    family: prefixes:
+    builtins.filter
+      (prefix:
+        if family == 4 then
+          builtins.match ".*:.*" prefix == null
+        else
+          builtins.match ".*:.*" prefix != null)
+      prefixes;
+
   routeGatewayForPrefix =
     family: routes: destinations:
     let
@@ -992,6 +1031,216 @@ let
       matchingRoute.via4
     else
       matchingRoute.via6;
+
+  dnsServiceRouteSpecs =
+    builtins.map
+      (relation:
+        let
+          relationAttrs =
+            if builtins.isAttrs relation then
+              relation
+            else
+              { };
+          serviceName = relationAttrs.to.name or null;
+          serviceDef = serviceDefinitions.${serviceName};
+          providers =
+            if builtins.isList (serviceDef.providers or null) then
+              requireStringList
+                "${sitePath}.communicationContract.services.${serviceName}.providers"
+                serviceDef.providers
+            else
+              [ ];
+          providerTenants =
+            uniqueStrings (lib.concatMap providerTenantsForServiceProvider providers);
+          providerPrefixes =
+            uniqueStrings (lib.concatMap tenantPrefixesForName providerTenants);
+          consumerTenants = tenantNamesForRelationEndpoint (relationAttrs.from or null);
+          consumerPrefixes =
+            uniqueStrings (lib.concatMap tenantPrefixesForName consumerTenants);
+        in
+        {
+          inherit serviceName;
+          consumerPrefixes4 = familyPrefixes 4 consumerPrefixes;
+          consumerPrefixes6 = familyPrefixes 6 consumerPrefixes;
+          providerPrefixes4 = familyPrefixes 4 providerPrefixes;
+          providerPrefixes6 = familyPrefixes 6 providerPrefixes;
+        })
+      (
+        builtins.filter
+          (relation:
+            let
+              relationAttrs =
+                if builtins.isAttrs relation then
+                  relation
+                else
+                  { };
+              serviceName =
+                if
+                  builtins.isAttrs (relationAttrs.to or null)
+                  && builtins.isString (relationAttrs.to.name or null)
+                then
+                  relationAttrs.to.name
+                else
+                  null;
+              serviceDef =
+                if serviceName != null && hasAttr serviceName serviceDefinitions then
+                  serviceDefinitions.${serviceName}
+                else
+                  { };
+            in
+            (relationAttrs.action or "allow") == "allow"
+            && builtins.isAttrs (relationAttrs.to or null)
+            && (relationAttrs.to.kind or null) == "service"
+            && serviceName != null
+            && hasAttr serviceName serviceDefinitions
+            && effectiveTrafficTypeForRelation relationAttrs serviceDef == "dns")
+          allowedRelations
+      );
+
+  augmentDnsServiceRoutesForTarget =
+    targetName: target:
+    let
+      targetPath = "${sitePath}.runtimeTargets.${targetName}";
+      effective =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization"
+          (target.effectiveRuntimeRealization or null);
+      interfaces =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization.interfaces"
+          (effective.interfaces or null);
+      interfaceNames = sortedNames interfaces;
+
+      findSourceRouteForDestination =
+        family: consumerInterfaceName: destination:
+        let
+          candidateInterfaceNames =
+            builtins.filter (ifName: ifName != consumerInterfaceName) interfaceNames;
+        in
+        lib.findFirst
+          (route: route != null)
+          null
+          (
+            builtins.map
+              (ifName:
+                let
+                  candidateIface =
+                    requireAttrs
+                      "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}"
+                      interfaces.${ifName};
+                  candidateRoutes = attrsOrEmpty (candidateIface.routes or null);
+                  familyRoutes =
+                    if family == 4 then
+                      listOrEmpty (candidateRoutes.ipv4 or null)
+                    else
+                      listOrEmpty (candidateRoutes.ipv6 or null);
+                in
+                routeForExactDstWithGateway family familyRoutes destination)
+              candidateInterfaceNames
+          );
+
+      updatedInterfaces =
+        builtins.mapAttrs
+          (ifName: iface:
+            let
+              routes = attrsOrEmpty (iface.routes or null);
+              existingV4 = listOrEmpty (routes.ipv4 or null);
+              existingV6 = listOrEmpty (routes.ipv6 or null);
+              matchingSpecs =
+                builtins.filter
+                  (spec:
+                    builtins.any
+                      (destination: routeWithExactDstPresent existingV4 destination)
+                      spec.consumerPrefixes4
+                    || builtins.any
+                      (destination: routeWithExactDstPresent existingV6 destination)
+                      spec.consumerPrefixes6)
+                  dnsServiceRouteSpecs;
+
+              extraV4 =
+                builtins.foldl'
+                  (acc: spec:
+                    builtins.foldl'
+                      (inner: destination:
+                        let
+                          sourceRoute = findSourceRouteForDestination 4 ifName destination;
+                          gateway = if sourceRoute == null then null else sourceRoute.via4 or null;
+                          extraRoute =
+                            if sourceRoute == null || !isNonEmptyString gateway then
+                              null
+                            else
+                              sourceRoute
+                              // {
+                                intent = (attrsOrEmpty (sourceRoute.intent or null)) // {
+                                  service = spec.serviceName;
+                                };
+                              };
+                        in
+                        if
+                          extraRoute == null
+                          || routeWithDstAndGatewayPresent 4 (existingV4 ++ inner) destination gateway
+                        then
+                          inner
+                        else
+                          inner ++ [ extraRoute ])
+                      acc
+                      spec.providerPrefixes4)
+                  [ ]
+                  matchingSpecs;
+
+              extraV6 =
+                builtins.foldl'
+                  (acc: spec:
+                    builtins.foldl'
+                      (inner: destination:
+                        let
+                          sourceRoute = findSourceRouteForDestination 6 ifName destination;
+                          gateway = if sourceRoute == null then null else sourceRoute.via6 or null;
+                          extraRoute =
+                            if sourceRoute == null || !isNonEmptyString gateway then
+                              null
+                            else
+                              sourceRoute
+                              // {
+                                intent = (attrsOrEmpty (sourceRoute.intent or null)) // {
+                                  service = spec.serviceName;
+                                };
+                              };
+                        in
+                        if
+                          extraRoute == null
+                          || routeWithDstAndGatewayPresent 6 (existingV6 ++ inner) destination gateway
+                        then
+                          inner
+                        else
+                          inner ++ [ extraRoute ])
+                      acc
+                      spec.providerPrefixes6)
+                  [ ]
+                  matchingSpecs;
+            in
+            if extraV4 == [ ] && extraV6 == [ ] then
+              iface
+            else
+              iface
+              // {
+                routes =
+                  routes
+                  // {
+                    ipv4 = existingV4 ++ extraV4;
+                    ipv6 = existingV6 ++ extraV6;
+                  };
+              })
+          interfaces;
+    in
+    target
+    // {
+      effectiveRuntimeRealization =
+        effective
+        // {
+          interfaces = updatedInterfaces;
+        };
+    };
 
   augmentOverlayTransitEndpointRoutesForTarget =
     targetName: target:
@@ -2728,9 +2977,13 @@ let
         (targetName: {
           name = targetName;
           value =
-            augmentOverlayTransitEndpointRoutesForTarget
+            augmentDnsServiceRoutesForTarget
               targetName
-              defaultReachability.runtimeTargets.${targetName};
+              (
+                augmentOverlayTransitEndpointRoutesForTarget
+                  targetName
+                  defaultReachability.runtimeTargets.${targetName}
+              );
         })
         (sortedNames defaultReachability.runtimeTargets)
     );
