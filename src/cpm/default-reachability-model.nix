@@ -632,6 +632,10 @@ let
         listOrEmpty (routes.ipv6 or null)
     );
 
+  interfaceNameHasUplinkWanPreference =
+    interfaceName:
+    builtins.match ".*--uplink-wan$" interfaceName != null;
+
   synthesizeTransitEndpointRoutesForFamily = family: targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
@@ -690,11 +694,20 @@ let
                   builtins.filter
                     (entry: builtins.match ".*${destinationNode}.*" entry.interfaceName != null)
                     namedCandidates;
-                scopedCandidates =
+                scopedCandidatesRaw =
                   if destinationScopedCandidates != [ ] then
                     destinationScopedCandidates
                   else
                     namedCandidates;
+                preferredUplinkWanCandidates =
+                  builtins.filter
+                    (entry: interfaceNameHasUplinkWanPreference entry.interfaceName)
+                    scopedCandidatesRaw;
+                scopedCandidates =
+                  if preferredUplinkWanCandidates != [ ] then
+                    preferredUplinkWanCandidates
+                  else
+                    scopedCandidatesRaw;
                 defaultBearingCandidates =
                   builtins.filter
                     (
