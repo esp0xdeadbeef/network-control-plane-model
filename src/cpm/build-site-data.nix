@@ -893,12 +893,36 @@ let
                 { }
               else
                 attrsOrEmpty (peerSiteEntry.site.transit or null);
+            peerDomains =
+              if peerSiteEntry == null then
+                { }
+              else
+                attrsOrEmpty (peerSiteEntry.site.domains or null);
+            peerTenants =
+              if builtins.isList (peerDomains.tenants or null) then
+                peerDomains.tenants
+              else
+                [ ];
+            peerPrefixes4 =
+              uniqueStrings (
+                builtins.filter isNonEmptyString (
+                  builtins.map (tenant: (attrsOrEmpty tenant).ipv4 or null) peerTenants
+                )
+              );
+            peerPrefixes6 =
+              uniqueStrings (
+                builtins.filter isNonEmptyString (
+                  builtins.map (tenant: (attrsOrEmpty tenant).ipv6 or null) peerTenants
+                )
+              );
           in
           {
             name = overlayName;
             value = {
               peerSite = peerSite;
               byNode = transitEndpointAddressesByNodeForTransit peerTransit;
+              peerPrefixes4 = peerPrefixes4;
+              peerPrefixes6 = peerPrefixes6;
             };
           })
         overlayNames
@@ -931,6 +955,12 @@ let
           == (if family == 4 then "${destination}/32" else "${destination}/128"))
       (listOrEmpty routes);
 
+  routeWithExactDstPresent =
+    routes: destination:
+    builtins.any
+      (route: builtins.isAttrs route && (route.dst or null) == destination)
+      (listOrEmpty routes);
+
   augmentOverlayTransitEndpointRoutesForTarget =
     targetName: target:
     let
@@ -958,51 +988,78 @@ let
                   overlayTransitEndpointAddressesByOverlay.${overlayName}
                 else
                   null;
-              peerSite =
-                if overlayTransit == null then null else overlayTransit.peerSite or null;
-              byNode =
-                if overlayTransit == null then { } else attrsOrEmpty (overlayTransit.byNode or null);
               routes = attrsOrEmpty (iface.routes or null);
               existingV4 = listOrEmpty (routes.ipv4 or null);
               existingV6 = listOrEmpty (routes.ipv6 or null);
-              extraV4 =
-                if !isNonEmptyString peerSite then
-                  [ ]
+              overlaysForInterface =
+                if overlayName != null then
+                  [ overlayName ]
                 else
-                  builtins.concatLists (
-                    builtins.map
-                      (nodeName:
-                        let
-                          addresses = attrsOrEmpty (byNode.${nodeName} or null);
-                        in
-                        builtins.map
-                          (address:
-                            buildOverlayTransitEndpointRoute 4 overlayName peerSite address nodeName)
-                          (builtins.filter
-                            (address: !routeWithDstPresent 4 existingV4 address)
-                            (listOrEmpty (addresses.ipv4 or null))))
-                      (sortedNames byNode)
-                  );
-              extraV6 =
-                if !isNonEmptyString peerSite then
-                  [ ]
-                else
-                  builtins.concatLists (
-                    builtins.map
-                      (nodeName:
-                        let
-                          addresses = attrsOrEmpty (byNode.${nodeName} or null);
-                        in
-                        builtins.map
-                          (address:
-                            buildOverlayTransitEndpointRoute 6 overlayName peerSite address nodeName)
-                          (builtins.filter
-                            (address: !routeWithDstPresent 6 existingV6 address)
-                            (listOrEmpty (addresses.ipv6 or null))))
-                      (sortedNames byNode)
-                  );
+                  builtins.filter
+                    (candidateOverlayName:
+                      let
+                        candidateOverlay =
+                          attrsOrEmpty (overlayTransitEndpointAddressesByOverlay.${candidateOverlayName} or null);
+                        peerPrefixes4 = listOrEmpty (candidateOverlay.peerPrefixes4 or null);
+                        peerPrefixes6 = listOrEmpty (candidateOverlay.peerPrefixes6 or null);
+                      in
+                      builtins.any (dst: routeWithExactDstPresent existingV4 dst) peerPrefixes4
+                      || builtins.any (dst: routeWithExactDstPresent existingV6 dst) peerPrefixes6)
+                    overlayNames;
+              overlayExtraRoutes =
+                builtins.map
+                  (candidateOverlayName:
+                    let
+                      candidateOverlay =
+                        attrsOrEmpty (overlayTransitEndpointAddressesByOverlay.${candidateOverlayName} or null);
+                      peerSite = candidateOverlay.peerSite or null;
+                      byNode = attrsOrEmpty (candidateOverlay.byNode or null);
+                      extraV4 =
+                        if !isNonEmptyString peerSite then
+                          [ ]
+                        else
+                          builtins.concatLists (
+                            builtins.map
+                              (nodeName:
+                                let
+                                  addresses = attrsOrEmpty (byNode.${nodeName} or null);
+                                in
+                                builtins.map
+                                  (address:
+                                    buildOverlayTransitEndpointRoute 4 candidateOverlayName peerSite address nodeName)
+                                  (builtins.filter
+                                    (address: !routeWithDstPresent 4 existingV4 address)
+                                    (listOrEmpty (addresses.ipv4 or null))))
+                              (sortedNames byNode)
+                          );
+                      extraV6 =
+                        if !isNonEmptyString peerSite then
+                          [ ]
+                        else
+                          builtins.concatLists (
+                            builtins.map
+                              (nodeName:
+                                let
+                                  addresses = attrsOrEmpty (byNode.${nodeName} or null);
+                                in
+                                builtins.map
+                                  (address:
+                                    buildOverlayTransitEndpointRoute 6 candidateOverlayName peerSite address nodeName)
+                                  (builtins.filter
+                                    (address: !routeWithDstPresent 6 existingV6 address)
+                                    (listOrEmpty (addresses.ipv6 or null))))
+                              (sortedNames byNode)
+                          );
+                    in
+                    {
+                      ipv4 = extraV4;
+                      ipv6 = extraV6;
+                    })
+                  overlaysForInterface;
+              extraV4 = builtins.concatLists (builtins.map (entry: entry.ipv4) overlayExtraRoutes);
+              extraV6 = builtins.concatLists (builtins.map (entry: entry.ipv6) overlayExtraRoutes);
             in
-            if overlayName == null || overlayTransit == null || byNode == { } then
+            if overlaysForInterface == [ ] then
               iface
             else
               iface
