@@ -190,11 +190,22 @@ let
     if builtins.isAttrs (siteAttrs.communicationContract or null) then
       let
         contract = requireAttrs "${sitePath}.communicationContract" siteAttrs.communicationContract;
+        canonicalRelations =
+          if builtins.isList (contract.relations or null) then
+            {
+              relations = requireList "${sitePath}.communicationContract.relations" contract.relations;
+            }
+          else if builtins.isList (contract.allowedRelations or null) then
+            {
+              allowedRelations =
+                requireList
+                  "${sitePath}.communicationContract.allowedRelations"
+                  contract.allowedRelations;
+            }
+          else
+            { };
       in
-      {
-        allowedRelations =
-          requireList "${sitePath}.communicationContract.allowedRelations" (contract.allowedRelations or null);
-      }
+      canonicalRelations
       // (
         if builtins.isList (contract.services or null) then
           {
@@ -243,7 +254,9 @@ let
       { };
 
   allowedRelations =
-    if communicationContract != null && builtins.isList (communicationContract.allowedRelations or null) then
+    if communicationContract != null && builtins.isList (communicationContract.relations or null) then
+      communicationContract.relations
+    else if communicationContract != null && builtins.isList (communicationContract.allowedRelations or null) then
       communicationContract.allowedRelations
     else
       [ ];

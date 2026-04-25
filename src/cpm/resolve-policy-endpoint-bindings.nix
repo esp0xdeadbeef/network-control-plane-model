@@ -75,8 +75,8 @@ let
       { };
 
   relations =
-    if builtins.isList (siteAttrs.relations or null) then
-      siteAttrs.relations
+    if builtins.isList (communicationContract.relations or null) then
+      communicationContract.relations
     else
       listOrEmpty (communicationContract.allowedRelations or null);
 
