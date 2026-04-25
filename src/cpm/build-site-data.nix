@@ -1966,6 +1966,7 @@ let
           || proto == "uplink"
           || proto == "overlay"
           || intentKind == "overlay-reachability"
+          || intentKind == "internal-reachability"
           || intentKind == "realized-interface-route"
           || isHostRoute4 dst
         );
@@ -1982,6 +1983,7 @@ let
           || proto == "uplink"
           || proto == "overlay"
           || intentKind == "overlay-reachability"
+          || intentKind == "internal-reachability"
           || intentKind == "realized-interface-route"
           || isHostRoute6 dst
         );
