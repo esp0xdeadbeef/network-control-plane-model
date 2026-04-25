@@ -7,6 +7,9 @@ search_root="$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["n
 example_root="${search_root}/dual-wan-branch-overlay-bgp"
 intent_path="${example_root}/intent.nix"
 inventory_path="${example_root}/inventory-nixos.nix"
+s_router_example_root="${search_root}/s-router-test-three-site"
+s_router_intent_path="${s_router_example_root}/intent.nix"
+s_router_inventory_path="${s_router_example_root}/inventory-nixos.nix"
 
 [[ -f "${intent_path}" ]] || { echo "missing intent fixture: ${intent_path}" >&2; exit 1; }
 [[ -f "${inventory_path}" ]] || { echo "missing inventory fixture: ${inventory_path}" >&2; exit 1; }
@@ -54,8 +57,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
 ' | grep -qx true
 
 REPO_ROOT="${repo_root}" \
-INTENT_PATH="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/intent.nix" \
-INVENTORY_PATH="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/inventory.nix" \
+INTENT_PATH="${s_router_intent_path}" \
+INVENTORY_PATH="${s_router_inventory_path}" \
   nix eval \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
@@ -66,7 +69,7 @@ INVENTORY_PATH="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm
           inventoryPath = builtins.getEnv "INVENTORY_PATH";
         };
         rt = out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
-        branchCore = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-isp-b";
+        branchCore = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
       in {
         policyIot = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-iot--uplink-wan".routes;
         policyMgmtStorage = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-site-c-storage".routes;
