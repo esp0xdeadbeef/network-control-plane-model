@@ -1110,6 +1110,25 @@ let
           "${targetPath}.effectiveRuntimeRealization.interfaces"
           (effective.interfaces or null);
       interfaceNames = sortedNames interfaces;
+      isUpstreamSelectorTarget =
+        let
+          runtimeIfNames =
+            builtins.map
+              (
+                ifName:
+                requireString
+                  "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName"
+                  ((interfaces.${ifName} or { }).runtimeIfName or null)
+              )
+              interfaceNames;
+          hasCoreIngress =
+            lib.any (name: name == "core" || lib.hasPrefix "core-" name) runtimeIfNames;
+          hasPolicyEgress =
+            lib.any
+              (name: lib.hasPrefix "pol-" name || lib.hasPrefix "policy-" name)
+              runtimeIfNames;
+        in
+        hasCoreIngress && hasPolicyEgress;
 
       findSourceRouteForDestination =
         family: consumerInterfaceName: destination:
@@ -1233,14 +1252,17 @@ let
               })
           interfaces;
     in
-    target
-    // {
-      effectiveRuntimeRealization =
-        effective
-        // {
-          interfaces = updatedInterfaces;
-        };
-    };
+    if isUpstreamSelectorTarget then
+      target
+    else
+      target
+      // {
+        effectiveRuntimeRealization =
+          effective
+          // {
+            interfaces = updatedInterfaces;
+          };
+      };
 
   augmentOverlayTransitEndpointRoutesForTarget =
     targetName: target:

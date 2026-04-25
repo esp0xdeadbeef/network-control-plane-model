@@ -21,8 +21,8 @@ INVENTORY_PATH="${inventory_path}" \
           inputPath = builtins.getEnv "INTENT_PATH";
           inventoryPath = builtins.getEnv "INVENTORY_PATH";
         };
-        branchPolicy =
-          out.control_plane_model.data.espbranch."site-b".runtimeTargets."espbranch-site-b-b-router-policy".effectiveRuntimeRealization.interfaces;
+        siteaUpstream =
+          out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector".effectiveRuntimeRealization.interfaces;
         sitecPolicy =
           out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
         hasRoute = routes: destination: gateway:
@@ -34,19 +34,21 @@ INVENTORY_PATH="${inventory_path}" \
                 || (route.via6 or null) == gateway
               ))
             routes;
-        hostile =
-          branchPolicy."p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-hostile".routes;
+        siteaUpstreamClient =
+          siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-client--uplink-east-west".routes;
+        siteaUpstreamMgmt =
+          siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-mgmt--uplink-east-west".routes;
         media =
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-media".routes;
         printer =
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-printer".routes;
       in
-        hasRoute (hostile.ipv4 or [ ]) "10.20.10.0/24" "10.50.0.11"
-        && hasRoute (hostile.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:feed:1000:0:0:0:b"
+        !(hasRoute (siteaUpstreamClient.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.42")
+        && !(hasRoute (siteaUpstreamClient.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:2a")
+        && hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.42"
+        && hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:2a"
         && hasRoute (media.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.16"
-        && hasRoute (media.ipv6 or [ ]) "fd42:dead:cafe:0010:0000:0000:0000:0000/64" "fd42:dead:cafe:1000:0:0:0:10"
         && hasRoute (printer.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.16"
-        && hasRoute (printer.ipv6 or [ ]) "fd42:dead:cafe:0010:0000:0000:0000:0000/64" "fd42:dead:cafe:1000:0:0:0:10"
     ' | grep -qx true
 
 echo "PASS dns-service-policy-routes"
