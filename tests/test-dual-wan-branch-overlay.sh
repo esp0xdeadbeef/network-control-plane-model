@@ -32,6 +32,8 @@ run_one() {
       overlayB = siteB.overlays."east-west";
       rtA = siteA.runtimeTargets."enterpriseA-site-a-s-router-core-isp-b";
       upstreamA = siteA.runtimeTargets."enterpriseA-site-a-s-router-upstream-selector";
+      upstreamCoreB =
+        upstreamA.effectiveRuntimeRealization.interfaces."p2p-s-router-core-isp-b-s-router-upstream-selector";
       rtB = siteB.runtimeTargets."enterpriseB-site-b-b-router-core";
       hasRoute = rt: family: dst:
         let
@@ -59,8 +61,16 @@ run_one() {
       && builtins.hasAttr "overlay-east-west" rtB.effectiveRuntimeRealization.interfaces
       && hasRoute rtA "ipv4" "10.20.10.0/24"
       && hasRoute rtA "ipv6" "fd42:dead:beef:10::/64"
-      && hasRoute upstreamA "ipv4" "10.50.0.0/32"
-      && hasRoute upstreamA "ipv6" "fd42:dead:feed:1000:0000:0000:0000:0000/128"
+      && builtins.any
+        (route:
+          (route.dst or null) == "10.50.0.0/32"
+          && (route.via4 or null) == "10.10.0.12")
+        (((upstreamCoreB.routes or { }).ipv4 or [ ]))
+      && builtins.any
+        (route:
+          (route.dst or null) == "fd42:dead:feed:1000:0000:0000:0000:0000/128"
+          && (route.via6 or null) == "fd42:dead:beef:1000:0:0:0:c")
+        (((upstreamCoreB.routes or { }).ipv6 or [ ]))
       && hasRoute rtB "ipv4" "10.20.20.0/24"
       && hasRoute rtB "ipv6" "fd42:dead:beef:20::/64"
       && hasRoute rtA "ipv4" "10.60.10.0/24"
