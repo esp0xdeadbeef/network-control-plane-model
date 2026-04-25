@@ -34,6 +34,19 @@ let
         values
     );
 
+  uniqueStrings =
+    values:
+    sortedNames (
+      builtins.listToAttrs (
+        builtins.map
+          (value: {
+            name = value;
+            value = true;
+          })
+          (builtins.filter isNonEmptyString values)
+      )
+    );
+
   uplinkNameFromAdjacencyId =
     adjacencyId:
     let
@@ -415,6 +428,60 @@ let
       { }
       (listOrEmpty (transit.adjacencies or null));
 
+  addTransitEndpointAddress =
+    acc: nodeName: family: address:
+    let
+      existing =
+        if hasAttr nodeName acc then
+          acc.${nodeName}
+        else
+          { ipv4 = [ ]; ipv6 = [ ]; };
+      familyValues =
+        if family == 4 then
+          uniqueStrings (existing.ipv4 ++ [ address ])
+        else
+          existing.ipv4;
+      familyValues6 =
+        if family == 6 then
+          uniqueStrings (existing.ipv6 ++ [ address ])
+        else
+          existing.ipv6;
+    in
+    acc
+    // {
+      ${nodeName} = {
+        ipv4 = familyValues;
+        ipv6 = familyValues6;
+      };
+    };
+
+  transitEndpointAddressesByNode =
+    builtins.foldl'
+      (acc: adjacency:
+        let
+          endpoints =
+            requireList "${sitePath}.transit.adjacencies[*].endpoints" (adjacency.endpoints or null);
+          applyEndpoint =
+            state: endpoint:
+            let
+              nodeName =
+                requireString "${sitePath}.transit.adjacencies[*].endpoints[*].unit" (endpoint.unit or null);
+              local = attrsOrEmpty (endpoint.local or null);
+              state4 =
+                if isNonEmptyString (local.ipv4 or null) then
+                  addTransitEndpointAddress state nodeName 4 local.ipv4
+                else
+                  state;
+            in
+            if isNonEmptyString (local.ipv6 or null) then
+              addTransitEndpointAddress state4 nodeName 6 local.ipv6
+            else
+              state4;
+        in
+        builtins.foldl' applyEndpoint acc endpoints)
+      { }
+      (listOrEmpty (transit.adjacencies or null));
+
   findCandidatePaths = family: sourceSet: nodeName: visited:
     if hasAttr nodeName sourceSet then
       [
@@ -517,6 +584,137 @@ let
     }
     // {
       ${if family == 4 then "via4" else "via6"} = via;
+    };
+
+  buildInternalEndpointRoute =
+    family: destination: destinationNode: via:
+    {
+      dst =
+        if family == 4 then
+          "${destination}/32"
+        else
+          "${destination}/128";
+      intent = {
+        kind = "internal-reachability";
+        source = "transit-endpoint";
+        node = destinationNode;
+      };
+      proto = "internal";
+    }
+    // {
+      ${if family == 4 then "via4" else "via6"} = via;
+    };
+
+  routeAlreadyPresent =
+    family: routes: destination: via:
+    builtins.any
+      (route:
+        builtins.isAttrs route
+        && (route.dst or null)
+          == (if family == 4 then "${destination}/32" else "${destination}/128")
+        && (
+          if family == 4 then
+            (route.via4 or null) == via
+          else
+            (route.via6 or null) == via
+        ))
+      (listOrEmpty routes);
+
+  synthesizeTransitEndpointRoutesForFamily = family: targetName: target:
+    let
+      targetPath = "${sitePath}.runtimeTargets.${targetName}";
+      logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
+      nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
+      endpointNodes =
+        builtins.filter
+          (candidateNode:
+            candidateNode != nodeName
+            && hasAttr candidateNode transitEndpointAddressesByNode)
+          (sortedNames transitEndpointAddressesByNode);
+      effective =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization"
+          (target.effectiveRuntimeRealization or null);
+      interfaces =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization.interfaces"
+          (effective.interfaces or null);
+
+      updatedInterfaces =
+        builtins.foldl'
+          (currentInterfaces: destinationNode:
+            let
+              endpointAddresses = transitEndpointAddressesByNode.${destinationNode};
+              familyAddresses =
+                if family == 4 then
+                  endpointAddresses.ipv4 or [ ]
+                else
+                  endpointAddresses.ipv6 or [ ];
+              candidatePaths =
+                sortedCandidatePaths family (makeStringSet [ destinationNode ]) nodeName;
+              usableCandidates =
+                builtins.filter (candidate: builtins.length candidate.steps > 1) candidatePaths;
+            in
+            if familyAddresses == [ ] || usableCandidates == [ ] then
+              currentInterfaces
+            else
+              let
+                chosen = builtins.elemAt usableCandidates 0;
+                firstStep = builtins.elemAt chosen.steps 0;
+                interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
+              in
+              if interfaceName == null then
+                currentInterfaces
+              else
+                let
+                  iface =
+                    requireAttrs
+                      "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}"
+                      currentInterfaces.${interfaceName};
+                  routes = attrsOrEmpty (iface.routes or null);
+                  existingFamilyRoutes =
+                    if family == 4 then
+                      listOrEmpty (routes.ipv4 or null)
+                    else
+                      listOrEmpty (routes.ipv6 or null);
+                  updatedFamilyRoutes =
+                    builtins.foldl'
+                      (accRoutes: destination:
+                        if routeAlreadyPresent family accRoutes destination firstStep.via then
+                          accRoutes
+                        else
+                          accRoutes ++ [
+                            (buildInternalEndpointRoute family destination destinationNode firstStep.via)
+                          ])
+                      existingFamilyRoutes
+                      familyAddresses;
+                  updatedIface =
+                    iface
+                    // {
+                      routes =
+                        routes
+                        // (
+                          if family == 4 then
+                            { ipv4 = updatedFamilyRoutes; }
+                          else
+                            { ipv6 = updatedFamilyRoutes; }
+                        );
+                    };
+                in
+                currentInterfaces
+                // {
+                  ${interfaceName} = updatedIface;
+                })
+          interfaces
+          endpointNodes;
+    in
+    target
+    // {
+      effectiveRuntimeRealization =
+        effective
+        // {
+          interfaces = updatedInterfaces;
+        };
     };
 
   synthesizeDefaultForFamily = family: sourceSet: targetName: target:
@@ -639,12 +837,14 @@ let
         (targetName:
           let
             target0 = runtimeTargetsWithWANDefaults.${targetName};
-            target1 = synthesizeDefaultForFamily 4 explicitDefaultSourceSet4 targetName target0;
-            target2 = synthesizeDefaultForFamily 6 explicitDefaultSourceSet6 targetName target1;
+            target1 = synthesizeTransitEndpointRoutesForFamily 4 targetName target0;
+            target2 = synthesizeTransitEndpointRoutesForFamily 6 targetName target1;
+            target3 = synthesizeDefaultForFamily 4 explicitDefaultSourceSet4 targetName target2;
+            target4 = synthesizeDefaultForFamily 6 explicitDefaultSourceSet6 targetName target3;
           in
           {
             name = targetName;
-            value = target2;
+            value = target4;
           })
         runtimeTargetNames
     );
