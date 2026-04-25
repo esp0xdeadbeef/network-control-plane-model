@@ -56,6 +56,8 @@ run_one() {
       && overlayB.nodes."branch-node01".addr4 == "100.96.10.20/32"
       && builtins.hasAttr "overlay-east-west" rtA.effectiveRuntimeRealization.interfaces
       && builtins.hasAttr "overlay-east-west" rtB.effectiveRuntimeRealization.interfaces
+      && hasRoute rtA "ipv4" "10.20.10.0/24"
+      && hasRoute rtA "ipv6" "fd42:dead:beef:10::/64"
       && hasRoute rtB "ipv4" "10.20.20.0/24"
       && hasRoute rtB "ipv6" "fd42:dead:beef:20::/64"
       && hasRoute rtA "ipv4" "10.60.10.0/24"
