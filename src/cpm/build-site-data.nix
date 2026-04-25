@@ -1,4 +1,4 @@
-{ lib, helpers, realizationIndex, endpointInventoryIndex, inventory ? { } }:
+{ lib, helpers, realizationIndex, endpointInventoryIndex, inventory ? { }, enterpriseRoot ? { } }:
 
 { enterpriseName, siteName, site }:
 
@@ -70,6 +70,45 @@ let
           })
           (builtins.filter isNonEmptyString values)
       )
+    );
+
+  allSiteEntries =
+    builtins.concatLists (
+      builtins.map
+        (enterpriseKey:
+          let
+            enterpriseValue =
+              requireAttrs
+                "forwardingModel.enterprise.${enterpriseKey}"
+                (enterpriseRoot.${enterpriseKey} or null);
+            siteRoot =
+              requireAttrs
+                "forwardingModel.enterprise.${enterpriseKey}.site"
+                (enterpriseValue.site or null);
+          in
+          builtins.map
+            (siteKey:
+              let
+                candidateSite =
+                  requireAttrs
+                    "forwardingModel.enterprise.${enterpriseKey}.site.${siteKey}"
+                    siteRoot.${siteKey};
+              in
+              {
+                enterpriseKey = enterpriseKey;
+                siteKey = siteKey;
+                site = candidateSite;
+                siteId =
+                  requireString
+                    "forwardingModel.enterprise.${enterpriseKey}.site.${siteKey}.siteId"
+                    (candidateSite.siteId or null);
+                siteDisplayName =
+                  requireString
+                    "forwardingModel.enterprise.${enterpriseKey}.site.${siteKey}.siteName"
+                    (candidateSite.siteName or null);
+              })
+            (sortedNames siteRoot))
+        (sortedNames enterpriseRoot)
     );
 
   pow2 = n: builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) n);
@@ -785,6 +824,206 @@ let
           })
         overlayNames
     );
+
+  resolvePeerSiteEntry =
+    peerSite:
+    lib.findFirst
+      (
+        entry:
+        entry.siteId == peerSite
+        || entry.siteDisplayName == peerSite
+        || "${entry.enterpriseKey}.${entry.siteKey}" == peerSite
+      )
+      null
+      allSiteEntries;
+
+  transitEndpointAddressesByNodeForTransit =
+    transitValue:
+    builtins.foldl'
+      (acc: adjacency:
+        let
+          endpoints =
+            requireList "${sitePath}.transit.adjacencies[*].endpoints" (adjacency.endpoints or null);
+          applyEndpoint =
+            state: endpoint:
+            let
+              nodeName =
+                requireString "${sitePath}.transit.adjacencies[*].endpoints[*].unit" (endpoint.unit or null);
+              local = attrsOrEmpty (endpoint.local or null);
+              existing =
+                if builtins.hasAttr nodeName state then
+                  state.${nodeName}
+                else
+                  { ipv4 = [ ]; ipv6 = [ ]; };
+            in
+            state
+            // {
+              ${nodeName} = {
+                ipv4 =
+                  if isNonEmptyString (local.ipv4 or null) then
+                    uniqueStrings (existing.ipv4 ++ [ local.ipv4 ])
+                  else
+                    existing.ipv4;
+                ipv6 =
+                  if isNonEmptyString (local.ipv6 or null) then
+                    uniqueStrings (existing.ipv6 ++ [ local.ipv6 ])
+                  else
+                    existing.ipv6;
+              };
+            };
+        in
+        builtins.foldl' applyEndpoint acc endpoints)
+      { }
+      (listOrEmpty (transitValue.adjacencies or null));
+
+  overlayTransitEndpointAddressesByOverlay =
+    builtins.listToAttrs (
+      builtins.map
+        (overlayName:
+          let
+            overlayCfg = attrsOrEmpty (overlayProvisioning.${overlayName} or null);
+            peerSite = overlayCfg.peerSite or null;
+            peerSiteEntry =
+              if isNonEmptyString peerSite then
+                resolvePeerSiteEntry peerSite
+              else
+                null;
+            peerTransit =
+              if peerSiteEntry == null then
+                { }
+              else
+                attrsOrEmpty (peerSiteEntry.site.transit or null);
+          in
+          {
+            name = overlayName;
+            value = {
+              peerSite = peerSite;
+              byNode = transitEndpointAddressesByNodeForTransit peerTransit;
+            };
+          })
+        overlayNames
+    );
+
+  buildOverlayTransitEndpointRoute =
+    family: overlayName: peerSite: destination: destinationNode:
+    {
+      dst =
+        if family == 4 then
+          "${destination}/32"
+        else
+          "${destination}/128";
+      intent = {
+        kind = "overlay-reachability";
+        source = "transit-endpoint";
+        node = destinationNode;
+      };
+      proto = "overlay";
+      overlay = overlayName;
+      peerSite = peerSite;
+    };
+
+  routeWithDstPresent =
+    family: routes: destination:
+    builtins.any
+      (route:
+        builtins.isAttrs route
+        && (route.dst or null)
+          == (if family == 4 then "${destination}/32" else "${destination}/128"))
+      (listOrEmpty routes);
+
+  augmentOverlayTransitEndpointRoutesForTarget =
+    targetName: target:
+    let
+      targetPath = "${sitePath}.runtimeTargets.${targetName}";
+      effective =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization"
+          (target.effectiveRuntimeRealization or null);
+      interfaces =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization.interfaces"
+          (effective.interfaces or null);
+      updatedInterfaces =
+        builtins.mapAttrs
+          (_: iface:
+            let
+              backingRef = attrsOrEmpty (iface.backingRef or null);
+              overlayName =
+                if (backingRef.kind or null) == "overlay" && isNonEmptyString (backingRef.name or null) then
+                  backingRef.name
+                else
+                  null;
+              overlayTransit =
+                if overlayName != null && builtins.hasAttr overlayName overlayTransitEndpointAddressesByOverlay then
+                  overlayTransitEndpointAddressesByOverlay.${overlayName}
+                else
+                  null;
+              peerSite =
+                if overlayTransit == null then null else overlayTransit.peerSite or null;
+              byNode =
+                if overlayTransit == null then { } else attrsOrEmpty (overlayTransit.byNode or null);
+              routes = attrsOrEmpty (iface.routes or null);
+              existingV4 = listOrEmpty (routes.ipv4 or null);
+              existingV6 = listOrEmpty (routes.ipv6 or null);
+              extraV4 =
+                if !isNonEmptyString peerSite then
+                  [ ]
+                else
+                  builtins.concatLists (
+                    builtins.map
+                      (nodeName:
+                        let
+                          addresses = attrsOrEmpty (byNode.${nodeName} or null);
+                        in
+                        builtins.map
+                          (address:
+                            buildOverlayTransitEndpointRoute 4 overlayName peerSite address nodeName)
+                          (builtins.filter
+                            (address: !routeWithDstPresent 4 existingV4 address)
+                            (listOrEmpty (addresses.ipv4 or null))))
+                      (sortedNames byNode)
+                  );
+              extraV6 =
+                if !isNonEmptyString peerSite then
+                  [ ]
+                else
+                  builtins.concatLists (
+                    builtins.map
+                      (nodeName:
+                        let
+                          addresses = attrsOrEmpty (byNode.${nodeName} or null);
+                        in
+                        builtins.map
+                          (address:
+                            buildOverlayTransitEndpointRoute 6 overlayName peerSite address nodeName)
+                          (builtins.filter
+                            (address: !routeWithDstPresent 6 existingV6 address)
+                            (listOrEmpty (addresses.ipv6 or null))))
+                      (sortedNames byNode)
+                  );
+            in
+            if overlayName == null || overlayTransit == null || byNode == { } then
+              iface
+            else
+              iface
+              // {
+                routes =
+                  routes
+                  // {
+                    ipv4 = existingV4 ++ extraV4;
+                    ipv6 = existingV6 ++ extraV6;
+                  };
+              })
+          interfaces;
+    in
+    target
+    // {
+      effectiveRuntimeRealization =
+        effective
+        // {
+          interfaces = updatedInterfaces;
+        };
+    };
 
   # IPv6 plan: keep forwarding-model technique-agnostic (no PD/BGP/etc. there).
   #
@@ -2380,22 +2619,35 @@ let
       runtimeTargets = initialRuntimeTargets;
     };
 
+  runtimeTargetsWithOverlayTransitEndpointRoutes =
+    builtins.listToAttrs (
+      builtins.map
+        (targetName: {
+          name = targetName;
+          value =
+            augmentOverlayTransitEndpointRoutesForTarget
+              targetName
+              defaultReachability.runtimeTargets.${targetName};
+        })
+        (sortedNames defaultReachability.runtimeTargets)
+    );
+
   accessAdvertisements =
     resolveAccessAdvertisements {
       inherit sitePath siteAttrs realizationIndex endpointInventoryIndex;
-      runtimeTargets = defaultReachability.runtimeTargets;
+      runtimeTargets = runtimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
   firewallIntent =
     resolveFirewallIntent {
       inherit sitePath siteAttrs;
-      runtimeTargets = defaultReachability.runtimeTargets;
+      runtimeTargets = runtimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
   policyEndpointBindings =
     resolvePolicyEndpointBindings {
       inherit sitePath siteAttrs attachments domains;
-      runtimeTargets = defaultReachability.runtimeTargets;
+      runtimeTargets = runtimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
   runtimeTargets =
@@ -2403,7 +2655,7 @@ let
       builtins.map
         (targetName:
           let
-            target = defaultReachability.runtimeTargets.${targetName};
+            target = runtimeTargetsWithOverlayTransitEndpointRoutes.${targetName};
           in
           {
             name = targetName;

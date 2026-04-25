@@ -561,8 +561,7 @@ let
               iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
               backingRef = attrsOrEmpty (iface.backingRef or null);
             in
-            (backingRef.kind or null) == "link"
-            && (backingRef.id or null) == adjacencyId)
+            (backingRef.id or null) == adjacencyId)
           (sortedNames interfaces);
     in
     if matchingNames == [ ] then
@@ -636,6 +635,17 @@ let
     interfaceName:
     builtins.match ".*--uplink-wan$" interfaceName != null;
 
+  interfaceBackingKind =
+    targetPath: interfaces: interfaceName:
+    let
+      iface =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}"
+          interfaces.${interfaceName};
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+    in
+    backingRef.kind or null;
+
   synthesizeTransitEndpointRoutesForFamily = family: targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
@@ -703,9 +713,18 @@ let
                   builtins.filter
                     (entry: interfaceNameHasUplinkWanPreference entry.interfaceName)
                     scopedCandidatesRaw;
+                preferredOverlayCandidates =
+                  builtins.filter
+                    (
+                      entry:
+                      interfaceBackingKind targetPath interfaces entry.interfaceName == "overlay"
+                    )
+                    scopedCandidatesRaw;
                 scopedCandidates =
                   if preferredUplinkWanCandidates != [ ] then
                     preferredUplinkWanCandidates
+                  else if preferredOverlayCandidates != [ ] then
+                    preferredOverlayCandidates
                   else
                     scopedCandidatesRaw;
                 defaultBearingCandidates =
