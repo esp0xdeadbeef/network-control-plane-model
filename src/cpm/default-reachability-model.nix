@@ -651,7 +651,9 @@ let
                 else
                   endpointAddresses.ipv6 or [ ];
               candidatePaths =
-                sortedCandidatePaths family (makeStringSet [ destinationNode ]) nodeName;
+                builtins.filter
+                  preferredFirstHopMatchesSource
+                  (sortedCandidatePaths family (makeStringSet [ destinationNode ]) nodeName);
               usableCandidates =
                 builtins.filter (candidate: builtins.length candidate.steps > 1) candidatePaths;
             in
