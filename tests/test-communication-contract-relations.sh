@@ -4,11 +4,27 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
-intent_path="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/intent.nix"
-inventory_path="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/inventory.nix"
+archive_json="$(mktemp)"
+trap 'rm -f "'"${archive_json}"'"' EXIT
 
-[[ -f "$intent_path" ]] || { echo "missing intent: $intent_path" >&2; exit 1; }
-[[ -f "$inventory_path" ]] || { echo "missing inventory: $inventory_path" >&2; exit 1; }
+nix flake archive --json "path:${repo_root}" > "${archive_json}"
+
+labs_path="$(
+  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+    let
+      archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
+      labs = archived.inputs."network-labs" or null;
+      labsPath = if labs == null then null else labs.path or null;
+    in
+      if labsPath == null then
+        throw "tests: missing archived network-labs input path"
+      else
+        labsPath
+  '
+)"
+
+intent_path="${labs_path}/examples/s-router-test-three-site/intent.nix"
+inventory_path="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
 
 expr='
 let

@@ -3,11 +3,27 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-intent_path="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/intent.nix"
-inventory_path="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/inventory.nix"
+archive_json="$(mktemp)"
+trap 'rm -f "'"${archive_json}"'"' EXIT
 
-[[ -f "${intent_path}" ]] || { echo "missing intent: ${intent_path}" >&2; exit 1; }
-[[ -f "${inventory_path}" ]] || { echo "missing inventory: ${inventory_path}" >&2; exit 1; }
+nix flake archive --json "path:${repo_root}" > "${archive_json}"
+
+labs_path="$(
+  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+    let
+      archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
+      labs = archived.inputs."network-labs" or null;
+      labsPath = if labs == null then null else labs.path or null;
+    in
+      if labsPath == null then
+        throw "tests: missing archived network-labs input path"
+      else
+        labsPath
+  '
+)"
+
+intent_path="${labs_path}/examples/s-router-test-three-site/intent.nix"
+inventory_path="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
 
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="${intent_path}" \
@@ -43,10 +59,10 @@ INVENTORY_PATH="${inventory_path}" \
         printer =
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-printer".routes;
       in
-        !(hasRoute (siteaUpstreamClient.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.42")
-        && !(hasRoute (siteaUpstreamClient.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:2a")
-        && hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.42"
-        && hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:2a"
+        !(hasRoute (siteaUpstreamClient.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.44")
+        && !(hasRoute (siteaUpstreamClient.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:2c")
+        && hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.44"
+        && hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:2c"
         && hasRoute (media.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.16"
         && hasRoute (printer.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.16"
     ' | grep -qx true

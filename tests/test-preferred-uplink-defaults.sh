@@ -2,13 +2,31 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-intent="${repo_root}/../nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/profiles/dual-wan-branch/intent.nix"
-inventory="${repo_root}/../nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/profiles/dual-wan-branch/bgp-inventory.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 output_json="${tmp_dir}/output.json"
+archive_json="${tmp_dir}/archive.json"
+
+nix flake archive --json "path:${repo_root}" > "${archive_json}"
+
+labs_path="$(
+  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+    let
+      archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
+      labs = archived.inputs."network-labs" or null;
+      labsPath = if labs == null then null else labs.path or null;
+    in
+      if labsPath == null then
+        throw "tests: missing archived network-labs input path"
+      else
+        labsPath
+  '
+)"
+
+intent="${labs_path}/examples/s-router-test-three-site/intent.nix"
+inventory="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
 
 (
   cd "${repo_root}"
