@@ -68,6 +68,7 @@ INVENTORY_PATH="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm
         rt = out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
       in {
         policyIot = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-iot--uplink-wan".routes;
+        policyMgmtStorage = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-site-c-storage".routes;
         policyMgmt = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-wan".routes;
       }
     ' > "${sitec_json}"
@@ -83,6 +84,7 @@ OUTPUT_JSON="${sitec_json}" nix eval --impure --expr '
         (routes.ipv4 or [ ]);
   in
     (!hasRoute decoded.policyIot "10.80.0.4/32")
+    && (!hasRoute decoded.policyMgmtStorage "10.80.0.4/32")
     && hasRoute decoded.policyMgmt "10.80.0.4/32"
 ' >/dev/null
 
