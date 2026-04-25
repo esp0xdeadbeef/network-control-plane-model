@@ -49,9 +49,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
         )
         (routes.${family} or [ ]);
   in
-    hasRoute "ipv4" "10.10.0.8/32" "10.10.0.9"
-    && hasRoute "ipv6" "fd42:dead:beef:1000:0:0:0:8/128" "fd42:dead:beef:1000:0:0:0:9"
-' >/dev/null
+    hasRoute "ipv4" "10.19.0.8/32" "10.10.0.9"
+    && hasRoute "ipv6" "fd42:dead:beef:1900:0000:0000:0000:0008/128" "fd42:dead:beef:1000:0:0:0:9"
+' | grep -qx true
 
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm/s-router-test/intent.nix" \
@@ -66,26 +66,36 @@ INVENTORY_PATH="/home/deadbeef/github/nixos/nixos/virtual-machine/nixos-shell-vm
           inventoryPath = builtins.getEnv "INVENTORY_PATH";
         };
         rt = out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
+        branchCore = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-isp-b";
       in {
         policyIot = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-iot--uplink-wan".routes;
         policyMgmtStorage = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-site-c-storage".routes;
         policyMgmt = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-wan".routes;
+        branchOverlay = branchCore.effectiveRuntimeRealization.interfaces."overlay-east-west".routes;
       }
     ' > "${sitec_json}"
 
 OUTPUT_JSON="${sitec_json}" nix eval --impure --expr '
   let
     decoded = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
-    hasRoute = routes: destination:
+    hasRoute4 = routes: destination:
       builtins.any
         (route:
           (route.dst or null) == destination
           && ((route.intent or { }).source or null) == "transit-endpoint")
         (routes.ipv4 or [ ]);
+    hasRoute6 = routes: destination:
+      builtins.any
+        (route:
+          (route.dst or null) == destination
+          && ((route.intent or { }).source or null) == "transit-endpoint")
+        (routes.ipv6 or [ ]);
   in
-    (!hasRoute decoded.policyIot "10.80.0.4/32")
-    && (!hasRoute decoded.policyMgmtStorage "10.80.0.4/32")
-    && hasRoute decoded.policyMgmt "10.80.0.4/32"
-' >/dev/null
+    (!hasRoute4 decoded.policyIot "10.80.0.4/32")
+    && (!hasRoute4 decoded.policyMgmtStorage "10.80.0.4/32")
+    && hasRoute4 decoded.policyMgmt "10.80.0.4/32"
+    && hasRoute4 decoded.branchOverlay "10.50.0.0/32"
+    && hasRoute6 decoded.branchOverlay "fd42:dead:feed:1000:0:0:0:0/128"
+' | grep -qx true
 
 echo "PASS transit-endpoint-return-routes"
