@@ -620,6 +620,18 @@ let
         ))
       (listOrEmpty routes);
 
+  interfaceHasDefaultForFamily =
+    family: iface:
+    let
+      routes = attrsOrEmpty (iface.routes or null);
+    in
+    routesContainDefault family (
+      if family == 4 then
+        listOrEmpty (routes.ipv4 or null)
+      else
+        listOrEmpty (routes.ipv6 or null)
+    );
+
   synthesizeTransitEndpointRoutesForFamily = family: targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
@@ -661,14 +673,53 @@ let
               currentInterfaces
             else
               let
-                chosen = builtins.elemAt usableCandidates 0;
-                firstStep = builtins.elemAt chosen.steps 0;
-                interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
+                candidateEntries =
+                  builtins.map
+                    (candidate:
+                      let
+                        firstStep = builtins.elemAt candidate.steps 0;
+                      in
+                      {
+                        inherit candidate firstStep;
+                        interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
+                      })
+                    usableCandidates;
+                namedCandidates =
+                  builtins.filter (entry: entry.interfaceName != null) candidateEntries;
+                destinationScopedCandidates =
+                  builtins.filter
+                    (entry: builtins.match ".*${destinationNode}.*" entry.interfaceName != null)
+                    namedCandidates;
+                scopedCandidates =
+                  if destinationScopedCandidates != [ ] then
+                    destinationScopedCandidates
+                  else
+                    namedCandidates;
+                defaultBearingCandidates =
+                  builtins.filter
+                    (
+                      entry:
+                      interfaceHasDefaultForFamily family (
+                        requireAttrs
+                          "${targetPath}.effectiveRuntimeRealization.interfaces.${entry.interfaceName}"
+                          interfaces.${entry.interfaceName}
+                      )
+                    )
+                    scopedCandidates;
+                chosenEntry =
+                  if defaultBearingCandidates != [ ] then
+                    builtins.elemAt defaultBearingCandidates 0
+                  else if scopedCandidates != [ ] then
+                    builtins.elemAt scopedCandidates 0
+                  else
+                    null;
               in
-              if interfaceName == null then
+              if chosenEntry == null then
                 currentInterfaces
               else
                 let
+                  firstStep = chosenEntry.firstStep;
+                  interfaceName = chosenEntry.interfaceName;
                   iface =
                     requireAttrs
                       "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}"
