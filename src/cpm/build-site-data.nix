@@ -929,7 +929,7 @@ let
     );
 
   buildOverlayTransitEndpointRoute =
-    family: overlayName: peerSite: destination: destinationNode:
+    family: overlayName: peerSite: destination: destinationNode: gateway:
     {
       dst =
         if family == 4 then
@@ -944,7 +944,15 @@ let
       proto = "overlay";
       overlay = overlayName;
       peerSite = peerSite;
-    };
+    }
+    // (
+      if gateway == null then
+        { }
+      else if family == 4 then
+        { via4 = gateway; }
+      else
+        { via6 = gateway; }
+    );
 
   routeWithDstPresent =
     family: routes: destination:
@@ -960,6 +968,30 @@ let
     builtins.any
       (route: builtins.isAttrs route && (route.dst or null) == destination)
       (listOrEmpty routes);
+
+  routeGatewayForPrefix =
+    family: routes: destinations:
+    let
+      matchingRoute =
+        lib.findFirst
+          (route:
+            builtins.isAttrs route
+            && builtins.elem (route.dst or null) destinations
+            && (
+              if family == 4 then
+                isNonEmptyString (route.via4 or null)
+              else
+                isNonEmptyString (route.via6 or null)
+            ))
+          null
+          (listOrEmpty routes);
+    in
+    if matchingRoute == null then
+      null
+    else if family == 4 then
+      matchingRoute.via4
+    else
+      matchingRoute.via6;
 
   augmentOverlayTransitEndpointRoutesForTarget =
     targetName: target:
@@ -1014,6 +1046,18 @@ let
                         attrsOrEmpty (overlayTransitEndpointAddressesByOverlay.${candidateOverlayName} or null);
                       peerSite = candidateOverlay.peerSite or null;
                       byNode = attrsOrEmpty (candidateOverlay.byNode or null);
+                      peerPrefixes4 = listOrEmpty (candidateOverlay.peerPrefixes4 or null);
+                      peerPrefixes6 = listOrEmpty (candidateOverlay.peerPrefixes6 or null);
+                      gateway4 =
+                        if overlayName != null then
+                          null
+                        else
+                          routeGatewayForPrefix 4 existingV4 peerPrefixes4;
+                      gateway6 =
+                        if overlayName != null then
+                          null
+                        else
+                          routeGatewayForPrefix 6 existingV6 peerPrefixes6;
                       extraV4 =
                         if !isNonEmptyString peerSite then
                           [ ]
@@ -1026,7 +1070,7 @@ let
                                 in
                                 builtins.map
                                   (address:
-                                    buildOverlayTransitEndpointRoute 4 candidateOverlayName peerSite address nodeName)
+                                    buildOverlayTransitEndpointRoute 4 candidateOverlayName peerSite address nodeName gateway4)
                                   (builtins.filter
                                     (address: !routeWithDstPresent 4 existingV4 address)
                                     (listOrEmpty (addresses.ipv4 or null))))
@@ -1044,7 +1088,7 @@ let
                                 in
                                 builtins.map
                                   (address:
-                                    buildOverlayTransitEndpointRoute 6 candidateOverlayName peerSite address nodeName)
+                                    buildOverlayTransitEndpointRoute 6 candidateOverlayName peerSite address nodeName gateway6)
                                   (builtins.filter
                                     (address: !routeWithDstPresent 6 existingV6 address)
                                     (listOrEmpty (addresses.ipv6 or null))))
