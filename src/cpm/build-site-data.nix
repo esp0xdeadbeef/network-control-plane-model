@@ -16,13 +16,6 @@ let
     sortedNames
     ;
 
-  isGlobalIPv6Prefix = value:
-    isNonEmptyString value
-    && builtins.match ".*:.*" value != null
-    && builtins.match "[Ff][Cc].*" value == null
-    && builtins.match "[Ff][Dd].*" value == null
-    && builtins.match "[Ff][Ee]80.*" value == null;
-
   deriveDefaultReachability =
     import ./default-reachability-model.nix {
       inherit helpers;
@@ -3055,19 +3048,14 @@ let
           let
             target = runtimeTargetsWithOverlayTransitEndpointRoutes.${targetName};
             hasAccessAdvertisements = hasAttr targetName accessAdvertisements;
-            advertisedGlobalIPv6Prefixes =
+            accessExternalValidation =
               if !hasAccessAdvertisements then
-                [ ]
+                { }
               else
-                builtins.filter
-                  isGlobalIPv6Prefix
-                  (
-                    builtins.concatLists (
-                      builtins.map
-                        (entry: entry.prefixes or [ ])
-                        (accessAdvertisements.${targetName}.ipv6Ra or [ ])
-                    )
-                  );
+                accessAdvertisements.${targetName}.externalValidation or { };
+            wantsDelegatedIPv6Prefix =
+              (accessExternalValidation.delegatedIPv6Prefix or false)
+              || (accessExternalValidation.delegatedIPv6Prefixes or false);
           in
           {
             name = targetName;
@@ -3090,13 +3078,12 @@ let
                   { }
               )
               // (
-                if advertisedGlobalIPv6Prefixes != [ ] then
+                if wantsDelegatedIPv6Prefix then
                   {
                     advertisements = accessAdvertisements.${targetName};
                     externalValidation = {
                       delegatedPrefixSecretName = "access-node-ipv6-prefix-${targetName}";
                       delegatedPrefixSecretPath = "/run/secrets/access-node-ipv6-prefix-${targetName}";
-                      delegatedPrefixes = advertisedGlobalIPv6Prefixes;
                     };
                   }
                 else if hasAccessAdvertisements then
