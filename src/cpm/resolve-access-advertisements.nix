@@ -263,6 +263,7 @@ let
       interfaceAddr6 = stripMask (runtimeInterface.addr6 or null);
       tenantIPv4Prefix = tenantDefinition.ipv4 or null;
       tenantIPv6Prefix = tenantDefinition.ipv6 or null;
+      tenantRa6Prefixes = tenantDefinition.ra6Prefixes or [ ];
     };
 
   buildExplicitDHCP4Entry = targetDef: targetPath: target: interfaceName: entry:
@@ -421,7 +422,9 @@ let
 
       prefixes =
         if enabled then
-          if isNonEmptyString tenantContext.tenantIPv6Prefix then
+          if tenantContext.tenantRa6Prefixes != [ ] then
+            tenantContext.tenantRa6Prefixes
+          else if isNonEmptyString tenantContext.tenantIPv6Prefix then
             [ tenantContext.tenantIPv6Prefix ]
           else
             failForwarding
@@ -436,7 +439,7 @@ let
           "prefixes"
           (attrs.prefixes or null)
           prefixes
-          "must match tenant IPv6 prefix '${tenantContext.tenantIPv6Prefix}' derived from the forwarding model";
+          "must match tenant IPv6 advertisement prefixes derived from the forwarding model";
 
       rdnss =
         if enabled then
@@ -460,6 +463,7 @@ let
           tenant = tenantContext.tenantName;
           address6 = routerAddress;
           subnet6 = tenantContext.tenantIPv6Prefix;
+          advertisedPrefixes6 = prefixes;
         }
         // (
           if isNonEmptyString tenantContext.interfaceAddr4 then
