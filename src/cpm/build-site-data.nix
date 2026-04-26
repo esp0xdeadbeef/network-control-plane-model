@@ -3047,6 +3047,7 @@ let
         (targetName:
           let
             target = runtimeTargetsWithOverlayTransitEndpointRoutes.${targetName};
+            hasAccessAdvertisements = hasAttr targetName accessAdvertisements;
           in
           {
             name = targetName;
@@ -3069,9 +3070,13 @@ let
                   { }
               )
               // (
-                if hasAttr targetName accessAdvertisements then
+                if hasAccessAdvertisements then
                   {
                     advertisements = accessAdvertisements.${targetName};
+                    externalValidation = {
+                      delegatedPrefixSecretName = "access-node-ipv6-prefix-${targetName}";
+                      delegatedPrefixSecretPath = "/run/secrets/access-node-ipv6-prefix-${targetName}";
+                    };
                   }
                 else
                   { }
