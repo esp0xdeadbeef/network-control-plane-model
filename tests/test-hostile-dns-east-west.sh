@@ -31,16 +31,22 @@ nix run "${repo_root}#compile-and-build-control-plane-model" -- "${intent_path}"
 OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+    siteB = data.control_plane_model.data.espbranch."site-b";
     hostileEw =
-      data.control_plane_model.data.espbranch."site-b".runtimeTargets."espbranch-site-b-b-router-policy"
+      siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
         ."p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west".routes;
+    hostileAccessAds =
+      siteB.runtimeTargets."espbranch-site-b-b-router-access-hostile".advertisements.ipv6Ra;
     hasDst = routes: destination:
       builtins.any (route: (route.dst or null) == destination) (routes.ipv4 or [ ])
       || builtins.any (route: (route.dst or null) == destination) (routes.ipv6 or [ ]);
   in
     hasDst hostileEw "10.20.10.0/24"
     && hasDst hostileEw "fd42:dead:beef:0010:0000:0000:0000:0000/64"
+    && (hostileAccessAds != [ ])
+    && (builtins.head hostileAccessAds).prefixes == [ "2a01:4f8:1c17:b337::/64" ]
+    && (builtins.head hostileAccessAds).routerInterface.subnet6 == "fd42:dead:feed:70::/64"
 ' | grep -qx true
 
 echo "PASS hostile-dns-east-west"
