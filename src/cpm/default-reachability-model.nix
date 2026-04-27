@@ -635,6 +635,10 @@ let
     interfaceName:
     builtins.match ".*--uplink-wan$" interfaceName != null;
 
+  interfaceNameTargetsDestination =
+    interfaceName: destinationNode:
+    builtins.match ".*(^|-)${destinationNode}(-|$).*" interfaceName != null;
+
   interfaceBackingKind =
     targetPath: interfaces: interfaceName:
     let
@@ -702,7 +706,7 @@ let
                   builtins.filter (entry: entry.interfaceName != null) candidateEntries;
                 destinationScopedCandidates =
                   builtins.filter
-                    (entry: builtins.match ".*${destinationNode}.*" entry.interfaceName != null)
+                    (entry: interfaceNameTargetsDestination entry.interfaceName destinationNode)
                     namedCandidates;
                 scopedCandidatesRaw =
                   if destinationScopedCandidates != [ ] then
