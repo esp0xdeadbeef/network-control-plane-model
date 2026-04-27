@@ -1,4 +1,3 @@
-# ./test-control-plane-model.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
