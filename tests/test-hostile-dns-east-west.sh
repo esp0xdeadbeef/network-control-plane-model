@@ -36,6 +36,13 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       siteB.runtimeTargets."espbranch-site-b-b-router-downstream-selector".forwardingIntent;
     branchUpstream =
       siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector".forwardingIntent;
+    hasRule = rules: from: to:
+      builtins.any
+        (rule:
+          (rule.action or null) == "accept"
+          && (rule.fromInterface or null) == from
+          && (rule.toInterface or null) == to)
+        rules;
     hostileEw =
       siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
@@ -58,9 +65,21 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && (builtins.head hostileAccessAds).externalValidation.delegatedPrefixSecretPath
       == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
     && branchDownstream.mode == "explicit-selector-forwarding"
-    && branchDownstream.rules == [ ]
+    && hasRule branchDownstream.rules "access-branch" "policy-branch"
+    && hasRule branchDownstream.rules "policy-branch" "access-branch"
+    && hasRule branchDownstream.rules "access-hostile" "policy-hostile"
+    && hasRule branchDownstream.rules "policy-hostile" "access-hostile"
+    && !(hasRule branchDownstream.rules "access-hostile" "access-branch")
+    && !(hasRule branchDownstream.rules "access-branch" "access-hostile")
     && branchUpstream.mode == "explicit-selector-forwarding"
-    && branchUpstream.rules == [ ]
+    && hasRule branchUpstream.rules "policy-branch" "core-isp"
+    && hasRule branchUpstream.rules "core-isp" "policy-branch"
+    && hasRule branchUpstream.rules "policy-hostile" "core-isp"
+    && hasRule branchUpstream.rules "core-isp" "policy-hostile"
+    && hasRule branchUpstream.rules "pol-branch-ew" "core-nebula"
+    && hasRule branchUpstream.rules "pol-hostile-ew" "core-nebula"
+    && !(hasRule branchUpstream.rules "policy-hostile" "policy-branch")
+    && !(hasRule branchUpstream.rules "policy-branch" "policy-hostile")
 ' | grep -qx true
 
 echo "PASS hostile-dns-east-west"
