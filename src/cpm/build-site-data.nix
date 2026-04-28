@@ -3056,6 +3056,19 @@ let
             wantsDelegatedIPv6Prefix =
               (accessExternalValidation.delegatedIPv6Prefix or false)
               || (accessExternalValidation.delegatedIPv6Prefixes or false);
+            delegatedPrefixExternalValidation = {
+              delegatedPrefixSecretName = "access-node-ipv6-prefix-${targetName}";
+              delegatedPrefixSecretPath = "/run/secrets/access-node-ipv6-prefix-${targetName}";
+            };
+            delegatedPrefixAdvertisements =
+              accessAdvertisements.${targetName}
+              // {
+                externalValidation = delegatedPrefixExternalValidation;
+                ipv6Ra =
+                  builtins.map
+                    (entry: entry // { externalValidation = delegatedPrefixExternalValidation; })
+                    (accessAdvertisements.${targetName}.ipv6Ra or [ ]);
+              };
           in
           {
             name = targetName;
@@ -3080,11 +3093,8 @@ let
               // (
                 if wantsDelegatedIPv6Prefix then
                   {
-                    advertisements = accessAdvertisements.${targetName};
-                    externalValidation = {
-                      delegatedPrefixSecretName = "access-node-ipv6-prefix-${targetName}";
-                      delegatedPrefixSecretPath = "/run/secrets/access-node-ipv6-prefix-${targetName}";
-                    };
+                    advertisements = delegatedPrefixAdvertisements;
+                    externalValidation = delegatedPrefixExternalValidation;
                   }
                 else if hasAccessAdvertisements then
                   {

@@ -45,8 +45,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     hasDst hostileEw "10.20.10.0/24"
     && hasDst hostileEw "fd42:dead:beef:0010:0000:0000:0000:0000/64"
     && (hostileAccessAds != [ ])
-    && (builtins.head hostileAccessAds).prefixes == [ "2a01:4f8:1c17:b337::/64" ]
     && (builtins.head hostileAccessAds).routerInterface.subnet6 == "fd42:dead:feed:70::/64"
+    && builtins.all
+      (entry: !builtins.elem "2a01:4f8:1c17:b337::/64" (entry.prefixes or [ ]))
+      hostileAccessAds
+    && (builtins.head hostileAccessAds).externalValidation.delegatedPrefixSecretName
+      == "access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
+    && (builtins.head hostileAccessAds).externalValidation.delegatedPrefixSecretPath
+      == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
 ' | grep -qx true
 
 echo "PASS hostile-dns-east-west"
