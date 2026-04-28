@@ -400,11 +400,20 @@ let
               }
           ))));
 
-  buildExplicitIPv6RaEntry = targetDef: targetPath: target: interfaceName: entry:
+  buildExplicitIPv6RaEntry = targetDef: targetPath: target: interfaceName: entry: externalValidation:
     let
       entryPath = "${targetDef.nodePath}.advertisements.ipv6Ra.${interfaceName}";
       attrs = requireAttrs entryPath entry;
       enabled = boolOr true (attrs.enabled or null);
+      extValid =
+        if builtins.isAttrs externalValidation then
+          externalValidation
+        else
+          { };
+      hasDelegatedPrefixValidation =
+        (extValid.delegatedIPv6Prefix or false) == true
+        || (extValid.delegatedIPv6Prefixes or false) == true
+        || (extValid.delegatedPrefixSecretPath or "" != "");
 
       tenantContext =
         resolveTenantAdvertisementContext targetPath target interfaceName;
@@ -422,7 +431,9 @@ let
 
       prefixes =
         if enabled then
-          if tenantContext.tenantRa6Prefixes != [ ] then
+          if hasDelegatedPrefixValidation then
+            [ ]
+          else if tenantContext.tenantRa6Prefixes != [ ] then
             tenantContext.tenantRa6Prefixes
           else if isNonEmptyString tenantContext.tenantIPv6Prefix then
             [ tenantContext.tenantIPv6Prefix ]
@@ -434,12 +445,15 @@ let
           [ ];
 
       _prefixMatch =
-        validateOptionalStringListMatch
-          entryPath
-          "prefixes"
-          (attrs.prefixes or null)
-          prefixes
-          "must match tenant IPv6 advertisement prefixes derived from the forwarding model";
+        if hasDelegatedPrefixValidation then
+          true
+        else
+          validateOptionalStringListMatch
+            entryPath
+            "prefixes"
+            (attrs.prefixes or null)
+            prefixes
+            "must match tenant IPv6 advertisement prefixes derived from the forwarding model";
 
       rdnss =
         if enabled then
@@ -501,8 +515,16 @@ let
           {
             prefixes = prefixes;
             rdnss = rdnss;
-            dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
+        dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
           }
+      )
+      // (
+        if hasDelegatedPrefixValidation then
+          {
+            externalValidation = extValid;
+          }
+        else
+          { }
       ));
 
   buildAccessTargetEntry = targetName:
@@ -604,7 +626,7 @@ let
             ipv6Ra =
               builtins.map
                 (interfaceName:
-                  buildExplicitIPv6RaEntry targetDef targetPath target interfaceName ipv6RaEntries.${interfaceName})
+                  buildExplicitIPv6RaEntry targetDef targetPath target interfaceName ipv6RaEntries.${interfaceName} externalValidation)
                 tenantInterfaceNames;
           };
         in
