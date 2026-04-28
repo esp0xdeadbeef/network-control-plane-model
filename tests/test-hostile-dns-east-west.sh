@@ -32,6 +32,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     siteB = data.control_plane_model.data.espbranch."site-b";
+    branchDownstream =
+      siteB.runtimeTargets."espbranch-site-b-b-router-downstream-selector".forwardingIntent;
+    branchUpstream =
+      siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector".forwardingIntent;
     hostileEw =
       siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
@@ -53,6 +57,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       == "access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
     && (builtins.head hostileAccessAds).externalValidation.delegatedPrefixSecretPath
       == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
+    && branchDownstream.mode == "explicit-selector-forwarding"
+    && branchDownstream.rules == [ ]
+    && branchUpstream.mode == "explicit-selector-forwarding"
+    && branchUpstream.rules == [ ]
 ' | grep -qx true
 
 echo "PASS hostile-dns-east-west"
