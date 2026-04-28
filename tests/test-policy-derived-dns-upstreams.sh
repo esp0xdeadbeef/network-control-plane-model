@@ -189,8 +189,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   in
     builtins.elem "10.20.10.10" forwarders
     && builtins.elem "fd00:10::10" forwarders
-    && builtins.elem "1.1.1.1" forwarders
-    && builtins.elem "2606:4700:4700::1111" forwarders
+    && !(builtins.elem "1.1.1.1" forwarders)
+    && !(builtins.elem "2606:4700:4700::1111" forwarders)
     && dns.listen == [ "10.20.0.1" "fd00:20::1" ]
     && dns.allowFrom == [ "10.20.0.0/24" "fd00:20::/64" ]
     && providerForwarders == [ "1.1.1.1" "2606:4700:4700::1111" ]
