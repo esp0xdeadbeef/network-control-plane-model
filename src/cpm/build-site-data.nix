@@ -2655,13 +2655,15 @@ let
           policyDerivedDnsAllowFromForListeners dnsService.listen
         else
           [ ];
+      filteredDerivedForwarders =
+        builtins.filter
+          (addr: !(builtins.elem addr listenAddresses))
+          derivedForwarders;
       mergedForwarders =
-        if derivedForwarders == [ ] then
+        if filteredDerivedForwarders == [ ] then
           explicitForwarders
         else
-          builtins.filter
-            (addr: !(builtins.elem addr listenAddresses))
-            (uniqueStrings (derivedForwarders ++ explicitForwarders));
+          uniqueStrings filteredDerivedForwarders;
       mergedAllowFrom =
         if derivedAllowFrom == [ ] then
           explicitAllowFrom
