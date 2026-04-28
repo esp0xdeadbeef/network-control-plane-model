@@ -269,7 +269,16 @@ let
             transitInterfaces;
         rules = buildAccessRules localInterfaces transitInterfaces;
       }
-    else if role == "downstream-selector" || role == "upstream-selector" || role == "policy" then
+    else if role == "downstream-selector" || role == "upstream-selector" then
+      {
+        mode = "explicit-selector-forwarding";
+        transitInterfaces =
+          builtins.map
+            (iface: iface.runtimeIfName)
+            transitInterfaces;
+        rules = [ ];
+      }
+    else if role == "policy" then
       {
         mode = "explicit-transit-mesh-forwarding";
         transitInterfaces =
