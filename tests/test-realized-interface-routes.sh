@@ -23,55 +23,34 @@ flake_input_path() {
 examples_root="$(flake_input_path network-labs)/examples"
 example_root="${examples_root}/single-wan-uplink-static-egress"
 intent_path="${example_root}/intent.nix"
+inventory_source="${example_root}/inventory-nixos.nix"
 
 [[ -f "${intent_path}" ]] || {
   echo "missing intent fixture: ${intent_path}" >&2
   exit 1
 }
 
+[[ -f "${inventory_source}" ]] || {
+  echo "missing inventory fixture: ${inventory_source}" >&2
+  exit 1
+}
+
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "'"${tmp_dir}"'"' EXIT
 
-cp "${example_root}/inventory-base.nix" "${tmp_dir}/inventory-base.nix"
-chmod u+w "${tmp_dir}/inventory-base.nix"
-cat > "${tmp_dir}/inventory.nix" <<'EOF'
-import ./inventory-base.nix
-EOF
+cp "${inventory_source}" "${tmp_dir}/inventory.nix"
+chmod u+w "${tmp_dir}/inventory.nix"
 
-python - <<'PY' "${tmp_dir}/inventory-base.nix"
+python - <<'PY' "${tmp_dir}/inventory.nix"
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
 source = path.read_text()
-needle = """          wan = {
-            uplink = "wan";
-            external = true;
-            attach = {
-              kind = "bridge";
-              bridge = "br-uplink0";
-            };
-            interface = {
-              name = "ens4";
-            };
-          };"""
-replacement = """          wan = {
-            uplink = "wan";
-            external = true;
-            attach = {
-              kind = "bridge";
-              bridge = "br-uplink0";
-            };
-            interface = {
-              name = "ens4";
-              routes = {
-                ipv4 = [ { prefix = "198.51.100.0/24"; via = "192.0.2.1"; } ];
-                ipv6 = [ { prefix = "2001:db8:51::/64"; via = "2001:db8::1"; } ];
-              };
-            };
-          };"""
+needle = '"interface":{"name":"ens4"},"uplink":"wan"'
+replacement = '"interface":{"name":"ens4","routes":{"ipv4":[{"prefix":"198.51.100.0/24","via":"192.0.2.1"}],"ipv6":[{"prefix":"2001:db8:51::/64","via":"2001:db8::1"}]}},"uplink":"wan"'
 if needle not in source:
-    raise SystemExit("failed to patch single-wan-uplink-static-egress inventory-base.nix")
+    raise SystemExit("failed to patch single-wan-uplink-static-egress inventory-nixos.nix")
 path.write_text(source.replace(needle, replacement, 1))
 PY
 

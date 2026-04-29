@@ -58,6 +58,20 @@ let
     else
       builtins.elemAt parts ((builtins.length parts) - 1);
 
+  accessNodeNameFromAdjacencyId =
+    adjacencyId:
+    let
+      match = builtins.match ".*--access-(.+)--uplink-.*" adjacencyId;
+    in
+    if match == null then null else builtins.elemAt match 0;
+
+  overlayNameFromInterfaceName =
+    interfaceName:
+    let
+      match = builtins.match "overlay-(.+)" interfaceName;
+    in
+    if match == null then null else builtins.elemAt match 0;
+
   defaultDst = family:
     if family == 4 then
       "0.0.0.0/0"
@@ -112,6 +126,39 @@ let
 
   siteEgressIntent =
     attrsOrEmpty (siteAttrs.egressIntent or null);
+
+  transportAttrs =
+    attrsOrEmpty (siteAttrs.transport or null);
+
+  siteOverlayNames =
+    uniqueStrings (
+      sortedNames (attrsOrEmpty (siteAttrs.overlays or null))
+      ++ builtins.map
+        (overlay: overlay.name or null)
+        (listOrEmpty (transportAttrs.overlays or null))
+      ++ builtins.concatLists (
+        builtins.map
+          (targetName:
+            let
+              target = requireAttrs "${sitePath}.runtimeTargets.${targetName}" runtimeTargets.${targetName};
+              effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+              interfaces = attrsOrEmpty (effective.interfaces or null);
+            in
+            builtins.map
+              (ifName:
+                let
+                  iface = attrsOrEmpty interfaces.${ifName};
+                in
+                if (iface.sourceKind or null) == "overlay" then
+                  overlayNameFromInterfaceName ifName
+                else
+                  null)
+              (sortedNames interfaces))
+          runtimeTargetNames
+      )
+    );
+
+  siteOverlayNameSet = makeStringSet siteOverlayNames;
 
   exitNodeNamesFromSite =
     if builtins.isList (siteEgressIntent.exitNodeNames or null) then
@@ -326,6 +373,43 @@ let
         ))
       (sortedNames interfaces);
 
+  defaultSourceUplinkNamesForFamily = family: targetName: target:
+    let
+      targetPath = "${sitePath}.runtimeTargets.${targetName}";
+      effective =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization"
+          (target.effectiveRuntimeRealization or null);
+      interfaces =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization.interfaces"
+          (effective.interfaces or null);
+    in
+    uniqueStrings (
+      builtins.map
+        (ifName:
+          let
+            iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
+            routes = attrsOrEmpty (iface.routes or null);
+            upstream = iface.upstream or null;
+          in
+          if
+            (iface.sourceKind or null) == "wan"
+            && isNonEmptyString upstream
+            && !hasAttr upstream siteOverlayNameSet
+            && routesContainDefault family (
+              if family == 4 then
+                routes.ipv4 or [ ]
+              else
+                routes.ipv6 or [ ]
+            )
+          then
+            upstream
+          else
+            null)
+        (sortedNames interfaces)
+    );
+
   explicitDefaultSourceNodeNamesForFamily = family:
     let
       nodesWithExplicitDefaults =
@@ -351,7 +435,7 @@ let
     makeStringSet (explicitDefaultSourceNodeNamesForFamily 6);
 
   preferredFirstHopMatchesSource =
-    candidate:
+    family: candidate:
     let
       sourceEntry =
         if hasAttr candidate.sourceNode runtimeTargetsWithWANDefaultsByNode then
@@ -363,7 +447,12 @@ let
         if sourceEntry == null then
           [ ]
         else
-          selectedUplinkNamesForTarget sourceEntry.target;
+          uniqueStrings (
+            builtins.filter
+              (uplinkName: !hasAttr uplinkName siteOverlayNameSet)
+              (selectedUplinkNamesForTarget sourceEntry.target)
+            ++ defaultSourceUplinkNamesForFamily family sourceEntry.targetName sourceEntry.target
+          );
 
       firstStep =
         if builtins.length candidate.steps == 0 then
@@ -376,8 +465,29 @@ let
           null
         else
           uplinkNameFromAdjacencyId firstStep.adjacencyId;
+
+      accessNodeName =
+        if firstStep == null then
+          null
+        else
+          accessNodeNameFromAdjacencyId firstStep.adjacencyId;
+
+      delegatedIPv6Access =
+        family == 6
+        && isNonEmptyString accessNodeName
+        && hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode
+        && (
+          let
+            externalValidation =
+              attrsOrEmpty (runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target.externalValidation or null);
+          in
+          (externalValidation.delegatedIPv6Prefix or false) == true
+          || isNonEmptyString (externalValidation.delegatedPrefixSecretName or null)
+        );
     in
-    if selectedUplinkNames == [ ] || firstStep == null || uplinkName == null then
+    if firstStep == null || uplinkName == null then
+      true
+    else if delegatedIPv6Access && hasAttr uplinkName siteOverlayNameSet then
       true
     else
       listContains uplinkName selectedUplinkNames;
@@ -682,7 +792,7 @@ let
                   endpointAddresses.ipv6 or [ ];
               candidatePaths =
                 builtins.filter
-                  preferredFirstHopMatchesSource
+                  (preferredFirstHopMatchesSource family)
                   (sortedCandidatePaths family (makeStringSet [ destinationNode ]) nodeName);
               usableCandidates =
                 builtins.filter (candidate: builtins.length candidate.steps > 1) candidatePaths;
@@ -812,7 +922,7 @@ let
       logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
       nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
       candidatePaths =
-        builtins.filter preferredFirstHopMatchesSource (sortedCandidatePaths family sourceSet nodeName);
+        builtins.filter (preferredFirstHopMatchesSource family) (sortedCandidatePaths family sourceSet nodeName);
     in
     if hasAttr nodeName sourceSet || candidatePaths == [ ] then
       target
