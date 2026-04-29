@@ -61,7 +61,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       builtins.any (route: (route.dst or null) == "::/0") routes;
 
     siteAPolicy = siteA.runtimeTargets."esp0xdeadbeef-site-a-s-router-policy";
+    siteACoreNebula = siteA.runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
     branchPolicy = siteB.runtimeTargets."espbranch-site-b-b-router-policy";
+    branchCoreNebula = siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
 
     siteAEastWestDefaults =
       hasDefaultVia "10.10.0.25" (routes4For siteAPolicy "p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-admin--uplink-east-west")
@@ -90,6 +92,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
 
     siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
     siteCPolicy = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy";
+    siteCCoreNebula = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-nebula-core";
 
     siteCStorageDefaults =
       hasDefault (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-site-c-storage")
@@ -99,6 +102,16 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     siteCWanDefaults =
       hasDefaultVia "10.80.0.21" (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-wan")
       && hasDefaultVia "10.80.0.29" (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-iot--uplink-wan");
+
+    coreOverlayHasDefault =
+      hasDefault (routes4For siteACoreNebula "east-west")
+      || hasDefault6 (routes6For siteACoreNebula "east-west")
+      || hasDefault (routes4For siteACoreNebula "site-c-storage")
+      || hasDefault6 (routes6For siteACoreNebula "site-c-storage")
+      || hasDefault (routes4For branchCoreNebula "east-west")
+      || hasDefault6 (routes6For branchCoreNebula "east-west")
+      || hasDefault (routes4For siteCCoreNebula "site-c-storage")
+      || hasDefault6 (routes6For siteCCoreNebula "site-c-storage");
   in
     (!siteAEastWestDefaults)
     && siteAWanDefaults
@@ -109,6 +122,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && (!hostileWanIPv6Default)
     && (!siteCStorageDefaults)
     && siteCWanDefaults
+    && (!coreOverlayHasDefault)
 ' >/dev/null || {
   echo "FAIL preferred-uplink-defaults" >&2
   exit 1

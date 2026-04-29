@@ -222,6 +222,8 @@ let
       hostUplink = attrsOrEmpty (iface.hostUplink or null);
       wan = attrsOrEmpty (iface.wan or null);
       upstream = iface.upstream or null;
+      isOverlayTransportUplink =
+        isNonEmptyString upstream && hasAttr upstream siteOverlayNameSet;
 
       selected =
         selectedUplinkNames == [ ]
@@ -231,27 +233,33 @@ let
       ipv6Routes = listOrEmpty (routes.ipv6 or null);
 
       wantsIPv4Default =
-        selected
+        !isOverlayTransportUplink
+        && selected
         && (
           builtins.isAttrs (hostUplink.ipv4 or null)
           || listContains "0.0.0.0/0" (wan.ipv4 or null)
         );
 
       wantsIPv6Default =
-        selected
+        !isOverlayTransportUplink
+        && selected
         && (
           builtins.isAttrs (hostUplink.ipv6 or null)
           || listContains "::/0" (wan.ipv6 or null)
         );
 
       updatedIPv4Routes =
-        if wantsIPv4Default && !routesContainDefault 4 ipv4Routes then
+        if isOverlayTransportUplink then
+          stripDefaultRoutes 4 ipv4Routes
+        else if wantsIPv4Default && !routesContainDefault 4 ipv4Routes then
           ipv4Routes ++ [ (buildWANDefaultRoute 4) ]
         else
           ipv4Routes;
 
       updatedIPv6Routes =
-        if wantsIPv6Default && !routesContainDefault 6 ipv6Routes then
+        if isOverlayTransportUplink then
+          stripDefaultRoutes 6 ipv6Routes
+        else if wantsIPv6Default && !routesContainDefault 6 ipv6Routes then
           ipv6Routes ++ [ (buildWANDefaultRoute 6) ]
         else
           ipv6Routes;
