@@ -381,6 +381,33 @@ let
         ))
       (sortedNames interfaces);
 
+  targetHasOverlayDefaultSourceForFamily = family: targetName: target:
+    let
+      targetPath = "${sitePath}.runtimeTargets.${targetName}";
+      effective =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization"
+          (target.effectiveRuntimeRealization or null);
+      interfaces =
+        requireAttrs
+          "${targetPath}.effectiveRuntimeRealization.interfaces"
+          (effective.interfaces or null);
+    in
+    builtins.any
+      (ifName:
+        let
+          iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
+          upstream = iface.upstream or null;
+          wan = attrsOrEmpty (iface.wan or null);
+        in
+        (iface.sourceKind or null) == "wan"
+        && isNonEmptyString upstream
+        && hasAttr upstream siteOverlayNameSet
+        && listContains (defaultDst family) (
+          if family == 4 then wan.ipv4 or [ ] else wan.ipv6 or [ ]
+        ))
+      (sortedNames interfaces);
+
   defaultSourceUplinkNamesForFamily = family: targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
@@ -428,13 +455,26 @@ let
             in
             targetHasDefaultReachabilityForFamily family targetEntry.targetName targetEntry.target)
           (sortedNames runtimeTargetsWithWANDefaultsByNode);
+      overlayDefaultSourceNodes =
+        builtins.filter
+          (nodeName:
+            let
+              targetEntry = runtimeTargetsWithWANDefaultsByNode.${nodeName};
+            in
+            targetHasOverlayDefaultSourceForFamily family targetEntry.targetName targetEntry.target)
+          (sortedNames runtimeTargetsWithWANDefaultsByNode);
     in
-    if sortedNames exitNodeSet == [ ] then
-      nodesWithExplicitDefaults
-    else
-      builtins.filter
-        (nodeName: hasAttr nodeName exitNodeSet)
-        nodesWithExplicitDefaults;
+    uniqueStrings (
+      (
+        if sortedNames exitNodeSet == [ ] then
+          nodesWithExplicitDefaults
+        else
+          builtins.filter
+            (nodeName: hasAttr nodeName exitNodeSet)
+            nodesWithExplicitDefaults
+      )
+      ++ overlayDefaultSourceNodes
+    );
 
   explicitDefaultSourceSet4 =
     makeStringSet (explicitDefaultSourceNodeNamesForFamily 4);

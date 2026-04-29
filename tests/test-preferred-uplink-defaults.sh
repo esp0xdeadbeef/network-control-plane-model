@@ -64,6 +64,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     siteACoreNebula = siteA.runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
     branchPolicy = siteB.runtimeTargets."espbranch-site-b-b-router-policy";
     branchCoreNebula = siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
+    branchUpstream = siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector";
 
     siteAEastWestDefaults =
       hasDefaultVia "10.10.0.25" (routes4For siteAPolicy "p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-admin--uplink-east-west")
@@ -89,6 +90,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
 
     hostileWanIPv6Default =
       hasDefault6 (routes6For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-wan");
+
+    branchUpstreamHostileOverlayIPv6Default =
+      hasDefaultVia6 "fd42:dead:feed:1000:0:0:0:4" (routes6For branchUpstream "p2p-b-router-core-nebula-b-router-upstream-selector");
 
     siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
     siteCPolicy = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy";
@@ -120,6 +124,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && (!branchEastWestIPv6Default)
     && hostileEastWestIPv6Default
     && (!hostileWanIPv6Default)
+    && branchUpstreamHostileOverlayIPv6Default
     && (!siteCStorageDefaults)
     && siteCWanDefaults
     && (!coreOverlayHasDefault)
