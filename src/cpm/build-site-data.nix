@@ -3001,9 +3001,17 @@ let
           (sortedNames nodes)
       ));
 
+  siteAttrsForDefaultReachability =
+    siteAttrs
+    // {
+      tenants = siteTenantsCfg;
+      ipv6 = siteIpv6Cfg;
+    };
+
   defaultReachability =
     deriveDefaultReachability {
-      inherit sitePath siteAttrs;
+      inherit sitePath;
+      siteAttrs = siteAttrsForDefaultReachability;
       transit = transitAttrs;
       runtimeTargets = initialRuntimeTargets;
     };

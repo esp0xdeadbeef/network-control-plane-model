@@ -475,22 +475,55 @@ let
       delegatedIPv6Access =
         family == 6
         && isNonEmptyString accessNodeName
-        && hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode
-        && (
-          let
-            externalValidation =
-              attrsOrEmpty (runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target.externalValidation or null);
-          in
-          (externalValidation.delegatedIPv6Prefix or false) == true
-          || isNonEmptyString (externalValidation.delegatedPrefixSecretName or null)
-        );
+        && isDelegatedIPv6AccessNode accessNodeName;
     in
     if firstStep == null || uplinkName == null then
       true
-    else if delegatedIPv6Access && hasAttr uplinkName siteOverlayNameSet then
-      true
+    else if delegatedIPv6Access then
+      hasAttr uplinkName siteOverlayNameSet
     else
       listContains uplinkName selectedUplinkNames;
+
+  isDelegatedIPv6AccessNode =
+    accessNodeName:
+    hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode
+    && (
+      let
+        target = runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target;
+        externalValidation = attrsOrEmpty (target.externalValidation or null);
+        advertisements = attrsOrEmpty (target.advertisements or null);
+        ipv6Ra = attrsOrEmpty (advertisements.ipv6Ra or null);
+        networks = attrsOrEmpty (target.networks or null);
+        siteTenants = attrsOrEmpty (siteAttrs.tenants or null);
+        siteIPv6 = attrsOrEmpty (siteAttrs.ipv6 or null);
+        siteIPv6PD = attrsOrEmpty (siteIPv6.pd or null);
+        hasRuntimePrefixAdvertisement =
+          builtins.any
+            (raName:
+              let
+                ra = attrsOrEmpty ipv6Ra.${raName};
+              in
+              !(builtins.isList (ra.prefixes or null)))
+            (sortedNames ipv6Ra);
+        hasSlaacPDNetwork =
+          siteIPv6PD != { }
+          &&
+          builtins.any
+            (networkName:
+              let
+                network = attrsOrEmpty networks.${networkName};
+                tenant = attrsOrEmpty (siteTenants.${networkName} or null);
+                tenantIPv6 = attrsOrEmpty (tenant.ipv6 or null);
+              in
+              (network.kind or null) == "tenant"
+              && (tenantIPv6.mode or null) == "slaac")
+            (sortedNames networks);
+      in
+      (externalValidation.delegatedIPv6Prefix or false) == true
+      || isNonEmptyString (externalValidation.delegatedPrefixSecretName or null)
+      || hasRuntimePrefixAdvertisement
+      || hasSlaacPDNetwork
+    );
 
   addNeighbor = acc: nodeName: neighborRecord:
     let
@@ -968,8 +1001,16 @@ let
             candidateIndex = state.index;
             firstStep = builtins.elemAt candidate.steps 0;
             interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
+            accessNodeName = accessNodeNameFromAdjacencyId firstStep.adjacencyId;
+            uplinkName = uplinkNameFromAdjacencyId firstStep.adjacencyId;
+            delegatedIPv6WANFirstHop =
+              family == 6
+              && isNonEmptyString accessNodeName
+              && isDelegatedIPv6AccessNode accessNodeName
+              && isNonEmptyString uplinkName
+              && !hasAttr uplinkName siteOverlayNameSet;
           in
-          if interfaceName == null then
+          if interfaceName == null || delegatedIPv6WANFirstHop then
             state // { index = candidateIndex + 1; }
           else
             let
