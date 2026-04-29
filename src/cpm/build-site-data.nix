@@ -2019,9 +2019,13 @@ let
         else
           null;
 
+      isOverlayTransportUplink = builtins.elem uplinkName overlayNames;
+
       validatedHostUplink =
         if realizedTarget then
-          if resolvedHostUplink == null then
+          if isOverlayTransportUplink then
+            resolvedHostUplink
+          else if resolvedHostUplink == null then
             failInventory
               "inventory.deployment.hosts.${targetHostName}.uplinks"
               "${uplinkPath} on realized target '${targetId}' requires explicit host uplink mapping in inventory.deployment.hosts.${targetHostName}.uplinks"
