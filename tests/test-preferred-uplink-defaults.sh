@@ -48,6 +48,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     hasDefaultVia = via: routes:
       builtins.any (route: (route.dst or null) == "0.0.0.0/0" && (route.via4 or null) == via) routes;
 
+    hasDefault = routes:
+      builtins.any (route: (route.dst or null) == "0.0.0.0/0") routes;
+
     siteAPolicy = siteA.runtimeTargets."esp0xdeadbeef-site-a-s-router-policy";
     branchPolicy = siteB.runtimeTargets."espbranch-site-b-b-router-policy";
 
@@ -66,8 +69,20 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
 
     branchWanDefault =
       hasDefaultVia "10.50.0.9" (routes4For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-branch--uplink-wan");
+
+    siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
+    siteCPolicy = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy";
+
+    siteCStorageDefaults =
+      hasDefault (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-site-c-storage")
+      || hasDefault (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-nas--uplink-site-c-storage")
+      || hasDefault (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-printer--uplink-site-c-storage");
+
+    siteCWanDefaults =
+      hasDefaultVia "10.80.0.21" (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-wan")
+      && hasDefaultVia "10.80.0.29" (routes4For siteCPolicy "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-iot--uplink-wan");
   in
-    (!siteAEastWestDefaults) && siteAWanDefaults && (!branchEastWestDefault) && branchWanDefault
+    (!siteAEastWestDefaults) && siteAWanDefaults && (!branchEastWestDefault) && branchWanDefault && (!siteCStorageDefaults) && siteCWanDefaults
 ' >/dev/null || {
   echo "FAIL preferred-uplink-defaults" >&2
   exit 1
