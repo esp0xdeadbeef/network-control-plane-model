@@ -3037,22 +3037,99 @@ let
         (sortedNames defaultReachability.runtimeTargets)
     );
 
+  routeKey = family: route:
+    if !builtins.isAttrs route then
+      null
+    else
+      builtins.toJSON {
+        inherit family;
+        dst = route.dst or null;
+        table = route.table or null;
+        via4 = route.via4 or null;
+        via6 = route.via6 or null;
+        scope = route.scope or null;
+      };
+
+  uniqueRoutes =
+    family: routes:
+    (builtins.foldl'
+      (
+        acc: route:
+        let
+          key = routeKey family route;
+        in
+        if key == null || builtins.hasAttr key acc.seen then
+          acc
+        else
+          {
+            seen = acc.seen // { ${key} = true; };
+            values = acc.values ++ [ route ];
+          }
+      )
+      {
+        seen = { };
+        values = [ ];
+      }
+      routes).values;
+
+  normalizeRuntimeTargetRoutes =
+    target:
+    let
+      effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (effective.interfaces or null);
+      normalizedInterfaces =
+        builtins.mapAttrs
+          (_ifName: iface:
+            let
+              routes = attrsOrEmpty (iface.routes or null);
+              ipv4 = listOrEmpty (routes.ipv4 or null);
+              ipv6 = listOrEmpty (routes.ipv6 or null);
+            in
+            if ipv4 == [ ] && ipv6 == [ ] then
+              iface
+            else
+              iface
+              // {
+                routes =
+                  routes
+                  // {
+                    ipv4 = uniqueRoutes 4 ipv4;
+                    ipv6 = uniqueRoutes 6 ipv6;
+                  };
+              })
+          interfaces;
+    in
+    if interfaces == { } then
+      target
+    else
+      target
+      // {
+        effectiveRuntimeRealization =
+          effective
+          // {
+            interfaces = normalizedInterfaces;
+          };
+      };
+
+  normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes =
+    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetsWithOverlayTransitEndpointRoutes;
+
   accessAdvertisements =
     resolveAccessAdvertisements {
       inherit sitePath siteAttrs realizationIndex endpointInventoryIndex;
-      runtimeTargets = runtimeTargetsWithOverlayTransitEndpointRoutes;
+      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
   firewallIntent =
     resolveFirewallIntent {
       inherit sitePath siteAttrs;
-      runtimeTargets = runtimeTargetsWithOverlayTransitEndpointRoutes;
+      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
   policyEndpointBindings =
     resolvePolicyEndpointBindings {
       inherit sitePath siteAttrs attachments domains;
-      runtimeTargets = runtimeTargetsWithOverlayTransitEndpointRoutes;
+      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
   runtimeTargets =
@@ -3060,7 +3137,7 @@ let
       builtins.map
         (targetName:
           let
-            target = runtimeTargetsWithOverlayTransitEndpointRoutes.${targetName};
+            target = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes.${targetName};
             hasAccessAdvertisements = hasAttr targetName accessAdvertisements;
             accessExternalValidation =
               if !hasAccessAdvertisements then
