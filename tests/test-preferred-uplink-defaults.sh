@@ -60,8 +60,16 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     hasDefault6 = routes:
       builtins.any (route: (route.dst or null) == "::/0") routes;
 
+    countDefaultVia = dst: viaField: via: routes:
+      builtins.length (
+        builtins.filter
+          (route: (route.dst or null) == dst && (route.${viaField} or null) == via)
+          routes
+      );
+
     siteAPolicy = siteA.runtimeTargets."esp0xdeadbeef-site-a-s-router-policy";
     siteACoreNebula = siteA.runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
+    siteAAccessMgmt = siteA.runtimeTargets."esp0xdeadbeef-site-a-s-router-access-mgmt";
     branchPolicy = siteB.runtimeTargets."espbranch-site-b-b-router-policy";
     branchCoreNebula = siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
     branchUpstream = siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector";
@@ -116,6 +124,11 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       || hasDefault6 (routes6For branchCoreNebula "east-west")
       || hasDefault (routes4For siteCCoreNebula "site-c-storage")
       || hasDefault6 (routes6For siteCCoreNebula "site-c-storage");
+
+    accessMgmtTransit = "p2p-s-router-access-mgmt-s-router-downstream-selector";
+    accessMgmtDefaultDeduped =
+      countDefaultVia "0.0.0.0/0" "via4" "10.10.0.9" (routes4For siteAAccessMgmt accessMgmtTransit) == 1
+      && countDefaultVia "::/0" "via6" "fd42:dead:beef:1000:0:0:0:9" (routes6For siteAAccessMgmt accessMgmtTransit) == 1;
   in
     (!siteAEastWestDefaults)
     && siteAWanDefaults
@@ -128,6 +141,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && (!siteCStorageDefaults)
     && siteCWanDefaults
     && (!coreOverlayHasDefault)
+    && accessMgmtDefaultDeduped
 ' >/dev/null || {
   echo "FAIL preferred-uplink-defaults" >&2
   exit 1
