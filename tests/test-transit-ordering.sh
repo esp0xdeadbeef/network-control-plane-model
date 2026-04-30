@@ -22,20 +22,15 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
 
     hasPrefix = str:
-      builtins.match "^link::" str != null;
+      builtins.match "^link::.*" str != null;
 
-    unique =
+    uniqueLength =
       xs:
-      builtins.foldl
-        (
-          acc: x:
-            if builtins.elem x acc then
-              acc
-            else
-              acc ++ [ x ]
+      builtins.length (
+        builtins.attrNames (
+          builtins.listToAttrs (builtins.map (x: { name = x; value = true; }) xs)
         )
-        [ ]
-        xs;
+      );
 
     sorted =
       xs: builtins.sort (a: b: a < b) xs;
@@ -53,7 +48,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
         && builtins.length ordering > 0
         && builtins.all hasPrefix ordering
         && builtins.length ordering == builtins.length adjacencyIds
-        && builtins.length ordering == builtins.length (unique ordering)
+        && builtins.length ordering == uniqueLength ordering
         && sorted ordering == sorted adjacencyIds;
 
     allSites =
