@@ -520,14 +520,13 @@ let
         else
           accessNodeNameFromAdjacencyId firstStep.adjacencyId;
 
-      delegatedIPv6Access =
-        family == 6
-        && isNonEmptyString accessNodeName
+      delegatedAccess =
+        isNonEmptyString accessNodeName
         && isDelegatedIPv6AccessNode accessNodeName;
     in
     if firstStep == null || uplinkName == null then
       true
-    else if delegatedIPv6Access then
+    else if delegatedAccess then
       hasAttr uplinkName siteOverlayNameSet
     else
       listContains uplinkName selectedUplinkNames;
@@ -1051,14 +1050,13 @@ let
             interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
             accessNodeName = accessNodeNameFromAdjacencyId firstStep.adjacencyId;
             uplinkName = uplinkNameFromAdjacencyId firstStep.adjacencyId;
-            delegatedIPv6WANFirstHop =
-              family == 6
-              && isNonEmptyString accessNodeName
+            delegatedWANFirstHop =
+              isNonEmptyString accessNodeName
               && isDelegatedIPv6AccessNode accessNodeName
               && isNonEmptyString uplinkName
               && !hasAttr uplinkName siteOverlayNameSet;
           in
-          if interfaceName == null || delegatedIPv6WANFirstHop then
+          if interfaceName == null || delegatedWANFirstHop then
             state // { index = candidateIndex + 1; }
           else
             let
