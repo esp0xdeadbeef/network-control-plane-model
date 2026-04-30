@@ -96,6 +96,12 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     hostileEastWestIPv6Default =
       hasDefaultVia6 "fd42:dead:feed:1000:0:0:0:11" (routes6For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west");
 
+    hostileEastWestIPv4Default =
+      hasDefaultVia "10.50.0.17" (routes4For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west");
+
+    hostileWanIPv4Default =
+      hasDefault (routes4For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-wan");
+
     hostileWanIPv6Default =
       hasDefault6 (routes6For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-wan");
 
@@ -135,7 +141,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && (!branchEastWestDefault)
     && branchWanDefault
     && (!branchEastWestIPv6Default)
+    && hostileEastWestIPv4Default
     && hostileEastWestIPv6Default
+    && (!hostileWanIPv4Default)
     && (!hostileWanIPv6Default)
     && branchUpstreamHostileOverlayIPv6Default
     && (!siteCStorageDefaults)
