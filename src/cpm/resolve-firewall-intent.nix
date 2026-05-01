@@ -22,9 +22,6 @@ let
     else
       [ ];
 
-  failForwarding = path: message:
-    throw "forwarding-model update required: ${path}: ${message}";
-
   uniqueStrings = values:
     sortedNames (
       builtins.listToAttrs (
@@ -35,6 +32,17 @@ let
           })
           (builtins.filter isNonEmptyString values)
       )
+    );
+
+  siteTransport = attrsOrEmpty (siteAttrs.transport or null);
+
+  overlayNames =
+    uniqueStrings (
+      sortedNames (attrsOrEmpty (siteAttrs.overlays or null))
+      ++ sortedNames (attrsOrEmpty (siteAttrs.overlayReachability or null))
+      ++ builtins.map
+        (overlay: overlay.name or null)
+        (listOrEmpty (siteTransport.overlays or null))
     );
 
   runtimeInterfaceRecords = targetPath: target:
@@ -281,6 +289,7 @@ let
         builtins.filter
           (iface:
             iface.sourceKind == "wan"
+            && !(builtins.elem (iface.upstream or "") overlayNames)
             && (
               selectedUplinks == [ ]
               || builtins.elem (iface.upstream or "") selectedUplinks
@@ -288,53 +297,45 @@ let
             ))
           interfaceRecords;
 
-      _resolvedWANs =
-        if exitEnabled && wanInterfaces == [ ] then
-          failForwarding
-            "${targetPath}.effectiveRuntimeRealization.interfaces"
-            "core exit intent requires an explicit realized WAN interface for authoritative NAT intent"
-        else
-          true;
+      natEnabled = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
     in
-    builtins.seq
-      _resolvedWANs
-      {
-        enabled = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
-        families = {
-          ipv4 = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
-          ipv6 = false;
-        };
-        uplinks = selectedUplinks;
-        wanInterfaces =
-          builtins.map
-            (iface: iface.runtimeIfName)
-            wanInterfaces;
-        transitInterfaces =
-          builtins.map
-            (iface: iface.runtimeIfName)
-            transitInterfaces;
-        masqueradeInterfaces =
-          if exitEnabled && builtins.any hasHostIPv4 wanInterfaces then
-            builtins.map
-              (iface: iface.runtimeIfName)
-              wanInterfaces
-          else
-            [ ];
-        tcpMssClampInterfaces =
-          builtins.map
-            (iface: iface.runtimeIfName)
-            wanInterfaces;
-        uplinkFamilies = {
-          ipv4 =
-            builtins.map
-              (iface: iface.runtimeIfName)
-              (builtins.filter hasHostIPv4 wanInterfaces);
-          ipv6 =
-            builtins.map
-              (iface: iface.runtimeIfName)
-              (builtins.filter hasHostIPv6 wanInterfaces);
-        };
+    {
+      enabled = natEnabled;
+      families = {
+        ipv4 = natEnabled;
+        ipv6 = false;
       };
+      uplinks = selectedUplinks;
+      wanInterfaces =
+        builtins.map
+          (iface: iface.runtimeIfName)
+          wanInterfaces;
+      transitInterfaces =
+        builtins.map
+          (iface: iface.runtimeIfName)
+          transitInterfaces;
+      masqueradeInterfaces =
+        if natEnabled then
+          builtins.map
+            (iface: iface.runtimeIfName)
+            wanInterfaces
+        else
+          [ ];
+      tcpMssClampInterfaces =
+        builtins.map
+          (iface: iface.runtimeIfName)
+          wanInterfaces;
+      uplinkFamilies = {
+        ipv4 =
+          builtins.map
+            (iface: iface.runtimeIfName)
+            (builtins.filter hasHostIPv4 wanInterfaces);
+        ipv6 =
+          builtins.map
+            (iface: iface.runtimeIfName)
+            (builtins.filter hasHostIPv6 wanInterfaces);
+      };
+    };
 
   buildForwardingEntry = targetPath: target:
     let

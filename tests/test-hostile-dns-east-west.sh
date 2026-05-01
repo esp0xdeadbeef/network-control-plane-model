@@ -36,6 +36,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       siteB.runtimeTargets."espbranch-site-b-b-router-downstream-selector".forwardingIntent;
     branchUpstream =
       siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector".forwardingIntent;
+    branchNebulaCore =
+      siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
     hasRule = rules: from: to:
       builtins.any
         (rule:
@@ -80,6 +82,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && hasRule branchUpstream.rules "pol-hostile-ew" "core-nebula"
     && !(hasRule branchUpstream.rules "policy-hostile" "policy-branch")
     && !(hasRule branchUpstream.rules "policy-branch" "policy-hostile")
+    && !(branchNebulaCore.natIntent.enabled)
+    && branchNebulaCore.natIntent.masqueradeInterfaces == [ ]
 ' | grep -qx true
 
 echo "PASS hostile-dns-east-west"

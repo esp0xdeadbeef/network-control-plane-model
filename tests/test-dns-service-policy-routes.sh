@@ -39,6 +39,8 @@ INVENTORY_PATH="${inventory_path}" \
         };
         siteaUpstream =
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector".effectiveRuntimeRealization.interfaces;
+        siteaNebulaCore =
+          out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
         sitecPolicy =
           out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
         hasRoute = routes: destination: gateway:
@@ -65,6 +67,8 @@ INVENTORY_PATH="${inventory_path}" \
         && hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:2c"
         && hasRoute (media.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.16"
         && hasRoute (printer.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.16"
+        && !(siteaNebulaCore.natIntent.enabled)
+        && siteaNebulaCore.natIntent.masqueradeInterfaces == [ ]
     ' | grep -qx true
 
 echo "PASS dns-service-policy-routes"
