@@ -93,10 +93,17 @@ OUTPUT_JSON="${sitec_json}" nix eval --impure --expr '
           (route.dst or null) == destination
           && ((route.intent or { }).source or null) == "transit-endpoint")
         (routes.ipv6 or [ ]);
+    hasInternal4 = routes: destination:
+      builtins.any
+        (route:
+          (route.dst or null) == destination
+          && ((route.intent or { }).kind or null) == "internal-reachability")
+        (routes.ipv4 or [ ]);
   in
     (!hasRoute4 decoded.policyIot "10.80.0.4/32")
     && (!hasRoute4 decoded.policyMgmtStorage "10.80.0.4/32")
-    && hasRoute4 decoded.policyMgmt "10.80.0.4/32"
+    && (!hasRoute4 decoded.policyMgmt "10.80.0.4/32")
+    && hasInternal4 decoded.policyMgmtStorage "10.80.0.4/31"
     && hasRoute4 decoded.branchOverlay "10.50.0.0/32"
     && hasRoute6 decoded.branchOverlay "fd42:dead:feed:1000:0:0:0:0/128"
 ' | grep -qx true
