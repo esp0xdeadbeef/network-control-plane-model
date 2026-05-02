@@ -197,7 +197,7 @@
 
               expr="$(cat <<EOF
               let
-                flake = builtins.getFlake (toString ${self});
+                flake = builtins.getFlake (toString ${self.outPath});
                 builder = flake.lib.${system}.build;
                 readValue =
                   path:
@@ -280,12 +280,12 @@
               FORWARDING_JSON="$(mktemp --suffix .json)"
               trap 'rm -f "$FORWARDING_JSON"' EXIT
 
-              nix run --no-warn-dirty --no-write-lock-file ${network-forwarding-model}#compile-and-build-forwarding-model -- "$INPUTS_NIX" > "$FORWARDING_JSON"
+              nix run --no-warn-dirty --no-write-lock-file ${network-forwarding-model.outPath}#compile-and-build-forwarding-model -- "$INPUTS_NIX" > "$FORWARDING_JSON"
 
               if [ -n "$INVENTORY" ]; then
-                nix run --no-warn-dirty --no-write-lock-file ${self}#debug -- "$FORWARDING_JSON" "$INVENTORY" "$OUTPUT"
+                nix run --no-warn-dirty --no-write-lock-file ${self.outPath}#debug -- "$FORWARDING_JSON" "$INVENTORY" "$OUTPUT"
               else
-                nix run --no-warn-dirty --no-write-lock-file ${self}#debug -- "$FORWARDING_JSON" "" "$OUTPUT"
+                nix run --no-warn-dirty --no-write-lock-file ${self.outPath}#debug -- "$FORWARDING_JSON" "" "$OUTPUT"
               fi
             '';
           };
