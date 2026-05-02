@@ -224,14 +224,19 @@ No third source of truth is allowed to appear implicitly during evaluation.
 
 This stage is where S88 logical truth becomes renderer-consumable realized truth.
 
-Renderers should be able to consume CPM output without re-deriving semantics from intent or from ad hoc
-inventory parsing.
+Renderers must be able to consume CPM output without re-deriving semantics from
+intent files or from ad hoc inventory parsing.
+
+`intent.nix`, `inventory.nix`, and renderer-specific inventory files are inputs
+to the upstream pipeline. They are not renderer contracts. The renderer
+contract is the CPM output.
 
 That means CPM output must be the canonical place for:
 
 * realized node identity
 * realized interface identity
 * runtime target identity
+* dedicated transit lane identity and lane metadata
 * routing mode selection
 * overlay termination and overlay node addressing
 * service realization structure
@@ -239,6 +244,10 @@ That means CPM output must be the canonical place for:
 
 If a renderer needs one of those concepts and it is not explicit here, the preferred fix is to tighten
 the CPM contract rather than teaching each renderer a different fallback heuristic.
+
+Renderer tests may still use intent and inventory files to build CPM output and
+assert end-to-end contract preservation. That does not grant production renderer
+code permission to parse those files or infer missing semantics from names.
 
 ---
 

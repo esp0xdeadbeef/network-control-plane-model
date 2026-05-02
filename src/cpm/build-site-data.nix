@@ -1740,6 +1740,9 @@ let
         name = linkName;
         linkKind = link.kind;
       }
+      // lib.optionalAttrs (isNonEmptyString (link.lane or null)) {
+        lane = link.lane;
+      }
       // (
         if kind == "wan" then
           {
