@@ -1743,6 +1743,9 @@ let
       // lib.optionalAttrs (isNonEmptyString (link.lane or null)) {
         lane = link.lane;
       }
+      // lib.optionalAttrs (builtins.isList (link.uplinks or null)) {
+        uplinks = requireStringList "${ifacePath}.link.uplinks" link.uplinks;
+      }
       // (
         if kind == "wan" then
           {
