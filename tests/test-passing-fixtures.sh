@@ -470,5 +470,6 @@ bash "${repo_root}/tests/test-preferred-uplink-defaults.sh"
 bash "${repo_root}/tests/test-realized-interface-routes.sh"
 bash "${repo_root}/tests/test-link-lane-preservation.sh"
 bash "${repo_root}/tests/test-transit-endpoint-return-routes.sh"
+bash "${repo_root}/tests/test-public-overlay-service-binding.sh"
 
 exit 0
