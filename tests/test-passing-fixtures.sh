@@ -21,8 +21,6 @@ flake_input_path() {
 
 examples_root="$(flake_input_path network-labs)/examples"
 
-status=0
-
 log() {
   echo "==> $*"
 }

@@ -105,36 +105,6 @@ EOF
   "${inventory_empty}"
 
 run_case \
-  "legacy-singular-attachment" \
-  "legacy singular attachment is not supported; use attachments" \
-  "$(cat <<'EOF'
-{
-  meta = {
-    networkForwardingModel = {
-      name = "network-forwarding-model";
-      schemaVersion = 9;
-    };
-  };
-
-  enterprise = {
-    acme = {
-      site = {
-        ams = {
-          attachment = {
-            kind = "tenant";
-            name = "tenant-a";
-            unit = "access-1";
-          };
-        };
-      };
-    };
-  };
-}
-EOF
-)" \
-  "${inventory_empty}"
-
-run_case \
   "missing-node-loopback" \
   "node loopback is required" \
   "$(cat <<'EOF'

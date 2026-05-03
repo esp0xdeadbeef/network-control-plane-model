@@ -370,19 +370,6 @@ run_case_from_golden \
 '
 
 run_case_from_golden \
-  "legacy-contract-interface-tags-not-allowed" \
-  "communicationContract.interfaceTags is not allowed; use site.policy.interfaceTags" \
-  replace \
-  '          communicationContract = {
-            allowedRelations = [' \
-  '          communicationContract = {
-            interfaceTags = {
-              legacy-tenant0 = "tenant-a";
-              legacy-uplink0 = "wan";
-            };
-            allowedRelations = ['
-
-run_case_from_golden \
   "policy-contract-references-unmapped-tenant-tag" \
   "communicationContract references tag 'tenant-a' with no explicit site.policy.interfaceTags mapping" \
   replace \

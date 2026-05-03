@@ -23,6 +23,7 @@ run_one() {
     "${inventory_path}" \
     "${output_json}" >/dev/null
 
+  # shellcheck disable=SC2016
   OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     let
       data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
