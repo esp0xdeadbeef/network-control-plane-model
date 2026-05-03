@@ -38,7 +38,7 @@ let
   site = built.control_plane_model.data.esp0xdeadbeef."site-c";
 in
   builtins.any
-    (relation: (relation.id or null) == "allow-sitec-home-to-local-services")
+    (relation: (relation.id or null) == "allow-sitec-client-to-dmz-dns")
     ((site.communicationContract.relations or [ ]) ++ (site.communicationContract.allowedRelations or [ ]))
 '
 

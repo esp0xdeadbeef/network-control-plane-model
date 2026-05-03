@@ -4,6 +4,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
 
+bash "${repo_root}/tests/test-nix-file-loc.sh"
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "missing required command: $1" >&2
@@ -471,5 +473,6 @@ bash "${repo_root}/tests/test-realized-interface-routes.sh"
 bash "${repo_root}/tests/test-link-lane-preservation.sh"
 bash "${repo_root}/tests/test-transit-endpoint-return-routes.sh"
 bash "${repo_root}/tests/test-public-overlay-service-binding.sh"
+bash "${repo_root}/tests/test-service-provider-endpoints.sh"
 
 exit 0

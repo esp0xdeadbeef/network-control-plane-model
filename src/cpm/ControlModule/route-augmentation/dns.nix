@@ -1,0 +1,112 @@
+{
+  lib,
+  helpers,
+  common,
+  routeHelpers,
+  sitePath,
+  dnsServiceRouteSpecs,
+}:
+
+let
+  inherit (helpers) isNonEmptyString requireAttrs requireString sortedNames;
+  inherit (common) attrsOrEmpty listOrEmpty;
+  inherit (routeHelpers)
+    routeForExactDstWithGateway
+    routeWithDstAndGatewayPresent
+    routeWithExactDstPresent
+    ;
+in
+targetName: target:
+let
+  targetPath = "${sitePath}.runtimeTargets.${targetName}";
+  effective =
+    requireAttrs
+      "${targetPath}.effectiveRuntimeRealization"
+      (target.effectiveRuntimeRealization or null);
+  interfaces =
+    requireAttrs
+      "${targetPath}.effectiveRuntimeRealization.interfaces"
+      (effective.interfaces or null);
+  interfaceNames = sortedNames interfaces;
+  isUpstreamSelectorTarget =
+    let
+      runtimeIfNames =
+        builtins.map
+          (ifName:
+            requireString
+              "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName"
+              ((interfaces.${ifName} or { }).runtimeIfName or null))
+          interfaceNames;
+      hasCoreIngress = lib.any (name: name == "core" || lib.hasPrefix "core-" name) runtimeIfNames;
+      hasPolicyEgress = lib.any (name: lib.hasPrefix "pol-" name || lib.hasPrefix "policy-" name) runtimeIfNames;
+    in
+    hasCoreIngress && hasPolicyEgress;
+
+  findSourceRouteForDestination =
+    family: consumerInterfaceName: destination:
+    let
+      candidateInterfaceNames = builtins.filter (ifName: ifName != consumerInterfaceName) interfaceNames;
+    in
+    lib.findFirst
+      (route: route != null)
+      null
+      (builtins.map
+        (ifName:
+          let
+            candidateIface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
+            candidateRoutes = attrsOrEmpty (candidateIface.routes or null);
+            familyRoutes = if family == 4 then listOrEmpty (candidateRoutes.ipv4 or null) else listOrEmpty (candidateRoutes.ipv6 or null);
+          in
+          routeForExactDstWithGateway family familyRoutes destination)
+        candidateInterfaceNames);
+
+  routesWithDnsExtras =
+    family: ifName: existingRoutes: matchingSpecs:
+    builtins.foldl'
+      (acc: spec:
+        builtins.foldl'
+          (inner: destination:
+            let
+              sourceRoute = findSourceRouteForDestination family ifName destination;
+              gateway = if sourceRoute == null then null else if family == 4 then sourceRoute.via4 or null else sourceRoute.via6 or null;
+              extraRoute =
+                if sourceRoute == null || !isNonEmptyString gateway then
+                  null
+                else
+                  sourceRoute // { intent = (attrsOrEmpty (sourceRoute.intent or null)) // { service = spec.serviceName; }; };
+            in
+            if extraRoute == null || routeWithDstAndGatewayPresent family (existingRoutes ++ inner) destination gateway then
+              inner
+            else
+              inner ++ [ extraRoute ])
+          acc
+          (if family == 4 then spec.providerPrefixes4 else spec.providerPrefixes6))
+      [ ]
+      matchingSpecs;
+
+  updatedInterfaces =
+    builtins.mapAttrs
+      (ifName: iface:
+        let
+          routes = attrsOrEmpty (iface.routes or null);
+          existingV4 = listOrEmpty (routes.ipv4 or null);
+          existingV6 = listOrEmpty (routes.ipv6 or null);
+          matchingSpecs =
+            builtins.filter
+              (spec:
+                builtins.any (destination: routeWithExactDstPresent existingV4 destination) spec.consumerPrefixes4
+                || builtins.any (destination: routeWithExactDstPresent existingV6 destination) spec.consumerPrefixes6)
+              dnsServiceRouteSpecs;
+          extraV4 = routesWithDnsExtras 4 ifName existingV4 matchingSpecs;
+          extraV6 = routesWithDnsExtras 6 ifName existingV6 matchingSpecs;
+        in
+        if extraV4 == [ ] && extraV6 == [ ] then
+          iface
+        else
+          iface // { routes = routes // { ipv4 = existingV4 ++ extraV4; ipv6 = existingV6 ++ extraV6; }; })
+      interfaces;
+in
+if isUpstreamSelectorTarget then
+  target
+else
+  target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; }
