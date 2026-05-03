@@ -16,7 +16,7 @@ s_router_inventory_path="${s_router_example_root}/inventory-nixos.nix"
 
 output_json="$(mktemp)"
 sitec_json="$(mktemp)"
-trap 'rm -f "'"${output_json}"'" "'"${sitec_json}"'"' EXIT
+trap 'rm -f "'"${output_json}"'" "'"${output_json}.check"'" "'"${sitec_json}"'" "'"${sitec_json}.checks"'"' EXIT
 
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="${intent_path}" \
@@ -35,6 +35,7 @@ INVENTORY_PATH="${inventory_path}" \
           .effectiveRuntimeRealization.interfaces."p2p-s-router-core-isp-a-s-router-upstream-selector".routes
     ' > "${output_json}"
 
+# shellcheck disable=SC2016
 OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   let
     routes = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
@@ -54,7 +55,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   in
     hasRoute "ipv4" "10.19.0.8/32" "10.10.0.9"
     && hasRoute "ipv6" "fd42:dead:beef:1900:0000:0000:0000:0008/128" "fd42:dead:beef:1000:0:0:0:9"
-' | grep -qx true
+' > "${output_json}.check"
+
+if ! grep -qx true "${output_json}.check"; then
+  echo "FAIL transit-endpoint-return-routes: isp-a return routes missing" >&2
+  echo "resolved routes:" >&2
+  jq . "${output_json}" >&2
+  exit 1
+fi
 
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="${s_router_intent_path}" \
@@ -71,41 +79,43 @@ INVENTORY_PATH="${s_router_inventory_path}" \
         rt = out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
         branchCore = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
       in {
-        policyIot = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-iot--uplink-wan".routes;
-        policyMgmtStorage = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-site-c-storage".routes;
-        policyMgmt = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-mgmt--uplink-wan".routes;
+        policyClientEastWest = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-east-west".routes;
+        policyClientWan = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-wan".routes;
+        policyDmzEastWest = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-east-west".routes;
+        policyDmzWan = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes;
         branchOverlay = branchCore.effectiveRuntimeRealization.interfaces."overlay-east-west".routes;
       }
     ' > "${sitec_json}"
 
-OUTPUT_JSON="${sitec_json}" nix eval --impure --expr '
-  let
-    decoded = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
-    hasRoute4 = routes: destination:
-      builtins.any
-        (route:
-          (route.dst or null) == destination
-          && ((route.intent or { }).source or null) == "transit-endpoint")
-        (routes.ipv4 or [ ]);
-    hasRoute6 = routes: destination:
-      builtins.any
-        (route:
-          (route.dst or null) == destination
-          && ((route.intent or { }).source or null) == "transit-endpoint")
-        (routes.ipv6 or [ ]);
-    hasInternal4 = routes: destination:
-      builtins.any
-        (route:
-          (route.dst or null) == destination
-          && ((route.intent or { }).kind or null) == "internal-reachability")
-        (routes.ipv4 or [ ]);
-  in
-    (!hasRoute4 decoded.policyIot "10.80.0.4/32")
-    && (!hasRoute4 decoded.policyMgmtStorage "10.80.0.4/32")
-    && (!hasRoute4 decoded.policyMgmt "10.80.0.4/32")
-    && hasInternal4 decoded.policyMgmtStorage "10.80.0.4/31"
-    && hasRoute4 decoded.branchOverlay "10.50.0.0/32"
-    && hasRoute6 decoded.branchOverlay "fd42:dead:feed:1000:0:0:0:0/128"
-' | grep -qx true
+jq '
+  def has_transit_route4($routes; $destination):
+    any(($routes.ipv4 // [])[]; .dst == $destination and ((.intent // {}).source == "transit-endpoint"));
+  def has_transit_route6($routes; $destination):
+    any(($routes.ipv6 // [])[]; .dst == $destination and ((.intent // {}).source == "transit-endpoint"));
+  def has_internal_route4($routes; $destination):
+    any(($routes.ipv4 // [])[]; .dst == $destination and ((.intent // {}).kind == "internal-reachability"));
+  {
+    clientEastWestDoesNotLearnWanCoreHost: (has_transit_route4(.policyClientEastWest; "10.80.0.4/32") | not),
+    dmzEastWestDoesNotLearnWanCoreHost: (has_transit_route4(.policyDmzEastWest; "10.80.0.4/32") | not),
+    dmzWanDoesNotLearnWanCoreHost: (has_transit_route4(.policyDmzWan; "10.80.0.4/32") | not),
+    clientEastWestKeepsAccessP2pAggregate: has_internal_route4(.policyClientEastWest; "10.80.0.0/30"),
+    branchOverlayHasAccessReturnV4: has_transit_route4(.branchOverlay; "10.50.0.0/32"),
+    branchOverlayHasAccessReturnV6: has_transit_route6(.branchOverlay; "fd42:dead:feed:1000:0:0:0:0/128")
+  }
+' "${sitec_json}" > "${sitec_json}.checks"
+
+failed_checks="$(jq -r 'to_entries[] | select(.value != true) | .key' "${sitec_json}.checks")"
+if [[ -n "${failed_checks}" ]]; then
+  echo "FAIL transit-endpoint-return-routes" >&2
+  echo "failed checks:" >&2
+  while IFS= read -r failed_check; do
+    echo "  ${failed_check}" >&2
+  done <<<"${failed_checks}"
+  echo "resolved checks:" >&2
+  jq . "${sitec_json}.checks" >&2
+  echo "resolved routes:" >&2
+  jq . "${sitec_json}" >&2
+  exit 1
+fi
 
 echo "PASS transit-endpoint-return-routes"

@@ -26,6 +26,7 @@ labs_path="$(
 intent_path="${labs_path}/examples/s-router-test-three-site/intent.nix"
 inventory_path="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
 
+# shellcheck disable=SC2016
 expr='
 let
   flake = builtins.getFlake ("path:" + toString ./.);

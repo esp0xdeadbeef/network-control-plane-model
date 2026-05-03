@@ -36,6 +36,7 @@ inventory="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
     "${output_json}" >/dev/null
 )
 
+# shellcheck disable=SC2016
 OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));

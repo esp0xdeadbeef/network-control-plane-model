@@ -66,6 +66,7 @@ nix eval --impure --json --expr '
     out
 ' > "${output_json}"
 
+# shellcheck disable=SC2016
 OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));

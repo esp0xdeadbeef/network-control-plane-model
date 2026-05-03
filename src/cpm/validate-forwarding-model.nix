@@ -222,14 +222,6 @@ let
           else
             requireList relationPathRoot (communicationContract.allowedRelations or null);
 
-        _legacyContractInterfaceTags =
-          if communicationContract ? interfaceTags then
-            failForwarding
-              "${sitePath}.communicationContract.interfaceTags"
-              "communicationContract.interfaceTags is not allowed; use site.policy.interfaceTags"
-          else
-            true;
-
         policy =
           if builtins.isAttrs (siteAttrs.policy or null) then
             requireAttrs "${sitePath}.policy" siteAttrs.policy
@@ -360,19 +352,17 @@ let
           else
             true;
       in
-      builtins.seq
-        _legacyContractInterfaceTags
-        (forceAll (
-          builtins.genList
-            (relationIndex:
-              let
-                relation = attrsOrEmpty (builtins.elemAt allowedRelations relationIndex);
-              in
-              builtins.seq
-                (validateRelationEndpoint relationIndex relation "from")
-                (validateRelationEndpoint relationIndex relation "to"))
-            (builtins.length allowedRelations)
-        ));
+      forceAll (
+        builtins.genList
+          (relationIndex:
+            let
+              relation = attrsOrEmpty (builtins.elemAt allowedRelations relationIndex);
+            in
+            builtins.seq
+              (validateRelationEndpoint relationIndex relation "from")
+              (validateRelationEndpoint relationIndex relation "to"))
+          (builtins.length allowedRelations)
+      );
 
   validateTransport = sitePath: siteAttrs:
     let

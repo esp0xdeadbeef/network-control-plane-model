@@ -251,35 +251,29 @@ let
     let
       nodeContext = context // { node = nodeName; };
       nodeAttrs = requireAttrs nodeContext "nodes.${nodeName}" node;
-      _legacyAttachment =
-        if nodeAttrs ? attachment then
-          fail nodeContext "legacy singular attachment is not supported; use attachments"
-        else
-          true;
       interfaces = requireAttrs nodeContext "node.interfaces" (nodeAttrs.interfaces or null);
       loopback = requireAttrs nodeContext "node.loopback" (nodeAttrs.loopback or null);
       interfaceNames = lib.attrNamesSorted interfaces;
     in
-    builtins.seq _legacyAttachment (
-      builtins.seq
-        (if !isNonEmptyString (loopback.ipv4 or null) || !isNonEmptyString (loopback.ipv6 or null) then
-          fail nodeContext "node loopback is required"
-        else
-          true)
-        (forceAll (
-          builtins.map
-            (ifName:
-              let
-                ifaceContext = nodeContext // { interface = ifName; };
-                iface = requireAttrs ifaceContext "node.interfaces.${ifName}" interfaces.${ifName};
-                kind = iface.kind or null;
-              in
-              if !isNonEmptyString kind then
-                fail ifaceContext "interface kind is required"
-              else
-                true)
-            interfaceNames
-        )));
+    builtins.seq
+      (if !isNonEmptyString (loopback.ipv4 or null) || !isNonEmptyString (loopback.ipv6 or null) then
+        fail nodeContext "node loopback is required"
+      else
+        true)
+      (forceAll (
+        builtins.map
+          (ifName:
+            let
+              ifaceContext = nodeContext // { interface = ifName; };
+              iface = requireAttrs ifaceContext "node.interfaces.${ifName}" interfaces.${ifName};
+              kind = iface.kind or null;
+            in
+            if !isNonEmptyString kind then
+              fail ifaceContext "interface kind is required"
+            else
+              true)
+          interfaceNames
+      ));
 
   validateSiteForwardingModel = enterpriseName: siteName: site:
     let
@@ -289,12 +283,6 @@ let
       };
 
       siteAttrs = requireAttrs context "site" site;
-
-      _legacyAttachment =
-        if siteAttrs ? attachment then
-          fail context "legacy singular attachment is not supported; use attachments"
-        else
-          true;
 
       _siteId = requireString context "siteId" (siteAttrs.siteId or null);
       _siteName = requireString context "siteName" (siteAttrs.siteName or null);
@@ -373,17 +361,16 @@ let
                   uplinkCoreNames
               ))));
     in
-    builtins.seq _legacyAttachment (
-      builtins.seq _validatedAttachments (
-        builtins.seq _roleReferences (
-          builtins.seq
-            (forceAll (
-              builtins.map
-                (nodeName: validateNode context nodeName nodes.${nodeName})
-                nodeNames
-            ))
-            (validateTransit context links (siteAttrs.transit or null))
-        )));
+    builtins.seq _validatedAttachments (
+      builtins.seq _roleReferences (
+        builtins.seq
+          (forceAll (
+            builtins.map
+              (nodeName: validateNode context nodeName nodes.${nodeName})
+              nodeNames
+          ))
+          (validateTransit context links (siteAttrs.transit or null))
+      ));
 
   validateForwardingModelInput = input:
     let
