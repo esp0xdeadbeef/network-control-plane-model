@@ -8,7 +8,7 @@
 }:
 
 let
-  inherit (helpers) isNonEmptyString requireAttrs sortedNames;
+  inherit (helpers) isNonEmptyString requireAttrs requireString sortedNames;
   inherit (common) attrsOrEmpty listOrEmpty;
   inherit (routeHelpers)
     routeForExactDstWithGateway
@@ -29,6 +29,21 @@ let
       "${targetPath}.effectiveRuntimeRealization.interfaces"
       (effective.interfaces or null);
   interfaceNames = sortedNames interfaces;
+  isUpstreamSelectorTarget =
+    let
+      runtimeIfNames =
+        builtins.map
+          (
+            ifName:
+            requireString
+              "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName"
+              ((interfaces.${ifName} or { }).runtimeIfName or null)
+          )
+          interfaceNames;
+      hasCoreIngress = lib.any (name: name == "core" || lib.hasPrefix "core-" name) runtimeIfNames;
+      hasPolicyEgress = lib.any (name: lib.hasPrefix "pol-" name || lib.hasPrefix "policy-" name) runtimeIfNames;
+    in
+    hasCoreIngress && hasPolicyEgress;
   laneMatchesPreferredUplinks =
     iface: preferredUplinks:
     let
@@ -61,7 +76,7 @@ let
     let
       consumerInterface = interfaces.${consumerInterfaceName};
       includeConsumerInterface =
-        preferredUplinks != [ ] && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
+        isUpstreamSelectorTarget && preferredUplinks != [ ] && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
       candidateInterfaceNames =
         (lib.optional includeConsumerInterface consumerInterfaceName)
         ++ builtins.filter
@@ -157,6 +172,7 @@ let
               preferredUplinks = listOrEmpty (spec.preferredUplinks or null);
             in
             preferredUplinks != [ ]
+            && isUpstreamSelectorTarget
             && laneMatchesPreferredUplinks iface preferredUplinks
             && (hasDefault4 || hasDefault6);
           matchingSpecs =
