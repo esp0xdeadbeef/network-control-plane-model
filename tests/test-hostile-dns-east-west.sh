@@ -80,6 +80,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && hasRule branchUpstream.rules "core-isp" "policy-hostile"
     && hasRule branchUpstream.rules "pol-branch-ew" "core-nebula"
     && hasRule branchUpstream.rules "pol-hostile-ew" "core-nebula"
+    && hasRule branchUpstream.rules "core-nebula" "core-isp"
+    && hasRule branchUpstream.rules "core-isp" "core-nebula"
     && !(hasRule branchUpstream.rules "policy-hostile" "policy-branch")
     && !(hasRule branchUpstream.rules "policy-branch" "policy-hostile")
     && !(branchNebulaCore.natIntent.enabled)
