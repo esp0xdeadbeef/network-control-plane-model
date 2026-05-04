@@ -44,6 +44,8 @@ INVENTORY_PATH="${inventory_path}" \
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
         sitecPolicy =
           out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
+        sitecCore =
+          out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-core".effectiveRuntimeRealization.interfaces;
         hasRoute = routes: destination: gateway:
           builtins.any
             (route:
@@ -61,6 +63,8 @@ INVENTORY_PATH="${inventory_path}" \
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-client".routes;
         sitecDmz =
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz".routes;
+        sitecCoreUpstream =
+          sitecCore."p2p-c-router-core-c-router-upstream-selector".routes;
       in {
         checks = {
           clientLaneDoesNotLearnMgmtDnsV4 =
@@ -75,11 +79,17 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (sitecClient.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.8";
           sitecDmzKeepsOwnDnsPrefixV4 =
             hasRoute (sitecDmz.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.8";
+          sitecCoreKeepsInternalDmzDnsPrefixV4 =
+            hasRoute (sitecCoreUpstream.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.5";
+          sitecCoreDoesNotOverrideDmzDnsPrefixV4 =
+            !(hasRoute (sitecCoreUpstream.ipv4 or [ ]) "10.90.10.0/24" "172.31.254.1");
+          sitecCoreDoesNotOverrideDmzDnsAddressV4 =
+            !(hasRoute (sitecCoreUpstream.ipv4 or [ ]) "10.90.10.1" "172.31.254.1");
           nebulaCoreDoesNotNat = !(siteaNebulaCore.natIntent.enabled);
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt sitecClient sitecDmz;
+          inherit siteaUpstreamClient siteaUpstreamMgmt sitecClient sitecDmz sitecCoreUpstream;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };
