@@ -42,6 +42,8 @@ INVENTORY_PATH="${inventory_path}" \
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector".effectiveRuntimeRealization.interfaces;
         siteaNebulaCore =
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
+        sitebNebulaCore =
+          out.control_plane_model.data.espbranch."site-b".runtimeTargets."espbranch-site-b-b-router-core-nebula".effectiveRuntimeRealization.interfaces;
         siteaPolicy =
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-policy".effectiveRuntimeRealization.interfaces;
         sitecPolicy =
@@ -73,6 +75,8 @@ INVENTORY_PATH="${inventory_path}" \
           sitecCore."p2p-c-router-core-c-router-upstream-selector".routes;
         sitebBranch =
           sitebPolicy."p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-branch".routes;
+        sitebNebulaCoreUpstream =
+          sitebNebulaCore."p2p-b-router-core-nebula-b-router-upstream-selector".routes;
       in {
         checks = {
           clientLaneDoesNotLearnMgmtDnsV4 =
@@ -107,11 +111,15 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (sitebBranch.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:feed:1000:0:0:0:d";
           sitebBranchDnsDoesNotUseWanV6 =
             !(hasRoute (sitebBranch.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:feed:1000:0:0:0:f");
+          sitebNebulaCoreDoesNotOverrideSitecDnsV4 =
+            !(hasRoute (sitebNebulaCoreUpstream.ipv4 or [ ]) "10.90.10.1" "10.50.0.5");
+          sitebNebulaCoreDoesNotOverrideSitecDnsV6 =
+            !(hasRoute (sitebNebulaCoreUpstream.ipv6 or [ ]) "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:5");
           nebulaCoreDoesNotNat = !(siteaNebulaCore.natIntent.enabled);
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt siteaPolicyAdmin sitebBranch sitecClient sitecDmz sitecCoreUpstream;
+          inherit siteaUpstreamClient siteaUpstreamMgmt siteaPolicyAdmin sitebBranch sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };

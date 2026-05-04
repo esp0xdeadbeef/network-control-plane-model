@@ -34,6 +34,16 @@ let
       "${targetPath}.effectiveRuntimeRealization.interfaces"
       (effective.interfaces or null);
   interfaceNames = sortedNames interfaces;
+  hasOverlayInterface =
+    lib.any
+      (ifName: (attrsOrEmpty ((interfaces.${ifName} or { }).backingRef or null)).kind or null == "overlay")
+      interfaceNames;
+  terminatesExternalUplink =
+    target.role or null == "core"
+    && builtins.isAttrs (target.egressIntent or null)
+    && (target.egressIntent.exit or false);
+  skipDnsServiceRouteAugmentation =
+    hasOverlayInterface && terminatesExternalUplink;
   isUpstreamSelectorTarget =
     let
       runtimeIfNames =
@@ -131,4 +141,7 @@ let
           iface // { routes = routes // { ipv4 = existingV4 ++ extraV4; ipv6 = existingV6 ++ extraV6; }; })
       interfaces;
 in
-target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; }
+if skipDnsServiceRouteAugmentation then
+  target
+else
+  target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; }
