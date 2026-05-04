@@ -49,8 +49,17 @@ let
   defaultDst = family:
     if family == 4 then "0.0.0.0/0" else "::/0";
 
+  defaultDstAliases = family:
+    if family == 4 then
+      [ "0.0.0.0/0" ]
+    else
+      [
+        "::/0"
+        "0000:0000:0000:0000:0000:0000:0000:0000/0"
+      ];
+
   routeMatchesDefault = family: route:
-    builtins.isAttrs route && (route.dst or null) == defaultDst family;
+    builtins.isAttrs route && builtins.elem (route.dst or null) (defaultDstAliases family);
 
   routesContainDefault = family: routes:
     builtins.any (route: routeMatchesDefault family route) (listOrEmpty routes);
@@ -119,6 +128,7 @@ in
     buildInternalEndpointRoute
     buildWANDefaultRoute
     defaultDst
+    defaultDstAliases
     listContains
     listOrEmpty
     makeStringSet

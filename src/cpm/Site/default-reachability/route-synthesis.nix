@@ -34,6 +34,9 @@ let
     interfaceNameHasUplinkWanPreference
     interfaceNameTargetsDestination
     ;
+  explicitDefaultPreservation = import ./explicit-default-preservation.nix {
+    inherit helpers common sitePath;
+  };
 
   targetInterfaces = targetPath: target:
     let
@@ -171,8 +174,13 @@ let
       target2 = addEndpointRoutes 6 targetName target1;
       target3 = addInternalDefaults 4 explicitDefaultSourceSet4 targetName target2;
       target4 = addInternalDefaults 6 explicitDefaultSourceSet6 targetName target3;
+      target5 = explicitDefaultPreservation.restore {
+        inherit targetName;
+        originalTarget = target0;
+        resolvedTarget = target4;
+      };
     in
-    { name = targetName; value = target4; };
+    { name = targetName; value = target5; };
 
 in
 {
