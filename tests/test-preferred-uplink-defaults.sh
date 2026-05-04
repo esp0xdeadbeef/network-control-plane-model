@@ -109,6 +109,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     branchUpstreamHostileOverlayIPv6Default =
       hasDefaultVia6 "fd42:dead:feed:1000:0:0:0:4" (routes6For branchUpstream "p2p-b-router-core-nebula-b-router-upstream-selector");
 
+    branchUpstreamCoreNebulaHasDefault =
+      hasDefault (routes4For branchUpstream "p2p-b-router-core-nebula-b-router-upstream-selector")
+      || hasDefault6 (routes6For branchUpstream "p2p-b-router-core-nebula-b-router-upstream-selector");
+
+    branchUpstreamWanCoreDefaults =
+      hasDefaultVia "10.50.0.6" (routes4For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector")
+      && hasDefaultVia6 "fd42:dead:feed:1000:0:0:0:6" (routes6For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector");
+
     siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
     siteCPolicy = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy";
     siteCCoreNebula = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-nebula-core";
@@ -146,7 +154,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && hostileEastWestIPv6Default
     && (!hostileWanIPv4Default)
     && (!hostileWanIPv6Default)
-    && branchUpstreamHostileOverlayIPv6Default
+    && (!branchUpstreamHostileOverlayIPv6Default)
+    && (!branchUpstreamCoreNebulaHasDefault)
+    && branchUpstreamWanCoreDefaults
     && (!siteCStorageDefaults)
     && siteCWanDefaults
     && (!coreOverlayHasDefault)
