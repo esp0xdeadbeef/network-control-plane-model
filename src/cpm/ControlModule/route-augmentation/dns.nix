@@ -8,13 +8,14 @@
 }:
 
 let
-  inherit (helpers) isNonEmptyString requireAttrs requireString sortedNames;
+  inherit (helpers) isNonEmptyString requireAttrs sortedNames;
   inherit (common) attrsOrEmpty listOrEmpty;
   inherit (routeHelpers)
     routeForExactDstWithGateway
     routeWithDstAndGatewayPresent
     routeWithExactDstPresent
     ;
+  p2pPeers = import ./p2p-peers.nix { inherit lib; };
 in
 targetName: target:
 let
@@ -28,20 +29,6 @@ let
       "${targetPath}.effectiveRuntimeRealization.interfaces"
       (effective.interfaces or null);
   interfaceNames = sortedNames interfaces;
-  isUpstreamSelectorTarget =
-    let
-      runtimeIfNames =
-        builtins.map
-          (ifName:
-            requireString
-              "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName"
-              ((interfaces.${ifName} or { }).runtimeIfName or null))
-          interfaceNames;
-      hasCoreIngress = lib.any (name: name == "core" || lib.hasPrefix "core-" name) runtimeIfNames;
-      hasPolicyEgress = lib.any (name: lib.hasPrefix "pol-" name || lib.hasPrefix "policy-" name) runtimeIfNames;
-    in
-    hasCoreIngress && hasPolicyEgress;
-
   laneMatchesPreferredUplinks =
     iface: preferredUplinks:
     let
@@ -51,7 +38,10 @@ let
     preferredUplinks == [ ]
     || (
       isNonEmptyString lane
-      && lib.any (uplinkName: lib.hasSuffix "::uplink::${uplinkName}" lane) preferredUplinks
+      && lib.any (
+        uplinkName:
+        lane == "uplink::${uplinkName}" || lib.hasSuffix "::uplink::${uplinkName}" lane
+      ) preferredUplinks
     );
 
   lanePreservesConsumerPath =
@@ -70,21 +60,33 @@ let
     family: consumerInterfaceName: preferredUplinks: destination:
     let
       consumerInterface = interfaces.${consumerInterfaceName};
+      includeConsumerInterface =
+        preferredUplinks != [ ] && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
       candidateInterfaceNames =
-        builtins.filter
-          (ifName:
+        (lib.optional includeConsumerInterface consumerInterfaceName)
+        ++ builtins.filter
+          (
+            ifName:
             ifName != consumerInterfaceName
             && lanePreservesConsumerPath preferredUplinks consumerInterface interfaces.${ifName}
-            && laneMatchesPreferredUplinks interfaces.${ifName} preferredUplinks)
+            && laneMatchesPreferredUplinks interfaces.${ifName} preferredUplinks
+          )
           interfaceNames;
       defaultDst = if family == 4 then "0.0.0.0/0" else "::/0";
       routeForDestinationOrDefault =
-        routes:
+        ifName: routes:
         let
           exact = routeForExactDstWithGateway family routes destination;
+          peer = p2pPeers.peerForInterface family interfaces.${ifName};
         in
         if exact != null then
           exact
+        else if includeConsumerInterface && ifName == consumerInterfaceName && isNonEmptyString peer then
+          {
+            dst = destination;
+            proto = "default";
+          }
+          // (if family == 4 then { via4 = peer; } else { via6 = peer; })
         else
           routeForExactDstWithGateway family routes defaultDst;
     in
@@ -98,7 +100,7 @@ let
             candidateRoutes = attrsOrEmpty (candidateIface.routes or null);
             familyRoutes = if family == 4 then listOrEmpty (candidateRoutes.ipv4 or null) else listOrEmpty (candidateRoutes.ipv6 or null);
           in
-          routeForDestinationOrDefault familyRoutes)
+          routeForDestinationOrDefault ifName familyRoutes)
         candidateInterfaceNames);
 
   routesWithDnsExtras =
@@ -147,11 +149,22 @@ let
           routes = attrsOrEmpty (iface.routes or null);
           existingV4 = listOrEmpty (routes.ipv4 or null);
           existingV6 = listOrEmpty (routes.ipv6 or null);
+          hasDefault4 = routeForExactDstWithGateway 4 existingV4 "0.0.0.0/0" != null;
+          hasDefault6 = routeForExactDstWithGateway 6 existingV6 "::/0" != null;
+          matchesPreferredDefault =
+            spec:
+            let
+              preferredUplinks = listOrEmpty (spec.preferredUplinks or null);
+            in
+            preferredUplinks != [ ]
+            && laneMatchesPreferredUplinks iface preferredUplinks
+            && (hasDefault4 || hasDefault6);
           matchingSpecs =
             builtins.filter
               (spec:
                 builtins.any (destination: routeWithExactDstPresent existingV4 destination) spec.consumerPrefixes4
-                || builtins.any (destination: routeWithExactDstPresent existingV6 destination) spec.consumerPrefixes6)
+                || builtins.any (destination: routeWithExactDstPresent existingV6 destination) spec.consumerPrefixes6
+                || matchesPreferredDefault spec)
               dnsServiceRouteSpecs;
           extraV4 = routesWithDnsExtras 4 ifName existingV4 matchingSpecs;
           extraV6 = routesWithDnsExtras 6 ifName existingV6 matchingSpecs;
@@ -162,7 +175,4 @@ let
           iface // { routes = routes // { ipv4 = existingV4 ++ extraV4; ipv6 = existingV6 ++ extraV6; }; })
       interfaces;
 in
-if isUpstreamSelectorTarget then
-  target
-else
-  target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; }
+target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; }
