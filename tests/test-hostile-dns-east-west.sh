@@ -53,6 +53,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
         ."p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-hostile".routes;
+    hostileUpstreamCore =
+      siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector"
+        .effectiveRuntimeRealization.interfaces
+        ."p2p-b-router-core-nebula-b-router-upstream-selector".routes;
     hostileAccessAds =
       siteB.runtimeTargets."espbranch-site-b-b-router-access-hostile".advertisements.ipv6Ra;
     hasDst = routes: destination:
@@ -67,6 +71,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && hasDst hostileEw "fd42:dead:beef:0010:0000:0000:0000:0000/64"
     && hasRouteVia4 hostileIngress "10.90.10.1" "10.50.0.17"
     && hasRouteVia6 hostileIngress "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:11"
+    && hasRouteVia4 hostileUpstreamCore "10.90.10.1" "10.50.0.4"
+    && hasRouteVia6 hostileUpstreamCore "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:4"
     && (hostileAccessAds != [ ])
     && (builtins.head hostileAccessAds).routerInterface.subnet6 == "fd42:dead:feed:70::/64"
     && builtins.all
