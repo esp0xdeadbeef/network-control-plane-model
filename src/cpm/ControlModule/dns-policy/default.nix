@@ -14,7 +14,10 @@
 
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireString requireStringList sortedNames;
-  inherit (common) attrsOrEmpty cidrContainsAddress failInventory uniqueStrings;
+  inherit (common) attrsOrEmpty cidrContainsAddress uniqueStrings;
+  providerEndpoints = import ./provider-endpoints.nix {
+    inherit helpers common inventoryEndpoints;
+  };
 
   relationEndpointMatchesTenant =
     tenantName: endpoint:
@@ -41,33 +44,6 @@ let
       serviceTrafficType = serviceDef.trafficType or null;
     in
     if isNonEmptyString relationTrafficType then relationTrafficType else serviceTrafficType;
-
-  providerAddressesForDnsService =
-    providerName:
-    let
-      endpointPath = "inventory.endpoints.${providerName}";
-      endpoint = attrsOrEmpty (inventoryEndpoints.${providerName} or null);
-      ipv4 = if builtins.isList (endpoint.ipv4 or null) then requireStringList "${endpointPath}.ipv4" endpoint.ipv4 else [ ];
-      ipv6 = if builtins.isList (endpoint.ipv6 or null) then requireStringList "${endpointPath}.ipv6" endpoint.ipv6 else [ ];
-    in
-    if endpoint == { } then
-      failInventory
-        endpointPath
-        "DNS service provider '${providerName}' requires explicit inventory.endpoints.${providerName}.ipv4 and/or ipv6 for policy-derived DNS upstreams"
-    else
-      uniqueStrings (ipv4 ++ ipv6);
-
-  providerEndpointForServiceProvider =
-    providerName:
-    let
-      endpointPath = "inventory.endpoints.${providerName}";
-      endpoint = attrsOrEmpty (inventoryEndpoints.${providerName} or null);
-    in
-    {
-      name = providerName;
-      ipv4 = if builtins.isList (endpoint.ipv4 or null) then requireStringList "${endpointPath}.ipv4" endpoint.ipv4 else [ ];
-      ipv6 = if builtins.isList (endpoint.ipv6 or null) then requireStringList "${endpointPath}.ipv6" endpoint.ipv6 else [ ];
-    };
 
   tenantPrefixesForName =
     tenantName:
@@ -189,8 +165,8 @@ let
   dnsRelations = builtins.filter allowedDnsRelation allowedRelations;
 in
 {
-  inherit consumerInterfaceCidrsForTenant effectiveTrafficTypeForRelation providerAddressesForDnsService;
-  inherit providerEndpointForServiceProvider providerTenantsForServiceProvider relationEndpointMatchesTenant;
+  inherit (providerEndpoints) optionalProviderAddressesForDnsService providerAddressesForDnsService providerEndpointForServiceProvider;
+  inherit consumerInterfaceCidrsForTenant effectiveTrafficTypeForRelation providerTenantsForServiceProvider relationEndpointMatchesTenant;
   inherit tenantNamesForRelationEndpoint tenantPrefixesForName;
   inherit dnsRelations;
 }
