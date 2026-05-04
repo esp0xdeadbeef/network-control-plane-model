@@ -61,6 +61,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     hasDefault6 = routes:
       builtins.any (route: (route.dst or null) == "::/0") routes;
 
+    hasRouteVia = dst: viaField: via: routes:
+      builtins.any (route: (route.dst or null) == dst && (route.${viaField} or null) == via) routes;
+
     countDefaultVia = dst: viaField: via: routes:
       builtins.length (
         builtins.filter
@@ -117,6 +120,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       hasDefaultVia "10.50.0.6" (routes4For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector")
       && hasDefaultVia6 "fd42:dead:feed:1000:0:0:0:6" (routes6For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector");
 
+    branchUpstreamUnderlayEndpointsUseWanCore =
+      hasRouteVia "198.51.100.10/32" "via4" "10.50.0.6" (routes4For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector")
+      && hasRouteVia "2001:db8:51::10/128" "via6" "fd42:dead:feed:1000:0:0:0:6" (routes6For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector");
+
     siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
     siteCPolicy = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy";
     siteCCoreNebula = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-nebula-core";
@@ -144,23 +151,24 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     accessMgmtDefaultDeduped =
       countDefaultVia "0.0.0.0/0" "via4" "10.10.0.9" (routes4For siteAAccessMgmt accessMgmtTransit) == 1
       && countDefaultVia "::/0" "via6" "fd42:dead:beef:1000:0:0:0:9" (routes6For siteAAccessMgmt accessMgmtTransit) == 1;
+
+    assertions = [
+      { ok = !siteAEastWestDefaults; message = "site-a east-west uplinks must not carry default routes"; }
+      { ok = !branchEastWestDefault; message = "branch east-west uplink must not carry an IPv4 default"; }
+      { ok = !branchEastWestIPv6Default; message = "branch east-west uplink must not carry an IPv6 default"; }
+      { ok = hostileEastWestIPv4Default; message = "hostile east-west uplink must carry its IPv4 overlay default"; }
+      { ok = hostileEastWestIPv6Default; message = "hostile east-west uplink must carry its IPv6 overlay default"; }
+      { ok = !branchUpstreamHostileOverlayIPv6Default; message = "branch upstream must not send hostile IPv6 default toward overlay core"; }
+      { ok = branchUpstreamWanCoreDefaults; message = "branch upstream must install defaults only toward the WAN core"; }
+      { ok = branchUpstreamUnderlayEndpointsUseWanCore; message = "branch upstream must route overlay underlay endpoints toward the WAN core"; }
+      { ok = !siteCStorageDefaults; message = "site-c storage uplinks must not carry default routes"; }
+      { ok = !coreOverlayHasDefault; message = "overlay interfaces on cores must not carry default routes"; }
+      { ok = accessMgmtDefaultDeduped; message = "access-mgmt transit default routes must be deduplicated"; }
+    ];
+
+    failures = builtins.filter (entry: !entry.ok) assertions;
   in
-    (!siteAEastWestDefaults)
-    && siteAWanDefaults
-    && (!branchEastWestDefault)
-    && branchWanDefault
-    && (!branchEastWestIPv6Default)
-    && hostileEastWestIPv4Default
-    && hostileEastWestIPv6Default
-    && (!hostileWanIPv4Default)
-    && (!hostileWanIPv6Default)
-    && (!branchUpstreamHostileOverlayIPv6Default)
-    && (!branchUpstreamCoreNebulaHasDefault)
-    && branchUpstreamWanCoreDefaults
-    && (!siteCStorageDefaults)
-    && siteCWanDefaults
-    && (!coreOverlayHasDefault)
-    && accessMgmtDefaultDeduped
+    if failures == [ ] then true else throw ("preferred-uplink-defaults failed: " + builtins.concatStringsSep "; " (builtins.map (entry: entry.message) failures))
 ' >/dev/null || {
   echo "FAIL preferred-uplink-defaults" >&2
   exit 1

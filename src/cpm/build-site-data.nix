@@ -162,6 +162,11 @@ let
     inherit helpers common routeHelpers sitePath overlayNames overlayTransitEndpointAddressesByOverlay;
   };
 
+  augmentOverlayUnderlayEndpointRoutesForTarget = import ./ControlModule/route-augmentation/overlay-underlay.nix {
+    inherit common helpers routeHelpers overlayTransitEndpointAddressesByOverlay;
+    siteOverlayNameSet = builtins.listToAttrs (map (name: { inherit name; value = true; }) overlayNames);
+  };
+
   ipv6Data = import ./Site/build-data/ipv6-plan.nix {
     inherit
       helpers
@@ -288,7 +293,9 @@ let
               (
                 augmentOverlayTransitEndpointRoutesForTarget
                   targetName
-                  defaultReachability.runtimeTargets.${targetName}
+                  (augmentOverlayUnderlayEndpointRoutesForTarget
+                    targetName
+                    defaultReachability.runtimeTargets.${targetName})
               );
         })
         (sortedNames defaultReachability.runtimeTargets)

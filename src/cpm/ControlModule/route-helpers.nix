@@ -71,6 +71,24 @@ let
         { via6 = gateway; }
     );
 
+  buildOverlayUnderlayEndpointRoute =
+    family: overlayName: destination: gateway:
+    {
+      dst = if family == 4 then "${destination}/32" else "${destination}/128";
+      intent = {
+        kind = "overlay-underlay-reachability";
+        source = "overlay-underlay-endpoint";
+      };
+      proto = "underlay";
+      overlay = overlayName;
+    }
+    // (
+      if family == 4 then
+        { via4 = gateway; }
+      else
+        { via6 = gateway; }
+    );
+
   routeKey =
     family: route:
     if !builtins.isAttrs route then
@@ -126,6 +144,7 @@ in
 {
   inherit
     buildOverlayTransitEndpointRoute
+    buildOverlayUnderlayEndpointRoute
     normalizeRuntimeTargetRoutes
     routeForExactDstWithGateway
     routeGatewayForPrefix
