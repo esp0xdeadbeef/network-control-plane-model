@@ -75,6 +75,8 @@ INVENTORY_PATH="${inventory_path}" \
           sitecCore."p2p-c-router-core-c-router-upstream-selector".routes;
         sitebBranch =
           sitebPolicy."p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-branch".routes;
+        sitebHostile =
+          sitebPolicy."p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-hostile".routes;
         sitebNebulaCoreUpstream =
           sitebNebulaCore."p2p-b-router-core-nebula-b-router-upstream-selector".routes;
       in {
@@ -109,6 +111,10 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (sitebBranch.ipv4 or [ ]) "10.20.10.1" "10.50.0.13";
           sitebBranchDnsUsesSiteaEastWestV6 =
             hasRoute (sitebBranch.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:feed:1000:0:0:0:d";
+          sitebHostileDoesNotLearnSiteaMgmtDnsV4 =
+            !(hasRoute (sitebHostile.ipv4 or [ ]) "10.20.10.1" "10.50.0.17");
+          sitebHostileDoesNotLearnSiteaMgmtDnsV6 =
+            !(hasRoute (sitebHostile.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:feed:1000:0:0:0:11");
           sitebBranchDnsDoesNotUseWanV6 =
             !(hasRoute (sitebBranch.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:feed:1000:0:0:0:f");
           sitebNebulaCoreDoesNotOverrideSitecDnsV4 =
@@ -119,7 +125,7 @@ INVENTORY_PATH="${inventory_path}" \
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt siteaPolicyAdmin sitebBranch sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
+          inherit siteaUpstreamClient siteaUpstreamMgmt siteaPolicyAdmin sitebBranch sitebHostile sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };
