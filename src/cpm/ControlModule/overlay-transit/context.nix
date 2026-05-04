@@ -64,6 +64,7 @@ let
           {
             name = overlayName;
             value = {
+              underlayEndpoints = listOrEmpty (overlayCfg.underlayEndpoints or null);
               inherit peerSite peerPrefixes4 peerPrefixes6;
               byNode = transitEndpointAddressesByNodeForTransit peerTransit;
             };

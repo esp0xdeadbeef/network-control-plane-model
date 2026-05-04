@@ -43,6 +43,8 @@ let
 
             overlayIpamV4 = attrsOrEmpty (overlayIpamCfg.ipv4 or null);
             overlayIpamV6 = attrsOrEmpty (overlayIpamCfg.ipv6 or null);
+            nebulaCfg = attrsOrEmpty (cfg.nebula or null);
+            nebulaLighthouse = attrsOrEmpty (nebulaCfg.lighthouse or null);
 
             ipamV4Prefix = if isNonEmptyString (overlayIpamV4.prefix or null) then overlayIpamV4.prefix else null;
             ipamV6Prefix = if isNonEmptyString (overlayIpamV6.prefix or null) then overlayIpamV6.prefix else null;
@@ -158,6 +160,19 @@ let
                   { }
               )
               // (if isNonEmptyString (cfg.provider or null) then { provider = cfg.provider; } else { })
+              // (
+                let
+                  endpoints =
+                    uniqueStrings (
+                      listOrEmpty (cfg.underlayEndpoints or null)
+                      ++ [
+                        (nebulaLighthouse.endpoint or null)
+                        (nebulaLighthouse.endpoint6 or null)
+                      ]
+                    );
+                in
+                if endpoints != [ ] then { underlayEndpoints = endpoints; } else { }
+              )
               // (if builtins.isAttrs (cfg.nebula or null) then { nebula = cfg.nebula; } else { });
           })
         overlayNames
