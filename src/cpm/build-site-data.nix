@@ -12,7 +12,6 @@ let
     requireList
     requireRoutes
     requireString
-    requireStringList
     sortedNames
     ;
 
@@ -331,125 +330,57 @@ let
       normalizedRuntimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
-  resolvedServices =
-    builtins.map
-      (
-        serviceName:
-        let
-          resolvedService = policyEndpointBindings.services.${serviceName};
-          providerNames =
-            if builtins.isList (resolvedService.providers or null) then
-              requireStringList "${sitePath}.services.${serviceName}.providers" resolvedService.providers
-            else
-              [ ];
-        in
-        resolvedService
-        // {
-          name = serviceName;
-          providerEndpoints = builtins.map providerEndpointForServiceProvider providerNames;
-          providerTenants = uniqueStrings (
-            lib.concatMap providerTenantsForServiceProvider providerNames
-          );
-        }
-      )
-      (sortedNames policyEndpointBindings.services);
+  dnsServiceUplinks = import ./ControlModule/dns-policy/service-uplinks.nix {
+    inherit lib uniqueStrings dnsServiceRouteSpecs;
+  };
+  inherit (dnsServiceUplinks)
+    preferredDnsUplinksByRelationForService
+    preferredDnsUplinksForService
+    ;
+
+  resolvedServices = import ./Site/build-data/services.nix {
+    inherit
+      lib
+      helpers
+      uniqueStrings
+      policyEndpointBindings
+      providerEndpointForServiceProvider
+      providerTenantsForServiceProvider
+      preferredDnsUplinksByRelationForService
+      preferredDnsUplinksForService
+      sitePath
+      ;
+  };
 in
-{
-  siteId = siteId;
-  siteName = siteDisplayName;
-  policyNodeName = policyNodeName;
-  upstreamSelectorNodeName = upstreamSelectorNodeName;
-  coreNodeNames = coreNodeNames;
-  uplinkCoreNames = uplinkCoreNames;
-  uplinkNames = uplinkNames;
-  attachments = attachments;
-  domains = domainsValue;
-  tenantPrefixOwners = tenantPrefixOwners;
-  transit = transitAttrs;
-  routing =
-    {
-      mode = routingMode;
-      uplinks = uplinkRouting;
-    }
-    // (
-      if routingMode == "bgp" then
-        {
-          bgp = {
-            asn = bgpSiteAsn;
-            topology = bgpTopology;
-          };
-        }
-      else
-        { }
-    );
-  runtimeTargets = runtimeTargets;
-  forwardingSemantics = defaultReachability.forwardingSemantics;
-  overlays = overlayProvisioning;
-  relations = policyEndpointBindings.relations;
-  routedPrefixes = routedPrefixesByTenant;
-  services = resolvedServices;
-  policy =
+import ./Site/build-data/output.nix {
+  inherit
+    lib
+    accessAdvertisements
+    attachments
+    bgpSiteAsn
+    bgpTopology
+    communicationContract
+    coreNodeNames
+    domainsValue
+    isNonEmptyString
+    ipv6Plan
+    overlayProvisioning
     policyAttrs
-    // {
-      interfaceTags = policyEndpointBindings.interfaceTags;
-      endpointBindings =
-        builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
-    };
+    policyEndpointBindings
+    policyNodeName
+    routedPrefixesByTenant
+    routingMode
+    runtimeTargets
+    siteAttrs
+    siteDisplayName
+    siteId
+    tenantPrefixOwners
+    transitAttrs
+    uplinkCoreNames
+    uplinkNames
+    uplinkRouting
+    upstreamSelectorNodeName
+    ;
+  forwardingSemantics = defaultReachability.forwardingSemantics;
+  services = resolvedServices;
 }
-// (lib.optionalAttrs (ipv6Plan != null) { ipv6 = ipv6Plan; })
-// (
-  if builtins.isAttrs (siteAttrs.egressIntent or null) then
-    {
-      egressIntent = siteAttrs.egressIntent;
-    }
-  else
-    { }
-)
-// (
-  if communicationContract != null then
-    {
-      communicationContract = communicationContract;
-    }
-  else
-    { }
-)
-// (
-  if builtins.isAttrs (siteAttrs.addressPools or null) then
-    {
-      addressPools = siteAttrs.addressPools;
-    }
-  else
-    { }
-)
-// (
-  if builtins.isAttrs (siteAttrs.ownership or null) then
-    {
-      ownership = siteAttrs.ownership;
-    }
-  else
-    { }
-)
-// (
-  if builtins.isAttrs (siteAttrs.overlayReachability or null) then
-    {
-      overlayReachability = siteAttrs.overlayReachability;
-    }
-  else
-    { }
-)
-// (
-  if builtins.isAttrs (siteAttrs.topology or null) then
-    {
-      topology = siteAttrs.topology;
-    }
-  else
-    { }
-)
-// (
-  if isNonEmptyString (siteAttrs.enterprise or null) then
-    {
-      enterprise = siteAttrs.enterprise;
-    }
-  else
-    { }
-)
