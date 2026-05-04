@@ -12,7 +12,6 @@ let
   inherit (common) attrsOrEmpty listOrEmpty;
   inherit (routeHelpers)
     routeForExactDstWithGateway
-    routeWithDstAndGatewayPresent
     routeWithExactDstPresent
     ;
   p2pPeers = import ./p2p-peers.nix { inherit lib; };
@@ -124,17 +123,19 @@ let
       (acc: spec:
         let
           preferredUplinks = listOrEmpty (spec.preferredUplinks or null);
-          serviceDestinations =
-            (if family == 4 then spec.providerPrefixes4 else spec.providerPrefixes6)
-            ++ (if family == 4 then spec.providerAddresses4 or [ ] else spec.providerAddresses6 or [ ]);
+          providerPrefixes = if family == 4 then spec.providerPrefixes4 else spec.providerPrefixes6;
+          providerAddresses = if family == 4 then spec.providerAddresses4 or [ ] else spec.providerAddresses6 or [ ];
+          serviceDestinations = providerPrefixes ++ providerAddresses;
+          providerPrefixAlreadyPresent = builtins.any (prefix: routeWithExactDstPresent existingRoutes prefix) providerPrefixes;
         in
         builtins.foldl'
           (inner: destination:
             let
+              isProviderAddress = builtins.elem destination providerAddresses;
               sourceRoute = findSourceRouteForDestination family ifName preferredUplinks destination;
               gateway = if sourceRoute == null then null else if family == 4 then sourceRoute.via4 or null else sourceRoute.via6 or null;
               extraRoute =
-                if sourceRoute == null || !isNonEmptyString gateway then
+                if sourceRoute == null || !isNonEmptyString gateway || (isProviderAddress && providerPrefixAlreadyPresent) then
                   null
                 else
                   sourceRoute
@@ -148,7 +149,10 @@ let
                       };
                   };
             in
-            if extraRoute == null || routeWithDstAndGatewayPresent family (existingRoutes ++ inner) destination gateway then
+            if
+              extraRoute == null
+              || routeWithExactDstPresent (existingRoutes ++ inner) destination
+            then
               inner
             else
               inner ++ [ extraRoute ])
