@@ -42,6 +42,8 @@ INVENTORY_PATH="${inventory_path}" \
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector".effectiveRuntimeRealization.interfaces;
         siteaNebulaCore =
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
+        siteaPolicy =
+          out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-policy".effectiveRuntimeRealization.interfaces;
         sitecPolicy =
           out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
         sitecCore =
@@ -59,6 +61,8 @@ INVENTORY_PATH="${inventory_path}" \
           siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-client--uplink-east-west".routes;
         siteaUpstreamMgmt =
           siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-mgmt--uplink-east-west".routes;
+        siteaPolicyAdmin =
+          siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-admin".routes;
         sitecClient =
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-client".routes;
         sitecDmz =
@@ -75,6 +79,14 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
           mgmtLaneLearnsMgmtDnsV6 =
             hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
+          adminDnsUsesMgmtPrefixV4 =
+            hasRoute (siteaPolicyAdmin.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.26";
+          adminDnsDoesNotOverrideMgmtPrefixV4 =
+            !(hasRoute (siteaPolicyAdmin.ipv4 or [ ]) "10.20.10.1" "10.10.0.31");
+          adminDnsUsesMgmtPrefixV6 =
+            hasRoute (siteaPolicyAdmin.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:1a";
+          adminDnsDoesNotOverrideMgmtPrefixV6 =
+            !(hasRoute (siteaPolicyAdmin.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:beef:1000:0:0:0:21");
           sitecClientLearnsDmzDnsV4 =
             hasRoute (sitecClient.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.8";
           sitecDmzKeepsOwnDnsPrefixV4 =
@@ -89,7 +101,7 @@ INVENTORY_PATH="${inventory_path}" \
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt sitecClient sitecDmz sitecCoreUpstream;
+          inherit siteaUpstreamClient siteaUpstreamMgmt siteaPolicyAdmin sitecClient sitecDmz sitecCoreUpstream;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };

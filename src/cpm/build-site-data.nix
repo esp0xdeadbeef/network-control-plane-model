@@ -155,7 +155,7 @@ let
     ;
 
   augmentDnsServiceRoutesForTarget = import ./ControlModule/route-augmentation/dns.nix {
-    inherit lib helpers common routeHelpers sitePath dnsServiceRouteSpecs;
+    inherit lib helpers common ipam routeHelpers sitePath dnsServiceRouteSpecs;
   };
 
   augmentOverlayTransitEndpointRoutesForTarget = import ./ControlModule/route-augmentation/overlay-transit.nix {
