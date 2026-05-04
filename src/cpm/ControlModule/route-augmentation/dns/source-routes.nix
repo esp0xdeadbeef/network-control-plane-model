@@ -9,6 +9,7 @@
   isUpstreamSelectorTarget,
   laneMatchesPreferredUplinks,
   lanePreservesConsumerPath,
+  routeForCoveringDst,
   routeForCanonicalDstWithGateway,
 }:
 
@@ -22,7 +23,7 @@ family: consumerInterfaceName: preferredUplinks: destination:
 let
   consumerInterface = interfaces.${consumerInterfaceName};
   includeConsumerInterface =
-    isUpstreamSelectorTarget && preferredUplinks != [ ] && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
+    preferredUplinks != [ ] && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
   candidateInterfaceNames =
     (lib.optional includeConsumerInterface consumerInterfaceName)
     ++ builtins.filter
@@ -40,13 +41,22 @@ let
       exact = routeForCanonicalDstWithGateway {
         inherit family routes destination isNonEmptyString;
       };
+      covering = routeForCoveringDst {
+        inherit family routes destination;
+      };
       peer = p2pPeers.peerForInterface family interfaces.${ifName};
+      routeViaPeer = { dst = destination; proto = "default"; } // (if family == 4 then { via4 = peer; } else { via6 = peer; });
     in
     if exact != null then
       exact
+    else if covering != null && isNonEmptyString (if family == 4 then (covering.via4 or null) else (covering.via6 or null)) then
+      covering
+    else if covering != null && isNonEmptyString peer then
+      routeViaPeer
     else if includeConsumerInterface && ifName == consumerInterfaceName && isNonEmptyString peer then
-      { dst = destination; proto = "default"; }
-      // (if family == 4 then { via4 = peer; } else { via6 = peer; })
+      routeViaPeer
+    else if preferredUplinks != [ ] && laneMatchesPreferredUplinks interfaces.${ifName} preferredUplinks && isNonEmptyString peer then
+      routeViaPeer
     else
       routeForExactDstWithGateway family routes defaultDst;
 in

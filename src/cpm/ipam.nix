@@ -11,10 +11,14 @@ in
 {
   inherit (common) splitCIDR;
   inherit (ipv4)
+    ipv4NetworkBaseInt
+    ipv4ToInt
     parseIPv4
     renderIPv4
     ;
   inherit (ipv6)
+    ipv6NetworkBaseInt
+    ipv6ToInt
     parseIPv6
     renderIPv6
     ;

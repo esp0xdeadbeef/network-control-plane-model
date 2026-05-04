@@ -17,6 +17,7 @@ let
     inherit lib common ipam routeHelpers;
   };
   inherit (destinationHelpers)
+    routeForCoveringDst
     routeForCanonicalDstWithGateway
     routePresent
     ;
@@ -87,6 +88,7 @@ let
       isUpstreamSelectorTarget
       laneMatchesPreferredUplinks
       lanePreservesConsumerPath
+      routeForCoveringDst
       routeForCanonicalDstWithGateway
       ;
   };
