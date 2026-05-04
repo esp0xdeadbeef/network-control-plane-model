@@ -2,6 +2,7 @@
   lib,
   helpers,
   common,
+  ipam,
   routeHelpers,
   sitePath,
   dnsServiceRouteSpecs,
@@ -10,11 +11,15 @@
 let
   inherit (helpers) isNonEmptyString requireAttrs requireString sortedNames;
   inherit (common) attrsOrEmpty listOrEmpty;
-  inherit (routeHelpers)
-    routeForExactDstWithGateway
-    routeWithExactDstPresent
+  inherit (routeHelpers) routeForExactDstWithGateway routeWithExactDstPresent;
+
+  destinationHelpers = import ./dns/destinations.nix {
+    inherit lib common ipam routeHelpers;
+  };
+  inherit (destinationHelpers)
+    routeForCanonicalDstWithGateway
+    routePresent
     ;
-  p2pPeers = import ./p2p-peers.nix { inherit lib; };
 in
 targetName: target:
 let
@@ -70,96 +75,25 @@ let
     || candidateLane == consumerLane
     || lib.hasPrefix "${consumerLane}::" candidateLane;
 
-  findSourceRouteForDestination =
-    family: consumerInterfaceName: preferredUplinks: destination:
-    let
-      consumerInterface = interfaces.${consumerInterfaceName};
-      includeConsumerInterface =
-        isUpstreamSelectorTarget && preferredUplinks != [ ] && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
-      candidateInterfaceNames =
-        (lib.optional includeConsumerInterface consumerInterfaceName)
-        ++ builtins.filter
-          (
-            ifName:
-            ifName != consumerInterfaceName
-            && lanePreservesConsumerPath preferredUplinks consumerInterface interfaces.${ifName}
-            && laneMatchesPreferredUplinks interfaces.${ifName} preferredUplinks
-          )
-          interfaceNames;
-      defaultDst = if family == 4 then "0.0.0.0/0" else "::/0";
-      routeForDestinationOrDefault =
-        ifName: routes:
-        let
-          exact = routeForExactDstWithGateway family routes destination;
-          peer = p2pPeers.peerForInterface family interfaces.${ifName};
-        in
-        if exact != null then
-          exact
-        else if includeConsumerInterface && ifName == consumerInterfaceName && isNonEmptyString peer then
-          {
-            dst = destination;
-            proto = "default";
-          }
-          // (if family == 4 then { via4 = peer; } else { via6 = peer; })
-        else
-          routeForExactDstWithGateway family routes defaultDst;
-    in
-    lib.findFirst
-      (route: route != null)
-      null
-      (builtins.map
-        (ifName:
-          let
-            candidateIface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
-            candidateRoutes = attrsOrEmpty (candidateIface.routes or null);
-            familyRoutes = if family == 4 then listOrEmpty (candidateRoutes.ipv4 or null) else listOrEmpty (candidateRoutes.ipv6 or null);
-          in
-          routeForDestinationOrDefault ifName familyRoutes)
-        candidateInterfaceNames);
+  findSourceRouteForDestination = import ./dns/source-routes.nix {
+    inherit
+      lib
+      helpers
+      common
+      routeHelpers
+      targetPath
+      interfaces
+      interfaceNames
+      isUpstreamSelectorTarget
+      laneMatchesPreferredUplinks
+      lanePreservesConsumerPath
+      routeForCanonicalDstWithGateway
+      ;
+  };
 
-  routesWithDnsExtras =
-    family: ifName: existingRoutes: matchingSpecs:
-    builtins.foldl'
-      (acc: spec:
-        let
-          preferredUplinks = listOrEmpty (spec.preferredUplinks or null);
-          providerPrefixes = if family == 4 then spec.providerPrefixes4 else spec.providerPrefixes6;
-          providerAddresses = if family == 4 then spec.providerAddresses4 or [ ] else spec.providerAddresses6 or [ ];
-          serviceDestinations = providerPrefixes ++ providerAddresses;
-          providerPrefixAlreadyPresent = builtins.any (prefix: routeWithExactDstPresent existingRoutes prefix) providerPrefixes;
-        in
-        builtins.foldl'
-          (inner: destination:
-            let
-              isProviderAddress = builtins.elem destination providerAddresses;
-              sourceRoute = findSourceRouteForDestination family ifName preferredUplinks destination;
-              gateway = if sourceRoute == null then null else if family == 4 then sourceRoute.via4 or null else sourceRoute.via6 or null;
-              extraRoute =
-                if sourceRoute == null || !isNonEmptyString gateway || (isProviderAddress && providerPrefixAlreadyPresent) then
-                  null
-                else
-                  sourceRoute
-                  // {
-                    dst = destination;
-                    intent =
-                      (attrsOrEmpty (sourceRoute.intent or null))
-                      // {
-                        service = spec.serviceName;
-                        source = "dns-service";
-                      };
-                  };
-            in
-            if
-              extraRoute == null
-              || routeWithExactDstPresent (existingRoutes ++ inner) destination
-            then
-              inner
-            else
-              inner ++ [ extraRoute ])
-          acc
-          serviceDestinations)
-      [ ]
-      matchingSpecs;
+  routesWithDnsExtras = import ./dns/extra-routes.nix {
+    inherit helpers common findSourceRouteForDestination routePresent;
+  };
 
   updatedInterfaces =
     builtins.mapAttrs
@@ -183,7 +117,7 @@ let
             builtins.filter
               (spec:
                 builtins.any (destination: routeWithExactDstPresent existingV4 destination) spec.consumerPrefixes4
-                || builtins.any (destination: routeWithExactDstPresent existingV6 destination) spec.consumerPrefixes6
+                || builtins.any (destination: routePresent 6 existingV6 destination) spec.consumerPrefixes6
                 || matchesPreferredDefault spec)
               dnsServiceRouteSpecs;
           extraV4 = routesWithDnsExtras 4 ifName existingV4 matchingSpecs;
