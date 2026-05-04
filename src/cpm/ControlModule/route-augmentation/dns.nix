@@ -42,10 +42,51 @@ let
     in
     hasCoreIngress && hasPolicyEgress;
 
-  findSourceRouteForDestination =
-    family: consumerInterfaceName: destination:
+  laneMatchesPreferredUplinks =
+    iface: preferredUplinks:
     let
-      candidateInterfaceNames = builtins.filter (ifName: ifName != consumerInterfaceName) interfaceNames;
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+      lane = backingRef.lane or null;
+    in
+    preferredUplinks == [ ]
+    || (
+      isNonEmptyString lane
+      && lib.any (uplinkName: lib.hasSuffix "::uplink::${uplinkName}" lane) preferredUplinks
+    );
+
+  lanePreservesConsumerPath =
+    preferredUplinks: consumerIface: candidateIface:
+    let
+      consumerLane = (attrsOrEmpty (consumerIface.backingRef or null)).lane or null;
+      candidateLane = (attrsOrEmpty (candidateIface.backingRef or null)).lane or null;
+    in
+    preferredUplinks == [ ]
+    || !isNonEmptyString consumerLane
+    || !isNonEmptyString candidateLane
+    || candidateLane == consumerLane
+    || lib.hasPrefix "${consumerLane}::" candidateLane;
+
+  findSourceRouteForDestination =
+    family: consumerInterfaceName: preferredUplinks: destination:
+    let
+      consumerInterface = interfaces.${consumerInterfaceName};
+      candidateInterfaceNames =
+        builtins.filter
+          (ifName:
+            ifName != consumerInterfaceName
+            && lanePreservesConsumerPath preferredUplinks consumerInterface interfaces.${ifName}
+            && laneMatchesPreferredUplinks interfaces.${ifName} preferredUplinks)
+          interfaceNames;
+      defaultDst = if family == 4 then "0.0.0.0/0" else "::/0";
+      routeForDestinationOrDefault =
+        routes:
+        let
+          exact = routeForExactDstWithGateway family routes destination;
+        in
+        if exact != null then
+          exact
+        else
+          routeForExactDstWithGateway family routes defaultDst;
     in
     lib.findFirst
       (route: route != null)
@@ -57,30 +98,45 @@ let
             candidateRoutes = attrsOrEmpty (candidateIface.routes or null);
             familyRoutes = if family == 4 then listOrEmpty (candidateRoutes.ipv4 or null) else listOrEmpty (candidateRoutes.ipv6 or null);
           in
-          routeForExactDstWithGateway family familyRoutes destination)
+          routeForDestinationOrDefault familyRoutes)
         candidateInterfaceNames);
 
   routesWithDnsExtras =
     family: ifName: existingRoutes: matchingSpecs:
     builtins.foldl'
       (acc: spec:
+        let
+          preferredUplinks = listOrEmpty (spec.preferredUplinks or null);
+          serviceDestinations =
+            (if family == 4 then spec.providerPrefixes4 else spec.providerPrefixes6)
+            ++ (if family == 4 then spec.providerAddresses4 or [ ] else spec.providerAddresses6 or [ ]);
+        in
         builtins.foldl'
           (inner: destination:
             let
-              sourceRoute = findSourceRouteForDestination family ifName destination;
+              sourceRoute = findSourceRouteForDestination family ifName preferredUplinks destination;
               gateway = if sourceRoute == null then null else if family == 4 then sourceRoute.via4 or null else sourceRoute.via6 or null;
               extraRoute =
                 if sourceRoute == null || !isNonEmptyString gateway then
                   null
                 else
-                  sourceRoute // { intent = (attrsOrEmpty (sourceRoute.intent or null)) // { service = spec.serviceName; }; };
+                  sourceRoute
+                  // {
+                    dst = destination;
+                    intent =
+                      (attrsOrEmpty (sourceRoute.intent or null))
+                      // {
+                        service = spec.serviceName;
+                        source = "dns-service";
+                      };
+                  };
             in
             if extraRoute == null || routeWithDstAndGatewayPresent family (existingRoutes ++ inner) destination gateway then
               inner
             else
               inner ++ [ extraRoute ])
           acc
-          (if family == 4 then spec.providerPrefixes4 else spec.providerPrefixes6))
+          serviceDestinations)
       [ ]
       matchingSpecs;
 

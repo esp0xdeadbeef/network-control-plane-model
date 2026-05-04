@@ -49,14 +49,24 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
         ."p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west".routes;
+    hostileIngress =
+      siteB.runtimeTargets."espbranch-site-b-b-router-policy"
+        .effectiveRuntimeRealization.interfaces
+        ."p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-hostile".routes;
     hostileAccessAds =
       siteB.runtimeTargets."espbranch-site-b-b-router-access-hostile".advertisements.ipv6Ra;
     hasDst = routes: destination:
       builtins.any (route: (route.dst or null) == destination) (routes.ipv4 or [ ])
       || builtins.any (route: (route.dst or null) == destination) (routes.ipv6 or [ ]);
+    hasRouteVia4 = routes: destination: gateway:
+      builtins.any (route: (route.dst or null) == destination && (route.via4 or null) == gateway) (routes.ipv4 or [ ]);
+    hasRouteVia6 = routes: destination: gateway:
+      builtins.any (route: (route.dst or null) == destination && (route.via6 or null) == gateway) (routes.ipv6 or [ ]);
   in
     hasDst hostileEw "10.20.10.0/24"
     && hasDst hostileEw "fd42:dead:beef:0010:0000:0000:0000:0000/64"
+    && hasRouteVia4 hostileIngress "10.90.10.1" "10.50.0.17"
+    && hasRouteVia6 hostileIngress "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:11"
     && (hostileAccessAds != [ ])
     && (builtins.head hostileAccessAds).routerInterface.subnet6 == "fd42:dead:feed:70::/64"
     && builtins.all
