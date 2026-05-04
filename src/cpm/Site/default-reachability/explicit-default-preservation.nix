@@ -6,7 +6,14 @@ let
 
   defaultRoutesForFamily =
     family: routes:
-    builtins.filter (route: routesContainDefault family [ route ]) (listOrEmpty routes);
+    builtins.filter
+      (route:
+        let
+          intent = attrsOrEmpty (route.intent or null);
+        in
+        routesContainDefault family [ route ]
+        && ((intent.source or null) == "explicit-uplink" || (route.proto or null) == "upstream"))
+      (listOrEmpty routes);
 
   mergeMissingDefaults =
     family: originalRoutes: resolvedRoutes:
