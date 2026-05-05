@@ -24,8 +24,8 @@ labs_path="$(
 )"
 
 REPO_ROOT="$repo_root" \
-INTENT_PATH="${labs_path}/examples/s-router-test-three-site/intent.nix" \
-INVENTORY_PATH="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix" \
+INTENT_PATH="${labs_path}/examples/s-router-public-overlay-service/intent.nix" \
+INVENTORY_PATH="${labs_path}/examples/s-router-public-overlay-service/inventory-nixos.nix" \
   nix eval \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '

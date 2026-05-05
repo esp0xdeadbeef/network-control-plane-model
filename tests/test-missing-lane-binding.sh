@@ -49,8 +49,8 @@ from pathlib import Path
 p = Path("inventory-nixos.nix")
 text = p.read_text()
 
-old = '"link":"p2p-s-router-downstream-selector-s-router-policy--access-s-router-access-client"'
-new = '"link":"p2p-s-router-downstream-selector-s-router-policy--access-s-router-access-client--BROKEN"'
+old = 'link = "p2p-s-router-downstream-selector-s-router-policy--access-s-router-access-client";'
+new = 'link = "p2p-s-router-downstream-selector-s-router-policy--access-s-router-access-client--BROKEN";'
 
 if old not in text:
     raise SystemExit("expected lane link string not found in inventory-nixos.nix")

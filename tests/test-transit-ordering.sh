@@ -8,8 +8,8 @@ trap 'rm -f "${archive_json}" "${output_json}"' EXIT
 
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 labs_path="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
-intent_path="${labs_path}/examples/s-router-test-three-site/intent.nix"
-inventory_path="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
+intent_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix"
+inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix"
 
 [[ -f "${intent_path}" ]] || { echo "missing intent fixture: ${intent_path}" >&2; exit 1; }
 [[ -f "${inventory_path}" ]] || { echo "missing inventory fixture: ${inventory_path}" >&2; exit 1; }

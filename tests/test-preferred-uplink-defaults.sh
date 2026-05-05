@@ -25,8 +25,8 @@ labs_path="$(
   '
 )"
 
-intent="${labs_path}/examples/s-router-test-three-site/intent.nix"
-inventory="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
+intent="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix"
+inventory="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix"
 
 (
   cd "${repo_root}"
