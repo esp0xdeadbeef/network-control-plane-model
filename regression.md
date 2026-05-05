@@ -22,3 +22,4 @@ and must be split before tests can pass.
 
 - state=implemented-in-progress | target=Enterprise/Site/Unit/EquipmentModule/ControlModule layout | reason=CPM modules must follow the same responsibility-oriented shape as renderers so site assembly, unit advertisements, realization inventory, and control-plane projection do not collapse into large cross-layer files.
 - state=guard | target=IPv6 parsing and range checks | reason=CPM must use the pinned `lib.network.ipv6` supplied by the `nixpkgs-network` flake override for IPv6 parsing/address math; do not add local IPv6 parsers or 128-bit integer arithmetic.
+- state=guard | target=DNS forwarder runtime facts | reason=CPM must reject unresolved DNS placeholder strings before renderer output; runtime/SOPS inventory has to resolve forwarders before control-plane construction.
