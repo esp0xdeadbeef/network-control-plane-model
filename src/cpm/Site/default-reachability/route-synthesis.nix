@@ -20,18 +20,11 @@ let
     accessNodeNameFromAdjacencyId
     attrsOrEmpty
     buildInternalDefaultRoute
-    buildInternalEndpointRoute
     listOrEmpty
-    makeStringSet
-    routeAlreadyPresent
     uplinkNameFromAdjacencyId
     ;
   inherit (routeHelpers)
     findInterfaceNameForAdjacency
-    interfaceBackingKind
-    interfaceHasDefaultForFamily
-    interfaceNameHasUplinkWanPreference
-    interfaceNameTargetsDestination
     ;
   explicitDefaultPreservation = import ./explicit-default-preservation.nix {
     inherit helpers common sitePath;
@@ -49,88 +42,25 @@ let
   defaultRouteSanitizer = import ./default-route-sanitizer.nix {
     inherit common helpers isDelegatedIPv6AccessNode siteOverlayNameSet targetInterfaces;
   };
+  delegatedOverlayEgress = import ./delegated-overlay-egress.nix {
+    inherit helpers common;
+  };
+  endpointRoutes = import ./endpoint-routes.nix {
+    inherit
+      helpers
+      common
+      sitePath
+      targetInterfaces
+      transitEndpointAddressesByNode
+      sortedCandidatePaths
+      preferredFirstHopMatchesSource
+      routeHelpers
+      ;
+  };
   inherit (defaultRouteSanitizer)
     sanitizeDefaultRoutes
     sanitizeOverlayDefaults
     ;
-
-  chooseEndpointRouteInterface =
-    family: targetName: targetPath: target: interfaces: destinationNode: nodeName:
-    let
-      endpointAddresses = transitEndpointAddressesByNode.${destinationNode};
-      familyAddresses = if family == 4 then endpointAddresses.ipv4 or [ ] else endpointAddresses.ipv6 or [ ];
-      candidatePaths =
-        builtins.filter
-          (preferredFirstHopMatchesSource family)
-          (sortedCandidatePaths family (makeStringSet [ destinationNode ]) nodeName);
-      usableCandidates = builtins.filter (candidate: builtins.length candidate.steps > 1) candidatePaths;
-      candidateEntries =
-        builtins.map
-          (candidate:
-            let firstStep = builtins.elemAt candidate.steps 0;
-            in {
-              inherit candidate firstStep;
-              interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
-            })
-          usableCandidates;
-      namedCandidates = builtins.filter (entry: entry.interfaceName != null) candidateEntries;
-      destinationScoped = builtins.filter (entry: interfaceNameTargetsDestination entry.interfaceName destinationNode) namedCandidates;
-      scopedRaw = if destinationScoped != [ ] then destinationScoped else namedCandidates;
-      preferredWan = builtins.filter (entry: interfaceNameHasUplinkWanPreference entry.interfaceName) scopedRaw;
-      preferredOverlay =
-        builtins.filter
-          (entry: interfaceBackingKind targetPath interfaces entry.interfaceName == "overlay")
-          scopedRaw;
-      scoped = if preferredWan != [ ] then preferredWan else if preferredOverlay != [ ] then preferredOverlay else scopedRaw;
-      defaultBearing =
-        builtins.filter
-          (entry:
-            interfaceHasDefaultForFamily family (
-              requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${entry.interfaceName}" interfaces.${entry.interfaceName}
-            ))
-          scoped;
-      chosen =
-        if defaultBearing != [ ] then builtins.elemAt defaultBearing 0 else if scoped != [ ] then builtins.elemAt scoped 0 else null;
-    in
-    { inherit chosen familyAddresses; };
-
-  addEndpointRoutes = family: targetName: target:
-    let
-      targetPath = "${sitePath}.runtimeTargets.${targetName}";
-      logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
-      nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
-      endpointNodes = builtins.filter (candidate: candidate != nodeName && hasAttr candidate transitEndpointAddressesByNode) (sortedNames transitEndpointAddressesByNode);
-      targetView = targetInterfaces targetPath target;
-      updatedInterfaces =
-        builtins.foldl'
-          (currentInterfaces: destinationNode:
-            let chosen = chooseEndpointRouteInterface family targetName targetPath target targetView.interfaces destinationNode nodeName;
-            in
-            if chosen.familyAddresses == [ ] || chosen.chosen == null then
-              currentInterfaces
-            else
-              let
-                firstStep = chosen.chosen.firstStep;
-                interfaceName = chosen.chosen.interfaceName;
-                iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}" currentInterfaces.${interfaceName};
-                routes = attrsOrEmpty (iface.routes or null);
-                existing = if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
-                updated =
-                  builtins.foldl'
-                    (accRoutes: destination:
-                      if routeAlreadyPresent family accRoutes destination firstStep.via then
-                        accRoutes
-                      else
-                        accRoutes ++ [ (buildInternalEndpointRoute family destination destinationNode firstStep.via) ])
-                    existing
-                    chosen.familyAddresses;
-                updatedIface = iface // { routes = routes // (if family == 4 then { ipv4 = updated; } else { ipv6 = updated; }); };
-              in
-              currentInterfaces // { ${interfaceName} = updatedIface; })
-          targetView.interfaces
-          endpointNodes;
-    in
-    target // { effectiveRuntimeRealization = targetView.effective // { interfaces = updatedInterfaces; }; };
 
   addInternalDefaults = family: sourceSet: targetName: target:
     let
@@ -142,13 +72,36 @@ let
       isSelfDefaultSource = hasAttr nodeName sourceSet;
       sourceSetForTarget =
         if isSelfDefaultSource && targetRole == "downstream-selector" then builtins.removeAttrs sourceSet [ nodeName ] else sourceSet;
+      delegatedSourceNodes = builtins.filter isDelegatedIPv6AccessNode (sortedNames sourceSetForTarget);
+      targetWithDelegatedOverlayEgress =
+        if family == 6 && delegatedSourceNodes != [ ] then
+          let
+            targetView = targetInterfaces targetPath targetWithoutOverlayDefaults;
+            interfacesWithDelegatedOverlayEgress =
+              builtins.foldl'
+                (interfaces: sourceNode:
+                  delegatedOverlayEgress.add {
+                    family = family;
+                    sourceNode = sourceNode;
+                    metric = 50;
+                    interfaces = interfaces;
+                  })
+                targetView.interfaces
+                delegatedSourceNodes;
+          in
+          targetWithoutOverlayDefaults
+          // {
+            effectiveRuntimeRealization = targetView.effective // { interfaces = interfacesWithDelegatedOverlayEgress; };
+          }
+        else
+          targetWithoutOverlayDefaults;
       candidatePaths = builtins.filter (preferredFirstHopMatchesSource family) (sortedCandidatePaths family sourceSetForTarget nodeName);
     in
     if (isSelfDefaultSource && targetRole != "downstream-selector") || candidatePaths == [ ] then
-      targetWithoutOverlayDefaults
+      targetWithDelegatedOverlayEgress
     else
       let
-        targetView = targetInterfaces targetPath targetWithoutOverlayDefaults;
+        targetView = targetInterfaces targetPath targetWithDelegatedOverlayEgress;
         sanitized =
           builtins.mapAttrs
             (_: iface:
@@ -163,18 +116,31 @@ let
             accessNodeName = accessNodeNameFromAdjacencyId firstStep.adjacencyId;
             uplinkName = uplinkNameFromAdjacencyId firstStep.adjacencyId;
             delegatedWANFirstHop = isNonEmptyString accessNodeName && isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && !hasAttr uplinkName siteOverlayNameSet;
+            interfacesWithDelegatedOverlayEgress =
+              if family == 6 && isDelegatedIPv6AccessNode candidate.sourceNode then
+                delegatedOverlayEgress.add {
+                  family = family;
+                  sourceNode = candidate.sourceNode;
+                  metric = 50 + (idx * 100);
+                  interfaces = state.interfaces;
+                }
+              else
+                state.interfaces;
           in
           if interfaceName == null || delegatedWANFirstHop then
-            state // { index = idx + 1; }
+            state // {
+              index = idx + 1;
+              interfaces = interfacesWithDelegatedOverlayEgress;
+            }
           else
             let
-              iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}" state.interfaces.${interfaceName};
+              iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}" interfacesWithDelegatedOverlayEgress.${interfaceName};
               routes = attrsOrEmpty (iface.routes or null);
               existing = if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
               updated = existing ++ [ (buildInternalDefaultRoute family candidate.sourceNode firstStep.via (100 + (idx * 100))) ];
               updatedIface = iface // { routes = routes // (if family == 4 then { ipv4 = updated; } else { ipv6 = updated; }); };
             in
-            { index = idx + 1; interfaces = state.interfaces // { ${interfaceName} = updatedIface; }; };
+            { index = idx + 1; interfaces = interfacesWithDelegatedOverlayEgress // { ${interfaceName} = updatedIface; }; };
         updated = builtins.foldl' updateForCandidate { index = 0; interfaces = sanitized; } (builtins.filter (candidate: candidate.steps != [ ]) candidatePaths);
       in
       target // { effectiveRuntimeRealization = targetView.effective // { interfaces = updated.interfaces; }; };
@@ -182,8 +148,8 @@ let
   buildTarget = targetName:
     let
       target0 = runtimeTargetsWithWANDefaults.${targetName};
-      target1 = addEndpointRoutes 4 targetName target0;
-      target2 = addEndpointRoutes 6 targetName target1;
+      target1 = endpointRoutes.add 4 targetName target0;
+      target2 = endpointRoutes.add 6 targetName target1;
       target3 = addInternalDefaults 4 explicitDefaultSourceSet4 targetName target2;
       target4 = addInternalDefaults 6 explicitDefaultSourceSet6 targetName target3;
       target5 = explicitDefaultPreservation.restore { inherit targetName; originalTarget = target0; resolvedTarget = target4; };
