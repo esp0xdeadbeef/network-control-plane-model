@@ -59,6 +59,18 @@ let
         allowedRelations
     );
 
+  externalIngressUplinksForEndpoint =
+    endpoint:
+    if builtins.isAttrs endpoint && (endpoint.kind or null) == "external" then
+      if builtins.isList (endpoint.uplinks or null) then
+        requireStringList "${sitePath}.communicationContract.allowedRelations[*].from.uplinks" endpoint.uplinks
+      else if builtins.isString (endpoint.name or null) && endpoint.name != "" then
+        [ endpoint.name ]
+      else
+        [ ]
+    else
+      [ ];
+
   anyTrafficExternalUplinksForEndpoint =
     endpoint:
     let
@@ -116,7 +128,13 @@ builtins.map
       consumerPrefixes = uniqueStrings (lib.concatMap tenantPrefixesForName consumerTenants);
       relationTrafficType = effectiveTrafficTypeForRelation relationAttrs { trafficType = "dns"; };
       explicitPreferredUplinks = dnsExternalUplinksForEndpoint (relationAttrs.from or null) relationTrafficType;
+      ingressPreferredUplinks = externalIngressUplinksForEndpoint (relationAttrs.from or null);
       fallbackPreferredUplinks = anyTrafficExternalUplinksForEndpoint (relationAttrs.from or null);
+      preferredUplinks =
+        if ingressPreferredUplinks != [ ] then
+          ingressPreferredUplinks
+        else
+          explicitPreferredUplinks;
       relationId =
         if builtins.isString (relationAttrs.id or null) then
           relationAttrs.id
@@ -133,8 +151,9 @@ builtins.map
       providerPrefixes6 = familyPrefixes 6 providerPrefixes;
       providerAddresses4 = familyPrefixes 4 providerAddresses;
       providerAddresses6 = familyPrefixes 6 providerAddresses;
-      preferredUplinks = explicitPreferredUplinks;
+      inherit ingressPreferredUplinks;
+      inherit preferredUplinks;
       derivedPreferredUplinks =
-        if explicitPreferredUplinks != [ ] then explicitPreferredUplinks else fallbackPreferredUplinks;
+        if preferredUplinks != [ ] then preferredUplinks else fallbackPreferredUplinks;
     })
   dnsRelations
