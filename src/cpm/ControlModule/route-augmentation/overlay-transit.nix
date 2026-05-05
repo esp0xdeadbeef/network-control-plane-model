@@ -62,35 +62,57 @@ let
               (candidateOverlayName:
                 let
                   candidateOverlay = attrsOrEmpty (overlayTransitEndpointAddressesByOverlay.${candidateOverlayName} or null);
-                  peerSite = candidateOverlay.peerSite or null;
-                  byNode = attrsOrEmpty (candidateOverlay.byNode or null);
+                  peerEntries0 = listOrEmpty (candidateOverlay.peerEntries or null);
+                  peerEntries =
+                    if peerEntries0 != [ ] then
+                      peerEntries0
+                    else
+                      [
+                        {
+                          peerSite = candidateOverlay.peerSite or null;
+                          byNode = attrsOrEmpty (candidateOverlay.byNode or null);
+                          peerPrefixes4 = listOrEmpty (candidateOverlay.peerPrefixes4 or null);
+                          peerPrefixes6 = listOrEmpty (candidateOverlay.peerPrefixes6 or null);
+                        }
+                      ];
                   peerPrefixes4 = listOrEmpty (candidateOverlay.peerPrefixes4 or null);
                   peerPrefixes6 = listOrEmpty (candidateOverlay.peerPrefixes6 or null);
                   gateway4 = if overlayName != null then null else routeGatewayForPrefix 4 existingV4 peerPrefixes4;
                   gateway6 = if overlayName != null then null else routeGatewayForPrefix 6 existingV6 peerPrefixes6;
-                  extraForFamily =
-                    family: nodeName: gateway: existingRoutes: addresses:
-                    builtins.map
-                      (address: buildOverlayTransitEndpointRoute family candidateOverlayName peerSite address nodeName gateway)
-                      (builtins.filter (address: !routeWithDstPresent family existingRoutes address) addresses);
-                  routesForNode =
-                    nodeName:
+                  routesForEntry =
+                    entry:
                     let
-                      addresses = attrsOrEmpty (byNode.${nodeName} or null);
+                      peerSite = entry.peerSite or null;
+                      byNode = attrsOrEmpty (entry.byNode or null);
+                      extraForFamily =
+                        family: nodeName: gateway: existingRoutes: addresses:
+                        builtins.map
+                          (address: buildOverlayTransitEndpointRoute family candidateOverlayName peerSite address nodeName gateway)
+                          (builtins.filter (address: !routeWithDstPresent family existingRoutes address) addresses);
+                      routesForNode =
+                        nodeName:
+                        let
+                          addresses = attrsOrEmpty (byNode.${nodeName} or null);
+                        in
+                        {
+                          ipv4 = extraForFamily 4 nodeName gateway4 existingV4 (listOrEmpty (addresses.ipv4 or null));
+                          ipv6 = extraForFamily 6 nodeName gateway6 existingV6 (listOrEmpty (addresses.ipv6 or null));
+                        };
+                      byNodeRoutes =
+                        if !isNonEmptyString peerSite then
+                          [ ]
+                        else
+                          builtins.map routesForNode (sortedNames byNode);
                     in
                     {
-                      ipv4 = extraForFamily 4 nodeName gateway4 existingV4 (listOrEmpty (addresses.ipv4 or null));
-                      ipv6 = extraForFamily 6 nodeName gateway6 existingV6 (listOrEmpty (addresses.ipv6 or null));
+                      ipv4 = builtins.concatLists (builtins.map (entry: entry.ipv4) byNodeRoutes);
+                      ipv6 = builtins.concatLists (builtins.map (entry: entry.ipv6) byNodeRoutes);
                     };
-                  byNodeRoutes =
-                    if !isNonEmptyString peerSite then
-                      [ ]
-                    else
-                      builtins.map routesForNode (sortedNames byNode);
+                  entryRoutes = builtins.map routesForEntry peerEntries;
                 in
                 {
-                  ipv4 = builtins.concatLists (builtins.map (entry: entry.ipv4) byNodeRoutes);
-                  ipv6 = builtins.concatLists (builtins.map (entry: entry.ipv6) byNodeRoutes);
+                  ipv4 = builtins.concatLists (builtins.map (entry: entry.ipv4) entryRoutes);
+                  ipv6 = builtins.concatLists (builtins.map (entry: entry.ipv6) entryRoutes);
                 })
               overlaysForInterface;
           extraV4 = builtins.concatLists (builtins.map (entry: entry.ipv4) overlayExtraRoutes);

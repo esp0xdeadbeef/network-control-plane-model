@@ -97,6 +97,7 @@ let
               {
                 name = overlayName;
                 peerSite = ov.peerSite or null;
+                peerSites = listOrEmpty (ov.peerSites or null);
                 terminateOn = terminateOn;
                 nodes = overlayNodeAddrs;
               }
