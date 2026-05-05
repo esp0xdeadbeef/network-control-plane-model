@@ -53,20 +53,64 @@ let
         (overlayName:
           let
             overlayCfg = attrsOrEmpty (overlayProvisioning.${overlayName} or null);
-            peerSite = overlayCfg.peerSite or null;
-            peerSiteEntry = if isNonEmptyString peerSite then resolvePeerSiteEntry peerSite else null;
-            peerTransit = if peerSiteEntry == null then { } else attrsOrEmpty (peerSiteEntry.site.transit or null);
-            peerDomains = if peerSiteEntry == null then { } else attrsOrEmpty (peerSiteEntry.site.domains or null);
-            peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
-            peerPrefixes4 = uniqueStrings (builtins.filter isNonEmptyString (builtins.map (tenant: (attrsOrEmpty tenant).ipv4 or null) peerTenants));
-            peerPrefixes6 = uniqueStrings (builtins.filter isNonEmptyString (builtins.map (tenant: (attrsOrEmpty tenant).ipv6 or null) peerTenants));
+            peerSites0 = listOrEmpty (overlayCfg.peerSites or null);
+            peerSites =
+              if peerSites0 != [ ] then
+                peerSites0
+              else if isNonEmptyString (overlayCfg.peerSite or null) then
+                [ overlayCfg.peerSite ]
+              else
+                [ ];
+            peerEntryFor =
+              peerSite:
+              let
+                peerSiteEntry = resolvePeerSiteEntry peerSite;
+                peerTransit = if peerSiteEntry == null then { } else attrsOrEmpty (peerSiteEntry.site.transit or null);
+                peerDomains = if peerSiteEntry == null then { } else attrsOrEmpty (peerSiteEntry.site.domains or null);
+                peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
+                peerPrefixes4 = uniqueStrings (builtins.filter isNonEmptyString (builtins.map (tenant: (attrsOrEmpty tenant).ipv4 or null) peerTenants));
+                peerPrefixes6 = uniqueStrings (builtins.filter isNonEmptyString (builtins.map (tenant: (attrsOrEmpty tenant).ipv6 or null) peerTenants));
+              in
+              {
+                inherit peerSite peerPrefixes4 peerPrefixes6;
+                byNode = transitEndpointAddressesByNodeForTransit peerTransit;
+              };
+            peerEntries = builtins.map peerEntryFor peerSites;
+            peerPrefixes4 = uniqueStrings (builtins.concatMap (entry: entry.peerPrefixes4) peerEntries);
+            peerPrefixes6 = uniqueStrings (builtins.concatMap (entry: entry.peerPrefixes6) peerEntries);
+            mergeByNode =
+              acc: entry:
+              builtins.foldl'
+                (state: nodeName:
+                  let
+                    existing =
+                      if builtins.hasAttr nodeName state then
+                        state.${nodeName}
+                      else
+                        {
+                          ipv4 = [ ];
+                          ipv6 = [ ];
+                        };
+                    node = entry.byNode.${nodeName};
+                  in
+                  state
+                  // {
+                    ${nodeName} = {
+                      ipv4 = uniqueStrings (existing.ipv4 ++ listOrEmpty (node.ipv4 or null));
+                      ipv6 = uniqueStrings (existing.ipv6 ++ listOrEmpty (node.ipv6 or null));
+                    };
+                  })
+                acc
+                (sortedNames entry.byNode);
           in
           {
             name = overlayName;
             value = {
               underlayEndpoints = listOrEmpty (overlayCfg.underlayEndpoints or null);
-              inherit peerSite peerPrefixes4 peerPrefixes6;
-              byNode = transitEndpointAddressesByNodeForTransit peerTransit;
+              peerSite = if peerSites == [ ] then null else builtins.head peerSites;
+              peerSites = peerSites;
+              inherit peerEntries peerPrefixes4 peerPrefixes6;
+              byNode = builtins.foldl' mergeByNode { } peerEntries;
             };
           })
         overlayNames
