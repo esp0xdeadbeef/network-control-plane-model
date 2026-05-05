@@ -138,9 +138,13 @@ let
       targetWithoutOverlayDefaults = sanitizeOverlayDefaults family targetPath target;
       logicalNode = requireAttrs "${targetPath}.logicalNode" (targetWithoutOverlayDefaults.logicalNode or null);
       nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
-      candidatePaths = builtins.filter (preferredFirstHopMatchesSource family) (sortedCandidatePaths family sourceSet nodeName);
+      targetRole = targetWithoutOverlayDefaults.role or null;
+      isSelfDefaultSource = hasAttr nodeName sourceSet;
+      sourceSetForTarget =
+        if isSelfDefaultSource && targetRole == "downstream-selector" then builtins.removeAttrs sourceSet [ nodeName ] else sourceSet;
+      candidatePaths = builtins.filter (preferredFirstHopMatchesSource family) (sortedCandidatePaths family sourceSetForTarget nodeName);
     in
-    if hasAttr nodeName sourceSet || candidatePaths == [ ] then
+    if (isSelfDefaultSource && targetRole != "downstream-selector") || candidatePaths == [ ] then
       targetWithoutOverlayDefaults
     else
       let
@@ -182,16 +186,11 @@ let
       target2 = addEndpointRoutes 6 targetName target1;
       target3 = addInternalDefaults 4 explicitDefaultSourceSet4 targetName target2;
       target4 = addInternalDefaults 6 explicitDefaultSourceSet6 targetName target3;
-      target5 = explicitDefaultPreservation.restore {
-        inherit targetName;
-        originalTarget = target0;
-        resolvedTarget = target4;
-      };
+      target5 = explicitDefaultPreservation.restore { inherit targetName; originalTarget = target0; resolvedTarget = target4; };
     in
     { name = targetName; value = target5; };
 
 in
 {
-  runtimeTargetsWithSynthesizedDefaults =
-    builtins.listToAttrs (builtins.map buildTarget runtimeTargetNames);
+  runtimeTargetsWithSynthesizedDefaults = builtins.listToAttrs (builtins.map buildTarget runtimeTargetNames);
 }
