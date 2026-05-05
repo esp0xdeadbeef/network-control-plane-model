@@ -7,7 +7,7 @@ search_root="$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["n
 example_root="${search_root}/dual-wan-branch-overlay-bgp"
 intent_path="${example_root}/intent.nix"
 inventory_path="${example_root}/inventory-nixos.nix"
-s_router_example_root="${search_root}/s-router-test-three-site"
+s_router_example_root="${search_root}/s-router-overlay-dns-lane-policy"
 s_router_intent_path="${s_router_example_root}/intent.nix"
 s_router_inventory_path="${s_router_example_root}/inventory-nixos.nix"
 

@@ -11,8 +11,8 @@ let
   system = builtins.currentSystem;
   labs = flake.inputs.network-labs.outPath;
   built = flake.lib.${system}.compileAndBuildFromPaths {
-    inputPath = labs + "/examples/s-router-test-three-site/intent.nix";
-    inventoryPath = labs + "/examples/s-router-test-three-site/inventory-nixos.nix";
+    inputPath = labs + "/examples/s-router-public-overlay-service/intent.nix";
+    inventoryPath = labs + "/examples/s-router-public-overlay-service/inventory-nixos.nix";
   };
   site = built.control_plane_model.data.esp0xdeadbeef."site-c";
   relations = (site.communicationContract.relations or [ ]) ++ (site.communicationContract.allowedRelations or [ ]);

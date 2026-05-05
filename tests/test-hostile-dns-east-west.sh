@@ -23,8 +23,8 @@ labs_path="$(
   '
 )"
 
-intent_path="${labs_path}/examples/s-router-test-three-site/intent.nix"
-inventory_path="${labs_path}/examples/s-router-test-three-site/inventory-nixos.nix"
+intent_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix"
+inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix"
 
 nix run "${repo_root}#compile-and-build-control-plane-model" -- "${intent_path}" "${inventory_path}" "${output_json}" >/dev/null
 
