@@ -65,6 +65,8 @@ INVENTORY_PATH="${inventory_path}" \
           siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-client--uplink-east-west".routes;
         siteaUpstreamMgmt =
           siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-mgmt--uplink-east-west".routes;
+        siteaUpstreamEastWestCore =
+          siteaUpstream."p2p-s-router-core-nebula-s-router-upstream-selector".routes;
         siteaPolicyAdmin =
           siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-admin".routes;
         sitecClient =
@@ -89,6 +91,14 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
           mgmtLaneLearnsMgmtDnsV6 =
             hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
+          eastWestIngressLearnsSiteaMgmtDnsV4 =
+            hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.30";
+          eastWestIngressLearnsSiteaMgmtDnsV6 =
+            hasRoute (siteaUpstreamEastWestCore.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:1e";
+          eastWestIngressDoesNotSendSiteaMgmtDnsToWanA =
+            !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.12");
+          eastWestIngressDoesNotSendSiteaMgmtDnsToWanB =
+            !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.14");
           adminDnsUsesMgmtPrefixV4 =
             hasRoute (siteaPolicyAdmin.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.26";
           adminDnsDoesNotOverrideMgmtPrefixV4 =
@@ -125,7 +135,7 @@ INVENTORY_PATH="${inventory_path}" \
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt siteaPolicyAdmin sitebBranch sitebHostile sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
+          inherit siteaUpstreamClient siteaUpstreamMgmt siteaUpstreamEastWestCore siteaPolicyAdmin sitebBranch sitebHostile sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };

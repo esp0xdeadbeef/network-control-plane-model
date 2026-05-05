@@ -84,7 +84,8 @@ let
     || !isNonEmptyString consumerLane
     || !isNonEmptyString candidateLane
     || candidateLane == consumerLane
-    || lib.hasPrefix "${consumerLane}::" candidateLane;
+    || lib.hasPrefix "${consumerLane}::" candidateLane
+    || (laneMatchesPreferredUplinks consumerIface preferredUplinks && laneMatchesPreferredUplinks candidateIface preferredUplinks);
 
   findSourceRouteForDestination = import ./dns/source-routes.nix {
     inherit
@@ -125,12 +126,21 @@ let
             && isUpstreamSelectorTarget
             && laneMatchesPreferredUplinks iface preferredUplinks
             && (hasDefault4 || hasDefault6);
+          matchesPreferredIngress =
+            spec:
+            let
+              preferredUplinks = listOrEmpty (spec.ingressPreferredUplinks or null);
+            in
+            preferredUplinks != [ ]
+            && isUpstreamSelectorTarget
+            && laneMatchesPreferredUplinks iface preferredUplinks;
           matchingSpecs =
             builtins.filter
               (spec:
                 builtins.any (destination: routeWithExactDstPresent existingV4 destination) spec.consumerPrefixes4
                 || builtins.any (destination: routePresent 6 existingV6 destination) spec.consumerPrefixes6
-                || matchesPreferredDefault spec)
+                || matchesPreferredDefault spec
+                || matchesPreferredIngress spec)
               dnsServiceRouteSpecs;
           extraV4 = routesWithDnsExtras 4 ifName existingV4 matchingSpecs;
           extraV6 = routesWithDnsExtras 6 ifName existingV6 matchingSpecs;

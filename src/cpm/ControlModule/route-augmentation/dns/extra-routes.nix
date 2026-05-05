@@ -16,6 +16,7 @@ builtins.foldl'
       preferredUplinks = listOrEmpty (spec.preferredUplinks or null);
       providerPrefixes = if family == 4 then spec.providerPrefixes4 else spec.providerPrefixes6;
       providerAddresses = if family == 4 then spec.providerAddresses4 or [ ] else spec.providerAddresses6 or [ ];
+      ingressServiceRoute = listOrEmpty (spec.ingressPreferredUplinks or null) != [ ];
       serviceDestinations = providerPrefixes ++ providerAddresses;
       providerPrefixCovered =
         accumulatedRoutes:
@@ -25,7 +26,7 @@ builtins.foldl'
       (inner: destination:
         let
           isProviderAddress = builtins.elem destination providerAddresses;
-          sourceRoute = findSourceRouteForDestination family ifName preferredUplinks destination;
+          sourceRoute = findSourceRouteForDestination family ifName preferredUplinks ingressServiceRoute destination;
           gateway = if sourceRoute == null then null else if family == 4 then sourceRoute.via4 or null else sourceRoute.via6 or null;
           extraRoute =
             if sourceRoute == null || !isNonEmptyString gateway || (isProviderAddress && providerPrefixCovered inner) then

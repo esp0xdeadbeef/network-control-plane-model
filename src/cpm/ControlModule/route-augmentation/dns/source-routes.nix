@@ -19,11 +19,20 @@ let
   inherit (routeHelpers) routeForExactDstWithGateway;
   p2pPeers = import ../p2p-peers.nix { inherit lib; };
 in
-family: consumerInterfaceName: preferredUplinks: destination:
+family: consumerInterfaceName: preferredUplinks: ingressServiceRoute: destination:
 let
   consumerInterface = interfaces.${consumerInterfaceName};
+  consumerRuntimeIfName = consumerInterface.runtimeIfName or "";
+  consumerIsUpstreamCoreIngress =
+    ingressServiceRoute
+    &&
+    isUpstreamSelectorTarget
+    && builtins.isString consumerRuntimeIfName
+    && (consumerRuntimeIfName == "core" || lib.hasPrefix "core-" consumerRuntimeIfName);
   includeConsumerInterface =
-    preferredUplinks != [ ] && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
+    preferredUplinks != [ ]
+    && !consumerIsUpstreamCoreIngress
+    && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
   candidateInterfaceNames =
     (lib.optional includeConsumerInterface consumerInterfaceName)
     ++ builtins.filter
