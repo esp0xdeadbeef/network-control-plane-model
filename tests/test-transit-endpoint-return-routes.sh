@@ -80,6 +80,7 @@ INVENTORY_PATH="${s_router_inventory_path}" \
           inventoryPath = builtins.getEnv "INVENTORY_PATH";
         };
         rt = out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
+        downstreamSelector = out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-downstream-selector";
         branchCore = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
         branchNebulaCore = out.control_plane_model.data.espbranch."site-b".runtimeTargets."espbranch-site-b-b-router-core-nebula";
       in {
@@ -87,6 +88,7 @@ INVENTORY_PATH="${s_router_inventory_path}" \
         policyClientWan = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-wan".routes;
         policyDmzEastWest = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-east-west".routes;
         policyDmzWan = rt.effectiveRuntimeRealization.interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes;
+        downstreamPolicyDmz = downstreamSelector.effectiveRuntimeRealization.interfaces."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz".routes;
         branchOverlay = branchCore.effectiveRuntimeRealization.interfaces."overlay-east-west".routes;
         branchNebulaUpstream = branchNebulaCore.effectiveRuntimeRealization.interfaces."p2p-b-router-core-nebula-b-router-upstream-selector".routes;
       }
@@ -111,7 +113,9 @@ jq '
     branchOverlayHasAccessReturnV4: has_transit_route4(.branchOverlay; "10.50.0.0/32"),
     branchOverlayHasAccessReturnV6: has_transit_route6(.branchOverlay; "fd42:dead:feed:1000:0:0:0:0/128"),
     branchNebulaCoreKeepsUnderlayDefaultV4: has_default4(.branchNebulaUpstream; "10.50.0.5"),
-    branchNebulaCoreKeepsUnderlayDefaultV6: has_default6(.branchNebulaUpstream; "fd42:dead:feed:1000:0:0:0:5")
+    branchNebulaCoreKeepsUnderlayDefaultV6: has_default6(.branchNebulaUpstream; "fd42:dead:feed:1000:0:0:0:5"),
+    sitecDownstreamPolicyDmzHasWanDefaultV4: has_default4(.downstreamPolicyDmz; "10.80.0.9"),
+    sitecDownstreamPolicyDmzHasWanDefaultV6: has_default6(.downstreamPolicyDmz; "fd42:dead:cafe:1000:0:0:0:9")
   }
 ' "${sitec_json}" > "${sitec_json}.checks"
 
