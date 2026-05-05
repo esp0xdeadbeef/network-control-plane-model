@@ -99,7 +99,7 @@ let
                           ipv6 = extraForFamily 6 nodeName gateway6 existingV6 (listOrEmpty (addresses.ipv6 or null));
                         };
                       byNodeRoutes =
-                        if !isNonEmptyString peerSite then
+                        if overlayName != null || !isNonEmptyString peerSite then
                           [ ]
                         else
                           builtins.map routesForNode (sortedNames byNode);
