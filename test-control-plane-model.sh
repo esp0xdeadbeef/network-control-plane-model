@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 "$ROOT/tests/test-nix-file-loc.sh"
+"$ROOT/tests/test-resolved-inventory-secret-facts-contract.sh"
 
 if command -v jq >/dev/null 2>&1; then
   jq_cmd=(jq)

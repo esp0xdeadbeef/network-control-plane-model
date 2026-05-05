@@ -24,7 +24,6 @@ let
     listOrEmpty
     makeStringSet
     routeAlreadyPresent
-    stripDefaultRoutes
     uplinkNameFromAdjacencyId
     ;
   inherit (routeHelpers)
@@ -46,6 +45,14 @@ let
       inherit effective;
       interfaces = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces" (effective.interfaces or null);
     };
+
+  defaultRouteSanitizer = import ./default-route-sanitizer.nix {
+    inherit common helpers isDelegatedIPv6AccessNode siteOverlayNameSet targetInterfaces;
+  };
+  inherit (defaultRouteSanitizer)
+    sanitizeDefaultRoutes
+    sanitizeOverlayDefaults
+    ;
 
   chooseEndpointRouteInterface =
     family: targetName: targetPath: target: interfaces: destinationNode: nodeName:
@@ -128,20 +135,21 @@ let
   addInternalDefaults = family: sourceSet: targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
-      logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
+      targetWithoutOverlayDefaults = sanitizeOverlayDefaults family targetPath target;
+      logicalNode = requireAttrs "${targetPath}.logicalNode" (targetWithoutOverlayDefaults.logicalNode or null);
       nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
       candidatePaths = builtins.filter (preferredFirstHopMatchesSource family) (sortedCandidatePaths family sourceSet nodeName);
     in
     if hasAttr nodeName sourceSet || candidatePaths == [ ] then
-      target
+      targetWithoutOverlayDefaults
     else
       let
-        targetView = targetInterfaces targetPath target;
+        targetView = targetInterfaces targetPath targetWithoutOverlayDefaults;
         sanitized =
           builtins.mapAttrs
             (_: iface:
               let routes = attrsOrEmpty (iface.routes or null);
-              in iface // { routes = routes // (if family == 4 then { ipv4 = stripDefaultRoutes 4 (routes.ipv4 or [ ]); } else { ipv6 = stripDefaultRoutes 6 (routes.ipv6 or [ ]); }); })
+              in iface // { routes = routes // (if family == 4 then { ipv4 = sanitizeDefaultRoutes 4 (routes.ipv4 or [ ]); } else { ipv6 = sanitizeDefaultRoutes 6 (routes.ipv6 or [ ]); }); })
             targetView.interfaces;
         updateForCandidate = state: candidate:
           let
