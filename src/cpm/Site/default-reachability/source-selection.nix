@@ -22,6 +22,49 @@ let
     uplinkNameFromAdjacencyId
     ;
 
+  isDelegatedIPv6AccessNode =
+    accessNodeName:
+    hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode
+    && (
+      let
+        target = runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target;
+        externalValidation = attrsOrEmpty (target.externalValidation or null);
+        advertisements = attrsOrEmpty (target.advertisements or null);
+        ipv6Ra = attrsOrEmpty (advertisements.ipv6Ra or null);
+        networks = attrsOrEmpty (target.networks or null);
+        siteTenants = attrsOrEmpty (siteAttrs.tenants or null);
+        siteIPv6PD = attrsOrEmpty ((attrsOrEmpty (siteAttrs.ipv6 or null)).pd or null);
+        hasRuntimePrefixAdvertisement =
+          builtins.any
+            (raName: !(builtins.isList ((attrsOrEmpty ipv6Ra.${raName}).prefixes or null)))
+            (sortedNames ipv6Ra);
+        hasSlaacPDNetwork =
+          siteIPv6PD != { }
+          && builtins.any
+            (networkName:
+              let
+                network = attrsOrEmpty networks.${networkName};
+                tenantIPv6 = attrsOrEmpty ((attrsOrEmpty (siteTenants.${networkName} or null)).ipv6 or null);
+              in
+              (network.kind or null) == "tenant" && (tenantIPv6.mode or null) == "slaac")
+            (sortedNames networks);
+      in
+      (externalValidation.delegatedIPv6Prefix or false) == true
+      || isNonEmptyString (externalValidation.delegatedPrefixSecretName or null)
+      || hasRuntimePrefixAdvertisement
+      || hasSlaacPDNetwork
+    );
+
+  defaultRouteCountsAsSource = family: route:
+    let
+      lane = attrsOrEmpty (route.lane or null);
+      laneUplink = lane.uplink or null;
+      laneAccess = lane.access or null;
+      isOverlayLaneDefault = isNonEmptyString laneUplink && hasAttr laneUplink siteOverlayNameSet;
+      delegatedAccess = isNonEmptyString laneAccess && isDelegatedIPv6AccessNode laneAccess;
+    in
+    routesContainDefault family [ route ] && (!isOverlayLaneDefault || delegatedAccess);
+
   targetHasDefaultReachabilityForFamily = family: targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
@@ -34,7 +77,9 @@ let
           iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
           routes = attrsOrEmpty (iface.routes or null);
         in
-        routesContainDefault family (if family == 4 then routes.ipv4 or [ ] else routes.ipv6 or [ ]))
+        builtins.any
+          (defaultRouteCountsAsSource family)
+          (if family == 4 then routes.ipv4 or [ ] else routes.ipv6 or [ ]))
       (sortedNames interfaces);
 
   targetHasOverlayDefaultSourceForFamily = family: targetName: target:
@@ -98,39 +143,6 @@ let
           (sortedNames runtimeTargetsWithWANDefaultsByNode);
     in
     uniqueStrings (nodesWithExplicitDefaults ++ overlayDefaultSourceNodes);
-
-  isDelegatedIPv6AccessNode =
-    accessNodeName:
-    hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode
-    && (
-      let
-        target = runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target;
-        externalValidation = attrsOrEmpty (target.externalValidation or null);
-        advertisements = attrsOrEmpty (target.advertisements or null);
-        ipv6Ra = attrsOrEmpty (advertisements.ipv6Ra or null);
-        networks = attrsOrEmpty (target.networks or null);
-        siteTenants = attrsOrEmpty (siteAttrs.tenants or null);
-        siteIPv6PD = attrsOrEmpty ((attrsOrEmpty (siteAttrs.ipv6 or null)).pd or null);
-        hasRuntimePrefixAdvertisement =
-          builtins.any
-            (raName: !(builtins.isList ((attrsOrEmpty ipv6Ra.${raName}).prefixes or null)))
-            (sortedNames ipv6Ra);
-        hasSlaacPDNetwork =
-          siteIPv6PD != { }
-          && builtins.any
-            (networkName:
-              let
-                network = attrsOrEmpty networks.${networkName};
-                tenantIPv6 = attrsOrEmpty ((attrsOrEmpty (siteTenants.${networkName} or null)).ipv6 or null);
-              in
-              (network.kind or null) == "tenant" && (tenantIPv6.mode or null) == "slaac")
-            (sortedNames networks);
-      in
-      (externalValidation.delegatedIPv6Prefix or false) == true
-      || isNonEmptyString (externalValidation.delegatedPrefixSecretName or null)
-      || hasRuntimePrefixAdvertisement
-      || hasSlaacPDNetwork
-    );
 
   preferredFirstHopMatchesSource =
     family: candidate:

@@ -20,6 +20,13 @@ let
     uniqueStrings
     ;
 
+  addressPolicy = import ./overlay-address-policy.nix {
+    inherit common ipam lib;
+  };
+  buildOverlayNodeAddresses = import ./overlay-node-addresses.nix {
+    inherit addressPolicy common helpers ipam lib;
+  };
+
   overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
   overlayNames = sortedNames overlayReachability;
 
@@ -43,6 +50,7 @@ let
 
             overlayIpamV4 = attrsOrEmpty (overlayIpamCfg.ipv4 or null);
             overlayIpamV6 = attrsOrEmpty (overlayIpamCfg.ipv6 or null);
+            addressSourcePolicy = attrsOrEmpty (cfg.addressSourcePolicy or null);
             nebulaCfg = attrsOrEmpty (cfg.nebula or null);
             nebulaLighthouse = attrsOrEmpty (nebulaCfg.lighthouse or null);
 
@@ -67,62 +75,21 @@ let
             ipamV6OffsetStart =
               if builtins.isInt (overlayIpamV6.offsetStart or null) then overlayIpamV6.offsetStart else 10;
 
-            explicitOverlayNodeNames =
-              lib.sort (a: b: a < b) (
-                uniqueStrings ((sortedNames overlayNodesCfg) ++ (sortedNames overlayIpamNodesCfg))
-              );
-
-            overlayNodeNames = lib.sort (a: b: a < b) (uniqueStrings (terminateOn ++ explicitOverlayNodeNames));
-
-            resolveOverlayAddr =
-              { family, nodeName, idx }:
-              let
-                nodeCfg = attrsOrEmpty (overlayNodesCfg.${nodeName} or null);
-                nodeIpamCfg = attrsOrEmpty (overlayIpamNodesCfg.${nodeName} or null);
-                nodeOverrideAddr4 = nodeCfg.addr4 or (nodeIpamCfg.addr4 or null);
-                nodeOverrideAddr6 = nodeCfg.addr6 or (nodeIpamCfg.addr6 or null);
-              in
-              if family == 4 then
-                if isNonEmptyString nodeOverrideAddr4 then
-                  nodeOverrideAddr4
-                else if ipamV4Prefix != null then
-                  ipam.allocOne {
-                    family = 4;
-                    prefix = ipamV4Prefix;
-                    perNodePrefixLength = ipamV4PerNodePrefixLength;
-                    offset = ipamV4OffsetStart + idx;
-                  }
-                else
-                  null
-              else if isNonEmptyString nodeOverrideAddr6 then
-                nodeOverrideAddr6
-              else if ipamV6Prefix != null then
-                ipam.allocOne {
-                  family = 6;
-                  prefix = ipamV6Prefix;
-                  perNodePrefixLength = ipamV6PerNodePrefixLength;
-                  offset = ipamV6OffsetStart + idx;
-                }
-              else
-                null;
-
-            overlayNodeAddrs =
-              builtins.listToAttrs (
-                lib.imap0
-                  (idx: nodeName:
-                    let
-                      addr4 = resolveOverlayAddr { family = 4; inherit nodeName idx; };
-                      addr6 = resolveOverlayAddr { family = 6; inherit nodeName idx; };
-                    in
-                    {
-                      name = nodeName;
-                      value =
-                        { }
-                        // (if isNonEmptyString addr4 then { addr4 = addr4; } else { })
-                        // (if isNonEmptyString addr6 then { addr6 = addr6; } else { });
-                    })
-                  overlayNodeNames
-              );
+            overlayNodeAddrs = buildOverlayNodeAddresses {
+              inherit
+                addressSourcePolicy
+                ipamV4OffsetStart
+                ipamV4PerNodePrefixLength
+                ipamV4Prefix
+                ipamV6OffsetStart
+                ipamV6PerNodePrefixLength
+                ipamV6Prefix
+                overlayIpamNodesCfg
+                overlayNodesCfg
+                overlayPath
+                terminateOn
+                ;
+            };
           in
           {
             name = overlayName;
