@@ -23,6 +23,33 @@ let
         in if isNonEmptyString rendered then rendered else failInventory path "must not contain empty strings")
       (requireList path value);
 
+  ipv4Octet = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
+
+  isIpv4Address =
+    value:
+    builtins.match "${ipv4Octet}\\.${ipv4Octet}\\.${ipv4Octet}\\.${ipv4Octet}" value != null;
+
+  isIpv6Address =
+    value:
+    builtins.match "([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}" value != null;
+
+  normalizeForwarderList = dnsPath: dns: fieldName:
+    let
+      path = "${dnsPath}.${fieldName}";
+    in
+    builtins.map
+      (entry:
+        let
+          rendered = requireString "${path}[*]" entry;
+        in
+        if !(isNonEmptyString rendered) then
+          failInventory path "must not contain empty strings"
+        else if isIpv4Address rendered || isIpv6Address rendered then
+          rendered
+        else
+          failInventory path "must contain IPv4 or IPv6 address literals; resolve runtime placeholders before CPM")
+      (requireList path (dns.${fieldName} or [ ]));
+
   publicResolverCidrs = [
     "1.1.1.1/32"
     "1.0.0.1/32"
@@ -62,9 +89,9 @@ in
       allowFrom = normalizeStringList dnsPath dns "allowFrom";
       forwarders =
         if dns ? forwarders then
-          normalizeStringList dnsPath dns "forwarders"
+          normalizeForwarderList dnsPath dns "forwarders"
         else if dns ? upstreams then
-          normalizeStringList dnsPath dns "upstreams"
+          normalizeForwarderList dnsPath dns "upstreams"
         else
           [ ];
       _forwarderConflict =
