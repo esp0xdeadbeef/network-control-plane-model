@@ -10,11 +10,11 @@
         "nixpkgs-network": "nixpkgs-network"
       },
       "locked": {
-        "lastModified": 1777960939,
-        "narHash": "sha256-T1FwmmkAKa7Ajgm84cUm59Cx35jbBy24nqeubzCX/UY=",
+        "lastModified": 1777973135,
+        "narHash": "sha256-5s9ggeDa7On/0763XCCIfR8LpzaJVYYYY37qvjNarhA=",
         "owner": "esp0xdeadbeef",
         "repo": "network-compiler",
-        "rev": "26c2dc9392d7ed0177b26038e6be740593a03484",
+        "rev": "b887c343e2f854478d02e068a4a4f94869143ce3",
         "type": "github"
       },
       "original": {
@@ -33,11 +33,11 @@
         "nixpkgs-network": "nixpkgs-network_2"
       },
       "locked": {
-        "lastModified": 1777961157,
-        "narHash": "sha256-I7Bp604ugseqIDS5e5VhiqNBAqeucosaYg4AZnzJP/E=",
+        "lastModified": 1777973144,
+        "narHash": "sha256-UzPHV97VtPpEupzCglidqbefcve6xm7eAMVvXpB1atI=",
         "owner": "esp0xdeadbeef",
         "repo": "network-forwarding-model",
-        "rev": "f596ba4f17612a32c891383e98bd518bdc0493dd",
+        "rev": "c603cfd72e4590b505a17fa1201872029c52097c",
         "type": "github"
       },
       "original": {
@@ -49,11 +49,11 @@
     "network-labs": {
       "flake": false,
       "locked": {
-        "lastModified": 1777960834,
-        "narHash": "sha256-542ttjYnUcouy/6b8dBBPcQFqlLURZv54IUtNehkKtg=",
+        "lastModified": 1777970412,
+        "narHash": "sha256-x6S7ogEP6MBk6ZpAiB7vlHWbDzN9UtggK/K9V9km66Y=",
         "owner": "esp0xdeadbeef",
         "repo": "network-labs",
-        "rev": "d7a422448b37765074e23acac7f8698914747c98",
+        "rev": "4afe4a7495e05b726e91847dda867a4c385761e2",
         "type": "github"
       },
       "original": {
@@ -65,11 +65,11 @@
     "network-labs_2": {
       "flake": false,
       "locked": {
-        "lastModified": 1777960834,
-        "narHash": "sha256-542ttjYnUcouy/6b8dBBPcQFqlLURZv54IUtNehkKtg=",
+        "lastModified": 1777970412,
+        "narHash": "sha256-x6S7ogEP6MBk6ZpAiB7vlHWbDzN9UtggK/K9V9km66Y=",
         "owner": "esp0xdeadbeef",
         "repo": "network-labs",
-        "rev": "d7a422448b37765074e23acac7f8698914747c98",
+        "rev": "4afe4a7495e05b726e91847dda867a4c385761e2",
         "type": "github"
       },
       "original": {
