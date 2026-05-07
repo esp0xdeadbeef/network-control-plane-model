@@ -1,19 +1,33 @@
 {
   helpers,
   common,
+  siteOverlayNameSet,
 }:
 
 let
   inherit (helpers) sortedNames;
-  inherit (common) attrsOrEmpty defaultDst listOrEmpty;
+  inherit (common) attrsOrEmpty defaultDst listContains listOrEmpty;
 
   isOverlayInterface =
     iface:
     let backingRef = attrsOrEmpty (iface.backingRef or null);
     in (iface.sourceKind or null) == "overlay" || (backingRef.kind or null) == "overlay";
 
-  overlayInterfaceNames =
-    interfaces: builtins.filter (ifName: isOverlayInterface interfaces.${ifName}) (sortedNames interfaces);
+  isOverlayUplinkInterface =
+    iface:
+    let
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+      uplinks = listOrEmpty (backingRef.uplinks or null);
+    in
+    builtins.any (uplinkName: listContains uplinkName (sortedNames siteOverlayNameSet)) uplinks;
+
+  egressInterfaceNames =
+    targetRole: interfaces:
+    builtins.filter
+      (ifName:
+        let iface = interfaces.${ifName};
+        in isOverlayInterface iface || (targetRole != "core" && isOverlayUplinkInterface iface))
+      (sortedNames interfaces);
 
   delegatedRouteExists =
     family: sourceNode: routes:
@@ -25,20 +39,36 @@ let
         && ((attrsOrEmpty (route.intent or null)).exitNode or null) == sourceNode)
       (listOrEmpty routes);
 
+  firstGateway =
+    family: routes:
+    let
+      field = if family == 4 then "via4" else "via6";
+      candidates = builtins.filter (route: route.${field} or null != null) routes;
+    in
+    if candidates == [ ] then null else (builtins.head candidates).${field};
+
   delegatedOverlayRoute =
-    family: sourceNode: metric:
-    {
-      dst = defaultDst family;
-      intent = {
-        kind = "delegated-public-egress";
-        source = "external-validation";
-        exitNode = sourceNode;
+    family: sourceNode: metric: iface: existingRoutes:
+    let
+      gateway = firstGateway family existingRoutes;
+      base = {
+        dst = defaultDst family;
+        intent = {
+          kind = "delegated-public-egress";
+          source = "external-validation";
+          exitNode = sourceNode;
+        };
+        metric = metric;
+        policyOnly = true;
+        proto = "overlay";
       };
-      metric = metric;
-      policyOnly = true;
-      proto = "overlay";
-      scope = "link";
-    };
+    in
+    if isOverlayInterface iface then
+      base // { scope = "link"; }
+    else if gateway == null then
+      base // { scope = "link"; }
+    else
+      base // (if family == 4 then { via4 = gateway; } else { via6 = gateway; });
 
   addToInterface =
     family: sourceNode: metric: iface:
@@ -55,9 +85,9 @@ let
           routes
           // (
             if family == 4 then
-              { ipv4 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric) ]; }
+              { ipv4 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric iface existingRoutes) ]; }
             else
-              { ipv6 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric) ]; }
+              { ipv6 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric iface existingRoutes) ]; }
           );
       };
 in
@@ -67,10 +97,11 @@ in
       family,
       sourceNode,
       metric,
+      targetRole,
       interfaces,
     }:
     builtins.foldl'
       (acc: ifName: acc // { ${ifName} = addToInterface family sourceNode metric acc.${ifName}; })
       interfaces
-      (overlayInterfaceNames interfaces);
+      (egressInterfaceNames targetRole interfaces);
 }
