@@ -105,7 +105,7 @@ let
   };
 
   routesWithDnsExtras = import ./dns/extra-routes.nix {
-    inherit helpers common findSourceRouteForDestination routePresent;
+    inherit helpers common interfaces isUpstreamSelectorTarget findSourceRouteForDestination routePresent;
   };
 
   updatedInterfaces =

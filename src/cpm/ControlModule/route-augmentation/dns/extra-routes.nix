@@ -1,6 +1,8 @@
 {
   helpers,
   common,
+  interfaces,
+  isUpstreamSelectorTarget,
   findSourceRouteForDestination,
   routePresent,
 }:
@@ -18,6 +20,13 @@ builtins.foldl'
       providerAddresses = if family == 4 then spec.providerAddresses4 or [ ] else spec.providerAddresses6 or [ ];
       ingressServiceRoute = listOrEmpty (spec.ingressPreferredUplinks or null) != [ ];
       serviceDestinations = providerPrefixes ++ providerAddresses;
+      isUpstreamAccessUplink =
+        let
+          iface = attrsOrEmpty (interfaces.${ifName} or null);
+          backingRef = attrsOrEmpty (iface.backingRef or null);
+          lane = attrsOrEmpty (backingRef.lane or null);
+        in
+        isUpstreamSelectorTarget && (lane.kind or null) == "access-uplink";
       providerPrefixCovered =
         accumulatedRoutes:
         builtins.any
@@ -30,8 +39,9 @@ builtins.foldl'
           isProviderAddress = builtins.elem destination providerAddresses;
           sourceRoute = findSourceRouteForDestination family ifName preferredUplinks ingressServiceRoute destination;
           gateway = if sourceRoute == null then null else if family == 4 then sourceRoute.via4 or null else sourceRoute.via6 or null;
+          wouldLoopBackToPolicy = isUpstreamAccessUplink && (sourceRoute.proto or null) == "default";
           extraRoute =
-            if sourceRoute == null || !isNonEmptyString gateway || providerPrefixCovered inner then
+            if sourceRoute == null || !isNonEmptyString gateway || providerPrefixCovered inner || wouldLoopBackToPolicy then
               null
             else
               sourceRoute

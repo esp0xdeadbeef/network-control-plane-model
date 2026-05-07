@@ -57,6 +57,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector"
         .effectiveRuntimeRealization.interfaces
         ."p2p-b-router-core-nebula-b-router-upstream-selector".routes;
+    hostileUpstreamPolicyEastWest =
+      siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector"
+        .effectiveRuntimeRealization.interfaces
+        ."p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west".routes;
     hostileAccessAds =
       siteB.runtimeTargets."espbranch-site-b-b-router-access-hostile".advertisements.ipv6Ra;
     hasDst = routes: destination:
@@ -74,6 +78,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       hostileIngressDnsUsesEastWestV6 = hasRouteVia6 hostileIngress "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:11";
       hostileUpstreamCoreDnsUsesNebulaV4 = hasRouteVia4 hostileUpstreamCore "10.90.10.1" "10.50.0.4";
       hostileUpstreamCoreDnsUsesNebulaV6 = hasRouteVia6 hostileUpstreamCore "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:4";
+      hostileUpstreamPolicyEastWestDoesNotLoopSitecDnsV4 = !(hasDst hostileUpstreamPolicyEastWest "10.90.10.1");
+      hostileUpstreamPolicyEastWestDoesNotLoopSitecDnsV6 = !(hasDst hostileUpstreamPolicyEastWest "fd42:dead:cafe:10::1");
       hostileAccessAdsPresent = hostileAccessAds != [ ];
       hostileAccessSubnet = (builtins.head hostileAccessAds).routerInterface.subnet6 == "fd42:dead:feed:70::/64";
       hostileAccessNoHardcodedPrefix =
