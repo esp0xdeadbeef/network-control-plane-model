@@ -70,6 +70,16 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
         (upstreamRoutes6For "p2p-b-router-core-nebula-b-router-upstream-selector");
 
+    hostilePolicyIngressDelegatedDefaultToOverlay =
+      builtins.any
+        (route:
+          (route.dst or null) == "::/0"
+          && (route.via6 or null) == "fd42:dead:feed:1000:0:0:0:4"
+          && (route.policyOnly or false) == true
+          && ((route.intent or { }).kind or null) == "delegated-public-egress"
+          && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
+        (upstreamRoutes6For "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west");
+
     badGenericOverlayDefault =
       builtins.any
         (route:
@@ -80,10 +90,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           ))
         (routes6For "overlay-east-west");
   in
-    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && underlayDefaultPreserved && !badGenericOverlayDefault then
+    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && underlayDefaultPreserved && !badGenericOverlayDefault then
       true
     else
-      throw "delegated-overlay-public-egress failed: expected b-router-core-nebula overlay-east-west to carry a policyOnly delegated-public-egress ::/0 and b-router-upstream-selector to route hostile delegated IPv6 default toward core-nebula for b-router-access-hostile, while preserving the upstream underlay default and rejecting generic overlay defaults. Remove this error only after CPM emits that explicit renderer contract and renderer/live tests prove hostile GUA egress selects Nebula without moving underlay endpoint routes off WAN."
+      throw "delegated-overlay-public-egress failed: expected b-router-core-nebula overlay-east-west to carry a policyOnly delegated-public-egress ::/0, b-router-upstream-selector core-nebula to preserve its overlay default, and b-router-upstream-selector pol-hostile-ew to route hostile delegated IPv6 default toward core-nebula for b-router-access-hostile. Remove this error only after CPM emits that ingress-lane renderer contract and live ip -6 route get from pol-hostile-ew selects core-nebula without moving underlay endpoint routes off WAN."
 ' >/dev/null
 
 echo "PASS delegated-overlay-public-egress"
