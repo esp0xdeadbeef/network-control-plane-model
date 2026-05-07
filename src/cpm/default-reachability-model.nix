@@ -1,6 +1,6 @@
 { lib, helpers }:
 
-{ sitePath, siteAttrs, transit, runtimeTargets, allSiteEntries ? [ ] }:
+{ sitePath, siteAttrs, transit, runtimeTargets, allSiteEntries ? [ ], uplinkRouting ? { } }:
 
 let
   inherit (helpers)
@@ -51,6 +51,7 @@ let
       exitNodeSet
       runtimeTargets
       runtimeTargetNames
+      uplinkRouting
       ;
   };
   inherit (wanDefaults)

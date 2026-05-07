@@ -6,6 +6,7 @@
   exitNodeSet,
   runtimeTargets,
   runtimeTargetNames,
+  uplinkRouting,
 }:
 
 let
@@ -19,6 +20,40 @@ let
     routesContainDefault
     stripDefaultRoutes
     ;
+
+  staticRouteForFamily = family: route:
+    let
+      dst = route.prefix or route.dst or null;
+      via = route.via or null;
+      default = if family == 4 then "0.0.0.0/0" else "::/0";
+    in
+    if !isNonEmptyString dst || !isNonEmptyString via then
+      null
+    else
+      {
+        inherit dst;
+        intent = {
+          kind = if dst == default then "default-reachability" else "uplink-learned-reachability";
+          source = "explicit-uplink-static";
+        };
+        proto = "upstream";
+      }
+      // {
+        ${if family == 4 then "via4" else "via6"} = via;
+      };
+
+  staticUplinkRoutes =
+    family: uplinkName:
+    let
+      uplinkCfg = if isNonEmptyString uplinkName && hasAttr uplinkName uplinkRouting then uplinkRouting.${uplinkName} else null;
+      staticCfg = attrsOrEmpty (uplinkCfg.static or null);
+      routes = attrsOrEmpty (staticCfg.routes or null);
+      familyRoutes = if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
+    in
+    if uplinkCfg == null || (uplinkCfg.mode or null) != "static" then
+      [ ]
+    else
+      builtins.filter (route: route != null) (builtins.map (staticRouteForFamily family) familyRoutes);
 
   selectedUplinkNamesForTarget = target:
     let
@@ -47,6 +82,8 @@ let
         || (isNonEmptyString upstream && hasAttr upstream selectedUplinkSet);
       ipv4Routes = listOrEmpty (routes.ipv4 or null);
       ipv6Routes = listOrEmpty (routes.ipv6 or null);
+      staticIPv4Routes = staticUplinkRoutes 4 upstream;
+      staticIPv6Routes = staticUplinkRoutes 6 upstream;
       wantsIPv4Default =
         !isOverlayTransportUplink
         && selected
@@ -58,6 +95,8 @@ let
       updatedIPv4Routes =
         if isOverlayTransportUplink then
           stripDefaultRoutes 4 ipv4Routes
+        else if staticIPv4Routes != [ ] then
+          stripDefaultRoutes 4 ipv4Routes ++ staticIPv4Routes
         else if wantsIPv4Default && !routesContainDefault 4 ipv4Routes then
           ipv4Routes ++ [ (buildWANDefaultRoute 4) ]
         else
@@ -65,6 +104,8 @@ let
       updatedIPv6Routes =
         if isOverlayTransportUplink then
           stripDefaultRoutes 6 ipv6Routes
+        else if staticIPv6Routes != [ ] then
+          stripDefaultRoutes 6 ipv6Routes ++ staticIPv6Routes
         else if wantsIPv6Default && !routesContainDefault 6 ipv6Routes then
           ipv6Routes ++ [ (buildWANDefaultRoute 6) ]
         else
