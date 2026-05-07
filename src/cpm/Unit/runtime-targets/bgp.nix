@@ -64,6 +64,29 @@ let
       ipv6 = builtins.filter (keepBgpRoute 6) (listOrEmpty (routesAttrs.ipv6 or null));
     };
 
+  accessNetworksForInterfaces =
+    interfaces:
+    let
+      tenantInterfaces =
+        builtins.filter
+          (iface: (attrsOrEmpty iface).sourceKind or null == "tenant")
+          (builtins.attrValues interfaces);
+    in
+    {
+      ipv4 =
+        builtins.filter isNonEmptyString (
+          builtins.map (iface: (attrsOrEmpty iface).addr4 or null) tenantInterfaces
+        );
+      ipv6 =
+        builtins.filter isNonEmptyString (
+          builtins.map (iface: (attrsOrEmpty iface).addr6 or null) tenantInterfaces
+        );
+    };
+
+  bgpNetworksForNode =
+    nodeRole: interfaces:
+    if nodeRole == "access" then accessNetworksForInterfaces interfaces else { ipv4 = [ ]; ipv6 = [ ]; };
+
   bgpNeighborsForNode =
     nodeName:
     let
@@ -96,5 +119,5 @@ let
       peerNames;
 in
 {
-  inherit bgpNeighborsForNode filterRoutesForBgp routerRoleSet;
+  inherit bgpNeighborsForNode bgpNetworksForNode filterRoutesForBgp routerRoleSet;
 }

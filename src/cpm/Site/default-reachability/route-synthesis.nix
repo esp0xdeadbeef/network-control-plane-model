@@ -27,7 +27,7 @@ let
     findInterfaceNameForAdjacency
     ;
   explicitDefaultPreservation = import ./explicit-default-preservation.nix {
-    inherit helpers common sitePath;
+    inherit helpers common sitePath siteOverlayNameSet isDelegatedIPv6AccessNode;
   };
 
   targetInterfaces = targetPath: target:
@@ -59,6 +59,7 @@ let
   };
   inherit (defaultRouteSanitizer)
     sanitizeDefaultRoutes
+    sanitizeDefaultRoutesForInterface
     sanitizeOverlayDefaults
     ;
 
@@ -106,7 +107,7 @@ let
           builtins.mapAttrs
             (_: iface:
               let routes = attrsOrEmpty (iface.routes or null);
-              in iface // { routes = routes // (if family == 4 then { ipv4 = sanitizeDefaultRoutes 4 (routes.ipv4 or [ ]); } else { ipv6 = sanitizeDefaultRoutes 6 (routes.ipv6 or [ ]); }); })
+              in iface // { routes = routes // (if family == 4 then { ipv4 = sanitizeDefaultRoutesForInterface 4 iface (routes.ipv4 or [ ]); } else { ipv6 = sanitizeDefaultRoutesForInterface 6 iface (routes.ipv6 or [ ]); }); })
             targetView.interfaces;
         updateForCandidate = state: candidate:
           let
@@ -137,7 +138,10 @@ let
               iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}" interfacesWithDelegatedOverlayEgress.${interfaceName};
               routes = attrsOrEmpty (iface.routes or null);
               existing = if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
-              updated = existing ++ [ (buildInternalDefaultRoute family candidate.sourceNode firstStep.via (100 + (idx * 100))) ];
+              defaultRoute =
+                (buildInternalDefaultRoute family candidate.sourceNode firstStep.via (100 + (idx * 100)))
+                // (if (firstStep.laneMeta or { }) != { } then { lane = firstStep.laneMeta; } else { });
+              updated = existing ++ [ defaultRoute ];
               updatedIface = iface // { routes = routes // (if family == 4 then { ipv4 = updated; } else { ipv6 = updated; }); };
             in
             { index = idx + 1; interfaces = interfacesWithDelegatedOverlayEgress // { ${interfaceName} = updatedIface; }; };

@@ -7,6 +7,9 @@ def site_has_dns_intent($site):
 def site_dns_targets($site):
   [runtime_targets($site) | select((.data.services.dns // null) != null)];
 
+def bool_or($object; $field; $default):
+  if ($object | has($field)) then $object[$field] else $default end;
+
 def missing_site_dns_contract_violations:
   sites
   | select(site_has_dns_intent(.))
@@ -32,7 +35,7 @@ def dns_contract_violations:
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS public resolver block is not enabled")
     elif ($killSwitch.blockImplicitDefaultRouteDns // false) != true then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS implicit default-route block is not enabled")
-    elif ($killSwitch.allowPublicResolverFallback // true) != false then
+    elif bool_or($killSwitch; "allowPublicResolverFallback"; true) != false then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS public resolver fallback is allowed")
     elif ($target.data.role // "") == "access" and ($dns.routeContracts // [] | length) == 0 then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "access DNS forwarders lack explicit route contracts")

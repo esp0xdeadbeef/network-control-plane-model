@@ -22,16 +22,9 @@ in
 family: consumerInterfaceName: preferredUplinks: ingressServiceRoute: destination:
 let
   consumerInterface = interfaces.${consumerInterfaceName};
-  consumerRuntimeIfName = consumerInterface.runtimeIfName or "";
-  consumerIsUpstreamCoreIngress =
-    ingressServiceRoute
-    &&
-    isUpstreamSelectorTarget
-    && builtins.isString consumerRuntimeIfName
-    && (consumerRuntimeIfName == "core" || lib.hasPrefix "core-" consumerRuntimeIfName);
   includeConsumerInterface =
     preferredUplinks != [ ]
-    && !consumerIsUpstreamCoreIngress
+    && !ingressServiceRoute
     && laneMatchesPreferredUplinks consumerInterface preferredUplinks;
   candidateInterfaceNames =
     (lib.optional includeConsumerInterface consumerInterfaceName)
@@ -56,7 +49,9 @@ let
       peer = p2pPeers.peerForInterface family interfaces.${ifName};
       routeViaPeer = { dst = destination; proto = "default"; } // (if family == 4 then { via4 = peer; } else { via6 = peer; });
     in
-    if exact != null then
+    if ingressServiceRoute && ifName != consumerInterfaceName && isNonEmptyString peer then
+      routeViaPeer
+    else if exact != null then
       exact
     else if covering != null && isNonEmptyString (if family == 4 then (covering.via4 or null) else (covering.via6 or null)) then
       covering

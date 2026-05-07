@@ -1,11 +1,28 @@
 { }:
 
 let
-  matches = pattern: value:
-    builtins.isString value && builtins.match pattern value != null;
+  attrsOrEmpty = value: if builtins.isAttrs value then value else { };
 
-  containsToken = token: value:
-    matches ".*${token}.*" value;
+  backingRef = iface: attrsOrEmpty (iface.backingRef or { });
+
+  lane = iface: attrsOrEmpty ((backingRef iface).lane or { });
+
+  laneKind = iface: (lane iface).kind or null;
+
+  laneAccess = iface: (lane iface).access or null;
+
+  laneUplink = iface: (lane iface).uplink or null;
+
+  uplinks = iface:
+    let
+      ref = backingRef iface;
+      laneValue = lane iface;
+    in
+    builtins.filter (uplink: uplink != null) (
+      (ref.uplinks or [ ])
+      ++ (laneValue.uplinks or [ ])
+      ++ (if (laneValue.uplink or null) == null then [ ] else [ laneValue.uplink ])
+    );
 
   selectorPairRule = fromIface: toIface: [
     {
@@ -21,13 +38,6 @@ let
       applyTcpMssClamp = false;
     }
   ];
-
-  suffixAfter =
-    prefix: value:
-    let
-      parts = builtins.match "${prefix}(.+)" value;
-    in
-    if parts == null then null else builtins.elemAt parts 0;
 
   buildMeshRules = transitInterfaces:
     builtins.concatLists (
@@ -65,18 +75,17 @@ in
   buildDownstreamSelectorRules = transitInterfaces:
     let
       accessInterfaces =
-        builtins.filter (iface: matches "access-.+" iface.runtimeIfName) transitInterfaces;
+        builtins.filter (iface: laneKind iface == "access-edge" && laneAccess iface != null) transitInterfaces;
       policyInterfaces =
-        builtins.filter (iface: matches "policy-.+" iface.runtimeIfName) transitInterfaces;
+        builtins.filter (iface: laneKind iface == "access" && laneAccess iface != null) transitInterfaces;
       policyForAccess = accessIface:
         let
-          suffix = suffixAfter "access-" accessIface.runtimeIfName;
           matchesPolicy =
             builtins.filter
-              (policyIface: policyIface.runtimeIfName == "policy-${suffix}")
+              (policyIface: laneAccess policyIface == laneAccess accessIface)
               policyInterfaces;
         in
-        if suffix == null || matchesPolicy == [ ] then null else builtins.elemAt matchesPolicy 0;
+        if matchesPolicy == [ ] then null else builtins.elemAt matchesPolicy 0;
     in
     builtins.concatLists (
       builtins.map
@@ -90,54 +99,17 @@ in
 
   buildUpstreamSelectorRules = transitInterfaces:
     let
-      selectorIfaceName = iface:
-        "${iface.runtimeIfName} ${iface.sourceInterfaceName}";
       coreInterfaces =
-        builtins.filter (iface: matches "core.*" iface.runtimeIfName) transitInterfaces;
+        builtins.filter (iface: (uplinks iface) != [ ] && laneKind iface == "uplink") transitInterfaces;
       policyInterfaces =
-        builtins.filter (iface: !(matches "core.*" iface.runtimeIfName)) transitInterfaces;
+        builtins.filter (iface: laneKind iface == "access-uplink" && laneUplink iface != null) transitInterfaces;
       coreTransitRules = buildMeshRules coreInterfaces;
-
-      firstMatchingCore = predicate:
-        let
-          matchesCore = builtins.filter predicate coreInterfaces;
-        in
-        if matchesCore == [ ] then null else builtins.elemAt matchesCore 0;
 
       coreForPolicy = policyIface:
         let
-          name = selectorIfaceName policyIface;
-          wantsOverlay =
-            containsToken "ew" name
-            || containsToken "storage" name
-            || containsToken "sto" name;
-          wantsA =
-            containsToken "isp-a" name
-            || matches ".*-a$" name;
-          wantsB =
-            containsToken "isp-b" name
-            || matches ".*-b$" name;
-          wantsWan = containsToken "wan" name;
+          matchesCore = builtins.filter (coreIface: builtins.elem (laneUplink policyIface) (uplinks coreIface)) coreInterfaces;
         in
-        if wantsOverlay then
-          firstMatchingCore (coreIface: containsToken "nebula" (selectorIfaceName coreIface))
-        else if wantsA then
-          let
-            exact = firstMatchingCore (coreIface: coreIface.runtimeIfName == "core-a");
-          in
-          if exact != null then exact else firstMatchingCore (coreIface: containsToken "isp" (selectorIfaceName coreIface))
-        else if wantsB then
-          let
-            exact = firstMatchingCore (coreIface: coreIface.runtimeIfName == "core-b");
-          in
-          if exact != null then exact else firstMatchingCore (coreIface: containsToken "isp" (selectorIfaceName coreIface))
-        else if wantsWan then
-          let
-            plain = firstMatchingCore (coreIface: coreIface.runtimeIfName == "core");
-          in
-          if plain != null then plain else firstMatchingCore (coreIface: containsToken "isp" (selectorIfaceName coreIface))
-        else
-          null;
+        if matchesCore == [ ] then null else builtins.elemAt matchesCore 0;
     in
     builtins.concatLists (
       builtins.map

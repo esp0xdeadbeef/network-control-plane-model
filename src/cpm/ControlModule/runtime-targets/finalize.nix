@@ -1,7 +1,8 @@
-{ helpers }:
+{ lib, helpers, common, ipam }:
 
 let
   inherit (helpers) hasAttr sortedNames;
+  addDnsContracts = import ./dns-contracts.nix { inherit lib helpers common ipam; };
 in
 {
   accessAdvertisements,
@@ -12,7 +13,6 @@ builtins.listToAttrs (
   builtins.map
     (targetName:
       let
-        target = normalizedRuntimeTargets.${targetName};
         hasAccessAdvertisements = hasAttr targetName accessAdvertisements;
         accessExternalValidation =
           if !hasAccessAdvertisements then
@@ -37,24 +37,23 @@ builtins.listToAttrs (
                 (entry: entry // { externalValidation = delegatedPrefixExternalValidation; })
                 (accessAdvertisements.${targetName}.ipv6Ra or [ ]);
           };
+        advertisementAttrs =
+          if wantsDelegatedIPv6Prefix then
+            {
+              advertisements = delegatedPrefixAdvertisements;
+              externalValidation = delegatedPrefixExternalValidation;
+            }
+          else if hasAccessAdvertisements then
+            { advertisements = accessAdvertisements.${targetName}; }
+          else
+            { };
+        intentAttrs =
+          (if hasAttr targetName firewallIntent.natByTarget then { natIntent = firewallIntent.natByTarget.${targetName}; } else { })
+          // (if hasAttr targetName firewallIntent.forwardingByTarget then { forwardingIntent = firewallIntent.forwardingByTarget.${targetName}; } else { });
       in
       {
         name = targetName;
-        value =
-          target
-          // (if hasAttr targetName firewallIntent.natByTarget then { natIntent = firewallIntent.natByTarget.${targetName}; } else { })
-          // (if hasAttr targetName firewallIntent.forwardingByTarget then { forwardingIntent = firewallIntent.forwardingByTarget.${targetName}; } else { })
-          // (
-            if wantsDelegatedIPv6Prefix then
-              {
-                advertisements = delegatedPrefixAdvertisements;
-                externalValidation = delegatedPrefixExternalValidation;
-              }
-            else if hasAccessAdvertisements then
-              { advertisements = accessAdvertisements.${targetName}; }
-            else
-              { }
-          );
+        value = addDnsContracts (normalizedRuntimeTargets.${targetName} // intentAttrs // advertisementAttrs);
       })
     (sortedNames normalizedRuntimeTargets)
 )

@@ -57,6 +57,10 @@ let
       providersForService
       ;
   };
+
+  allowedClasses = import ./allowed-classes.nix {
+    inherit lib allowedRelations dnsPolicy providersForService serviceDefinitions;
+  };
 in
 {
   inherit dnsServiceRouteSpecs;
@@ -118,4 +122,7 @@ in
             dnsRelations)
         hostedDnsServices
     );
+
+  policyDerivedDnsAllowedClassesForTenants = allowedClasses.forTenants;
+  policyDerivedDnsAllowedClassesForListeners = allowedClasses.forListeners;
 }

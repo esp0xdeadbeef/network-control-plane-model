@@ -15,6 +15,7 @@
   buildSyntheticUplinkInterfaceEntry,
   resolveRuntimeContainers,
   resolveRuntimeServices,
+  bgpNetworksForNode,
   bgpNeighborsForNode,
   filterRoutesForBgp,
   routerRoleSet,
@@ -74,6 +75,8 @@ let
             [
               ({
                 peer_name = "uplink-${upstream}";
+                peer_kind = "external-uplink";
+                uplink = upstream;
                 peer_asn = uplinkBgp.peerAsn or null;
                 update_source = iface.runtimeIfName or null;
                 route_reflector_client = false;
@@ -133,7 +136,18 @@ let
             interfaces = effectiveRuntimeInterfaces;
           };
         }
-        // (if isBgpRouter then { bgp = { asn = bgpSiteAsn; neighbors = (bgpNeighborsForNode nodeName) ++ (ebgpNeighborsForTarget isBgpRouter effectiveRuntimeInterfaces); }; } else { })
+        // (
+          if isBgpRouter then
+            {
+              bgp = {
+                asn = bgpSiteAsn;
+                neighbors = (bgpNeighborsForNode nodeName) ++ (ebgpNeighborsForTarget isBgpRouter effectiveRuntimeInterfaces);
+                networks = bgpNetworksForNode nodeRole effectiveRuntimeInterfaces;
+              };
+            }
+          else
+            { }
+        )
         // (if runtimeContainers != [ ] then { containers = runtimeContainers; } else { })
         // (if builtins.isAttrs (nodeAttrs.egressIntent or null) then { egressIntent = nodeAttrs.egressIntent; } else { })
         // (if builtins.isAttrs (nodeAttrs.forwardingResponsibility or null) then { forwardingResponsibility = nodeAttrs.forwardingResponsibility; } else { })

@@ -75,6 +75,7 @@ let
         linkKind = link.kind;
       }
       // (if isNonEmptyString (link.lane or null) then { lane = link.lane; } else { })
+      // (if builtins.isAttrs (link.laneMeta or null) then { lane = link.laneMeta; } else { })
       // (if builtins.isList (link.uplinks or null) then { uplinks = requireStringList "${ifacePath}.link.uplinks" link.uplinks; } else { })
       // (if kind == "wan" then { upstreamAlias = requireString "${ifacePath}.upstream" (iface.upstream or null); } else { });
 in

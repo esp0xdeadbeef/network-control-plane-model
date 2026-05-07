@@ -20,7 +20,9 @@ def bgp_policy_rr_violations:
           ($router.bgp.neighbors // [])[]
           | . as $neighbor
           | ($routers | map(.node) | index($neighbor.peer_name // "")) as $peerIndex
-          | if $peerIndex == null then
+          | if $peerIndex == null and ($neighbor.peer_kind // "") == "external-uplink" and ($neighbor.peer_asn // null) != null and ((($neighbor.peer_addr4 // "") != "") or (($neighbor.peer_addr6 // "") != "")) then
+              empty
+            elif $peerIndex == null then
               violation("bgp-neighbor"; $site.name; $site.enterprise; $site.site; $router.node; "neighbor peer_name is not a modeled router: " + ($neighbor.peer_name // "<missing>"))
             elif $policy != null and $router.role == "policy" and ($neighbor.route_reflector_client // false) != true then
               violation("bgp-neighbor"; $site.name; $site.enterprise; $site.site; $router.node; "policy router neighbor is not marked route_reflector_client: " + ($neighbor.peer_name // "<missing>"))
@@ -36,8 +38,8 @@ def bgp_policy_rr_violations:
       | select(.role == "access")
       | . as $router
       | [
-          { family: "ipv4", networks: (($router.bgp.networks.ipv4 // []) + ([$router.bgp.networks[]? | select(.family == "ipv4")])) },
-          { family: "ipv6", networks: (($router.bgp.networks.ipv6 // []) + ([$router.bgp.networks[]? | select(.family == "ipv6")])) }
+          { family: "ipv4", networks: (($router.bgp.networks.ipv4 // []) + ([$router.bgp.networks[]? | select(type == "object" and .family == "ipv4")])) },
+          { family: "ipv6", networks: (($router.bgp.networks.ipv6 // []) + ([$router.bgp.networks[]? | select(type == "object" and .family == "ipv6")])) }
         ][]
       | select((.networks | length) == 0)
       | violation("bgp-access-networks"; $site.name; $site.enterprise; $site.site; $router.node; "access router has no exported " + .family + " bgp.networks")
