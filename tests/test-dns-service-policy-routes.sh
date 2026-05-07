@@ -65,6 +65,10 @@ INVENTORY_PATH="${inventory_path}" \
           siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-client--uplink-east-west".routes;
         siteaUpstreamMgmt =
           siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-mgmt--uplink-east-west".routes;
+        siteaUpstreamMgmtWanA =
+          siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-mgmt--uplink-isp-a".routes;
+        siteaUpstreamMgmtWanB =
+          siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-mgmt--uplink-isp-b".routes;
         siteaUpstreamEastWestCore =
           siteaUpstream."p2p-s-router-core-nebula-s-router-upstream-selector".routes;
         siteaPolicyAdmin =
@@ -91,6 +95,14 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
           mgmtLaneLearnsMgmtDnsV6 =
             hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
+          mgmtWanLaneKeepsMgmtPrefixV4 =
+            hasRoute (siteaUpstreamMgmtWanA.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.50";
+          mgmtWanLaneKeepsMgmtPrefixV6 =
+            hasRoute (siteaUpstreamMgmtWanA.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:32";
+          mgmtWanBLaneKeepsMgmtPrefixV4 =
+            hasRoute (siteaUpstreamMgmtWanB.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.52";
+          mgmtWanBLaneKeepsMgmtPrefixV6 =
+            hasRoute (siteaUpstreamMgmtWanB.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:34";
           eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV4 =
             !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.30");
           eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV6 =
@@ -135,7 +147,7 @@ INVENTORY_PATH="${inventory_path}" \
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt siteaUpstreamEastWestCore siteaPolicyAdmin sitebBranch sitebHostile sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
+          inherit siteaUpstreamClient siteaUpstreamMgmt siteaUpstreamMgmtWanA siteaUpstreamMgmtWanB siteaUpstreamEastWestCore siteaPolicyAdmin sitebBranch sitebHostile sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };

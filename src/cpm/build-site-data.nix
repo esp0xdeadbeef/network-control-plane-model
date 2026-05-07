@@ -17,7 +17,7 @@ let
 
   deriveDefaultReachability =
     import ./default-reachability-model.nix {
-      inherit helpers;
+      inherit lib helpers;
     };
 
   resolveAccessAdvertisements =
