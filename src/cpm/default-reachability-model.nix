@@ -1,4 +1,4 @@
-{ helpers }:
+{ lib, helpers }:
 
 { sitePath, siteAttrs, transit, runtimeTargets, allSiteEntries ? [ ] }:
 
@@ -113,6 +113,18 @@ let
       ;
   };
   inherit (routeSynthesis) runtimeTargetsWithSynthesizedDefaults;
+  accessUplinkPrefixes = import ./Site/default-reachability/access-uplink-prefixes.nix {
+    inherit
+      lib
+      helpers
+      common
+      sitePath
+      runtimeTargetNames
+      runtimeTargetsByNode
+      runtimeTargetsWithSynthesizedDefaults
+      ;
+  };
+  inherit (accessUplinkPrefixes) runtimeTargetsWithAccessUplinkPrefixes;
   authority = import ./Site/default-reachability/authority.nix {
     inherit
       helpers
@@ -122,9 +134,9 @@ let
       forwardingSemanticsNodes
       runtimeTargetNames
       runtimeTargetsByNode
-      runtimeTargetsWithSynthesizedDefaults
       targetHasDefaultReachabilityForFamily
       ;
+    runtimeTargetsWithSynthesizedDefaults = runtimeTargetsWithAccessUplinkPrefixes;
   };
 in
 authority
