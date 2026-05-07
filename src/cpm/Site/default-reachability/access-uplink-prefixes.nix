@@ -45,9 +45,29 @@ let
       ${if family == 4 then "via4" else "via6"} = peer;
     };
 
-  addFamilyRoutes = family: accessNode: iface: existing:
+  peerForPolicyAccess =
+    family: accessNode: interfaces:
     let
-      peer = p2pPeers.peerForInterface family iface;
+      candidates =
+        lib.filterAttrs
+          (_: candidate:
+            let
+              lane = attrsOrEmpty ((attrsOrEmpty (candidate.backingRef or null)).lane or null);
+            in
+            (lane.kind or null) == "access" && (lane.access or null) == accessNode)
+          interfaces;
+      names = sortedNames candidates;
+    in
+    if names == [ ] then null else p2pPeers.peerForInterface family candidates.${builtins.head names};
+
+  addFamilyRoutes = family: targetRole: interfaces: accessNode: iface: existing:
+    let
+      policyAccessPeer = peerForPolicyAccess family accessNode interfaces;
+      peer =
+        if targetRole == "policy" && isNonEmptyString policyAccessPeer then
+          policyAccessPeer
+        else
+          p2pPeers.peerForInterface family iface;
       prefixes = if family == 4 then (prefixesForAccessNode accessNode).ipv4 else (prefixesForAccessNode accessNode).ipv6;
     in
     if !isNonEmptyString peer then
@@ -58,7 +78,7 @@ let
         existing
         prefixes;
 
-  addForInterface = targetPath: iface:
+  addForInterface = targetPath: targetRole: interfaces: iface:
     let
       backingRef = attrsOrEmpty (iface.backingRef or null);
       lane = attrsOrEmpty (backingRef.lane or null);
@@ -66,8 +86,8 @@ let
       routes = attrsOrEmpty (iface.routes or null);
       existing4 = listOrEmpty (routes.ipv4 or null);
       existing6 = listOrEmpty (routes.ipv6 or null);
-      updated4 = addFamilyRoutes 4 accessNode iface existing4;
-      updated6 = addFamilyRoutes 6 accessNode iface existing6;
+      updated4 = addFamilyRoutes 4 targetRole interfaces accessNode iface existing4;
+      updated6 = addFamilyRoutes 6 targetRole interfaces accessNode iface existing6;
     in
     if (lane.kind or null) != "access-uplink" || !isNonEmptyString accessNode then
       iface
@@ -77,10 +97,11 @@ let
   addForTarget = targetName: target:
     let
       targetPath = "${sitePath}.runtimeTargets.${targetName}";
+      targetRole = target.role or null;
       effective = requireAttrs "${targetPath}.effectiveRuntimeRealization" (target.effectiveRuntimeRealization or null);
       interfaces = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces" (effective.interfaces or null);
       updatedInterfaces =
-        builtins.mapAttrs (_: iface: addForInterface targetPath iface) interfaces;
+        builtins.mapAttrs (_: iface: addForInterface targetPath targetRole interfaces iface) interfaces;
     in
     target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
 
