@@ -109,6 +109,16 @@ let
   };
 
   updatedInterfaces =
+    let
+      targetExistingV4 =
+        lib.concatMap
+          (name: listOrEmpty ((attrsOrEmpty ((interfaces.${name} or { }).routes or null)).ipv4 or null))
+          interfaceNames;
+      targetExistingV6 =
+        lib.concatMap
+          (name: listOrEmpty ((attrsOrEmpty ((interfaces.${name} or { }).routes or null)).ipv6 or null))
+          interfaceNames;
+    in
     builtins.mapAttrs
       (ifName: iface:
         let
@@ -141,8 +151,8 @@ let
                 || matchesPreferredLane spec
                 || matchesPreferredIngress spec)
               dnsServiceRouteSpecs;
-          extraV4 = routesWithDnsExtras 4 ifName existingV4 matchingSpecs;
-          extraV6 = routesWithDnsExtras 6 ifName existingV6 matchingSpecs;
+          extraV4 = routesWithDnsExtras 4 ifName existingV4 targetExistingV4 matchingSpecs;
+          extraV6 = routesWithDnsExtras 6 ifName existingV6 targetExistingV6 matchingSpecs;
         in
         if extraV4 == [ ] && extraV6 == [ ] then
           iface
