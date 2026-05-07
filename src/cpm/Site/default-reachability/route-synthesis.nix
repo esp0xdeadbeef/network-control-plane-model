@@ -3,6 +3,7 @@
   common,
   sitePath,
   siteOverlayNameSet,
+  overlayExitPeerSiteByName,
   runtimeTargetNames,
   runtimeTargetsWithWANDefaults,
   transitEndpointAddressesByNode,
@@ -43,7 +44,7 @@ let
     inherit common helpers isDelegatedIPv6AccessNode siteOverlayNameSet targetInterfaces;
   };
   delegatedOverlayEgress = import ./delegated-overlay-egress.nix {
-    inherit helpers common siteOverlayNameSet;
+    inherit helpers common siteOverlayNameSet overlayExitPeerSiteByName;
   };
   endpointRoutes = import ./endpoint-routes.nix {
     inherit

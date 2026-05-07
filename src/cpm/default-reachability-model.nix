@@ -1,6 +1,6 @@
 { helpers }:
 
-{ sitePath, siteAttrs, transit, runtimeTargets }:
+{ sitePath, siteAttrs, transit, runtimeTargets, allSiteEntries ? [ ] }:
 
 let
   inherit (helpers)
@@ -31,7 +31,7 @@ let
     uplinkNameFromAdjacencyId
     ;
   context = import ./Site/default-reachability/context.nix {
-    inherit helpers common sitePath siteAttrs runtimeTargets;
+    inherit helpers common sitePath siteAttrs runtimeTargets allSiteEntries;
   };
   inherit (context)
     exitNodeSet
@@ -39,6 +39,7 @@ let
     forwardingSemanticsNodes
     runtimeTargetNames
     runtimeTargetsByNode
+    overlayExitPeerSiteByName
     siteOverlayNameSet
     ;
   wanDefaults = import ./Site/default-reachability/wan-defaults.nix {
@@ -99,6 +100,7 @@ let
       common
       sitePath
       siteOverlayNameSet
+      overlayExitPeerSiteByName
       runtimeTargetNames
       runtimeTargetsWithWANDefaults
       transitEndpointAddressesByNode

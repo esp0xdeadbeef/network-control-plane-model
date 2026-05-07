@@ -4,6 +4,7 @@
   sitePath,
   siteAttrs,
   runtimeTargets,
+  allSiteEntries ? [ ],
 }:
 
 let
@@ -105,12 +106,18 @@ let
       ++ exitNodeNamesFromRuntimeTargets
     );
 
+  overlayExitPeers = import ./overlay-exit-peers.nix {
+    inherit helpers common allSiteEntries siteAttrs siteOverlayNames;
+  };
+  inherit (overlayExitPeers) overlayExitPeerSiteByName;
+
 in
 {
   inherit
     exitNodeSet
     forwardingSemantics
     forwardingSemanticsNodes
+    overlayExitPeerSiteByName
     runtimeTargetNames
     runtimeTargetsByNode
     siteOverlayNameSet

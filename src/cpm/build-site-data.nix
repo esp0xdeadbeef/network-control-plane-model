@@ -295,7 +295,7 @@ let
 
   defaultReachability =
     deriveDefaultReachability {
-      inherit sitePath;
+      inherit sitePath allSiteEntries;
       siteAttrs = siteAttrsForDefaultReachability;
       transit = transitAttrs;
       runtimeTargets = initialRuntimeTargets;
