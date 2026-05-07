@@ -159,6 +159,20 @@ let
     inherit lib helpers common ipam routeHelpers sitePath dnsServiceRouteSpecs;
   };
 
+  augmentServiceIngressRoutesForTarget = import ./ControlModule/route-augmentation/service-ingress.nix {
+    inherit
+      lib
+      helpers
+      common
+      ipam
+      routeHelpers
+      sitePath
+      allowedRelations
+      serviceDefinitions
+      providerEndpointForServiceProvider
+      ;
+  };
+
   augmentOverlayTransitEndpointRoutesForTarget = import ./ControlModule/route-augmentation/overlay-transit.nix {
     inherit helpers common routeHelpers sitePath overlayNames overlayTransitEndpointAddressesByOverlay;
   };
@@ -295,13 +309,13 @@ let
           value =
             augmentDnsServiceRoutesForTarget
               targetName
-              (
-                augmentOverlayTransitEndpointRoutesForTarget
+              (augmentServiceIngressRoutesForTarget
+                targetName
+                (augmentOverlayTransitEndpointRoutesForTarget
                   targetName
                   (augmentOverlayUnderlayEndpointRoutesForTarget
                     targetName
-                    defaultReachability.runtimeTargets.${targetName})
-              );
+                    defaultReachability.runtimeTargets.${targetName})));
         })
         (sortedNames defaultReachability.runtimeTargets)
     );
