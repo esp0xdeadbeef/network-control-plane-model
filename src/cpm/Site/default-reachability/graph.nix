@@ -21,6 +21,7 @@ let
         let
           adjacencyId = requireString "${sitePath}.transit.adjacencies[*].id" (adjacency.id or null);
           endpoints = requireList "${sitePath}.transit.adjacencies[*].endpoints" (adjacency.endpoints or null);
+          laneMeta = attrsOrEmpty (adjacency.laneMeta or null);
           left = builtins.elemAt endpoints 0;
           right = builtins.elemAt endpoints 1;
           leftNode = requireString "${sitePath}.transit.adjacencies[*].endpoints[0].unit" (left.unit or null);
@@ -29,6 +30,7 @@ let
           rightLocal = attrsOrEmpty (right.local or null);
           withLeft = addNeighbor acc leftNode {
             adjacencyId = adjacencyId;
+            inherit laneMeta;
             neighbor = rightNode;
             via4 = rightLocal.ipv4 or null;
             via6 = rightLocal.ipv6 or null;
@@ -36,6 +38,7 @@ let
         in
         addNeighbor withLeft rightNode {
           adjacencyId = adjacencyId;
+          inherit laneMeta;
           neighbor = leftNode;
           via4 = leftLocal.ipv4 or null;
           via6 = leftLocal.ipv6 or null;
@@ -103,6 +106,7 @@ let
                   steps = [
                     {
                       adjacencyId = neighbor.adjacencyId;
+                      laneMeta = neighbor.laneMeta;
                       via = familyVia;
                       nextHopNode = neighborNode;
                     }

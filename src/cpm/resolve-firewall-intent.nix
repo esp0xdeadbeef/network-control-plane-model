@@ -35,6 +35,12 @@ let
     );
 
   siteTransport = attrsOrEmpty (siteAttrs.transport or null);
+  communicationContract = attrsOrEmpty (siteAttrs.communicationContract or null);
+  siteRelations =
+    if builtins.isList (communicationContract.relations or null) then
+      communicationContract.relations
+    else
+      listOrEmpty (communicationContract.allowedRelations or null);
 
   overlayNames =
     uniqueStrings (
@@ -92,6 +98,29 @@ let
     buildMeshRules
     buildUpstreamSelectorRules
     ;
+
+  denyRelationRules =
+    builtins.map
+      (relation:
+        let
+          relationAttrs = attrsOrEmpty relation;
+          relationId =
+            if isNonEmptyString (relationAttrs.id or null) then
+              relationAttrs.id
+            else if isNonEmptyString (relationAttrs.name or null) then
+              relationAttrs.name
+            else
+              null;
+        in
+        {
+          action = "deny";
+          relationId = relationId;
+          priority = relationAttrs.priority or null;
+          trafficType = relationAttrs.trafficType or "any";
+          from = attrsOrEmpty (relationAttrs.from or null);
+          to = attrsOrEmpty (relationAttrs.to or null);
+        })
+      (builtins.filter (relation: (attrsOrEmpty relation).action or null == "deny") siteRelations);
 
   buildCoreNatEntry = targetPath: target:
     let
@@ -229,7 +258,7 @@ let
           builtins.map
             (iface: iface.runtimeIfName)
             transitInterfaces;
-        rules = transitMeshRules;
+        rules = denyRelationRules ++ transitMeshRules;
       }
     else if role == "core" then
       {

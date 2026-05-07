@@ -11,6 +11,9 @@
 let
   inherit (helpers) isNonEmptyString requireAttrs requireString sortedNames;
   inherit (common) attrsOrEmpty listOrEmpty;
+
+  laneHelpers = import ../../Site/topology/lane-metadata.nix { inherit helpers; };
+  inherit (laneHelpers) interfaceLane laneUplinks;
   inherit (routeHelpers) routeForExactDstWithGateway routeWithExactDstPresent;
 
   destinationHelpers = import ./dns/destinations.nix {
@@ -62,29 +65,26 @@ let
   laneMatchesPreferredUplinks =
     iface: preferredUplinks:
     let
-      backingRef = attrsOrEmpty (iface.backingRef or null);
-      lane = backingRef.lane or null;
+      lane = interfaceLane iface;
     in
     preferredUplinks == [ ]
-    || (
-      isNonEmptyString lane
-      && lib.any (
-        uplinkName:
-        lane == "uplink::${uplinkName}" || lib.hasSuffix "::uplink::${uplinkName}" lane
-      ) preferredUplinks
-    );
+    || builtins.any (uplinkName: builtins.elem uplinkName (laneUplinks lane)) preferredUplinks;
 
   lanePreservesConsumerPath =
     preferredUplinks: consumerIface: candidateIface:
     let
-      consumerLane = (attrsOrEmpty (consumerIface.backingRef or null)).lane or null;
-      candidateLane = (attrsOrEmpty (candidateIface.backingRef or null)).lane or null;
+      consumerLane = interfaceLane consumerIface;
+      candidateLane = interfaceLane candidateIface;
+      sameAccessUplink =
+        (consumerLane.kind or null) == "access"
+        && (candidateLane.kind or null) == "access-uplink"
+        && (consumerLane.access or null) == (candidateLane.access or null);
     in
     preferredUplinks == [ ]
-    || !isNonEmptyString consumerLane
-    || !isNonEmptyString candidateLane
+    || consumerLane == { }
+    || candidateLane == { }
     || candidateLane == consumerLane
-    || lib.hasPrefix "${consumerLane}::" candidateLane
+    || sameAccessUplink
     || (laneMatchesPreferredUplinks consumerIface preferredUplinks && laneMatchesPreferredUplinks candidateIface preferredUplinks);
 
   findSourceRouteForDestination = import ./dns/source-routes.nix {
@@ -117,15 +117,14 @@ let
           existingV6 = listOrEmpty (routes.ipv6 or null);
           hasDefault4 = routeForExactDstWithGateway 4 existingV4 "0.0.0.0/0" != null;
           hasDefault6 = routeForExactDstWithGateway 6 existingV6 "::/0" != null;
-          matchesPreferredDefault =
+          matchesPreferredLane =
             spec:
             let
               preferredUplinks = listOrEmpty (spec.preferredUplinks or null);
             in
             preferredUplinks != [ ]
             && isUpstreamSelectorTarget
-            && laneMatchesPreferredUplinks iface preferredUplinks
-            && (hasDefault4 || hasDefault6);
+            && laneMatchesPreferredUplinks iface preferredUplinks;
           matchesPreferredIngress =
             spec:
             let
@@ -139,7 +138,7 @@ let
               (spec:
                 builtins.any (destination: routeWithExactDstPresent existingV4 destination) spec.consumerPrefixes4
                 || builtins.any (destination: routePresent 6 existingV6 destination) spec.consumerPrefixes6
-                || matchesPreferredDefault spec
+                || matchesPreferredLane spec
                 || matchesPreferredIngress spec)
               dnsServiceRouteSpecs;
           extraV4 = routesWithDnsExtras 4 ifName existingV4 matchingSpecs;

@@ -6,6 +6,8 @@
   attrsOrEmpty,
   failInventory,
   policyDerivedDnsAllowFromForListeners,
+  policyDerivedDnsAllowedClassesForListeners,
+  policyDerivedDnsAllowedClassesForTenants,
   policyDerivedDnsForwardersForTenants,
   uniqueStrings,
 }:
@@ -88,16 +90,28 @@ let
       derivedForwarders = policyDerivedDnsForwardersForTenants tenantNames;
       derivedAllowFrom =
         if builtins.isList (dnsService.listen or null) then policyDerivedDnsAllowFromForListeners dnsService.listen else [ ];
+      derivedAllowedClasses =
+        uniqueStrings (
+          (policyDerivedDnsAllowedClassesForTenants tenantNames)
+          ++ (
+            if builtins.isList (dnsService.listen or null) then
+              policyDerivedDnsAllowedClassesForListeners dnsService.listen
+            else
+              [ ]
+          )
+        );
       filteredDerivedForwarders = builtins.filter (addr: !(builtins.elem addr listenAddresses)) derivedForwarders;
       mergedForwarders = if filteredDerivedForwarders == [ ] then explicitForwarders else uniqueStrings filteredDerivedForwarders;
       mergedAllowFrom = if derivedAllowFrom == [ ] then explicitAllowFrom else uniqueStrings (explicitAllowFrom ++ derivedAllowFrom);
+      mergedAllowedClasses = uniqueStrings ((dnsService.allowedUpstreamClasses or [ ]) ++ derivedAllowedClasses);
     in
     normalized
     // lib.optionalAttrs (dnsService != { }) {
       dns =
         dnsService
         // lib.optionalAttrs (mergedAllowFrom != [ ]) { allowFrom = mergedAllowFrom; }
-        // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; };
+        // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; }
+        // lib.optionalAttrs (mergedAllowedClasses != [ ]) { allowedUpstreamClasses = mergedAllowedClasses; };
     };
 
 in

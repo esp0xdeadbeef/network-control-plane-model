@@ -1,7 +1,12 @@
 include "common";
 
 def root_shape_violations:
-  select((.name // "") == "" or (.output.control_plane_model.data // null) == null)
+  select(
+    type != "object"
+    or (.name // "") == ""
+    or (.output | type) != "object"
+    or (.output.control_plane_model.data // null) == null
+  )
   | violation("root-shape"; (.name // "<missing>"); ""; ""; ""; "compiled output must contain named control_plane_model.data");
 
 def runtime_identity_violations:
@@ -50,8 +55,9 @@ def relation_service_violations:
   | . as $relation
   | [$relation.from, $relation.to][]
   | select(type == "object" and (.kind // "") == "service")
-  | select(($services | index(.name // "")) == null)
-  | violation("relation-service"; $site.name; $site.enterprise; $site.site; ($relation.id // ""); "relation references service not compiled in site.services: " + (.name // "<missing>"));
+  | . as $endpoint
+  | select(($services | index($endpoint.name // "")) == null)
+  | violation("relation-service"; $site.name; $site.enterprise; $site.site; ($relation.id // ""); "relation references service not compiled in site.services: " + ($endpoint.name // "<missing>"));
 
 root_shape_violations,
 runtime_identity_violations,

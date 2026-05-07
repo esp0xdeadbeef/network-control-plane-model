@@ -113,6 +113,8 @@ let
   inherit (dnsPolicyDerived)
     dnsServiceRouteSpecs
     policyDerivedDnsAllowFromForListeners
+    policyDerivedDnsAllowedClassesForListeners
+    policyDerivedDnsAllowedClassesForTenants
     policyDerivedDnsForwardersForTenants
     ;
 
@@ -216,6 +218,8 @@ let
       attrsOrEmpty
       failInventory
       policyDerivedDnsAllowFromForListeners
+      policyDerivedDnsAllowedClassesForListeners
+      policyDerivedDnsAllowedClassesForTenants
       policyDerivedDnsForwardersForTenants
       uniqueStrings
       ;
@@ -236,6 +240,7 @@ let
     inherit lib helpers common sitePath nodes policyNodeName bgpSiteAsn;
   };
   inherit (runtimeBgp)
+    bgpNetworksForNode
     bgpNeighborsForNode
     filterRoutesForBgp
     routerRoleSet
@@ -259,6 +264,7 @@ let
       buildSyntheticUplinkInterfaceEntry
       resolveRuntimeContainers
       resolveRuntimeServices
+      bgpNetworksForNode
       bgpNeighborsForNode
       filterRoutesForBgp
       routerRoleSet
@@ -322,7 +328,7 @@ let
     };
 
   finalizeRuntimeTargets = import ./ControlModule/runtime-targets/finalize.nix {
-    inherit helpers;
+    inherit lib helpers common ipam;
   };
   runtimeTargets =
     finalizeRuntimeTargets {

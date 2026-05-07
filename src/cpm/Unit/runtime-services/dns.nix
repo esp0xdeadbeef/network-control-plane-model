@@ -175,6 +175,7 @@ in
     builtins.seq _forwarderConflict (
       builtins.seq _killSwitchNoPublicFallback (
       { }
+      // { implementation = "unbound"; }
       // lib.optionalAttrs (listen != [ ]) { inherit listen; }
       // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
       // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }

@@ -1,5 +1,10 @@
 def documents:
-  select((.name // "") != "" and (.output.control_plane_model.data // null) != null);
+  select(
+    type == "object"
+    and (.name // "") != ""
+    and (.output | type) == "object"
+    and (.output.control_plane_model.data // null) != null
+  );
 
 def sites:
   documents
