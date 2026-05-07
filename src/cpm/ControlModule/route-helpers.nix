@@ -1,8 +1,27 @@
-{ lib, helpers, common }:
+{ lib, helpers, common, ipam }:
 
 let
   inherit (helpers) isNonEmptyString;
   inherit (common) attrsOrEmpty listOrEmpty;
+
+  canonicalDestination =
+    destination:
+    let
+      cidr = ipam.splitCIDR destination;
+    in
+    if cidr == null then
+      destination
+    else
+      let
+        parsed6 = ipam.parseIPv6 cidr.addr;
+        parsed4 = ipam.parseIPv4 cidr.addr;
+      in
+      if parsed6 != null then
+        "${ipam.renderIPv6 parsed6}/${toString cidr.prefixLen}"
+      else if parsed4 != null then
+        "${ipam.renderIPv4 parsed4}/${toString cidr.prefixLen}"
+      else
+        destination;
 
   routeWithDstPresent =
     family: routes: destination:
@@ -14,7 +33,12 @@ let
 
   routeWithExactDstPresent =
     routes: destination:
-    builtins.any (route: builtins.isAttrs route && (route.dst or null) == destination) (listOrEmpty routes);
+    let
+      expected = canonicalDestination destination;
+    in
+    builtins.any
+      (route: builtins.isAttrs route && canonicalDestination (route.dst or null) == expected)
+      (listOrEmpty routes);
 
   routeWithDstAndGatewayPresent =
     family: routes: destination: gateway:
@@ -27,10 +51,13 @@ let
 
   routeForExactDstWithGateway =
     family: routes: destination:
+    let
+      expected = canonicalDestination destination;
+    in
     lib.findFirst
       (route:
         builtins.isAttrs route
-        && (route.dst or null) == destination
+        && canonicalDestination (route.dst or null) == expected
         && (if family == 4 then isNonEmptyString (route.via4 or null) else isNonEmptyString (route.via6 or null)))
       null
       (listOrEmpty routes);
@@ -38,11 +65,12 @@ let
   routeGatewayForPrefix =
     family: routes: destinations:
     let
+      expectedDestinations = builtins.map canonicalDestination destinations;
       matchingRoute =
         lib.findFirst
           (route:
             builtins.isAttrs route
-            && builtins.elem (route.dst or null) destinations
+            && builtins.elem (canonicalDestination (route.dst or null)) expectedDestinations
             && (if family == 4 then isNonEmptyString (route.via4 or null) else isNonEmptyString (route.via6 or null)))
           null
           (listOrEmpty routes);

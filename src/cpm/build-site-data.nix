@@ -150,7 +150,7 @@ let
     overlayTransitEndpointAddressesByOverlay
     ;
 
-  routeHelpers = import ./ControlModule/route-helpers.nix { inherit lib helpers common; };
+  routeHelpers = import ./ControlModule/route-helpers.nix { inherit lib helpers common ipam; };
   inherit (routeHelpers)
     normalizeRuntimeTargetRoutes
     ;
