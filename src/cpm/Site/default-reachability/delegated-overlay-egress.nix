@@ -2,51 +2,21 @@
   helpers,
   common,
   siteOverlayNameSet,
+  overlayExitPeerSiteByName ? { },
 }:
 
 let
-  inherit (helpers) sortedNames;
-  inherit (common) attrsOrEmpty defaultDst listContains listOrEmpty;
+  inherit (common) attrsOrEmpty defaultDst listOrEmpty;
 
-  isOverlayInterface =
-    iface:
-    let backingRef = attrsOrEmpty (iface.backingRef or null);
-    in (iface.sourceKind or null) == "overlay" || (backingRef.kind or null) == "overlay";
-
-  isOverlayUplinkInterface =
-    iface:
-    let
-      backingRef = attrsOrEmpty (iface.backingRef or null);
-      uplinks = listOrEmpty (backingRef.uplinks or null);
-    in
-    builtins.any (uplinkName: listContains uplinkName (sortedNames siteOverlayNameSet)) uplinks;
-
-  isDelegatedOverlayIngressInterface =
-    sourceNode: iface:
-    let
-      backingRef = attrsOrEmpty (iface.backingRef or null);
-      lane = attrsOrEmpty (backingRef.lane or null);
-      uplinks = listOrEmpty (lane.uplinks or null);
-      uplink = lane.uplink or null;
-      laneUplinks = if uplinks != [ ] then uplinks else if uplink == null then [ ] else [ uplink ];
-    in
-    (lane.kind or null) == "access-uplink"
-    && (lane.access or null) == sourceNode
-    && builtins.any (uplinkName: listContains uplinkName (sortedNames siteOverlayNameSet)) laneUplinks;
-
-  egressInterfaceNames =
-    targetRole: interfaces:
-    builtins.filter
-      (ifName:
-        let iface = interfaces.${ifName};
-        in isOverlayInterface iface || (targetRole != "core" && isOverlayUplinkInterface iface))
-      (sortedNames interfaces);
-
-  ingressInterfaceNames =
-    sourceNode: interfaces:
-    builtins.filter
-      (ifName: isDelegatedOverlayIngressInterface sourceNode interfaces.${ifName})
-      (sortedNames interfaces);
+  interfaceSelection = import ./delegated-overlay-egress/interface-selection.nix {
+    inherit helpers common siteOverlayNameSet;
+  };
+  inherit (interfaceSelection)
+    egressInterfaceNames
+    ingressInterfaceNames
+    isOverlayInterface
+    overlayNameForInterface
+    ;
 
   delegatedRouteExists =
     family: sourceNode: routes:
@@ -85,9 +55,19 @@ let
     if candidates == [ ] then null else builtins.head candidates;
 
   delegatedOverlayRoute =
-    family: sourceNode: metric: gatewayOverride: iface: existingRoutes:
+    family: sourceNode: metric: gatewayOverride: overlayName: iface: existingRoutes:
     let
       gateway = if gatewayOverride != null then gatewayOverride else firstGateway family existingRoutes;
+      peerSite = if overlayName == null then null else overlayExitPeerSiteByName.${overlayName} or null;
+      overlayContract =
+        if overlayName == null || peerSite == null then
+          { }
+        else
+          {
+            family = family;
+            overlay = overlayName;
+            peerSite = peerSite;
+          };
       base = {
         dst = defaultDst family;
         intent = {
@@ -98,7 +78,7 @@ let
         metric = metric;
         policyOnly = true;
         proto = "overlay";
-      };
+      } // overlayContract;
     in
     if isOverlayInterface iface then
       base // { scope = "link"; }
@@ -108,7 +88,7 @@ let
       base // (if family == 4 then { via4 = gateway; } else { via6 = gateway; });
 
   addToInterface =
-    family: sourceNode: metric: gatewayOverride: requireGateway: iface:
+    family: sourceNode: metric: gatewayOverride: requireGateway: ifName: iface:
     let
       routes = attrsOrEmpty (iface.routes or null);
       existingRoutes = if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
@@ -122,9 +102,9 @@ let
           routes
           // (
             if family == 4 then
-              { ipv4 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric gatewayOverride iface existingRoutes) ]; }
+              { ipv4 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric gatewayOverride (overlayNameForInterface ifName iface) iface existingRoutes) ]; }
             else
-              { ipv6 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric gatewayOverride iface existingRoutes) ]; }
+              { ipv6 = existingRoutes ++ [ (delegatedOverlayRoute family sourceNode metric gatewayOverride (overlayNameForInterface ifName iface) iface existingRoutes) ]; }
           );
       };
 in
@@ -140,13 +120,13 @@ in
     let
       withEgress =
         builtins.foldl'
-          (acc: ifName: acc // { ${ifName} = addToInterface family sourceNode metric null false acc.${ifName}; })
+          (acc: ifName: acc // { ${ifName} = addToInterface family sourceNode metric null false ifName acc.${ifName}; })
           interfaces
           (egressInterfaceNames targetRole interfaces);
       overlayGateway = firstOverlayGateway family targetRole withEgress;
     in
     builtins.foldl'
-      (acc: ifName: acc // { ${ifName} = addToInterface family sourceNode metric overlayGateway true acc.${ifName}; })
+      (acc: ifName: acc // { ${ifName} = addToInterface family sourceNode metric overlayGateway true ifName acc.${ifName}; })
       withEgress
       (ingressInterfaceNames sourceNode withEgress);
 }
