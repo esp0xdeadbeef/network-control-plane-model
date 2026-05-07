@@ -83,14 +83,20 @@ let
 
   providerInterfaceFor =
     family: destination:
-    lib.findFirst
-      (ifName:
-        let iface = interfaces.${ifName};
-        in
-        (interfaceLane iface).kind or null == "access-uplink"
-        && routeForCoveringDst { inherit family destination; routes = routesFor family iface; } != null)
-      null
-      interfaceNames;
+    let
+      matchingInterface =
+        kind:
+        lib.findFirst
+          (ifName:
+            let iface = interfaces.${ifName};
+            in
+            (interfaceLane iface).kind or null == kind
+            && routeForCoveringDst { inherit family destination; routes = routesFor family iface; } != null)
+          null
+          interfaceNames;
+      accessIfName = matchingInterface "access";
+    in
+    if accessIfName != null then accessIfName else matchingInterface "access-uplink";
 
   ingressInterfaceFor =
     providerIfName: uplinkName:
@@ -129,7 +135,15 @@ let
               let
                 ingressIfName = ingressInterfaceFor providerIfName uplinkName;
                 iface = if ingressIfName == null then { } else inner.${ingressIfName};
-                peer = if ingressIfName == null then null else p2pPeers.peerForInterface family iface;
+                providerIface = inner.${providerIfName};
+                providerLane = interfaceLane providerIface;
+                peer =
+                  if ingressIfName == null then
+                    null
+                  else if (providerLane.kind or null) == "access" then
+                    p2pPeers.peerForInterface family providerIface
+                  else
+                    p2pPeers.peerForInterface family iface;
                 routes = if ingressIfName == null then [ ] else routesFor family iface;
                 route =
                   { dst = endpoint; proto = "service-ingress"; }

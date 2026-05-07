@@ -31,10 +31,14 @@ let
     builtins.head (builtins.filter (service: (service.name or null) == "dmz-nebula") site.services);
   upstreamSelector =
     site.runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector".effectiveRuntimeRealization.interfaces;
+  policy =
+    site.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
   dmzWanRoutes =
     upstreamSelector."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv4 or [ ];
   dmzEastWestRoutes =
     upstreamSelector."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-east-west".routes.ipv4 or [ ];
+  policyDmzWanRoutes =
+    policy."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv4 or [ ];
   hasRoute = routes: destination: gateway:
     builtins.any
       (route: (route.dst or null) == destination && (route.via4 or null) == gateway)
@@ -44,6 +48,8 @@ in
   && serviceBinding.providers == [ "c-router-lighthouse" ]
   && resolvedService.providerTenants == [ "dmz" ]
   && hasRoute dmzWanRoutes "10.90.10.100" "10.80.0.18"
+  && hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.8"
+  && !(hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.19")
   && !(hasRoute dmzEastWestRoutes "10.90.10.100" "10.80.0.16")
 '
 
