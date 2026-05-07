@@ -34,10 +34,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     siteB = data.control_plane_model.data.espbranch."site-b";
     coreNebula = siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
+    upstreamSelector = siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector";
     interfaces = coreNebula.effectiveRuntimeRealization.interfaces;
+    upstreamInterfaces = upstreamSelector.effectiveRuntimeRealization.interfaces;
 
     routes6For = ifName:
       (((interfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
+    upstreamRoutes6For = ifName:
+      (((upstreamInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
 
     delegatedOverlayDefault =
       builtins.any
@@ -57,6 +61,15 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).kind or null) == "default-reachability")
         (routes6For "p2p-b-router-core-nebula-b-router-upstream-selector");
 
+    upstreamDelegatedDefaultToOverlay =
+      builtins.any
+        (route:
+          (route.dst or null) == "::/0"
+          && (route.via6 or null) == "fd42:dead:feed:1000:0:0:0:4"
+          && ((route.intent or { }).kind or null) == "delegated-public-egress"
+          && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
+        (upstreamRoutes6For "p2p-b-router-core-nebula-b-router-upstream-selector");
+
     badGenericOverlayDefault =
       builtins.any
         (route:
@@ -67,10 +80,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           ))
         (routes6For "overlay-east-west");
   in
-    if delegatedOverlayDefault && underlayDefaultPreserved && !badGenericOverlayDefault then
+    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && underlayDefaultPreserved && !badGenericOverlayDefault then
       true
     else
-      throw "delegated-overlay-public-egress failed: expected b-router-core-nebula overlay-east-west to carry a policyOnly link-scoped delegated-public-egress ::/0 for b-router-access-hostile, while preserving the upstream underlay default and rejecting generic overlay defaults. Remove this error only after CPM emits that explicit renderer contract and renderer/live tests prove hostile GUA egress selects Nebula without moving underlay endpoint routes off WAN."
+      throw "delegated-overlay-public-egress failed: expected b-router-core-nebula overlay-east-west to carry a policyOnly delegated-public-egress ::/0 and b-router-upstream-selector to route hostile delegated IPv6 default toward core-nebula for b-router-access-hostile, while preserving the upstream underlay default and rejecting generic overlay defaults. Remove this error only after CPM emits that explicit renderer contract and renderer/live tests prove hostile GUA egress selects Nebula without moving underlay endpoint routes off WAN."
 ' >/dev/null
 
 echo "PASS delegated-overlay-public-egress"

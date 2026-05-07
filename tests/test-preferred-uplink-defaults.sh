@@ -109,7 +109,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     hostileWanIPv6Default =
       hasDefault6 (routes6For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-wan");
 
-    branchUpstreamHostileOverlayIPv6Default =
+    branchUpstreamHostileDelegatedOverlayIPv6Default =
       hasDefaultVia6 "fd42:dead:feed:1000:0:0:0:4" (routes6For branchUpstream "p2p-b-router-core-nebula-b-router-upstream-selector");
 
     branchUpstreamCoreNebulaHasDefault =
@@ -158,7 +158,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       { ok = !branchEastWestIPv6Default; message = "branch east-west uplink must not carry an IPv6 default"; }
       { ok = hostileEastWestIPv4Default; message = "hostile east-west uplink must carry its IPv4 overlay default"; }
       { ok = hostileEastWestIPv6Default; message = "hostile east-west uplink must carry its IPv6 overlay default"; }
-      { ok = !branchUpstreamHostileOverlayIPv6Default; message = "branch upstream must not send hostile IPv6 default toward overlay core"; }
+      { ok = branchUpstreamHostileDelegatedOverlayIPv6Default; message = "branch upstream must send hostile delegated IPv6 default toward overlay core"; }
       { ok = branchUpstreamWanCoreDefaults; message = "branch upstream must install defaults only toward the WAN core"; }
       { ok = branchUpstreamUnderlayEndpointsUseWanCore; message = "branch upstream must route overlay underlay endpoints toward the WAN core"; }
       { ok = !siteCStorageDefaults; message = "site-c storage uplinks must not carry default routes"; }

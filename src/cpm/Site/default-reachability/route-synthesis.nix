@@ -43,7 +43,7 @@ let
     inherit common helpers isDelegatedIPv6AccessNode siteOverlayNameSet targetInterfaces;
   };
   delegatedOverlayEgress = import ./delegated-overlay-egress.nix {
-    inherit helpers common;
+    inherit helpers common siteOverlayNameSet;
   };
   endpointRoutes = import ./endpoint-routes.nix {
     inherit
@@ -85,6 +85,7 @@ let
                     family = family;
                     sourceNode = sourceNode;
                     metric = 50;
+                    targetRole = targetRole;
                     interfaces = interfaces;
                   })
                 targetView.interfaces
@@ -123,6 +124,7 @@ let
                   family = family;
                   sourceNode = candidate.sourceNode;
                   metric = 50 + (idx * 100);
+                  targetRole = targetRole;
                   interfaces = state.interfaces;
                 }
               else
