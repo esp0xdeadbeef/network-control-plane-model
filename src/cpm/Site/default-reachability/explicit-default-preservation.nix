@@ -8,7 +8,7 @@
 
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs sortedNames;
-  inherit (common) attrsOrEmpty listOrEmpty routesContainDefault;
+  inherit (common) attrsOrEmpty listOrEmpty routeMatchesDefault routesContainDefault;
 
   laneHelpers = import ../topology/lane-metadata.nix { inherit helpers; };
   inherit (laneHelpers) effectiveRouteLane;
@@ -51,8 +51,24 @@ let
     let
       defaults = defaultRoutesForFamily targetRole family originalIface originalRoutes;
       hasDefault = routesContainDefault family resolvedRoutes;
+      viaField = if family == 4 then "via4" else "via6";
+      sameDefaultPresent = defaultRoute:
+        builtins.any
+          (route:
+            routeMatchesDefault family route
+            && (route.${viaField} or null) == (defaultRoute.${viaField} or null)
+            && (((attrsOrEmpty (route.intent or null)).source or null) == ((attrsOrEmpty (defaultRoute.intent or null)).source or null)))
+          (listOrEmpty resolvedRoutes);
+      missingDefaults = builtins.filter (route: !(sameDefaultPresent route)) defaults;
+      hasViaDefaults =
+        builtins.any (route: isNonEmptyString (route.${viaField} or null)) defaults;
     in
-    if hasDefault || defaults == [ ] then resolvedRoutes else defaults ++ resolvedRoutes;
+    if defaults == [ ] then
+      resolvedRoutes
+    else if !hasDefault || hasViaDefaults then
+      missingDefaults ++ resolvedRoutes
+    else
+      resolvedRoutes;
 in
 {
   restore =

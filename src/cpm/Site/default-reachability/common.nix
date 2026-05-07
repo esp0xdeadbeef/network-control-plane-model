@@ -135,6 +135,7 @@ in
     mergeRoutes
     overlayNameFromInterfaceName
     routeAlreadyPresent
+    routeMatchesDefault
     routesContainDefault
     stripDefaultRoutes
     uniqueStrings
