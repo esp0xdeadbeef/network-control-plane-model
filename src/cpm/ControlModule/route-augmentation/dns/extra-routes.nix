@@ -9,7 +9,7 @@ let
   inherit (helpers) isNonEmptyString;
   inherit (common) attrsOrEmpty listOrEmpty;
 in
-family: ifName: existingRoutes: matchingSpecs:
+family: ifName: existingRoutes: targetExistingRoutes: matchingSpecs:
 builtins.foldl'
   (acc: spec:
     let
@@ -20,7 +20,9 @@ builtins.foldl'
       serviceDestinations = providerPrefixes ++ providerAddresses;
       providerPrefixCovered =
         accumulatedRoutes:
-        builtins.any (prefix: routePresent family (existingRoutes ++ accumulatedRoutes) prefix) providerPrefixes;
+        builtins.any
+          (prefix: routePresent family (targetExistingRoutes ++ existingRoutes ++ accumulatedRoutes) prefix)
+          providerPrefixes;
     in
     builtins.foldl'
       (inner: destination:
@@ -29,7 +31,7 @@ builtins.foldl'
           sourceRoute = findSourceRouteForDestination family ifName preferredUplinks ingressServiceRoute destination;
           gateway = if sourceRoute == null then null else if family == 4 then sourceRoute.via4 or null else sourceRoute.via6 or null;
           extraRoute =
-            if sourceRoute == null || !isNonEmptyString gateway || (isProviderAddress && providerPrefixCovered inner) then
+            if sourceRoute == null || !isNonEmptyString gateway || providerPrefixCovered inner then
               null
             else
               sourceRoute

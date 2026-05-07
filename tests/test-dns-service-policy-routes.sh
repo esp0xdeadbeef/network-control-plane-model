@@ -91,24 +91,24 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
           mgmtLaneLearnsMgmtDnsV6 =
             hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
-          eastWestIngressLearnsSiteaMgmtDnsV4 =
-            hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.30";
-          eastWestIngressLearnsSiteaMgmtDnsV6 =
-            hasRoute (siteaUpstreamEastWestCore.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:1e";
+          eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV4 =
+            !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.30");
+          eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV6 =
+            !(hasRoute (siteaUpstreamEastWestCore.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:1e");
           eastWestIngressDoesNotSendSiteaMgmtDnsToWanA =
             !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.12");
           eastWestIngressDoesNotSendSiteaMgmtDnsToWanB =
             !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.14");
-          adminDnsUsesMgmtPrefixV4 =
-            hasRoute (siteaPolicyAdmin.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.26";
+          adminDnsDoesNotCloneMgmtPrefixV4 =
+            !(hasRoute (siteaPolicyAdmin.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.26");
           adminDnsDoesNotOverrideMgmtPrefixV4 =
             !(hasRoute (siteaPolicyAdmin.ipv4 or [ ]) "10.20.10.1" "10.10.0.31");
-          adminDnsUsesMgmtPrefixV6 =
-            hasRoute (siteaPolicyAdmin.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:1a";
+          adminDnsDoesNotCloneMgmtPrefixV6 =
+            !(hasRoute (siteaPolicyAdmin.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:1a");
           adminDnsDoesNotOverrideMgmtPrefixV6 =
             !(hasRoute (siteaPolicyAdmin.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:beef:1000:0:0:0:21");
-          sitecClientLearnsDmzDnsV4 =
-            hasRoute (sitecClient.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.8";
+          sitecClientDoesNotCloneDmzDnsPrefixV4 =
+            !(hasRoute (sitecClient.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.8");
           sitecDmzKeepsOwnDnsPrefixV4 =
             hasRoute (sitecDmz.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.8";
           sitecCoreKeepsInternalDmzDnsPrefixV4 =
