@@ -47,8 +47,8 @@ import sys
 
 path = Path(sys.argv[1])
 source = path.read_text()
-needle = 'interface = { name = "ens4"; }; uplink = "wan";'
-replacement = 'interface = { name = "ens4"; routes = { ipv4 = [ { prefix = "198.51.100.0/24"; via = "192.0.2.1"; } ]; ipv6 = [ { prefix = "2001:db8:51::/64"; via = "2001:db8::1"; } ]; }; }; uplink = "wan";'
+needle = 'interface = { name = "ens4"; addr4 = "192.0.2.2/24"; }; uplink = "wan";'
+replacement = 'interface = { name = "ens4"; addr4 = "192.0.2.2/24"; routes = { ipv4 = [ { prefix = "198.51.100.0/24"; via = "192.0.2.1"; } ]; ipv6 = [ { prefix = "2001:db8:51::/64"; via = "2001:db8::1"; } ]; }; }; uplink = "wan";'
 if needle not in source:
     raise SystemExit("failed to patch single-wan-uplink-static-egress inventory-nixos.nix")
 path.write_text(source.replace(needle, replacement, 1))
