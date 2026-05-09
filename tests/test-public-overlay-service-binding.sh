@@ -33,22 +33,39 @@ let
     site.runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector".effectiveRuntimeRealization.interfaces;
   policy =
     site.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
+  coreIngressRoutes4 =
+    upstreamSelector."p2p-c-router-core-c-router-upstream-selector".routes.ipv4 or [ ];
+  coreIngressRoutes6 =
+    upstreamSelector."p2p-c-router-core-c-router-upstream-selector".routes.ipv6 or [ ];
   dmzWanRoutes =
     upstreamSelector."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv4 or [ ];
+  dmzWanRoutes6 =
+    upstreamSelector."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv6 or [ ];
   dmzEastWestRoutes =
     upstreamSelector."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-east-west".routes.ipv4 or [ ];
   policyDmzWanRoutes =
     policy."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv4 or [ ];
+  policyDmzWanRoutes6 =
+    policy."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv6 or [ ];
   hasRoute = routes: destination: gateway:
     builtins.any
       (route: (route.dst or null) == destination && (route.via4 or null) == gateway)
+      routes;
+  hasRoute6 = routes: destination: gateway:
+    builtins.any
+      (route: (route.dst or null) == destination && (route.via6 or null) == gateway)
       routes;
 in
   publicServiceRelation
   && serviceBinding.providers == [ "c-router-lighthouse" ]
   && resolvedService.providerTenants == [ "dmz" ]
+  && hasRoute coreIngressRoutes4 "10.90.10.100" "10.80.0.18"
+  && hasRoute6 coreIngressRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:12"
+  && !(hasRoute coreIngressRoutes4 "10.90.10.100" "10.80.0.4")
   && hasRoute dmzWanRoutes "10.90.10.100" "10.80.0.18"
+  && hasRoute6 dmzWanRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:12"
   && hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.8"
+  && hasRoute6 policyDmzWanRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:8"
   && !(hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.19")
   && !(hasRoute dmzEastWestRoutes "10.90.10.100" "10.80.0.16")
 '
