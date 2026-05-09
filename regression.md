@@ -16,6 +16,7 @@ and must be split before tests can pass.
 406 src/cpm/build-site-data.nix | state=watch | reason=split route-augmentation orchestration, runtime-target construction, default-reachability assembly, and output projection into separate Site build modules before adding more site orchestration
 430 src/cpm/validate-forwarding-model.nix | state=watch | reason=extract schema checks from semantic checks before adding new forwarding-model validation
 311 flake.nix | state=watch | reason=flake app wiring remains below hard limit and owns CLI/test entrypoint assembly
+234 src/cpm/Site/default-reachability/source-selection.nix | state=watch | reason=split default-source detection from delegated runtime-prefix owner classification before adding more route-source classes
 216 src/cpm/ControlModule/route-augmentation/service-ingress.nix | state=watch | reason=split service endpoint selection from external ingress route projection before adding more service-ingress behavior
 <!-- nix-file-loc:end -->
 
@@ -29,3 +30,4 @@ and must be split before tests can pass.
 - state=fixed-locally | target=policy deny, BGP advertisement, router-self DNS, and DNS access route contracts | reason=Policy targets emit relation-derived deny rows, BGP access routers emit explicit `bgp.networks.ipv4`/`ipv6`, explicit access advertisements that publish router-self DNS become Unbound service contracts, and access DNS services emit route-contract plus exact P2P route rows for modeled forwarders so renderers do not infer policy, advertisements, or DNS paths.
 - state=fixed-locally | target=DNS public resolver egress class derivation | reason=DNS services with intent-derived tenant/service DNS-to-external allowance now carry `explicit-egress-default`; the jq report also distinguishes explicit `false` from missing fallback policy instead of treating `false // true` as allowed fallback.
 - state=fixed-locally | target=delegated IPv6 public-egress defaults | reason=Delegated IPv6 access lanes now strip non-overlay `::/0` defaults while preserving non-delegated WAN defaults and core underlay defaults.
+- state=fixed-locally | target=site-c overlay-ingress delegated IPv6 public egress | reason=Runtime-routed IPv6 tenant prefixes now cause CPM to place a policy-only delegated-public-egress default on the upstream selector overlay-core ingress toward the owning tenant east-west policy lane, preventing no-route failures after Nebula decapsulation while keeping the policy lane from becoming a second default source.

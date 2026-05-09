@@ -111,9 +111,22 @@ OUTPUT_JSON="${lab_output_json}" nix eval --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     siteB = data.control_plane_model.data.espbranch."site-b";
+    siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
     coreNebula = siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
+    siteCUpstream = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
     routes6 =
       coreNebula.effectiveRuntimeRealization.interfaces."overlay-east-west".routes.ipv6 or [ ];
+    siteCUpstreamInterfaces =
+      siteCUpstream.effectiveRuntimeRealization.interfaces;
+    siteCOverlayIngressRoutes6 =
+      siteCUpstreamInterfaces."p2p-c-router-nebula-core-c-router-upstream-selector".routes.ipv6 or [ ];
+    siteCClientEwRoutes6 =
+      siteCUpstreamInterfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-east-west".routes.ipv6 or [ ];
+
+    hasRule = from: to:
+      builtins.any
+        (rule: (rule.fromInterface or null) == from && (rule.toInterface or null) == to && (rule.action or null) == "accept")
+        (siteCUpstream.forwardingIntent.rules or [ ]);
 
     delegatedDefaultToSiteC =
       builtins.any
@@ -127,9 +140,32 @@ OUTPUT_JSON="${lab_output_json}" nix eval --impure --expr '
           && ((route.intent or { }).kind or null) == "delegated-public-egress"
           && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
         routes6;
+
+    siteCOverlayIngressDefaultToPolicy =
+      builtins.any
+        (route:
+          (route.dst or null) == "::/0"
+          && (route.via6 or null) == "fd42:dead:cafe:1000:0:0:0:c"
+          && (route.policyOnly or false) == true
+          && ((route.intent or { }).kind or null) == "delegated-public-egress"
+          && ((route.intent or { }).exitNode or null) == "c-router-access-client")
+        siteCOverlayIngressRoutes6;
+
+    siteCClientEwDoesNotOwnPublicDefault =
+      !(builtins.any
+        (route:
+          (route.dst or null) == "::/0"
+          && ((route.intent or { }).kind or null) == "delegated-public-egress")
+        siteCClientEwRoutes6);
   in
-    if delegatedDefaultToSiteC then
+    if delegatedDefaultToSiteC && siteCOverlayIngressDefaultToPolicy && siteCClientEwDoesNotOwnPublicDefault && hasRule "core-nebula" "pol-client-ew" then
       true
+    else if !(hasRule "core-nebula" "pol-client-ew") then
+      throw "delegated-overlay-public-egress failed: site-c upstream-selector lacks forwarding intent from core-nebula to pol-client-ew, so the route contract would bypass the client tenant policy lane that owns the runtime delegated public prefix. Remove this error only after CPM emits the site-c overlay-ingress firewall contract."
+    else if !siteCOverlayIngressDefaultToPolicy then
+      throw "delegated-overlay-public-egress failed: live hostile IPv6 public egress died with ICMP no-route from c-router-upstream-selector core-nebula ingress. CPM must emit a policyOnly delegated-public-egress ::/0 on site-c c-router-upstream-selector core-nebula via fd42:dead:cafe:1000:0:0:0:c toward pol-client-ew with exitNode=c-router-access-client, because the runtime delegated public prefix is owned by the site-c client tenant. Remove this error only after live ip -6 route get from core-nebula selects the client east-west policy lane before WAN."
+    else if !siteCClientEwDoesNotOwnPublicDefault then
+      throw "delegated-overlay-public-egress failed: site-c client east-west policy lane must not own the delegated public default; the default belongs on overlay ingress so policy remains the handoff point, not a second default source."
     else
       throw "delegated-overlay-public-egress failed: lab-s-sigma branch delegated IPv6 public egress reaches b-router-core-nebula but the overlay route lacks explicit overlay=east-west peerSite=esp0xdeadbeef.site-c family=6 metadata for Nebula unsafe-route materialization. Remove this error only after CPM emits the route owner contract and live hostile IPv6 internet no longer dies with ICMP unreachable from b-router-core-nebula."
 ' >/dev/null
