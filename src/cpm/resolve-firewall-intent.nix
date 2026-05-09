@@ -90,6 +90,21 @@ let
   hasHostIPv6 = iface:
     builtins.isAttrs ((attrsOrEmpty (iface.hostUplink or null)).ipv6 or null);
 
+  hasRoutedIPv6Prefix =
+    prefix:
+    builtins.any
+      (routed:
+        let
+          attrs = attrsOrEmpty routed;
+        in
+        (attrs.family or null) == "ipv6" || (attrs.family or null) == 6)
+      (listOrEmpty ((attrsOrEmpty prefix).routedPrefixes or null));
+
+  siteHasRoutedIPv6Prefix =
+    builtins.any hasRoutedIPv6Prefix (
+      listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null)
+    );
+
   ruleBuilders = import ./firewall-intent/rules.nix { };
   inherit (ruleBuilders)
     buildAccessRules
@@ -151,13 +166,15 @@ let
             ))
           interfaceRecords;
 
-      natEnabled = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
+      nat4Enabled = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
+      nat6Enabled = exitEnabled && !siteHasRoutedIPv6Prefix && builtins.any hasHostIPv6 wanInterfaces;
+      natEnabled = nat4Enabled || nat6Enabled;
     in
     {
       enabled = natEnabled;
       families = {
-        ipv4 = natEnabled;
-        ipv6 = false;
+        ipv4 = nat4Enabled;
+        ipv6 = nat6Enabled;
       };
       uplinks = selectedUplinks;
       wanInterfaces =
@@ -173,6 +190,20 @@ let
           builtins.map
             (iface: iface.runtimeIfName)
             wanInterfaces
+        else
+          [ ];
+      masqueradeInterfaces4 =
+        if nat4Enabled then
+          builtins.map
+            (iface: iface.runtimeIfName)
+            (builtins.filter hasHostIPv4 wanInterfaces)
+        else
+          [ ];
+      masqueradeInterfaces6 =
+        if nat6Enabled then
+          builtins.map
+            (iface: iface.runtimeIfName)
+            (builtins.filter hasHostIPv6 wanInterfaces)
         else
           [ ];
       tcpMssClampInterfaces =
