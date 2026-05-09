@@ -16,6 +16,7 @@ and must be split before tests can pass.
 406 src/cpm/build-site-data.nix | state=watch | reason=split route-augmentation orchestration, runtime-target construction, default-reachability assembly, and output projection into separate Site build modules before adding more site orchestration
 430 src/cpm/validate-forwarding-model.nix | state=watch | reason=extract schema checks from semantic checks before adding new forwarding-model validation
 311 flake.nix | state=watch | reason=flake app wiring remains below hard limit and owns CLI/test entrypoint assembly
+216 src/cpm/ControlModule/route-augmentation/service-ingress.nix | state=watch | reason=split service endpoint selection from external ingress route projection before adding more service-ingress behavior
 <!-- nix-file-loc:end -->
 
 ## Architecture Shape

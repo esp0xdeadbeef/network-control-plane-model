@@ -112,6 +112,41 @@ let
       null
       interfaceNames;
 
+  externalIngressInterfacesFor =
+    uplinkName:
+    builtins.filter
+      (ifName:
+        let lane = interfaceLane interfaces.${ifName};
+        in
+        (lane.kind or null) == "uplink"
+        && builtins.elem uplinkName (laneUplinks lane))
+      interfaceNames;
+
+  addRouteToInterface =
+    family: route: destination: ifName: interfacesAcc:
+    let
+      iface = interfacesAcc.${ifName};
+      existingRoutes = routesFor family iface;
+    in
+    if routePresent family existingRoutes destination then
+      interfacesAcc
+    else
+      interfacesAcc
+      // {
+        ${ifName} =
+          iface
+          // {
+            routes =
+              (attrsOrEmpty (iface.routes or null))
+              // (
+                if family == 4 then
+                  { ipv4 = existingRoutes ++ [ route ]; }
+                else
+                  { ipv6 = existingRoutes ++ [ route ]; }
+              );
+          };
+      };
+
   addRoute =
     interfacesAcc: relation:
     let
@@ -134,7 +169,6 @@ let
             (inner: uplinkName:
               let
                 ingressIfName = ingressInterfaceFor providerIfName uplinkName;
-                iface = if ingressIfName == null then { } else inner.${ingressIfName};
                 providerIface = inner.${providerIfName};
                 providerLane = interfaceLane providerIface;
                 peer =
@@ -143,8 +177,7 @@ let
                   else if (providerLane.kind or null) == "access" then
                     p2pPeers.peerForInterface family providerIface
                   else
-                    p2pPeers.peerForInterface family iface;
-                routes = if ingressIfName == null then [ ] else routesFor family iface;
+                    p2pPeers.peerForInterface family inner.${ingressIfName};
                 route =
                   { dst = endpoint; proto = "service-ingress"; }
                   // (if family == 4 then { via4 = peer; } else { via6 = peer; })
@@ -157,25 +190,19 @@ let
                     // lib.optionalAttrs (relationId != null) { relation = relationId; }
                     // lib.optionalAttrs (trafficType != null) { inherit trafficType; };
                   };
+                routeIfNames =
+                  if ingressIfName == null then
+                    [ ]
+                  else
+                    [ ingressIfName ] ++ externalIngressInterfacesFor uplinkName;
               in
-              if ingressIfName == null || !isNonEmptyString peer || routePresent family routes endpoint then
+              if ingressIfName == null || !isNonEmptyString peer then
                 inner
               else
-                inner
-                // {
-                  ${ingressIfName} =
-                    iface
-                    // {
-                      routes =
-                        (attrsOrEmpty (iface.routes or null))
-                        // (
-                          if family == 4 then
-                            { ipv4 = routes ++ [ route ]; }
-                          else
-                            { ipv6 = routes ++ [ route ]; }
-                        );
-                    };
-                })
+                builtins.foldl'
+                  (acc: ifName: addRouteToInterface family route endpoint ifName acc)
+                  inner
+                  routeIfNames)
             outer
             uplinks)
       interfacesAcc
