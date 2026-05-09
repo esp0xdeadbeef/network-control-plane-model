@@ -55,6 +55,50 @@ let
       || hasSlaacPDNetwork
     );
 
+  ownsRuntimeRoutedIPv6Prefix =
+    tenantName:
+    let
+      tenant = attrsOrEmpty (siteAttrs.tenants.${tenantName} or null);
+      ownership = attrsOrEmpty (siteAttrs.ownership or null);
+      ownershipPrefixes = listOrEmpty (ownership.prefixes or null);
+      tenantOwnershipPrefixes =
+        builtins.filter
+          (prefix: (attrsOrEmpty prefix).name or null == tenantName)
+          ownershipPrefixes;
+      routedEntries =
+        (listOrEmpty (tenant.routedPrefixes or null))
+        ++ builtins.concatLists (builtins.map (prefix: listOrEmpty ((attrsOrEmpty prefix).routedPrefixes or null)) tenantOwnershipPrefixes);
+    in
+    builtins.any
+      (routed:
+        (routed.family or null) == "ipv6"
+        && ((routed.allocation or null) == "runtime" || (routed.source or null) == "inventory-routed-prefix"))
+      routedEntries;
+
+  isRuntimeRoutedIPv6AccessNode =
+    accessNodeName:
+    hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode
+    && (
+      let
+        target = runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target;
+        networks = attrsOrEmpty (target.networks or null);
+      in
+      builtins.any
+        (networkName:
+          let network = attrsOrEmpty networks.${networkName};
+          in
+          (network.kind or null) == "tenant"
+          && (
+            ownsRuntimeRoutedIPv6Prefix networkName
+            || builtins.any
+              (routed:
+                (routed.family or null) == "ipv6"
+                && ((routed.allocation or null) == "runtime" || (routed.source or null) == "inventory-routed-prefix"))
+              (listOrEmpty (network.routedPrefixes or null))
+          ))
+        (sortedNames networks)
+    );
+
   defaultRouteCountsAsSource = family: route:
     let
       lane = attrsOrEmpty (route.lane or null);
@@ -181,6 +225,10 @@ in
   inherit
     isDelegatedIPv6AccessNode
     preferredFirstHopMatchesSource
+    ;
+  runtimeRoutedIPv6AccessNodeNames =
+    builtins.filter isRuntimeRoutedIPv6AccessNode (sortedNames runtimeTargetsWithWANDefaultsByNode);
+  inherit
     targetHasDefaultReachabilityForFamily
     ;
 }

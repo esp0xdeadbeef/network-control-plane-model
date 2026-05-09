@@ -12,6 +12,7 @@
   explicitDefaultSourceSet4,
   explicitDefaultSourceSet6,
   isDelegatedIPv6AccessNode,
+  runtimeRoutedIPv6AccessNodeNames,
   routeHelpers,
 }:
 
@@ -45,6 +46,9 @@ let
   };
   delegatedOverlayEgress = import ./delegated-overlay-egress.nix {
     inherit helpers common siteOverlayNameSet overlayExitPeerSiteByName;
+  };
+  overlayExitIngress = import ./overlay-exit-ingress.nix {
+    inherit helpers common siteOverlayNameSet;
   };
   endpointRoutes = import ./endpoint-routes.nix {
     inherit
@@ -98,13 +102,34 @@ let
           }
         else
           targetWithoutOverlayDefaults;
+      targetWithOverlayExitIngress =
+        if family == 6 && targetRole == "upstream-selector" && runtimeRoutedIPv6AccessNodeNames != [ ] then
+          let
+            targetView = targetInterfaces targetPath targetWithDelegatedOverlayEgress;
+            interfacesWithOverlayExitIngress =
+              builtins.foldl'
+                (interfaces: sourceNode:
+                  overlayExitIngress.add {
+                    family = family;
+                    sourceNode = sourceNode;
+                    interfaces = interfaces;
+                  })
+                targetView.interfaces
+                runtimeRoutedIPv6AccessNodeNames;
+          in
+          targetWithDelegatedOverlayEgress
+          // {
+            effectiveRuntimeRealization = targetView.effective // { interfaces = interfacesWithOverlayExitIngress; };
+          }
+        else
+          targetWithDelegatedOverlayEgress;
       candidatePaths = builtins.filter (preferredFirstHopMatchesSource family) (sortedCandidatePaths family sourceSetForTarget nodeName);
     in
     if (isSelfDefaultSource && targetRole != "downstream-selector") || candidatePaths == [ ] then
-      targetWithDelegatedOverlayEgress
+      targetWithOverlayExitIngress
     else
       let
-        targetView = targetInterfaces targetPath targetWithDelegatedOverlayEgress;
+        targetView = targetInterfaces targetPath targetWithOverlayExitIngress;
         sanitized =
           builtins.mapAttrs
             (_: iface:
