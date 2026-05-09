@@ -12,7 +12,7 @@ and must be split before tests can pass.
 <!-- nix-file-loc:start -->
 483 invariants/default.nix | state=watch | reason=invariant entrypoint still coordinates forwarding-model input checks and CPM output checks after shared assertion helpers were extracted
 480 src/cpm/resolve-policy-endpoint-bindings.nix | state=watch | reason=extract relation endpoint parsing from runtime binding projection before adding new policy behavior
-319 src/cpm/resolve-firewall-intent.nix | state=watch | reason=split policy deny contract assembly and NAT target assembly from forwarding-entry wiring before adding more firewall behavior
+350 src/cpm/resolve-firewall-intent.nix | state=watch | reason=split policy deny contract assembly and per-family NAT target assembly from forwarding-entry wiring before adding more firewall behavior
 406 src/cpm/build-site-data.nix | state=watch | reason=split route-augmentation orchestration, runtime-target construction, default-reachability assembly, and output projection into separate Site build modules before adding more site orchestration
 430 src/cpm/validate-forwarding-model.nix | state=watch | reason=extract schema checks from semantic checks before adding new forwarding-model validation
 311 flake.nix | state=watch | reason=flake app wiring remains below hard limit and owns CLI/test entrypoint assembly
