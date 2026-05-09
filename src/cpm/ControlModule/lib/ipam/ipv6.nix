@@ -52,7 +52,7 @@ let
         in
         { cur = builtins.div acc.cur 65536; out = [ h ] ++ acc.out; };
     in
-    (builtins.foldl' (_: v: step v) { cur = n; out = [ ]; } (builtins.genList (i: i) 8)).out;
+    (builtins.foldl' (acc: _: step acc) { cur = n; out = [ ]; } (builtins.genList (i: i) 8)).out;
 
   toHex =
     n:
