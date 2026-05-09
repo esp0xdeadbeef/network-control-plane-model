@@ -329,15 +329,15 @@ let
       runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
-  firewallIntent =
-    resolveFirewallIntent {
-      inherit sitePath siteAttrs;
-      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
-    };
-
   policyEndpointBindings =
     resolvePolicyEndpointBindings {
       inherit sitePath siteAttrs attachments domains;
+      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
+    };
+
+  firewallIntent =
+    resolveFirewallIntent {
+      inherit sitePath siteAttrs policyEndpointBindings;
       runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
     };
 

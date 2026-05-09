@@ -168,7 +168,13 @@ let
               existing = if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
               defaultRoute =
                 (buildInternalDefaultRoute family candidate.sourceNode firstStep.via (100 + (idx * 100)))
-                // (if (firstStep.laneMeta or { }) != { } then { lane = firstStep.laneMeta; } else { });
+                // (if (firstStep.laneMeta or { }) != { } then { lane = firstStep.laneMeta; } else { })
+                // (
+                  if targetRole == "policy" || targetRole == "upstream-selector" || targetRole == "downstream-selector" then
+                    { policyOnly = true; }
+                  else
+                    { }
+                );
               updated = existing ++ [ defaultRoute ];
               updatedIface = iface // { routes = routes // (if family == 4 then { ipv4 = updated; } else { ipv6 = updated; }); };
             in

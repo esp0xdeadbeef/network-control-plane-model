@@ -1,6 +1,6 @@
 { helpers }:
 
-{ sitePath, siteAttrs, runtimeTargets }:
+{ sitePath, siteAttrs, runtimeTargets, policyEndpointBindings ? { } }:
 
 let
   inherit (helpers)
@@ -108,34 +108,11 @@ let
   ruleBuilders = import ./firewall-intent/rules.nix { };
   inherit (ruleBuilders)
     buildAccessRules
+    buildCoreRules
     buildDownstreamSelectorRules
-    buildExitRules
-    buildMeshRules
+    buildPolicyRules
     buildUpstreamSelectorRules
     ;
-
-  denyRelationRules =
-    builtins.map
-      (relation:
-        let
-          relationAttrs = attrsOrEmpty relation;
-          relationId =
-            if isNonEmptyString (relationAttrs.id or null) then
-              relationAttrs.id
-            else if isNonEmptyString (relationAttrs.name or null) then
-              relationAttrs.name
-            else
-              null;
-        in
-        {
-          action = "deny";
-          relationId = relationId;
-          priority = relationAttrs.priority or null;
-          trafficType = relationAttrs.trafficType or "any";
-          from = attrsOrEmpty (relationAttrs.from or null);
-          to = attrsOrEmpty (relationAttrs.to or null);
-        })
-      (builtins.filter (relation: (attrsOrEmpty relation).action or null == "deny") siteRelations);
 
   buildCoreNatEntry = targetPath: target:
     let
@@ -250,11 +227,6 @@ let
             ))
           interfaceRecords;
 
-      exitRules =
-        buildExitRules transitInterfaces uplinkInterfaces;
-
-      transitMeshRules =
-        buildMeshRules transitInterfaces;
     in
     if role == "access" then
       {
@@ -284,12 +256,16 @@ let
       }
     else if role == "policy" then
       {
-        mode = "explicit-transit-mesh-forwarding";
+        mode = "explicit-policy-forwarding";
         transitInterfaces =
           builtins.map
             (iface: iface.runtimeIfName)
             transitInterfaces;
-        rules = denyRelationRules ++ transitMeshRules;
+        rules = buildPolicyRules {
+          endpointBindings = attrsOrEmpty policyEndpointBindings;
+          relations = siteRelations;
+          inherit transitInterfaces;
+        };
       }
     else if role == "core" then
       {
@@ -302,7 +278,7 @@ let
           builtins.map
             (iface: iface.runtimeIfName)
             uplinkInterfaces;
-        rules = transitMeshRules ++ exitRules;
+        rules = buildCoreRules transitInterfaces uplinkInterfaces;
       }
     else
       null;
