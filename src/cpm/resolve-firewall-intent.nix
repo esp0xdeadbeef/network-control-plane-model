@@ -319,8 +319,12 @@ let
               value = forwardingEntry;
             })
         (sortedNames runtimeTargets));
+
+  precedence = import ./firewall-intent/precedence.nix { };
+  sortedForwardingEntries = precedence.sortEntries forwardingEntries;
+  assertNoShadowedPolicyDenies = precedence.assertNoShadowedPolicyDenies sortedForwardingEntries;
 in
 {
   natByTarget = builtins.listToAttrs natEntries;
-  forwardingByTarget = builtins.listToAttrs forwardingEntries;
+  forwardingByTarget = builtins.seq assertNoShadowedPolicyDenies (builtins.listToAttrs sortedForwardingEntries);
 }
