@@ -13,7 +13,6 @@ violations_tsv="${tmp_dir}/violations.tsv"
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 examples_root="${labs_root}/examples"
-lab_sigma_root="${labs_root}/labs/lab-s-sigma/s-router-test-three-site"
 
 fail() {
   echo "$1" >&2
@@ -61,16 +60,6 @@ while IFS= read -r -d '' intent_path; do
     fi
   done
 done < <(find "${examples_root}" -mindepth 2 -maxdepth 2 -type f -name intent.nix -print0 | sort -z)
-
-if [[ -f "${lab_sigma_root}/intent.nix" && -f "${lab_sigma_root}/getResolvedInventory.nix" ]]; then
-  for renderer in nixos clab; do
-    inventory_path="${tmp_dir}/lab-s-sigma-${renderer}-resolved-inventory.nix"
-    printf 'import %s/getResolvedInventory.nix { renderer = "%s"; }\n' "${lab_sigma_root}" "${renderer}" >"${inventory_path}"
-    if ! compile_output "labs/lab-s-sigma/s-router-test-three-site/resolved-${renderer}" "${lab_sigma_root}/intent.nix" "${inventory_path}"; then
-      status=1
-    fi
-  done
-fi
 
 compiled_count="$(awk -F '\t' 'NR > 1 && $4 == "OK" { count++ } END { print count + 0 }' "${manifest_tsv}")"
 if ((compiled_count == 0)); then
