@@ -12,11 +12,11 @@ and must be split before tests can pass.
 <!-- nix-file-loc:start -->
 483 invariants/default.nix | state=watch | reason=invariant entrypoint still coordinates forwarding-model input checks and CPM output checks after shared assertion helpers were extracted
 480 src/cpm/resolve-policy-endpoint-bindings.nix | state=watch | reason=extract relation endpoint parsing from runtime binding projection before adding new policy behavior
-330 src/cpm/resolve-firewall-intent.nix | state=watch | reason=split per-family NAT target assembly from forwarding-entry wiring before adding more firewall behavior
+333 src/cpm/resolve-firewall-intent.nix | state=watch | reason=split per-family NAT target assembly from forwarding-entry wiring before adding more firewall behavior
 406 src/cpm/build-site-data.nix | state=watch | reason=split route-augmentation orchestration, runtime-target construction, default-reachability assembly, and output projection into separate Site build modules before adding more site orchestration
 430 src/cpm/validate-forwarding-model.nix | state=watch | reason=extract schema checks from semantic checks before adding new forwarding-model validation
 311 flake.nix | state=watch | reason=flake app wiring remains below hard limit and owns CLI/test entrypoint assembly
-234 src/cpm/Site/default-reachability/source-selection.nix | state=watch | reason=split default-source detection from delegated runtime-prefix owner classification before adding more route-source classes
+203 src/cpm/Site/default-reachability/source-selection.nix | state=watch | reason=split default-source detection from delegated runtime-prefix owner classification before adding more route-source classes
 216 src/cpm/ControlModule/route-augmentation/service-ingress.nix | state=watch | reason=split service endpoint selection from external ingress route projection before adding more service-ingress behavior
 <!-- nix-file-loc:end -->
 
