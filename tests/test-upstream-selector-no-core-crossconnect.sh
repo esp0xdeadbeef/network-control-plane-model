@@ -40,6 +40,7 @@ jq -r '
       (.value.action // "") == "accept"
       and (.value.fromInterface // "" | startswith("core-"))
       and (.value.toInterface // "" | startswith("core-"))
+      and ((.value.trafficType // "any") == "any")
     )
   | "!!!! " + $enterprise.key + "." + $site.key
     + " upstream-selector=" + $target.key

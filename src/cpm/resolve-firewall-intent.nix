@@ -252,7 +252,10 @@ let
           if role == "downstream-selector" then
             buildDownstreamSelectorRules transitInterfaces
           else
-            buildUpstreamSelectorRules transitInterfaces;
+            buildUpstreamSelectorRules {
+              relations = siteRelations;
+              inherit transitInterfaces;
+            };
       }
     else if role == "policy" then
       {
