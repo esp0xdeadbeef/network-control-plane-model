@@ -142,7 +142,7 @@ let
               bgp = {
                 asn = bgpSiteAsn;
                 neighbors = (bgpNeighborsForNode nodeName) ++ (ebgpNeighborsForTarget isBgpRouter effectiveRuntimeInterfaces);
-                networks = bgpNetworksForNode nodeRole effectiveRuntimeInterfaces;
+                networks = bgpNetworksForNode nodeRole nodeAttrs effectiveRuntimeInterfaces;
               };
             }
           else

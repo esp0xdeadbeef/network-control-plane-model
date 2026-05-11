@@ -88,16 +88,11 @@ let
       domain = requireString "${entryPath}.domain" (attrs.domain or null);
     } else { }))));
 
-  buildExplicitIPv6RaEntry = targetDef: targetPath: target: interfaceName: entry: externalValidation:
+  buildExplicitIPv6RaEntry = targetDef: targetPath: target: interfaceName: entry:
     let
       entryPath = "${targetDef.nodePath}.advertisements.ipv6Ra.${interfaceName}";
       attrs = requireAttrs entryPath entry;
       enabled = boolOr true (attrs.enabled or null);
-      extValid = if builtins.isAttrs externalValidation then externalValidation else { };
-      hasDelegatedPrefixValidation =
-        (extValid.delegatedIPv6Prefix or false) == true
-        || (extValid.delegatedIPv6Prefixes or false) == true
-        || (extValid.delegatedPrefixSecretPath or "" != "");
       tenantContext = resolveTenantAdvertisementContext targetPath target interfaceName;
       routerAddress =
         if enabled && !isNonEmptyString tenantContext.interfaceAddr6 then
@@ -107,7 +102,7 @@ let
         else
           tenantContext.interfaceAddr6;
       prefixes =
-        if !enabled || hasDelegatedPrefixValidation then
+        if !enabled then
           [ ]
         else if tenantContext.tenantRa6Prefixes != [ ] then
           tenantContext.tenantRa6Prefixes
@@ -120,15 +115,12 @@ let
       routedIpv6Prefixes =
         if enabled then builtins.filter (prefix: (prefix.family or null) == "ipv6") tenantContext.tenantRoutedPrefixes else [ ];
       _prefixMatch =
-        if hasDelegatedPrefixValidation then
-          true
-        else
-          validateOptionalStringListMatch
-            entryPath
-            "prefixes"
-            (attrs.prefixes or null)
-            prefixes
-            "must match tenant IPv6 advertisement prefixes derived from the forwarding model";
+        validateOptionalStringListMatch
+          entryPath
+          "prefixes"
+          (attrs.prefixes or null)
+          prefixes
+          "must match tenant IPv6 advertisement prefixes derived from the forwarding model";
       rdnss = if enabled then resolveAdvertisedIPv6Targets entryPath "rdnss" routerAddress (attrs.rdnss or null) else [ ];
       bindInterface =
         requireString
@@ -164,8 +156,7 @@ let
     // (if routedIpv6Prefixes != [ ] then {
       routedPrefixes = routedIpv6Prefixes;
       delegatedPrefix = builtins.head routedIpv6Prefixes;
-    } else { })
-    // (if hasDelegatedPrefixValidation then { externalValidation = extValid; } else { }));
+    } else { }));
 
 in
 {

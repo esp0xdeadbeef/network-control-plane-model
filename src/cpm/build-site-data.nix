@@ -251,7 +251,7 @@ let
     ;
 
   runtimeBgp = import ./Unit/runtime-targets/bgp.nix {
-    inherit lib helpers common sitePath nodes policyNodeName bgpSiteAsn;
+    inherit lib helpers common sitePath nodes policyNodeName bgpSiteAsn routedPrefixesByTenant;
   };
   inherit (runtimeBgp)
     bgpNetworksForNode

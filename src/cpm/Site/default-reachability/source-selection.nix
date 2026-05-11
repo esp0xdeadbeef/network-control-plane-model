@@ -22,39 +22,6 @@ let
     uplinkNameFromAdjacencyId
     ;
 
-  isDelegatedIPv6AccessNode =
-    accessNodeName:
-    hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode
-    && (
-      let
-        target = runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target;
-        externalValidation = attrsOrEmpty (target.externalValidation or null);
-        advertisements = attrsOrEmpty (target.advertisements or null);
-        ipv6Ra = attrsOrEmpty (advertisements.ipv6Ra or null);
-        networks = attrsOrEmpty (target.networks or null);
-        siteTenants = attrsOrEmpty (siteAttrs.tenants or null);
-        siteIPv6PD = attrsOrEmpty ((attrsOrEmpty (siteAttrs.ipv6 or null)).pd or null);
-        hasRuntimePrefixAdvertisement =
-          builtins.any
-            (raName: !(builtins.isList ((attrsOrEmpty ipv6Ra.${raName}).prefixes or null)))
-            (sortedNames ipv6Ra);
-        hasSlaacPDNetwork =
-          siteIPv6PD != { }
-          && builtins.any
-            (networkName:
-              let
-                network = attrsOrEmpty networks.${networkName};
-                tenantIPv6 = attrsOrEmpty ((attrsOrEmpty (siteTenants.${networkName} or null)).ipv6 or null);
-              in
-              (network.kind or null) == "tenant" && (tenantIPv6.mode or null) == "slaac")
-            (sortedNames networks);
-      in
-      (externalValidation.delegatedIPv6Prefix or false) == true
-      || isNonEmptyString (externalValidation.delegatedPrefixSecretName or null)
-      || hasRuntimePrefixAdvertisement
-      || hasSlaacPDNetwork
-    );
-
   ownsRuntimeRoutedIPv6Prefix =
     tenantName:
     let
@@ -98,6 +65,8 @@ let
           ))
         (sortedNames networks)
     );
+
+  isDelegatedIPv6AccessNode = isRuntimeRoutedIPv6AccessNode;
 
   defaultRouteCountsAsSource = family: route:
     let

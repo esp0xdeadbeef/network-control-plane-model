@@ -483,5 +483,6 @@ bash "${repo_root}/tests/test-link-lane-preservation.sh"
 bash "${repo_root}/tests/test-transit-endpoint-return-routes.sh"
 bash "${repo_root}/tests/test-public-overlay-service-binding.sh"
 bash "${repo_root}/tests/test-service-provider-endpoints.sh"
+bash "${repo_root}/tests/test-runtime-routed-prefixes-no-validation-shortcut.sh"
 
 exit 0

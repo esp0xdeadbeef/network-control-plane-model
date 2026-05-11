@@ -1,4 +1,4 @@
-{ lib, helpers, common, sitePath, nodes, policyNodeName, bgpSiteAsn }:
+{ lib, helpers, common, sitePath, nodes, policyNodeName, bgpSiteAsn, routedPrefixesByTenant }:
 
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireString sortedNames;
@@ -64,13 +64,27 @@ let
       ipv6 = builtins.filter (keepBgpRoute 6) (listOrEmpty (routesAttrs.ipv6 or null));
     };
 
-  accessNetworksForInterfaces =
-    interfaces:
+  accessNetworksForTarget =
+    nodeAttrs: interfaces:
     let
       tenantInterfaces =
         builtins.filter
           (iface: (attrsOrEmpty iface).sourceKind or null == "tenant")
           (builtins.attrValues interfaces);
+      targetNetworks = attrsOrEmpty (nodeAttrs.networks or null);
+      tenantNetworkNames =
+        builtins.filter
+          (networkName: (attrsOrEmpty targetNetworks.${networkName}).kind or null == "tenant")
+          (sortedNames targetNetworks);
+      runtimeRoutedPrefixes =
+        lib.concatMap
+          (tenantName:
+            builtins.filter
+              (prefix:
+                (prefix.family or null) == "ipv6"
+                && ((prefix.allocation or null) == "runtime" || (prefix.source or null) == "inventory-routed-prefix"))
+              (listOrEmpty (routedPrefixesByTenant.${tenantName} or null)))
+          tenantNetworkNames;
     in
     {
       ipv4 =
@@ -81,11 +95,23 @@ let
         builtins.filter isNonEmptyString (
           builtins.map (iface: (attrsOrEmpty iface).addr6 or null) tenantInterfaces
         );
+      routedPrefixes = {
+        ipv6 = runtimeRoutedPrefixes;
+      };
     };
 
   bgpNetworksForNode =
-    nodeRole: interfaces:
-    if nodeRole == "access" then accessNetworksForInterfaces interfaces else { ipv4 = [ ]; ipv6 = [ ]; };
+    nodeRole: nodeAttrs: interfaces:
+    if nodeRole == "access" then
+      accessNetworksForTarget nodeAttrs interfaces
+    else
+      {
+        ipv4 = [ ];
+        ipv6 = [ ];
+        routedPrefixes = {
+          ipv6 = [ ];
+        };
+      };
 
   bgpNeighborsForNode =
     nodeName:

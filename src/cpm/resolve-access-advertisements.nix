@@ -59,11 +59,6 @@ let
                 "access runtime target '${targetId}' must be explicitly realized";
 
           inventoryNode = requireAttrs targetDef.nodePath targetDef.node;
-          externalValidation =
-            if builtins.isAttrs (inventoryNode.externalValidation or null) then
-              inventoryNode.externalValidation
-            else
-              { };
           inventoryAdvertisements =
             if builtins.isAttrs (inventoryNode.advertisements or null) then
               requireAttrs "${targetDef.nodePath}.advertisements" inventoryNode.advertisements
@@ -95,7 +90,6 @@ let
             validateNoUnexpectedInterfaces "${targetDef.nodePath}.advertisements.ipv6Ra" tenantInterfaceNames ipv6RaEntries;
 
           value = {
-            inherit externalValidation;
             dhcp4 =
               builtins.map
                 (interfaceName:
@@ -109,8 +103,7 @@ let
                     targetPath
                     target
                     interfaceName
-                    ipv6RaEntries.${interfaceName}
-                    externalValidation)
+                    ipv6RaEntries.${interfaceName})
                 tenantInterfaceNames;
           };
         in
