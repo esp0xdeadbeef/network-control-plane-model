@@ -9,7 +9,7 @@ trap 'rm -f "'"${archive_json}"'" "'"${output_json}"'"' EXIT
 
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 
-labs_path="$(
+labs_path="${LABS_ROOT:-$(
   ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
@@ -21,7 +21,7 @@ labs_path="$(
       else
         labsPath
   '
-)"
+)}"
 
 intent_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix"
 inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix"
@@ -86,12 +86,15 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
         builtins.all
           (entry: !builtins.elem "2a01:4f8:1c17:b337::/64" (entry.prefixes or [ ]))
           hostileAccessAds;
-      hostileAccessSecretName =
-        (builtins.head hostileAccessAds).externalValidation.delegatedPrefixSecretName
-        == "access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile";
-      hostileAccessSecretPath =
-        (builtins.head hostileAccessAds).externalValidation.delegatedPrefixSecretPath
-        == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile";
+      hostileAccessNoExternalValidation =
+        !(siteB.runtimeTargets."espbranch-site-b-b-router-access-hostile" ? externalValidation)
+        && !((builtins.head hostileAccessAds) ? externalValidation);
+      hostileAccessModeledRoutedPrefix =
+        builtins.any
+          (prefix:
+            (prefix.name or null) == "site-b-hostile-public"
+            && (prefix.sourceFile or null) == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile")
+          ((builtins.head hostileAccessAds).routedPrefixes or [ ]);
       branchDownstreamExplicit = branchDownstream.mode == "explicit-selector-forwarding";
       branchDownstreamAccessToPolicy = hasRule branchDownstream.rules "access-branch" "policy-branch";
       branchDownstreamPolicyToAccess = hasRule branchDownstream.rules "policy-branch" "access-branch";
