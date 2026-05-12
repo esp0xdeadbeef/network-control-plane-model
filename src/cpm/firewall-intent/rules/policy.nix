@@ -29,6 +29,7 @@ let
 
   tenantBindings = attrsOrEmpty (endpointBindings.tenants or null);
   externalBindings = attrsOrEmpty (endpointBindings.externals or null);
+  serviceBindings = attrsOrEmpty (endpointBindings.services or null);
 
   accessNodesForTenant = tenantName:
     if !builtins.hasAttr tenantName tenantBindings then
@@ -61,6 +62,8 @@ let
       [ ep.name ]
     else if expectedKind == "external" then
       listOrEmpty (ep.uplinks or null)
+    else if expectedKind == "service" then
+      if builtins.isString (ep.name or null) && ep.name != "" then [ ep.name ] else [ ]
     else
       [ ];
 
@@ -81,6 +84,10 @@ let
       )
     );
 
+  serviceKnown = endpoint:
+    let serviceNames = namesForEndpoint "service" endpoint;
+    in builtins.any (serviceName: builtins.hasAttr serviceName serviceBindings) serviceNames;
+
   accessIfacesForNodes = accessNodes:
     builtins.filter
       (iface: builtins.elem (common.laneAccess iface) accessNodes)
@@ -92,6 +99,10 @@ let
         (accessNodes == [ ] || builtins.elem (common.laneAccess iface) accessNodes)
         && (uplinks == [ ] || builtins.elem (common.laneUplink iface) uplinks))
       uplinkInterfaces;
+
+  serviceIfacesFor = accessNodes:
+    let sameAccessUplinks = uplinkIfacesFor accessNodes [ ];
+    in if sameAccessUplinks != [ ] then sameAccessUplinks else uplinkInterfaces;
 
   relationId = relation:
     if builtins.isString (relation.id or null) && relation.id != "" then
@@ -112,6 +123,8 @@ let
       accessIfacesForNodes accessNodes
     else if (endpointValue.kind or null) == "external" then
       uplinkIfacesFor peerAccessNodes uplinks
+    else if (endpointValue.kind or null) == "service" && serviceKnown endpoint then
+      serviceIfacesFor peerAccessNodes
     else if endpointValue == "any" || endpoint == "any" then
       accessInterfaces ++ uplinkIfacesFor peerAccessNodes [ ]
     else

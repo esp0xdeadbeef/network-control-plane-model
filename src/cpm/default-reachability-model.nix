@@ -96,10 +96,13 @@ let
     interfaceNameTargetsDestination
     ;
 
+  ipam = import ./ipam.nix { inherit lib; };
+
   routeSynthesis = import ./Site/default-reachability/route-synthesis.nix {
     inherit
       helpers
       common
+      ipam
       sitePath
       siteOverlayNameSet
       overlayExitPeerSiteByName

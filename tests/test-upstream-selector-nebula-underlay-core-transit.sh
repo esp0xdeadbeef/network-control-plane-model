@@ -43,16 +43,15 @@ jq -e '
           and (.relationId == "allow-siteb-nebula-underlay-to-wan")
         )
     ]
-  | length == 1
+  | length == 0
 ' "${output_json}" >/dev/null || {
   cat >&2 <<'EOF'
 FAIL upstream-selector nebula underlay core transit.
 
-The branch Nebula core has a modeled east-west external uplink and the simulated
-ISP core has a modeled WAN uplink. The intent explicitly allows
-east-west -> WAN trafficType=nebula-storage, so CPM must emit a bounded
-core-nebula -> core-isp selector firewall rule. Without it, the live selector
-drops Nebula underlay packets even though routes point at the ISP core.
+Overlay ingress must not get a direct upstream-selector firewall allowance to
+the WAN core. Underlay endpoint reachability is routed explicitly; opening
+core-nebula -> core-isp here bypasses the tenant policy lane and leaks the
+overlay ingress boundary.
 EOF
   exit 1
 }

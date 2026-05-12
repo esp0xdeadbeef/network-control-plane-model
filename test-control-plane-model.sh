@@ -9,6 +9,11 @@ fi
 
 "$ROOT/tests/test-nix-file-loc.sh"
 "$ROOT/tests/test-resolved-inventory-secret-facts-contract.sh"
+"$ROOT/tests/test-policy-deny-precedence.sh"
+"$ROOT/tests/test-delegated-overlay-public-egress.sh"
+"$ROOT/tests/test-upstream-selector-nebula-underlay-core-transit.sh"
+"$ROOT/tests/test-transit-default-routes-are-classified.sh"
+"$ROOT/tests/test-network-labs-inventory-sweep.sh"
 
 if command -v jq >/dev/null 2>&1; then
   jq_cmd=(jq)

@@ -96,6 +96,18 @@ def delegated_access_nodes($site):
         or ((.data.externalValidation.delegatedPrefixSecretName // "") != "")
         or ((.data.advertisements.externalValidation.delegatedIPv6Prefix // false) == true)
         or ((.data.advertisements.externalValidation.delegatedPrefixSecretName // "") != "")
+        or (
+          [
+            (.data.networks // {})
+            | to_entries[]
+            | select((.value.kind // "") == "tenant")
+            | (.value.routedPrefixes // [])[]
+            | select(
+                ((.family // "") == "ipv6" or (.family // 0) == 6)
+                and ((.allocation // "") == "runtime" or (.source // "") == "inventory-routed-prefix")
+              )
+          ] | length > 0
+        )
       )
     | .data.logicalNode.name
   ];
