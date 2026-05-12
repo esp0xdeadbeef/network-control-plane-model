@@ -20,7 +20,13 @@ def route_shape_violations:
   sites as $site
   | route_records($site) as $route
   | ($route.data.intent // {}) as $intent
-  | if ($route.data.dst // "") == "" then
+  | (
+      $route.family == "ipv6"
+      and (($route.data.sourceFile // "") != "")
+      and (($intent.kind // "") == "runtime-routed-prefix-return")
+      and (($intent.source // "") == "inventory-routed-prefix")
+    ) as $isRuntimeRoutedPrefixReturn
+  | if ($route.data.dst // "") == "" and ($isRuntimeRoutedPrefixReturn | not) then
       violation("route-shape"; $route.name; $route.enterprise; $route.site; $route.target; "route on " + $route.interface + " " + $route.family + " is missing dst")
     elif ($intent | type) != "object" or (($intent.kind // $intent.source // "") == "") then
       violation("route-shape"; $route.name; $route.enterprise; $route.site; $route.target; "route " + ($route.data.dst // "<missing>") + " on " + $route.interface + " lacks intent kind/source")
