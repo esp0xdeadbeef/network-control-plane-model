@@ -295,6 +295,7 @@ let
     // {
       tenants = siteTenantsCfg;
       ipv6 = siteIpv6Cfg;
+      inherit routedPrefixesByTenant;
     };
 
   defaultReachability =

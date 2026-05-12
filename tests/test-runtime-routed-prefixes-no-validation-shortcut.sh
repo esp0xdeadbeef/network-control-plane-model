@@ -170,8 +170,13 @@ if ! BGP_OUTPUT="${bgp_output}" STATIC_OUTPUT="${static_output}" nix eval \
       bgpAccess =
         bgpData.control_plane_model.data.espbranch."site-b"
           .runtimeTargets."espbranch-site-b-b-router-access-hostile";
+      bgpCore =
+        bgpData.control_plane_model.data.espbranch."site-b"
+          .runtimeTargets."espbranch-site-b-b-router-core-nebula";
       bgpRa = builtins.head bgpAccess.advertisements.ipv6Ra;
       bgpRuntimePrefixes = bgpAccess.bgp.networks.routedPrefixes.ipv6 or [ ];
+      bgpCoreUpstreamRoutes =
+        bgpCore.effectiveRuntimeRealization.interfaces."p2p-b-router-core-nebula-b-router-upstream-selector".routes.ipv6 or [ ];
 
       staticSite = staticData.control_plane_model.data.esp0xdeadbeef."site-a";
       staticAccess = staticSite.runtimeTargets."esp0xdeadbeef-site-a-s-router-access-client-b";
@@ -183,11 +188,21 @@ if ! BGP_OUTPUT="${bgp_output}" STATIC_OUTPUT="${static_output}" nix eval \
             (prefix.family or null) == "ipv6"
             && (prefix.sourceFile or null) == sourceFile)
           prefixes;
+      hasRuntimePrefixReturnRoute = sourceFile: routes:
+        builtins.any
+          (route:
+            (route.sourceFile or null) == sourceFile
+            && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return"
+            && ((route.intent or { }).source or null) == "inventory-routed-prefix"
+            && ((route.intent or { }).accessNode or null) == "b-router-access-hostile"
+            && (route.via6 or null) == "fd42:dead:feed:1000:0:0:0:5")
+          routes;
     in
       bgpAccess.routingMode == "bgp"
       && builtins.elem "fd42:dead:feed:70::1/64" bgpAccess.bgp.networks.ipv6
       && hasPrefixBySource "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile" bgpRuntimePrefixes
       && hasPrefixBySource "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile" (bgpRa.routedPrefixes or [ ])
+      && hasRuntimePrefixReturnRoute "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile" bgpCoreUpstreamRoutes
       && !(bgpAccess ? externalValidation)
       && !(bgpRa ? externalValidation)
       && staticSite.routing.mode == "static"
