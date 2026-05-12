@@ -8,6 +8,7 @@
   policyDerivedDnsAllowFromForListeners,
   policyDerivedDnsAllowedClassesForListeners,
   policyDerivedDnsAllowedClassesForTenants,
+  policyDerivedDnsDirectEgressBlockedForListeners,
   policyDerivedDnsDirectEgressBlockedForTenants,
   policyDerivedDnsForwardersForTenants,
   uniqueStrings,
@@ -105,7 +106,12 @@ let
       mergedForwarders = if filteredDerivedForwarders == [ ] then explicitForwarders else uniqueStrings filteredDerivedForwarders;
       mergedAllowFrom = if derivedAllowFrom == [ ] then explicitAllowFrom else uniqueStrings (explicitAllowFrom ++ derivedAllowFrom);
       mergedAllowedClasses = uniqueStrings ((dnsService.allowedUpstreamClasses or [ ]) ++ derivedAllowedClasses);
-      blockDirectEgress = policyDerivedDnsDirectEgressBlockedForTenants tenantNames;
+      blockDirectEgress =
+        (policyDerivedDnsDirectEgressBlockedForTenants tenantNames)
+        || (
+          builtins.isList (dnsService.listen or null)
+          && policyDerivedDnsDirectEgressBlockedForListeners dnsService.listen
+        );
     in
     normalized
     // lib.optionalAttrs (dnsService != { }) {
