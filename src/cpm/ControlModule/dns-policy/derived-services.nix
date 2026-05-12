@@ -99,6 +99,20 @@ let
 
   allowedDnsExternalRelations = builtins.filter (dnsExternalRelation "allow") allowedRelations;
   deniedDnsExternalRelations = builtins.filter (dnsExternalRelation "deny") allowedRelations;
+
+  hostedDnsServicesForListeners =
+    listenAddrs:
+    let
+      listenSet = uniqueStrings listenAddrs;
+    in
+    builtins.filter
+      (serviceName:
+        let
+          serviceDef = serviceDefinitions.${serviceName};
+          providerAddresses = lib.concatMap providerAddressesForDnsService (providersForService serviceName);
+        in
+        (serviceDef.trafficType or null) == "dns" && lib.any (addr: builtins.elem addr listenSet) providerAddresses)
+      (sortedNames serviceDefinitions);
 in
 {
   inherit dnsServiceRouteSpecs;
@@ -188,4 +202,17 @@ in
         && builtins.any (tenantName: relationEndpointMatchesTenant tenantName (deny.from or null)) tenantNames
       )
       deniedDnsExternalRelations;
+  policyDerivedDnsDirectEgressBlockedForListeners =
+    listenAddrs:
+    let
+      hostedDnsServices = hostedDnsServicesForListeners listenAddrs;
+    in
+    builtins.any
+      (
+        relation:
+        builtins.isAttrs (relation.from or null)
+        && (relation.from.kind or null) == "service"
+        && builtins.elem (relation.from.name or "") hostedDnsServices
+      )
+      allowedDnsExternalRelations;
 }
