@@ -9,6 +9,7 @@ fi
 
 "$ROOT/tests/test-nix-file-loc.sh"
 "$ROOT/tests/test-resolved-inventory-secret-facts-contract.sh"
+"$ROOT/tests/test-dns-killswitch-policy-matrix.sh"
 "$ROOT/tests/test-policy-deny-precedence.sh"
 "$ROOT/tests/test-delegated-overlay-public-egress.sh"
 "$ROOT/tests/test-upstream-selector-nebula-underlay-core-transit.sh"

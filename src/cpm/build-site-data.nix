@@ -115,6 +115,7 @@ let
     policyDerivedDnsAllowFromForListeners
     policyDerivedDnsAllowedClassesForListeners
     policyDerivedDnsAllowedClassesForTenants
+    policyDerivedDnsDirectEgressBlockedForTenants
     policyDerivedDnsForwardersForTenants
     ;
 
@@ -234,6 +235,7 @@ let
       policyDerivedDnsAllowFromForListeners
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsAllowedClassesForTenants
+      policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForTenants
       uniqueStrings
       ;

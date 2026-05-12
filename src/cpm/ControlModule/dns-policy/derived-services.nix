@@ -61,6 +61,44 @@ let
   allowedClasses = import ./allowed-classes.nix {
     inherit lib allowedRelations dnsPolicy providersForService serviceDefinitions;
   };
+
+  relationPriority = relation:
+    if builtins.isInt (relation.priority or null) then relation.priority else 1000;
+
+  externalNamesFor =
+    endpoint:
+    if !builtins.isAttrs endpoint || (endpoint.kind or null) != "external" then
+      [ ]
+    else
+      uniqueStrings (
+        lib.optional (builtins.isString (endpoint.name or null) && endpoint.name != "") endpoint.name
+        ++ (
+          if builtins.isList (endpoint.uplinks or null) then
+            builtins.filter builtins.isString endpoint.uplinks
+          else
+            [ ]
+        )
+      );
+
+  externalEndpointsOverlap = left: right:
+    let
+      leftNames = externalNamesFor left;
+      rightNames = externalNamesFor right;
+    in
+    leftNames == [ ] || rightNames == [ ] || lib.any (name: builtins.elem name rightNames) leftNames;
+
+  dnsExternalRelation =
+    action: relation:
+    let
+      relationAttrs = if builtins.isAttrs relation then relation else { };
+    in
+    (relationAttrs.action or "allow") == action
+    && (relationAttrs.trafficType or null) == "dns"
+    && builtins.isAttrs (relationAttrs.to or null)
+    && (relationAttrs.to.kind or null) == "external";
+
+  allowedDnsExternalRelations = builtins.filter (dnsExternalRelation "allow") allowedRelations;
+  deniedDnsExternalRelations = builtins.filter (dnsExternalRelation "deny") allowedRelations;
 in
 {
   inherit dnsServiceRouteSpecs;
@@ -125,4 +163,29 @@ in
 
   policyDerivedDnsAllowedClassesForTenants = allowedClasses.forTenants;
   policyDerivedDnsAllowedClassesForListeners = allowedClasses.forListeners;
+  policyDerivedDnsDirectEgressBlockedForTenants =
+    tenantNames:
+    builtins.any
+      (
+        deny:
+        let
+          denyPriority = relationPriority deny;
+          hasMatchingAllow =
+            builtins.any
+              (
+                allow:
+                relationPriority allow <= denyPriority
+                && externalEndpointsOverlap (allow.to or { }) (deny.to or { })
+                && builtins.any
+                  (tenantName:
+                    relationEndpointMatchesTenant tenantName (allow.from or null)
+                    && relationEndpointMatchesTenant tenantName (deny.from or null))
+                  tenantNames
+              )
+              allowedDnsExternalRelations;
+        in
+        !hasMatchingAllow
+        && builtins.any (tenantName: relationEndpointMatchesTenant tenantName (deny.from or null)) tenantNames
+      )
+      deniedDnsExternalRelations;
 }
