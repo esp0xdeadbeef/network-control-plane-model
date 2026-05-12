@@ -22,10 +22,11 @@ let
     uplinkNameFromAdjacencyId
     ;
 
-  ownsRuntimeRoutedIPv6Prefix =
+  runtimeRoutedIPv6PrefixesForTenant =
     tenantName:
     let
       tenant = attrsOrEmpty (siteAttrs.tenants.${tenantName} or null);
+      resolvedRoutedPrefixes = attrsOrEmpty (siteAttrs.routedPrefixesByTenant or null);
       ownership = attrsOrEmpty (siteAttrs.ownership or null);
       ownershipPrefixes = listOrEmpty (ownership.prefixes or null);
       tenantOwnershipPrefixes =
@@ -34,13 +35,20 @@ let
           ownershipPrefixes;
       routedEntries =
         (listOrEmpty (tenant.routedPrefixes or null))
+        ++ (listOrEmpty (resolvedRoutedPrefixes.${tenantName} or null))
         ++ builtins.concatLists (builtins.map (prefix: listOrEmpty ((attrsOrEmpty prefix).routedPrefixes or null)) tenantOwnershipPrefixes);
     in
-    builtins.any
+    builtins.filter
       (routed:
         (routed.family or null) == "ipv6"
         && ((routed.allocation or null) == "runtime" || (routed.source or null) == "inventory-routed-prefix"))
       routedEntries;
+
+  ownsRuntimeRoutedIPv6Prefix =
+    tenantName:
+    builtins.any
+      (_: true)
+      (runtimeRoutedIPv6PrefixesForTenant tenantName);
 
   isRuntimeRoutedIPv6AccessNode =
     accessNodeName:
@@ -67,6 +75,34 @@ let
     );
 
   isDelegatedIPv6AccessNode = isRuntimeRoutedIPv6AccessNode;
+
+  runtimeRoutedIPv6PrefixesForAccessNode =
+    accessNodeName:
+    if !hasAttr accessNodeName runtimeTargetsWithWANDefaultsByNode then
+      [ ]
+    else
+      let
+        target = runtimeTargetsWithWANDefaultsByNode.${accessNodeName}.target;
+        networks = attrsOrEmpty (target.networks or null);
+      in
+      builtins.concatLists (
+        builtins.map
+          (networkName:
+            let
+              network = attrsOrEmpty networks.${networkName};
+              networkPrefixes =
+                builtins.filter
+                  (routed:
+                    (routed.family or null) == "ipv6"
+                    && ((routed.allocation or null) == "runtime" || (routed.source or null) == "inventory-routed-prefix"))
+                  (listOrEmpty (network.routedPrefixes or null));
+            in
+            if (network.kind or null) != "tenant" then
+              [ ]
+            else
+              runtimeRoutedIPv6PrefixesForTenant networkName ++ networkPrefixes)
+          (sortedNames networks)
+      );
 
   defaultRouteCountsAsSource = family: route:
     let
@@ -197,6 +233,14 @@ in
     ;
   runtimeRoutedIPv6AccessNodeNames =
     builtins.filter isRuntimeRoutedIPv6AccessNode (sortedNames runtimeTargetsWithWANDefaultsByNode);
+  runtimeRoutedIPv6PrefixesByAccessNode = builtins.listToAttrs (
+    builtins.map
+      (accessNodeName: {
+        name = accessNodeName;
+        value = runtimeRoutedIPv6PrefixesForAccessNode accessNodeName;
+      })
+      (builtins.filter isRuntimeRoutedIPv6AccessNode (sortedNames runtimeTargetsWithWANDefaultsByNode))
+  );
   inherit
     targetHasDefaultReachabilityForFamily
     ;

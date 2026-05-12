@@ -14,6 +14,7 @@
   explicitDefaultSourceSet6,
   isDelegatedIPv6AccessNode,
   runtimeRoutedIPv6AccessNodeNames,
+  runtimeRoutedIPv6PrefixesByAccessNode,
   routeHelpers,
 }:
 
@@ -62,6 +63,16 @@ let
       sortedCandidatePaths
       preferredFirstHopMatchesSource
       routeHelpers
+      ;
+  };
+  runtimeRoutedPrefixRoutes = import ./runtime-routed-prefix-routes.nix {
+    inherit
+      helpers
+      common
+      sitePath
+      sortedCandidatePaths
+      routeHelpers
+      runtimeRoutedIPv6PrefixesByAccessNode
       ;
   };
   inherit (defaultRouteSanitizer)
@@ -227,10 +238,11 @@ let
       target2 = endpointRoutes.add 6 targetName target1;
       target3 = addInternalDefaults 4 explicitDefaultSourceSet4 targetName target2;
       target4 = addInternalDefaults 6 explicitDefaultSourceSet6 targetName target3;
-      target5 = explicitDefaultPreservation.restore { inherit targetName; originalTarget = target0; resolvedTarget = target4; };
-      target6 = markTargetPolicyDefaults target5;
+      target5 = runtimeRoutedPrefixRoutes.add targetName target4;
+      target6 = explicitDefaultPreservation.restore { inherit targetName; originalTarget = target0; resolvedTarget = target5; };
+      target7 = markTargetPolicyDefaults target6;
     in
-    { name = targetName; value = target6; };
+    { name = targetName; value = target7; };
 
 in
 {

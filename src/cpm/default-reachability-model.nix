@@ -76,6 +76,7 @@ let
     isDelegatedIPv6AccessNode
     preferredFirstHopMatchesSource
     runtimeRoutedIPv6AccessNodeNames
+    runtimeRoutedIPv6PrefixesByAccessNode
     targetHasDefaultReachabilityForFamily
     ;
   graph = import ./Site/default-reachability/graph.nix {
@@ -115,6 +116,7 @@ let
       explicitDefaultSourceSet6
       isDelegatedIPv6AccessNode
       runtimeRoutedIPv6AccessNodeNames
+      runtimeRoutedIPv6PrefixesByAccessNode
       routeHelpers
       ;
   };
