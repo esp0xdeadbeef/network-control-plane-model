@@ -52,8 +52,17 @@ let
       toCores = coreInterfacesFor (relation.to or null);
       trafficType = relation.trafficType or "any";
       action = relation.action or "allow";
+      fromExternal = attrsOrEmpty (relation.from or null);
+      toExternal = attrsOrEmpty (relation.to or null);
+      fromIsNamedOverlay =
+        (fromExternal.kind or null) == "external"
+        && fromExternal ? name
+        && !(fromExternal ? uplinks);
+      toIsWanUplink =
+        (toExternal.kind or null) == "external"
+        && builtins.isList (toExternal.uplinks or null);
     in
-    if action != "allow" || trafficType == "any" then
+    if action != "allow" || trafficType == "any" || (fromIsNamedOverlay && toIsWanUplink) then
       [ ]
     else
       builtins.concatLists (

@@ -1,6 +1,7 @@
 {
   helpers,
   common,
+  ipam,
   sitePath,
   siteOverlayNameSet,
   overlayExitPeerSiteByName,
@@ -23,6 +24,7 @@ let
     attrsOrEmpty
     buildInternalDefaultRoute
     listOrEmpty
+    routeMatchesDefault
     uplinkNameFromAdjacencyId
     ;
   inherit (routeHelpers)
@@ -48,7 +50,7 @@ let
     inherit helpers common siteOverlayNameSet overlayExitPeerSiteByName;
   };
   overlayExitIngress = import ./overlay-exit-ingress.nix {
-    inherit helpers common siteOverlayNameSet;
+    inherit helpers common ipam siteOverlayNameSet;
   };
   endpointRoutes = import ./endpoint-routes.nix {
     inherit
@@ -67,6 +69,39 @@ let
     sanitizeDefaultRoutesForInterface
     sanitizeOverlayDefaults
     ;
+
+  roleRequiresPolicyDefaults = role:
+    role == "policy" || role == "upstream-selector" || role == "downstream-selector";
+
+  markDefaultPolicyOnly = family: routes:
+    builtins.map
+      (route:
+        if routeMatchesDefault family route then
+          route // { policyOnly = true; }
+        else
+          route)
+      (listOrEmpty routes);
+
+  markTargetPolicyDefaults = target:
+    if !roleRequiresPolicyDefaults (target.role or null) then
+      target
+    else
+      let
+        effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+        interfaces = attrsOrEmpty (effective.interfaces or null);
+        updatedInterfaces =
+          builtins.mapAttrs
+            (_: iface:
+              let routes = attrsOrEmpty (iface.routes or null);
+              in iface // {
+                routes = routes // {
+                  ipv4 = markDefaultPolicyOnly 4 (routes.ipv4 or [ ]);
+                  ipv6 = markDefaultPolicyOnly 6 (routes.ipv6 or [ ]);
+                };
+              })
+            interfaces;
+      in
+      target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
 
   addInternalDefaults = family: sourceSet: targetName: target:
     let
@@ -141,9 +176,11 @@ let
             idx = state.index;
             firstStep = builtins.elemAt candidate.steps 0;
             interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
-            accessNodeName = accessNodeNameFromAdjacencyId firstStep.adjacencyId;
-            uplinkName = uplinkNameFromAdjacencyId firstStep.adjacencyId;
+            firstStepLane = attrsOrEmpty (firstStep.laneMeta or null);
+            accessNodeName = firstStepLane.access or (accessNodeNameFromAdjacencyId firstStep.adjacencyId);
+            uplinkName = firstStepLane.uplink or (uplinkNameFromAdjacencyId firstStep.adjacencyId);
             delegatedWANFirstHop = isNonEmptyString accessNodeName && isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && !hasAttr uplinkName siteOverlayNameSet;
+            nonDelegatedOverlayFirstHop = isNonEmptyString accessNodeName && !isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && hasAttr uplinkName siteOverlayNameSet;
             interfacesWithDelegatedOverlayEgress =
               if family == 6 && isDelegatedIPv6AccessNode candidate.sourceNode then
                 delegatedOverlayEgress.add {
@@ -156,7 +193,7 @@ let
               else
                 state.interfaces;
           in
-          if interfaceName == null || delegatedWANFirstHop then
+          if interfaceName == null || delegatedWANFirstHop || nonDelegatedOverlayFirstHop then
             state // {
               index = idx + 1;
               interfaces = interfacesWithDelegatedOverlayEgress;
@@ -191,8 +228,9 @@ let
       target3 = addInternalDefaults 4 explicitDefaultSourceSet4 targetName target2;
       target4 = addInternalDefaults 6 explicitDefaultSourceSet6 targetName target3;
       target5 = explicitDefaultPreservation.restore { inherit targetName; originalTarget = target0; resolvedTarget = target4; };
+      target6 = markTargetPolicyDefaults target5;
     in
-    { name = targetName; value = target5; };
+    { name = targetName; value = target6; };
 
 in
 {
