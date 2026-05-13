@@ -130,14 +130,21 @@ let
               // (if isNonEmptyString (cfg.provider or null) then { provider = cfg.provider; } else { })
               // (
                 let
+                  endpointSourceFiles = attrsOrEmpty (cfg.underlayEndpointSourceFiles or null);
+                  endpointSourceFileEntries =
+                    (map (sourceFile: { inherit sourceFile; family = 4; }) (listOrEmpty (endpointSourceFiles.ipv4 or null)))
+                    ++ (map (sourceFile: { inherit sourceFile; family = 6; }) (listOrEmpty (endpointSourceFiles.ipv6 or null)))
+                    ++ (if isNonEmptyString (nebulaLighthouse.endpointSourceFile or null) then [ { sourceFile = nebulaLighthouse.endpointSourceFile; family = 4; } ] else [ ])
+                    ++ (if isNonEmptyString (nebulaLighthouse.endpoint6SourceFile or null) then [ { sourceFile = nebulaLighthouse.endpoint6SourceFile; family = 6; } ] else [ ]);
                   endpoints =
-                    uniqueStrings (
+                    (uniqueStrings (
                       listOrEmpty (cfg.underlayEndpoints or null)
                       ++ [
                         (nebulaLighthouse.endpoint or null)
                         (nebulaLighthouse.endpoint6 or null)
                       ]
-                    );
+                    ))
+                    ++ endpointSourceFileEntries;
                 in
                 if endpoints != [ ] then { underlayEndpoints = endpoints; } else { }
               )

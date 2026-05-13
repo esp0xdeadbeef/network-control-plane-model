@@ -26,7 +26,12 @@ def route_shape_violations:
       and (($intent.kind // "") == "runtime-routed-prefix-return")
       and (($intent.source // "") == "inventory-routed-prefix")
     ) as $isRuntimeRoutedPrefixReturn
-  | if ($route.data.dst // "") == "" and ($isRuntimeRoutedPrefixReturn | not) then
+  | (
+      (($route.data.sourceFile // "") != "")
+      and (($intent.kind // "") == "overlay-underlay-reachability")
+      and (($intent.source // "") == "overlay-underlay-endpoint")
+    ) as $isRuntimeUnderlayEndpoint
+  | if ($route.data.dst // "") == "" and ($isRuntimeRoutedPrefixReturn | not) and ($isRuntimeUnderlayEndpoint | not) then
       violation("route-shape"; $route.name; $route.enterprise; $route.site; $route.target; "route on " + $route.interface + " " + $route.family + " is missing dst")
     elif ($intent | type) != "object" or (($intent.kind // $intent.source // "") == "") then
       violation("route-shape"; $route.name; $route.enterprise; $route.site; $route.target; "route " + ($route.data.dst // "<missing>") + " on " + $route.interface + " lacks intent kind/source")
