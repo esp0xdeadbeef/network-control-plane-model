@@ -35,6 +35,12 @@ jq -e '
       and .via4 == "10.50.0.6"
       and .proto == "underlay"
       and .intent.kind == "overlay-underlay-reachability"))
+    and (any($routes.ipv4[]?;
+      .sourceFile == "/run/secrets/hetzner-public-ipv4"
+      and .family == 4
+      and .via4 == "10.50.0.6"
+      and .proto == "underlay"
+      and .intent.kind == "overlay-underlay-reachability"))
     and (any($routes.ipv6[]?;
       .sourceFile == "/run/secrets/site-c-lighthouse-public-ipv6"
       and .family == 6

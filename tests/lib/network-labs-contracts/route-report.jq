@@ -9,6 +9,7 @@ def route_key($route):
     $route.interface,
     $route.family,
     ($route.data.dst // ""),
+    ($route.data.sourceFile // ""),
     ($route.data.via4 // ""),
     ($route.data.via6 // ""),
     ($route.data.scope // ""),
