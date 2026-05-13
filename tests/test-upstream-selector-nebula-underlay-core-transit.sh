@@ -39,8 +39,7 @@ jq -e '
           (.action == "accept")
           and (.fromInterface == "core-nebula")
           and (.toInterface == "core-isp")
-          and (.trafficType == "nebula-storage")
-          and (.relationId == "allow-siteb-nebula-underlay-to-wan")
+          and ((.trafficType // "any") == "any")
         )
     ]
   | length == 0
@@ -48,10 +47,43 @@ jq -e '
   cat >&2 <<'EOF'
 FAIL upstream-selector nebula underlay core transit.
 
-Overlay ingress must not get a direct upstream-selector firewall allowance to
-the WAN core. Underlay endpoint reachability is routed explicitly; opening
-core-nebula -> core-isp here bypasses the tenant policy lane and leaks the
-overlay ingress boundary.
+Overlay ingress must not get a broad upstream-selector firewall allowance to
+the WAN core. Underlay endpoint reachability may only open the modeled Nebula
+traffic type when the matching overlay-underlay endpoint route exists.
+EOF
+  exit 1
+}
+
+jq -e '
+  .control_plane_model.data
+  | [
+      to_entries[] as $enterprise
+      | $enterprise.value
+      | to_entries[] as $site
+      | $site.value.runtimeTargets
+      | to_entries[]
+      | select((.value.role // "") == "upstream-selector")
+      | (.value.forwardingIntent.rules // [])[]
+      | select(
+          (.action == "accept")
+          and (.fromInterface == "core-nebula")
+          and (.toInterface == "core-isp")
+          and (.trafficType == "nebula-storage")
+          and (.relationId == "allow-siteb-nebula-underlay-to-wan")
+          and (.intent.kind == "overlay-underlay-reachability")
+          and (.intent.source == "overlay-underlay-endpoint")
+          and (.intent.overlay == "east-west")
+        )
+    ]
+  | length == 1
+' "${output_json}" >/dev/null || {
+  cat >&2 <<'EOF'
+FAIL upstream-selector nebula underlay core transit.
+
+Expected one narrow core-nebula -> core-isp firewall allowance for modeled
+Nebula underlay endpoint reachability. The rule must carry the Nebula traffic
+type and overlay-underlay endpoint intent so it cannot become a generic WAN
+bypass.
 EOF
   exit 1
 }
