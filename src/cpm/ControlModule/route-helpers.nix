@@ -126,6 +126,7 @@ let
         inherit family;
         dst = route.dst or null;
         table = route.table or null;
+        sourceFile = route.sourceFile or null;
         via4 = route.via4 or null;
         via6 = route.via6 or null;
         scope = route.scope or null;
