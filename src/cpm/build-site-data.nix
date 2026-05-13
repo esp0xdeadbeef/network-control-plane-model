@@ -170,8 +170,11 @@ let
       routeHelpers
       sitePath
       allowedRelations
+      attachments
+      nodes
       serviceDefinitions
       providerEndpointForServiceProvider
+      providerTenantsForServiceProvider
       ;
   };
 

@@ -6,8 +6,11 @@
   routeHelpers,
   sitePath,
   allowedRelations,
+  attachments,
+  nodes,
   serviceDefinitions,
   providerEndpointForServiceProvider,
+  providerTenantsForServiceProvider,
 }:
 
 let
@@ -15,7 +18,7 @@ let
   inherit (common) attrsOrEmpty listOrEmpty;
 
   laneHelpers = import ../../Site/topology/lane-metadata.nix { inherit helpers; };
-  inherit (laneHelpers) interfaceLane laneUplinks;
+  inherit (laneHelpers) interfaceLane;
 
   destinationHelpers = import ./dns/destinations.nix {
     inherit lib common ipam;
@@ -60,6 +63,11 @@ let
         in
         (endpoint.ipv4 or [ ]) ++ (endpoint.ipv6 or [ ]))
       (listOrEmpty ((serviceDefinitions.${serviceName} or { }).providers or null));
+
+  providerAccess = import ./service-ingress/provider-access.nix {
+    inherit lib helpers common sitePath attachments nodes serviceDefinitions providerTenantsForServiceProvider;
+  };
+  inherit (providerAccess) providerAccessNodesForService;
 in
 targetName: target:
 let
@@ -81,46 +89,10 @@ let
     in
     if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
 
-  providerInterfaceFor =
-    family: destination:
-    let
-      matchingInterface =
-        kind:
-        lib.findFirst
-          (ifName:
-            let iface = interfaces.${ifName};
-            in
-            (interfaceLane iface).kind or null == kind
-            && routeForCoveringDst { inherit family destination; routes = routesFor family iface; } != null)
-          null
-          interfaceNames;
-      accessIfName = matchingInterface "access";
-    in
-    if accessIfName != null then accessIfName else matchingInterface "access-uplink";
-
-  ingressInterfaceFor =
-    providerIfName: uplinkName:
-    let providerLane = interfaceLane interfaces.${providerIfName};
-    in
-    lib.findFirst
-      (ifName:
-        let lane = interfaceLane interfaces.${ifName};
-        in
-        (lane.kind or null) == "access-uplink"
-        && (lane.access or null) == (providerLane.access or null)
-        && builtins.elem uplinkName (laneUplinks lane))
-      null
-      interfaceNames;
-
-  externalIngressInterfacesFor =
-    uplinkName:
-    builtins.filter
-      (ifName:
-        let lane = interfaceLane interfaces.${ifName};
-        in
-        (lane.kind or null) == "uplink"
-        && builtins.elem uplinkName (laneUplinks lane))
-      interfaceNames;
+  interfaceSelection = import ./service-ingress/interface-selection.nix {
+    inherit lib helpers interfaceNames interfaces routeForCoveringDst routesFor;
+  };
+  inherit (interfaceSelection) externalIngressInterfacesFor ingressInterfaceFor providerInterfaceFor;
 
   addRouteToInterface =
     family: route: destination: ifName: interfacesAcc:
@@ -152,6 +124,7 @@ let
     let
       serviceName = (attrsOrEmpty (relation.to or null)).name or null;
       endpoints = endpointAddressesForService serviceName;
+      providerAccessNodes = providerAccessNodesForService serviceName;
       uplinks = relationUplinks relation;
       relationId = relation.id or relation.name or null;
       trafficType = relation.trafficType or (serviceDefinitions.${serviceName}.trafficType or null);
@@ -160,17 +133,17 @@ let
       (outer: endpoint:
         let
           family = routeFamily endpoint;
-          providerIfName = providerInterfaceFor family endpoint;
+          providerIfName = providerInterfaceFor family endpoint providerAccessNodes;
         in
-        if providerIfName == null then
+        if providerIfName == null && providerAccessNodes == [ ] then
           outer
         else
           builtins.foldl'
             (inner: uplinkName:
               let
-                ingressIfName = ingressInterfaceFor providerIfName uplinkName;
-                providerIface = inner.${providerIfName};
-                providerLane = interfaceLane providerIface;
+                ingressIfName = ingressInterfaceFor providerAccessNodes providerIfName uplinkName;
+                providerIface = if providerIfName == null then null else inner.${providerIfName};
+                providerLane = if providerIface == null then { } else interfaceLane providerIface;
                 peer =
                   if ingressIfName == null then
                     null
