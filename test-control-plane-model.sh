@@ -13,6 +13,7 @@ fi
 "$ROOT/tests/test-policy-deny-precedence.sh"
 "$ROOT/tests/test-delegated-overlay-public-egress.sh"
 "$ROOT/tests/test-upstream-selector-nebula-underlay-core-transit.sh"
+"$ROOT/tests/test-runtime-underlay-endpoint-source-routes.sh"
 "$ROOT/tests/test-transit-default-routes-are-classified.sh"
 "$ROOT/tests/test-network-labs-inventory-sweep.sh"
 

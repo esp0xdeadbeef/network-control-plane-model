@@ -36,18 +36,62 @@ let
     let uplinks = interfaceUplinkNames iface;
     in uplinks != [ ] && !builtins.any (uplink: builtins.hasAttr uplink siteOverlayNameSet) uplinks;
 
+  endpointFamilyMatches =
+    family: endpoint:
+    if builtins.isString endpoint then
+      isNonEmptyString endpoint && (if family == 6 then isIPv6 endpoint else !isIPv6 endpoint)
+    else
+      builtins.isAttrs endpoint && (endpoint.family or null) == family && isNonEmptyString (endpoint.sourceFile or null);
+
+  dynamicRouteExists =
+    family: routes: endpoint:
+    builtins.any
+      (route:
+        builtins.isAttrs route
+        && (route.sourceFile or null) == endpoint.sourceFile
+        && (route.family or null) == family
+        && ((attrsOrEmpty (route.intent or null)).kind or null) == "overlay-underlay-reachability")
+      (listOrEmpty routes);
+
+  buildDynamicEndpointRoute =
+    family: overlayName: endpoint: gateway:
+    {
+      inherit family;
+      sourceFile = endpoint.sourceFile;
+      intent = {
+        kind = "overlay-underlay-reachability";
+        source = "overlay-underlay-endpoint";
+      };
+      proto = "underlay";
+      overlay = overlayName;
+    }
+    // (if family == 4 then { via4 = gateway; } else { via6 = gateway; });
+
+  endpointRouteAlreadyPresent =
+    family: existingRoutes: endpoint:
+    if builtins.isString endpoint then
+      routeWithDstPresent family existingRoutes endpoint
+    else
+      dynamicRouteExists family existingRoutes endpoint;
+
+  buildEndpointRoute =
+    family: overlayName: endpoint: gateway:
+    if builtins.isString endpoint then
+      buildOverlayUnderlayEndpointRoute family overlayName endpoint gateway
+    else
+      buildDynamicEndpointRoute family overlayName endpoint gateway;
+
   addRoutesForFamily =
     family: overlayName: gateway: existingRoutes: endpoints:
     if !isNonEmptyString gateway then
       [ ]
     else
       builtins.map
-        (endpoint: buildOverlayUnderlayEndpointRoute family overlayName endpoint gateway)
+        (endpoint: buildEndpointRoute family overlayName endpoint gateway)
         (builtins.filter
           (endpoint:
-            isNonEmptyString endpoint
-            && (if family == 6 then isIPv6 endpoint else !isIPv6 endpoint)
-            && !routeWithDstPresent family existingRoutes endpoint)
+            endpointFamilyMatches family endpoint
+            && !endpointRouteAlreadyPresent family existingRoutes endpoint)
           endpoints);
 in
 _targetName: target:
