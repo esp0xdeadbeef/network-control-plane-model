@@ -36,9 +36,11 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
     coreNebula = siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
     upstreamSelector = siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector";
+    branchPolicy = siteB.runtimeTargets."espbranch-site-b-b-router-policy";
     siteCUpstream = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
     interfaces = coreNebula.effectiveRuntimeRealization.interfaces;
     upstreamInterfaces = upstreamSelector.effectiveRuntimeRealization.interfaces;
+    policyInterfaces = branchPolicy.effectiveRuntimeRealization.interfaces;
     siteCUpstreamInterfaces = siteCUpstream.effectiveRuntimeRealization.interfaces;
 
     routes6For = ifName:
@@ -47,6 +49,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       (((upstreamInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
     siteCUpstreamRoutes6For = ifName:
       (((siteCUpstreamInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
+    policyRoutes6For = ifName:
+      (((policyInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
 
     delegatedOverlayDefault =
       builtins.any
@@ -85,6 +89,22 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
         (upstreamRoutes6For "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west");
 
+    hostileRuntimeReturnOnHostileIngress =
+      builtins.any
+        (route:
+          (route.sourceFile or null) == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
+          && (route.via6 or null) == "fd42:dead:feed:1000:0:0:0:a"
+          && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return"
+          && ((route.intent or { }).accessNode or null) == "b-router-access-hostile")
+        (policyRoutes6For "p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-hostile");
+
+    hostileRuntimeReturnNotOnBranchIngress =
+      !(builtins.any
+        (route:
+          (route.sourceFile or null) == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
+          && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return")
+        (policyRoutes6For "p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-branch"));
+
     badGenericOverlayDefault =
       builtins.any
         (route:
@@ -122,7 +142,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && (rule.action or null) == "accept")
         (siteCUpstream.forwardingIntent.rules or [ ]);
   in
-    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToPolicy && siteCClientEwCarriesOnlyPolicyDefault && siteCOverlayIngressFirewallToPolicy then
+    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToPolicy && siteCClientEwCarriesOnlyPolicyDefault && siteCOverlayIngressFirewallToPolicy then
       true
     else if !siteCOverlayIngressFirewallToPolicy then
       throw "delegated-overlay-public-egress failed: example site-c upstream-selector lacks forwarding intent from core-nebula to pol-client-ew, so the route contract would bypass the client tenant policy lane that owns the runtime delegated public prefix. Remove this error only after CPM emits the site-c overlay-ingress firewall contract."
@@ -130,6 +150,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       throw "delegated-overlay-public-egress failed: example hostile IPv6 public egress would die at c-router-upstream-selector core-nebula ingress. CPM must emit a policyOnly delegated-public-egress ::/0 on site-c c-router-upstream-selector core-nebula via fd42:dead:cafe:1000:0:0:0:c toward pol-client-ew with exitNode=c-router-access-client."
     else if !siteCClientEwCarriesOnlyPolicyDefault then
       throw "delegated-overlay-public-egress failed: example site-c client east-west policy lane must carry only a policyOnly delegated public default while overlay ingress owns the concrete handoff toward the policy peer."
+    else if !hostileRuntimeReturnOnHostileIngress || !hostileRuntimeReturnNotOnBranchIngress then
+      throw "delegated-overlay-public-egress failed: hostile runtime routed-prefix return route must be installed on b-router-policy downstr-hostile via fd42:dead:feed:1000:0:0:0:a, not on downstr-branch. Live symptom: hostile public IPv6 packets reached b-router-policy and died because the kernel selected the wrong ingress table."
     else
       throw "delegated-overlay-public-egress failed: expected b-router-core-nebula overlay-east-west to carry a policyOnly delegated-public-egress ::/0, b-router-upstream-selector core-nebula to preserve its overlay default, and b-router-upstream-selector pol-hostile-ew to route hostile delegated IPv6 default toward core-nebula for b-router-access-hostile. Remove this error only after CPM emits that ingress-lane renderer contract and live ip -6 route get from pol-hostile-ew selects core-nebula without moving underlay endpoint routes off WAN."
 ' >/dev/null
