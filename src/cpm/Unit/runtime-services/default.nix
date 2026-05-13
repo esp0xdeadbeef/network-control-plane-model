@@ -88,6 +88,13 @@ let
         if builtins.isList (dnsService.allowFrom or null) then requireStringList "${targetDef.nodePath}.services.dns.allowFrom" dnsService.allowFrom else [ ];
       listenAddresses =
         if builtins.isList (dnsService.listen or null) then requireStringList "${targetDef.nodePath}.services.dns.listen" dnsService.listen else [ ];
+      explicitOutgoingInterfaces =
+        if builtins.isList (dnsService.outgoingInterfaces or null) then
+          requireStringList "${targetDef.nodePath}.services.dns.outgoingInterfaces" dnsService.outgoingInterfaces
+        else
+          [ ];
+      derivedOutgoingInterfaces =
+        builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listenAddresses;
       tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
       derivedForwarders = policyDerivedDnsForwardersForTenants tenantNames;
       derivedAllowFrom =
@@ -105,6 +112,13 @@ let
       filteredDerivedForwarders = builtins.filter (addr: !(builtins.elem addr listenAddresses)) derivedForwarders;
       mergedForwarders = if filteredDerivedForwarders == [ ] then explicitForwarders else uniqueStrings filteredDerivedForwarders;
       mergedAllowFrom = if derivedAllowFrom == [ ] then explicitAllowFrom else uniqueStrings (explicitAllowFrom ++ derivedAllowFrom);
+      mergedOutgoingInterfaces =
+        if explicitOutgoingInterfaces != [ ] then
+          explicitOutgoingInterfaces
+        else if mergedForwarders != [ ] then
+          derivedOutgoingInterfaces
+        else
+          [ ];
       mergedAllowedClasses = uniqueStrings ((dnsService.allowedUpstreamClasses or [ ]) ++ derivedAllowedClasses);
       blockDirectEgress =
         (policyDerivedDnsDirectEgressBlockedForTenants tenantNames)
@@ -119,6 +133,7 @@ let
         dnsService
         // lib.optionalAttrs (mergedAllowFrom != [ ]) { allowFrom = mergedAllowFrom; }
         // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; }
+        // lib.optionalAttrs (mergedOutgoingInterfaces != [ ]) { outgoingInterfaces = mergedOutgoingInterfaces; }
         // lib.optionalAttrs (mergedAllowedClasses != [ ]) { allowedUpstreamClasses = mergedAllowedClasses; }
         // lib.optionalAttrs blockDirectEgress { blockDirectEgress = true; };
     };

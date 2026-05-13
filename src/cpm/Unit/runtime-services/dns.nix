@@ -94,6 +94,8 @@ in
           normalizeForwarderList dnsPath dns "upstreams"
         else
           [ ];
+      outgoingInterfaces =
+        if dns ? outgoingInterfaces then normalizeStringList dnsPath dns "outgoingInterfaces" else [ ];
       _forwarderConflict =
         if dns ? forwarders && dns ? upstreams then
           failInventory dnsPath "must define only one of 'forwarders' or 'upstreams'"
@@ -179,6 +181,7 @@ in
       // lib.optionalAttrs (listen != [ ]) { inherit listen; }
       // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
       // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }
+      // lib.optionalAttrs (outgoingInterfaces != [ ]) { inherit outgoingInterfaces; }
       // {
         inherit
           allowedUpstreamClasses

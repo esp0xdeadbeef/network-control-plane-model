@@ -48,10 +48,14 @@ INVENTORY_PATH="${inventory_path}" \
           out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-policy".effectiveRuntimeRealization.interfaces;
         sitecPolicy =
           out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
+        sitecAccessDmzDns =
+          out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-access-dmz".services.dns;
         sitecCore =
           out.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-core".effectiveRuntimeRealization.interfaces;
         sitebPolicy =
           out.control_plane_model.data.espbranch."site-b".runtimeTargets."espbranch-site-b-b-router-policy".effectiveRuntimeRealization.interfaces;
+        sitebAccessHostileDns =
+          out.control_plane_model.data.espbranch."site-b".runtimeTargets."espbranch-site-b-b-router-access-hostile".services.dns;
         hasRoute = routes: destination: gateway:
           builtins.any
             (route:
@@ -61,6 +65,8 @@ INVENTORY_PATH="${inventory_path}" \
                 || (route.via6 or null) == gateway
               ))
             routes;
+        hasAll = expected: actual:
+          builtins.all (value: builtins.elem value actual) expected;
         siteaUpstreamClient =
           siteaUpstream."p2p-s-router-policy-only-s-router-upstream-selector--access-s-router-access-client--uplink-east-west".routes;
         siteaUpstreamMgmt =
@@ -131,6 +137,10 @@ INVENTORY_PATH="${inventory_path}" \
             !(hasRoute (sitecCoreUpstream.ipv4 or [ ]) "10.90.10.0/24" "172.31.254.1");
           sitecCoreDoesNotOverrideDmzDnsAddressV4 =
             !(hasRoute (sitecCoreUpstream.ipv4 or [ ]) "10.90.10.1" "172.31.254.1");
+          sitecDmzDnsUsesTenantSourceV4 =
+            hasAll [ "10.90.10.1" ] (sitecAccessDmzDns.outgoingInterfaces or [ ]);
+          sitecDmzDnsUsesTenantSourceV6 =
+            hasAll [ "fd42:dead:cafe:10::1" ] (sitecAccessDmzDns.outgoingInterfaces or [ ]);
           sitebBranchDnsUsesSiteaEastWestV4 =
             hasRoute (sitebBranch.ipv4 or [ ]) "10.20.10.1" "10.50.0.13";
           sitebBranchDnsUsesSiteaEastWestV6 =
@@ -139,6 +149,10 @@ INVENTORY_PATH="${inventory_path}" \
             !(hasRoute (sitebHostile.ipv4 or [ ]) "10.20.10.1" "10.50.0.17");
           sitebHostileDoesNotLearnSiteaMgmtDnsV6 =
             !(hasRoute (sitebHostile.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:feed:1000:0:0:0:11");
+          sitebHostileDnsUsesTenantSourceV4 =
+            hasAll [ "10.70.10.1" ] (sitebAccessHostileDns.outgoingInterfaces or [ ]);
+          sitebHostileDnsUsesTenantSourceV6 =
+            hasAll [ "fd42:dead:feed:70::1" ] (sitebAccessHostileDns.outgoingInterfaces or [ ]);
           sitebHostileEastWestReturnUsesDownstreamV4 =
             hasRoute (sitebHostileEastWest.ipv4 or [ ]) "10.70.10.0/24" "10.50.0.10";
           sitebHostileEastWestReturnDoesNotUseWanV4 =
@@ -157,7 +171,7 @@ INVENTORY_PATH="${inventory_path}" \
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt siteaUpstreamMgmtWanA siteaUpstreamMgmtWanB siteaUpstreamEastWestCore siteaPolicyAdmin sitebBranch sitebHostile sitebHostileEastWest sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream;
+          inherit siteaUpstreamClient siteaUpstreamMgmt siteaUpstreamMgmtWanA siteaUpstreamMgmtWanB siteaUpstreamEastWestCore siteaPolicyAdmin sitebBranch sitebHostile sitebHostileEastWest sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream sitecAccessDmzDns sitebAccessHostileDns;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };
