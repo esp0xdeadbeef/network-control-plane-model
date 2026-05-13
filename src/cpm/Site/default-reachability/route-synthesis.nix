@@ -71,6 +71,7 @@ let
       common
       sitePath
       sortedCandidatePaths
+      preferredFirstHopMatchesSource
       routeHelpers
       runtimeRoutedIPv6PrefixesByAccessNode
       ;

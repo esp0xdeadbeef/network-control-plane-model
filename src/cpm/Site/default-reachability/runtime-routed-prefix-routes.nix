@@ -3,6 +3,7 @@
   common,
   sitePath,
   sortedCandidatePaths,
+  preferredFirstHopMatchesSource,
   routeHelpers,
   runtimeRoutedIPv6PrefixesByAccessNode,
 }:
@@ -10,7 +11,10 @@
 let
   inherit (helpers) hasAttr requireAttrs requireString sortedNames;
   inherit (common) attrsOrEmpty listOrEmpty makeStringSet;
-  inherit (routeHelpers) findInterfaceNameForAdjacency;
+  inherit (routeHelpers)
+    findInterfaceNameForAdjacency
+    interfaceNameTargetsDestination
+    ;
 
   prefixHasSourceFile =
     prefix: builtins.isAttrs prefix && builtins.isString (prefix.sourceFile or null) && prefix.sourceFile != "";
@@ -45,13 +49,25 @@ let
       interfaces
     else
       let
-        candidates = builtins.filter (candidate: candidate.steps != [ ]) (
-          sortedCandidatePaths 6 (makeStringSet [ accessNodeName ]) nodeName
-        );
-        candidate = if candidates == [ ] then null else builtins.elemAt candidates 0;
-        firstStep = if candidate == null then null else builtins.elemAt candidate.steps 0;
-        interfaceName =
-          if firstStep == null then null else findInterfaceNameForAdjacency targetName { effectiveRuntimeRealization.interfaces = interfaces; } firstStep.adjacencyId;
+        candidates =
+          builtins.filter
+            (candidate: candidate.steps != [ ] && preferredFirstHopMatchesSource 6 candidate)
+            (sortedCandidatePaths 6 (makeStringSet [ accessNodeName ]) nodeName);
+        candidateEntries =
+          builtins.map
+            (candidate:
+              let firstStep = builtins.elemAt candidate.steps 0;
+              in {
+                inherit candidate firstStep;
+                interfaceName = findInterfaceNameForAdjacency targetName { effectiveRuntimeRealization.interfaces = interfaces; } firstStep.adjacencyId;
+              })
+            candidates;
+        namedCandidates = builtins.filter (entry: entry.interfaceName != null) candidateEntries;
+        destinationScoped = builtins.filter (entry: interfaceNameTargetsDestination entry.interfaceName accessNodeName) namedCandidates;
+        scoped = if destinationScoped != [ ] then destinationScoped else namedCandidates;
+        chosen = if scoped == [ ] then null else builtins.elemAt scoped 0;
+        firstStep = if chosen == null then null else chosen.firstStep;
+        interfaceName = if chosen == null then null else chosen.interfaceName;
       in
       if interfaceName == null || !hasAttr interfaceName interfaces then
         interfaces
