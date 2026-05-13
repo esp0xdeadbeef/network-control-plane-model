@@ -83,6 +83,70 @@ let
               toCores)
           fromCores
       );
+
+  routeIntent = route: attrsOrEmpty (route.intent or null);
+
+  familyRoutes = routes:
+    listOrEmpty (routes.ipv4 or null) ++ listOrEmpty (routes.ipv6 or null);
+
+  hasOverlayUnderlayEndpointRoute = overlayName: iface:
+    let routes = familyRoutes (attrsOrEmpty (iface.routes or null));
+    in
+    builtins.any
+      (route:
+        builtins.isAttrs route
+        && (route.overlay or null) == overlayName
+        && (route.proto or null) == "underlay"
+        && ((routeIntent route).kind or null) == "overlay-underlay-reachability")
+      routes;
+
+  overlayUnderlayTransitRule = relationRaw:
+    let
+      relation = attrsOrEmpty relationRaw;
+      fromExternal = attrsOrEmpty (relation.from or null);
+      toExternal = attrsOrEmpty (relation.to or null);
+      trafficType = relation.trafficType or "any";
+      action = relation.action or "allow";
+      overlayName = fromExternal.name or null;
+      fromCores = coreInterfacesFor fromExternal;
+      toCores =
+        builtins.filter
+          (iface: overlayName != null && hasOverlayUnderlayEndpointRoute overlayName iface)
+          (coreInterfacesFor toExternal);
+      fromIsNamedOverlay =
+        (fromExternal.kind or null) == "external"
+        && fromExternal ? name
+        && !(fromExternal ? uplinks);
+      toIsWanUplink =
+        (toExternal.kind or null) == "external"
+        && builtins.isList (toExternal.uplinks or null);
+    in
+    if action != "allow" || trafficType == "any" || !fromIsNamedOverlay || !toIsWanUplink then
+      [ ]
+    else
+      builtins.concatLists (
+        builtins.map
+          (fromIface:
+            builtins.map
+              (toIface: {
+                action = "accept";
+                relationId = relation.id or null;
+                priority = relation.priority or null;
+                inherit trafficType;
+                intent = {
+                  kind = "overlay-underlay-reachability";
+                  source = "overlay-underlay-endpoint";
+                  overlay = overlayName;
+                };
+                from = fromExternal;
+                to = toExternal;
+                fromInterface = fromIface.runtimeIfName;
+                toInterface = toIface.runtimeIfName;
+                applyTcpMssClamp = false;
+              })
+              toCores)
+          fromCores
+      );
 in
   (builtins.concatLists (
     builtins.map
@@ -94,3 +158,4 @@ in
       policyInterfaces
   ))
   ++ (builtins.concatLists (builtins.map externalTransitRule relations))
+  ++ (builtins.concatLists (builtins.map overlayUnderlayTransitRule relations))

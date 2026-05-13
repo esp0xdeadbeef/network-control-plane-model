@@ -45,6 +45,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
           && (rule.fromInterface or null) == from
           && (rule.toInterface or null) == to)
         rules;
+    hasTypedRule = rules: from: to: trafficType:
+      builtins.any
+        (rule:
+          (rule.action or null) == "accept"
+          && (rule.fromInterface or null) == from
+          && (rule.toInterface or null) == to
+          && (rule.trafficType or null) == trafficType)
+        rules;
     hostileEw =
       siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
@@ -105,11 +113,13 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       branchUpstreamExplicit = branchUpstream.mode == "explicit-selector-forwarding";
       branchUpstreamBranchWan = hasRule branchUpstream.rules "policy-branch" "core-isp";
       branchUpstreamWanBranch = hasRule branchUpstream.rules "core-isp" "policy-branch";
-      branchUpstreamHostileWan = hasRule branchUpstream.rules "policy-hostile" "core-isp";
-      branchUpstreamWanHostile = hasRule branchUpstream.rules "core-isp" "policy-hostile";
+      branchUpstreamNoHostileWan = !(hasRule branchUpstream.rules "policy-hostile" "core-isp");
+      branchUpstreamNoWanHostile = !(hasRule branchUpstream.rules "core-isp" "policy-hostile");
       branchUpstreamBranchEw = hasRule branchUpstream.rules "pol-branch-ew" "core-nebula";
       branchUpstreamHostileEw = hasRule branchUpstream.rules "pol-hostile-ew" "core-nebula";
-      branchUpstreamNoCoreNebulaToWan = !(hasRule branchUpstream.rules "core-nebula" "core-isp");
+      branchUpstreamCoreNebulaToWanOnlyNebulaUnderlay =
+        (hasTypedRule branchUpstream.rules "core-nebula" "core-isp" "nebula-storage")
+        && !(hasTypedRule branchUpstream.rules "core-nebula" "core-isp" "any");
       branchUpstreamNoWanToCoreNebula = !(hasRule branchUpstream.rules "core-isp" "core-nebula");
       branchUpstreamNoHostileToBranch = !(hasRule branchUpstream.rules "policy-hostile" "policy-branch");
       branchUpstreamNoBranchToHostile = !(hasRule branchUpstream.rules "policy-branch" "policy-hostile");
