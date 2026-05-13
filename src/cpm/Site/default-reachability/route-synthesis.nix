@@ -12,6 +12,7 @@
   preferredFirstHopMatchesSource,
   explicitDefaultSourceSet4,
   explicitDefaultSourceSet6,
+  delegatedSourceUsesOverlayEgress,
   isDelegatedIPv6AccessNode,
   runtimeRoutedIPv6AccessNodeNames,
   runtimeRoutedIPv6PrefixesByAccessNode,
@@ -125,7 +126,10 @@ let
       isSelfDefaultSource = hasAttr nodeName sourceSet;
       sourceSetForTarget =
         if isSelfDefaultSource && targetRole == "downstream-selector" then builtins.removeAttrs sourceSet [ nodeName ] else sourceSet;
-      delegatedSourceNodes = builtins.filter isDelegatedIPv6AccessNode (sortedNames sourceSetForTarget);
+      delegatedSourceNodes =
+        builtins.filter
+          (sourceNode: delegatedSourceUsesOverlayEgress family sourceNode)
+          (sortedNames sourceSetForTarget);
       targetWithDelegatedOverlayEgress =
         if family == 6 && delegatedSourceNodes != [ ] then
           let
@@ -194,7 +198,7 @@ let
             delegatedWANFirstHop = isNonEmptyString accessNodeName && isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && !hasAttr uplinkName siteOverlayNameSet;
             nonDelegatedOverlayFirstHop = isNonEmptyString accessNodeName && !isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && hasAttr uplinkName siteOverlayNameSet;
             interfacesWithDelegatedOverlayEgress =
-              if family == 6 && isDelegatedIPv6AccessNode candidate.sourceNode then
+              if family == 6 && delegatedSourceUsesOverlayEgress family candidate.sourceNode then
                 delegatedOverlayEgress.add {
                   family = family;
                   sourceNode = candidate.sourceNode;

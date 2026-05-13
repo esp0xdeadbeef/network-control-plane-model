@@ -73,6 +73,7 @@ let
   inherit (sourceSelection)
     explicitDefaultSourceSet4
     explicitDefaultSourceSet6
+    delegatedSourceUsesOverlayEgress
     isDelegatedIPv6AccessNode
     preferredFirstHopMatchesSource
     runtimeRoutedIPv6AccessNodeNames
@@ -114,6 +115,7 @@ let
       preferredFirstHopMatchesSource
       explicitDefaultSourceSet4
       explicitDefaultSourceSet6
+      delegatedSourceUsesOverlayEgress
       isDelegatedIPv6AccessNode
       runtimeRoutedIPv6AccessNodeNames
       runtimeRoutedIPv6PrefixesByAccessNode

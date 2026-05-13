@@ -193,6 +193,19 @@ let
     in
     uniqueStrings (nodesWithExplicitDefaults ++ overlayDefaultSourceNodes);
 
+  overlayDefaultSourceNodeNamesForFamily =
+    family:
+    builtins.filter
+      (nodeName:
+        let targetEntry = runtimeTargetsWithWANDefaultsByNode.${nodeName};
+        in targetHasOverlayDefaultSourceForFamily family targetEntry.targetName targetEntry.target)
+      (sortedNames runtimeTargetsWithWANDefaultsByNode);
+
+  delegatedSourceUsesOverlayEgress =
+    family: accessNodeName:
+    isDelegatedIPv6AccessNode accessNodeName
+    && overlayDefaultSourceNodeNamesForFamily family != [ ];
+
   preferredFirstHopMatchesSource =
     family: candidate:
     let
@@ -229,6 +242,7 @@ in
   explicitDefaultSourceSet6 = makeStringSet (explicitDefaultSourceNodeNamesForFamily 6);
   inherit
     isDelegatedIPv6AccessNode
+    delegatedSourceUsesOverlayEgress
     preferredFirstHopMatchesSource
     ;
   runtimeRoutedIPv6AccessNodeNames =
