@@ -22,6 +22,7 @@
   siteDisplayName,
   siteId,
   tenantPrefixOwners,
+  trafficPaths,
   transitAttrs,
   uplinkCoreNames,
   uplinkNames,
@@ -41,6 +42,7 @@
   domains = domainsValue;
   tenantPrefixOwners = tenantPrefixOwners;
   transit = transitAttrs;
+  trafficPaths = trafficPaths;
   routing =
     {
       mode = routingMode;

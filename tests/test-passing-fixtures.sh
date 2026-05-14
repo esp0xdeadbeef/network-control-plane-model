@@ -489,5 +489,6 @@ bash "${repo_root}/tests/test-public-overlay-service-binding.sh"
 bash "${repo_root}/tests/test-service-ingress-provider-tenant-lane.sh"
 bash "${repo_root}/tests/test-service-provider-endpoints.sh"
 bash "${repo_root}/tests/test-runtime-routed-prefixes-no-validation-shortcut.sh"
+bash "${repo_root}/tests/test-traffic-path-contract-propagation.sh"
 
 exit 0
