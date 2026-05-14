@@ -174,13 +174,14 @@ let
         else
           [ lane.uplink ];
       laneUsesOverlay = builtins.any (uplinkName: hasAttr uplinkName siteOverlayNameSet) laneUplinks;
+      isOverlayUplink = (lane.kind or null) == "uplink" && laneUsesOverlay;
       isTransit = (backingRef.kind or null) == "link" && (iface.addr6 or null) != null;
       isOverlay = (backingRef.kind or null) == "overlay" || (iface.sourceKind or null) == "overlay";
     in
     remoteRuntimeRoutedPrefixes != [ ]
     && (
       (targetRole == "core" && (if hasOverlay then isOverlay else isTransit))
-      || (targetRole == "upstream-selector" && laneUsesOverlay)
+      || (targetRole == "upstream-selector" && isOverlayUplink)
     );
 
   addRemotePrefixRoutes =
