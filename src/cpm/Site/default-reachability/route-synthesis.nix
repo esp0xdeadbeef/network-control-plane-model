@@ -138,7 +138,7 @@ let
           (sourceNode: delegatedSourceUsesOverlayEgress family sourceNode)
           (sortedNames sourceSetForTarget);
       targetWithDelegatedOverlayEgress =
-        if family == 6 && delegatedSourceNodes != [ ] then
+        if delegatedSourceNodes != [ ] then
           let
             targetView = targetInterfaces targetPath targetWithoutOverlayDefaults;
             interfacesWithDelegatedOverlayEgress =
@@ -205,7 +205,7 @@ let
             delegatedWANFirstHop = isNonEmptyString accessNodeName && isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && !hasAttr uplinkName siteOverlayNameSet;
             nonDelegatedOverlayFirstHop = isNonEmptyString accessNodeName && !isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && hasAttr uplinkName siteOverlayNameSet;
             interfacesWithDelegatedOverlayEgress =
-              if family == 6 && delegatedSourceUsesOverlayEgress family candidate.sourceNode then
+              if delegatedSourceUsesOverlayEgress family candidate.sourceNode then
                 delegatedOverlayEgress.add {
                   family = family;
                   sourceNode = candidate.sourceNode;
