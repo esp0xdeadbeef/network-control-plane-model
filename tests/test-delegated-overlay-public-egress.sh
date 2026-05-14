@@ -135,6 +135,22 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).exitNode or null) == "c-router-access-client")
         (siteCCoreNebulaRoutes6For "overlay-east-west"));
 
+    siteCCoreNebulaReturnsHostilePrefixOverOverlay =
+      builtins.any
+        (route:
+          (route.sourceFile or null) == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
+          && (route.proto or null) == "overlay"
+          && !(route ? via6)
+          && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return")
+        (siteCCoreNebulaRoutes6For "overlay-east-west");
+
+    siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream =
+      !(builtins.any
+        (route:
+          (route.sourceFile or null) == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
+          && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return")
+        (siteCCoreNebulaRoutes6For "p2p-c-router-nebula-core-c-router-upstream-selector"));
+
     siteCOverlayIngressFirewallToCore =
       builtins.any
         (rule:
@@ -153,8 +169,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((rule.intent or { }).kind or null) == "runtime-routed-prefix-public-egress")
         (siteCUpstream.forwardingIntent.rules or [ ]);
   in
-    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToCore && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCOverlayIngressFirewallToCore && siteCOverlayIngressFirewallScopedToHostilePrefix then
+    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToCore && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCCoreNebulaReturnsHostilePrefixOverOverlay && siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream && siteCOverlayIngressFirewallToCore && siteCOverlayIngressFirewallScopedToHostilePrefix then
       true
+    else if !siteCCoreNebulaReturnsHostilePrefixOverOverlay || !siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream then
+      throw "delegated-overlay-public-egress failed: site-c Nebula core must return the remote hostile delegated prefix over overlay-east-west, not back to the upstream selector. Live symptom: echo replies looped on c-router-nebula-core upstream until TTL expired."
     else if !siteCOverlayIngressFirewallScopedToHostilePrefix then
       throw "delegated-overlay-public-egress failed: example hostile IPv6 public egress requires a sourceFile-scoped core-nebula -> core firewall contract on site-c upstream-selector, not a broad core cross-connect."
     else if !siteCOverlayIngressFirewallToCore then

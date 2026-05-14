@@ -37,30 +37,31 @@ let
     prefix: builtins.isAttrs prefix && builtins.isString (prefix.sourceFile or null) && prefix.sourceFile != "";
 
   routeExists =
-    routes: sourceFile: via6:
+    routes: sourceFile: via6: proto:
     builtins.any
       (route:
         builtins.isAttrs route
         && (route.sourceFile or null) == sourceFile
         && (route.via6 or null) == via6
+        && (route.proto or null) == proto
         && ((attrsOrEmpty (route.intent or null)).kind or null) == "runtime-routed-prefix-return")
       (listOrEmpty routes);
 
   buildRoute =
-    accessNodeName: prefix: via6:
-    {
+    accessNodeName: prefix: via6: proto:
+    ({
       family = 6;
       metric = 50;
       sourceFile = prefix.sourceFile;
       delegatedPrefix = prefix;
-      via6 = via6;
-      proto = "internal";
+      proto = proto;
       intent = {
         kind = "runtime-routed-prefix-return";
         source = "inventory-routed-prefix";
         accessNode = accessNodeName;
       };
-    };
+    }
+    // (if via6 == null then { } else { via6 = via6; }));
 
   addPrefixRoutesForAccess =
     targetName: nodeName: targetPath: accessNodeName: prefixes: interfaces:
@@ -107,10 +108,10 @@ let
           updated =
             builtins.foldl'
               (acc: prefix:
-                if !prefixHasSourceFile prefix || routeExists acc prefix.sourceFile firstStep.via then
+                if !prefixHasSourceFile prefix || routeExists acc prefix.sourceFile firstStep.via "internal" then
                   acc
                 else
-                  acc ++ [ (buildRoute accessNodeName prefix firstStep.via) ])
+                  acc ++ [ (buildRoute accessNodeName prefix firstStep.via "internal") ])
               existing
               prefixes;
           updatedIface = iface // { routes = routes // { ipv6 = updated; }; };
@@ -119,12 +120,16 @@ let
 
   routeForRemotePrefix =
     iface: prefix:
-    let peer = p2pPeers.peerForInterface 6 iface;
+    let
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+      isOverlay = (backingRef.kind or null) == "overlay" || (iface.sourceKind or null) == "overlay";
+      peer = p2pPeers.peerForInterface 6 iface;
+      proto = if isOverlay then "overlay" else "internal";
     in
-    if peer == null then
+    if !isOverlay && peer == null then
       null
     else
-      buildRoute (prefix.accessNode or "remote-runtime-routed-prefix") prefix peer;
+      buildRoute (prefix.accessNode or "remote-runtime-routed-prefix") prefix (if isOverlay then null else peer) proto;
 
   addRemotePrefixRoutesToInterface =
     iface:
@@ -136,7 +141,7 @@ let
           (acc: prefix:
             let route = routeForRemotePrefix iface prefix;
             in
-            if route == null || routeExists acc prefix.sourceFile route.via6 then
+            if route == null || routeExists acc prefix.sourceFile (route.via6 or null) (route.proto or null) then
               acc
             else
               acc ++ [ route ])
@@ -145,8 +150,19 @@ let
     in
     iface // { routes = routes // { ipv6 = updated; }; };
 
+  targetHasOverlayInterface =
+    interfaces:
+    builtins.any
+      (ifName:
+        let
+          iface = attrsOrEmpty (interfaces.${ifName} or null);
+          backingRef = attrsOrEmpty (iface.backingRef or null);
+        in
+        (backingRef.kind or null) == "overlay" || (iface.sourceKind or null) == "overlay")
+      (sortedNames interfaces);
+
   isRemoteReturnInterface =
-    targetRole: iface:
+    targetRole: hasOverlay: iface:
     let
       backingRef = attrsOrEmpty (iface.backingRef or null);
       lane = attrsOrEmpty (backingRef.lane or null);
@@ -159,11 +175,11 @@ let
           [ lane.uplink ];
       laneUsesOverlay = builtins.any (uplinkName: hasAttr uplinkName siteOverlayNameSet) laneUplinks;
       isTransit = (backingRef.kind or null) == "link" && (iface.addr6 or null) != null;
+      isOverlay = (backingRef.kind or null) == "overlay" || (iface.sourceKind or null) == "overlay";
     in
     remoteRuntimeRoutedPrefixes != [ ]
-    && isTransit
     && (
-      targetRole == "core"
+      (targetRole == "core" && (if hasOverlay then isOverlay else isTransit))
       || (targetRole == "upstream-selector" && laneUsesOverlay)
     );
 
@@ -173,10 +189,11 @@ let
       targetRole = target.role or null;
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
+      hasOverlay = targetHasOverlayInterface interfaces;
       updatedInterfaces =
         builtins.mapAttrs
           (_: iface:
-            if isRemoteReturnInterface targetRole iface then
+            if isRemoteReturnInterface targetRole hasOverlay iface then
               addRemotePrefixRoutesToInterface iface
             else
               iface)
