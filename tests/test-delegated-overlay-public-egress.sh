@@ -47,6 +47,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
 
     routes6For = ifName:
       (((interfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
+    routes4For = ifName:
+      (((interfaces.${ifName} or { }).routes or { }).ipv4 or [ ]);
     upstreamRoutes6For = ifName:
       (((upstreamInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
     siteCUpstreamRoutes6For = ifName:
@@ -65,6 +67,16 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).kind or null) == "delegated-public-egress"
           && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
         (routes6For "overlay-east-west");
+
+    delegatedOverlayDefault4 =
+      builtins.any
+        (route:
+          (route.dst or null) == "0.0.0.0/0"
+          && (route.scope or null) == "link"
+          && (route.policyOnly or false) == true
+          && ((route.intent or { }).kind or null) == "delegated-public-egress"
+          && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
+        (routes4For "overlay-east-west");
 
     underlayDefaultPreserved =
       builtins.any
@@ -184,8 +196,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((rule.intent or { }).kind or null) == "runtime-routed-prefix-public-egress")
         (siteCUpstream.forwardingIntent.rules or [ ]);
   in
-    if delegatedOverlayDefault && upstreamDelegatedDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToCore && siteCUpstreamReturnsHostilePrefixToCoreNebula && siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCCoreNebulaReturnsHostilePrefixOverOverlay && siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream && siteCOverlayIngressFirewallToCore && siteCOverlayIngressFirewallScopedToHostilePrefix then
+    if delegatedOverlayDefault && delegatedOverlayDefault4 && upstreamDelegatedDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToCore && siteCUpstreamReturnsHostilePrefixToCoreNebula && siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCCoreNebulaReturnsHostilePrefixOverOverlay && siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream && siteCOverlayIngressFirewallToCore && siteCOverlayIngressFirewallScopedToHostilePrefix then
       true
+    else if !delegatedOverlayDefault4 then
+      throw "delegated-overlay-public-egress failed: b-router-core-nebula overlay-east-west must carry a policyOnly delegated-public-egress 0.0.0.0/0 for hostile IPv4 exit. Live symptom: b-router-core-nebula needed manual 0.0.0.0/1 and 128.0.0.0/1 Nebula routes after restart."
     else if !siteCUpstreamReturnsHostilePrefixToCoreNebula || !siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy then
       throw "delegated-overlay-public-egress failed: site-c upstream selector must return the branch hostile delegated prefix toward core-nebula, not a local client policy lane. Live symptom: c-router-upstream-selector returned echo replies toward pol-client-ew until a route to core-nebula was hotpatched."
     else if !siteCCoreNebulaReturnsHostilePrefixOverOverlay || !siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream then
