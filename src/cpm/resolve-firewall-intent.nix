@@ -100,8 +100,17 @@ let
         (attrs.family or null) == "ipv6" || (attrs.family or null) == 6)
       (listOrEmpty ((attrsOrEmpty prefix).routedPrefixes or null));
 
-  siteHasRoutedIPv6Prefix =
-    builtins.any hasRoutedIPv6Prefix (
+  hasIPv6Prefix =
+    prefix:
+    let
+      attrs = attrsOrEmpty prefix;
+    in
+    isNonEmptyString (attrs.ipv6 or null)
+    || (attrs.family or null) == "ipv6"
+    || (attrs.family or null) == 6;
+
+  siteNeedsIPv6Nat =
+    builtins.any (prefix: hasIPv6Prefix prefix && !(hasRoutedIPv6Prefix prefix)) (
       listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null)
     );
 
@@ -144,7 +153,7 @@ let
           interfaceRecords;
 
       nat4Enabled = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
-      nat6Enabled = exitEnabled && !siteHasRoutedIPv6Prefix && builtins.any hasHostIPv6 wanInterfaces;
+      nat6Enabled = exitEnabled && siteNeedsIPv6Nat && builtins.any hasHostIPv6 wanInterfaces;
       natEnabled = nat4Enabled || nat6Enabled;
     in
     {
