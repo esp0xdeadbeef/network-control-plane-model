@@ -38,6 +38,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector".forwardingIntent;
     branchNebulaCore =
       siteB.runtimeTargets."espbranch-site-b-b-router-core-nebula";
+    targetByLogicalNode =
+      logicalName:
+      builtins.head (
+        builtins.filter
+          (target: (target.logicalNode.name or null) == logicalName)
+          (builtins.attrValues siteB.runtimeTargets)
+      );
+    branchSimulatedIsp = targetByLogicalNode "b-router-core-simulated-isp";
     hasRule = rules: from: to:
       builtins.any
         (rule:
@@ -125,6 +133,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       branchUpstreamNoBranchToHostile = !(hasRule branchUpstream.rules "policy-branch" "policy-hostile");
       branchNebulaCoreNoNat = !(branchNebulaCore.natIntent.enabled);
       branchNebulaCoreNoMasquerade = branchNebulaCore.natIntent.masqueradeInterfaces == [ ];
+      branchSimulatedIspNat6 =
+        branchSimulatedIsp.natIntent.families.ipv6 == true;
+      branchSimulatedIspMasqueradesWan6 =
+        branchSimulatedIsp.natIntent.masqueradeInterfaces6 == [ "wan" ];
     }
 ' > "${output_json}.checks"
 
