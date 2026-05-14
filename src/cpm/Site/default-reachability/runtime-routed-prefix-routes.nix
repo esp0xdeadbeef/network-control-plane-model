@@ -13,7 +13,6 @@ let
   inherit (common) attrsOrEmpty listOrEmpty makeStringSet;
   inherit (routeHelpers)
     findInterfaceNameForAdjacency
-    interfaceNameTargetsDestination
     ;
 
   prefixHasSourceFile =
@@ -63,8 +62,17 @@ let
               })
             candidates;
         namedCandidates = builtins.filter (entry: entry.interfaceName != null) candidateEntries;
-        destinationScoped = builtins.filter (entry: interfaceNameTargetsDestination entry.interfaceName accessNodeName) namedCandidates;
-        scoped = if destinationScoped != [ ] then destinationScoped else namedCandidates;
+        accessScoped =
+          builtins.filter (
+            entry:
+            let
+              iface = attrsOrEmpty (interfaces.${entry.interfaceName} or null);
+              backingRef = attrsOrEmpty (iface.backingRef or null);
+              lane = attrsOrEmpty (backingRef.lane or null);
+            in
+            (lane.access or null) == accessNodeName
+          ) namedCandidates;
+        scoped = if accessScoped != [ ] then accessScoped else namedCandidates;
         chosen = if scoped == [ ] then null else builtins.elemAt scoped 0;
         firstStep = if chosen == null then null else chosen.firstStep;
         interfaceName = if chosen == null then null else chosen.interfaceName;

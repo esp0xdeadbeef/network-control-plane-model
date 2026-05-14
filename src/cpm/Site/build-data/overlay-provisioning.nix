@@ -51,8 +51,7 @@ let
             overlayIpamV4 = attrsOrEmpty (overlayIpamCfg.ipv4 or null);
             overlayIpamV6 = attrsOrEmpty (overlayIpamCfg.ipv6 or null);
             addressSourcePolicy = attrsOrEmpty (cfg.addressSourcePolicy or null);
-            nebulaCfg = attrsOrEmpty (cfg.nebula or null);
-            nebulaLighthouse = attrsOrEmpty (nebulaCfg.lighthouse or null);
+            providerName = if isNonEmptyString (cfg.provider or null) then cfg.provider else null;
 
             ipamV4Prefix = if isNonEmptyString (overlayIpamV4.prefix or null) then overlayIpamV4.prefix else null;
             ipamV6Prefix = if isNonEmptyString (overlayIpamV6.prefix or null) then overlayIpamV6.prefix else null;
@@ -133,22 +132,14 @@ let
                   endpointSourceFiles = attrsOrEmpty (cfg.underlayEndpointSourceFiles or null);
                   endpointSourceFileEntries =
                     (map (sourceFile: { inherit sourceFile; family = 4; }) (listOrEmpty (endpointSourceFiles.ipv4 or null)))
-                    ++ (map (sourceFile: { inherit sourceFile; family = 6; }) (listOrEmpty (endpointSourceFiles.ipv6 or null)))
-                    ++ (if isNonEmptyString (nebulaLighthouse.endpointSourceFile or null) then [ { sourceFile = nebulaLighthouse.endpointSourceFile; family = 4; } ] else [ ])
-                    ++ (if isNonEmptyString (nebulaLighthouse.endpoint6SourceFile or null) then [ { sourceFile = nebulaLighthouse.endpoint6SourceFile; family = 6; } ] else [ ]);
+                    ++ (map (sourceFile: { inherit sourceFile; family = 6; }) (listOrEmpty (endpointSourceFiles.ipv6 or null)));
                   endpoints =
-                    (uniqueStrings (
-                      listOrEmpty (cfg.underlayEndpoints or null)
-                      ++ [
-                        (nebulaLighthouse.endpoint or null)
-                        (nebulaLighthouse.endpoint6 or null)
-                      ]
-                    ))
+                    (uniqueStrings (listOrEmpty (cfg.underlayEndpoints or null)))
                     ++ endpointSourceFileEntries;
                 in
                 if endpoints != [ ] then { underlayEndpoints = endpoints; } else { }
               )
-              // (if builtins.isAttrs (cfg.nebula or null) then { nebula = cfg.nebula; } else { });
+              // (if providerName != null && builtins.isAttrs (cfg.${providerName} or null) then { ${providerName} = cfg.${providerName}; } else { });
           })
         overlayNames
     );

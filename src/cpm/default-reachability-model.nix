@@ -14,7 +14,6 @@ let
 
   common = import ./Site/default-reachability/common.nix { inherit helpers; };
   inherit (common)
-    accessNodeNameFromAdjacencyId
     attrsOrEmpty
     buildInternalDefaultRoute
     buildInternalEndpointRoute
@@ -23,12 +22,10 @@ let
     listContains
     listOrEmpty
     makeStringSet
-    overlayNameFromInterfaceName
     routeAlreadyPresent
     routesContainDefault
     stripDefaultRoutes
     uniqueStrings
-    uplinkNameFromAdjacencyId
     ;
   context = import ./Site/default-reachability/context.nix {
     inherit helpers common sitePath siteAttrs runtimeTargets allSiteEntries;
@@ -94,8 +91,6 @@ let
     findInterfaceNameForAdjacency
     interfaceBackingKind
     interfaceHasDefaultForFamily
-    interfaceNameHasUplinkWanPreference
-    interfaceNameTargetsDestination
     ;
 
   ipam = import ./ipam.nix { inherit lib; };

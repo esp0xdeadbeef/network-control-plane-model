@@ -32,14 +32,6 @@ let
     in
     routesContainDefault family (if family == 4 then routes.ipv4 or [ ] else routes.ipv6 or [ ]);
 
-  interfaceNameHasUplinkWanPreference =
-    interfaceName:
-    builtins.match ".*--uplink-wan$" interfaceName != null;
-
-  interfaceNameTargetsDestination =
-    interfaceName: destinationNode:
-    builtins.match ".*(^|-)${destinationNode}(-|$).*" interfaceName != null;
-
   interfaceBackingKind =
     targetPath: interfaces: interfaceName:
     let
@@ -48,13 +40,29 @@ let
     in
     backingRef.kind or null;
 
+  interfaceLane =
+    targetPath: interfaces: interfaceName:
+    let
+      iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}" interfaces.${interfaceName};
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+    in
+    attrsOrEmpty (backingRef.lane or null);
+
+  interfaceHasUplinkPreference =
+    targetPath: interfaces: interfaceName: uplinkName:
+    let
+      lane = interfaceLane targetPath interfaces interfaceName;
+      uplinks = if builtins.isList (lane.uplinks or null) then lane.uplinks else [ ];
+    in
+    (lane.uplink or null) == uplinkName || builtins.elem uplinkName uplinks;
+
 in
 {
   inherit
     findInterfaceNameForAdjacency
     interfaceBackingKind
     interfaceHasDefaultForFamily
-    interfaceNameHasUplinkWanPreference
-    interfaceNameTargetsDestination
+    interfaceHasUplinkPreference
+    interfaceLane
     ;
 }

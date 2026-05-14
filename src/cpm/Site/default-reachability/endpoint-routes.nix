@@ -22,8 +22,7 @@ let
     findInterfaceNameForAdjacency
     interfaceBackingKind
     interfaceHasDefaultForFamily
-    interfaceNameHasUplinkWanPreference
-    interfaceNameTargetsDestination
+    interfaceHasUplinkPreference
     ;
 
   chooseInterface =
@@ -46,14 +45,12 @@ let
             })
           usableCandidates;
       namedCandidates = builtins.filter (entry: entry.interfaceName != null) candidateEntries;
-      destinationScoped = builtins.filter (entry: interfaceNameTargetsDestination entry.interfaceName destinationNode) namedCandidates;
-      scopedRaw = if destinationScoped != [ ] then destinationScoped else namedCandidates;
-      preferredWan = builtins.filter (entry: interfaceNameHasUplinkWanPreference entry.interfaceName) scopedRaw;
+      preferredWan = builtins.filter (entry: interfaceHasUplinkPreference targetPath interfaces entry.interfaceName "wan") namedCandidates;
       preferredOverlay =
         builtins.filter
           (entry: interfaceBackingKind targetPath interfaces entry.interfaceName == "overlay")
-          scopedRaw;
-      scoped = if preferredWan != [ ] then preferredWan else if preferredOverlay != [ ] then preferredOverlay else scopedRaw;
+          namedCandidates;
+      scoped = if preferredWan != [ ] then preferredWan else if preferredOverlay != [ ] then preferredOverlay else namedCandidates;
       defaultBearing =
         builtins.filter
           (entry:

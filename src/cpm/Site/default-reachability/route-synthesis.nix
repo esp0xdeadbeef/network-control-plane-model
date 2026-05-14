@@ -22,12 +22,10 @@
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireString sortedNames;
   inherit (common)
-    accessNodeNameFromAdjacencyId
     attrsOrEmpty
     buildInternalDefaultRoute
     listOrEmpty
     routeMatchesDefault
-    uplinkNameFromAdjacencyId
     ;
   inherit (routeHelpers)
     findInterfaceNameForAdjacency
@@ -193,8 +191,8 @@ let
             firstStep = builtins.elemAt candidate.steps 0;
             interfaceName = findInterfaceNameForAdjacency targetName target firstStep.adjacencyId;
             firstStepLane = attrsOrEmpty (firstStep.laneMeta or null);
-            accessNodeName = firstStepLane.access or (accessNodeNameFromAdjacencyId firstStep.adjacencyId);
-            uplinkName = firstStepLane.uplink or (uplinkNameFromAdjacencyId firstStep.adjacencyId);
+            accessNodeName = firstStepLane.access or null;
+            uplinkName = firstStepLane.uplink or null;
             delegatedWANFirstHop = isNonEmptyString accessNodeName && isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && !hasAttr uplinkName siteOverlayNameSet;
             nonDelegatedOverlayFirstHop = isNonEmptyString accessNodeName && !isDelegatedIPv6AccessNode accessNodeName && isNonEmptyString uplinkName && hasAttr uplinkName siteOverlayNameSet;
             interfacesWithDelegatedOverlayEgress =

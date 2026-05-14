@@ -21,31 +21,6 @@ let
     uniqueStrings
     ;
 
-  uplinkNameFromAdjacencyId =
-    adjacencyId:
-    let
-      marker = "--uplink-";
-      parts = builtins.filter isNonEmptyString (builtins.split marker adjacencyId);
-    in
-    if builtins.length parts < 2 then
-      null
-    else
-      builtins.elemAt parts ((builtins.length parts) - 1);
-
-  accessNodeNameFromAdjacencyId =
-    adjacencyId:
-    let
-      match = builtins.match ".*--access-(.+)--uplink-.*" adjacencyId;
-    in
-    if match == null then null else builtins.elemAt match 0;
-
-  overlayNameFromInterfaceName =
-    interfaceName:
-    let
-      match = builtins.match "overlay-(.+)" interfaceName;
-    in
-    if match == null then null else builtins.elemAt match 0;
-
   defaultDst = family:
     if family == 4 then "0.0.0.0/0" else "::/0";
 
@@ -122,7 +97,6 @@ let
 in
 {
   inherit
-    accessNodeNameFromAdjacencyId
     attrsOrEmpty
     buildInternalDefaultRoute
     buildInternalEndpointRoute
@@ -133,12 +107,10 @@ in
     listOrEmpty
     makeStringSet
     mergeRoutes
-    overlayNameFromInterfaceName
     routeAlreadyPresent
     routeMatchesDefault
     routesContainDefault
     stripDefaultRoutes
     uniqueStrings
-    uplinkNameFromAdjacencyId
     ;
 }
