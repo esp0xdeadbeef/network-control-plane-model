@@ -30,6 +30,11 @@ let
   links = requireAttrs "${sitePath}.links" (siteAttrs.links or null);
   nodes = requireAttrs "${sitePath}.nodes" (siteAttrs.nodes or null);
   transitAttrs = requireAttrs "${sitePath}.transit" (siteAttrs.transit or null);
+  trafficPaths =
+    if builtins.isList (siteAttrs.trafficPaths or null) then
+      requireList "${sitePath}.trafficPaths" siteAttrs.trafficPaths
+    else
+      [ ];
 
   domainsValue = requireAttrs "${sitePath}.domains" (siteAttrs.domains or null);
   domains = {
@@ -108,6 +113,7 @@ in
     siteDisplayName
     siteId
     tenantPrefixOwners
+    trafficPaths
     transitAttrs
     uplinkCoreNames
     uplinkNames

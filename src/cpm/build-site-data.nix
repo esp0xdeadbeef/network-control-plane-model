@@ -82,6 +82,7 @@ let
     siteDisplayName
     siteId
     tenantPrefixOwners
+    trafficPaths
     transitAttrs
     uplinkCoreNames
     uplinkNames
@@ -482,6 +483,7 @@ import ./Site/build-data/output.nix {
     siteDisplayName
     siteId
     tenantPrefixOwners
+    trafficPaths
     transitAttrs
     uplinkCoreNames
     uplinkNames
