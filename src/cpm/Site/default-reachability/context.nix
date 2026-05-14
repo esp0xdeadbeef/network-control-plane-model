@@ -13,7 +13,6 @@ let
     attrsOrEmpty
     listOrEmpty
     makeStringSet
-    overlayNameFromInterfaceName
     uniqueStrings
     ;
 
@@ -61,9 +60,10 @@ let
               (ifName:
                 let
                   iface = attrsOrEmpty interfaces.${ifName};
+                  backingRef = attrsOrEmpty (iface.backingRef or null);
                 in
-                if (iface.sourceKind or null) == "overlay" then
-                  overlayNameFromInterfaceName ifName
+                if (iface.sourceKind or null) == "overlay" && helpers.isNonEmptyString (backingRef.name or null) then
+                  backingRef.name
                 else
                   null)
               (sortedNames interfaces))

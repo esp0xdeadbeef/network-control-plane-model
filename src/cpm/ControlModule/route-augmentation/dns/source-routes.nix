@@ -17,7 +17,6 @@ let
   inherit (helpers) isNonEmptyString requireAttrs;
   inherit (common) attrsOrEmpty listOrEmpty;
   inherit (routeHelpers) routeForExactDstWithGateway;
-  p2pPeers = import ../p2p-peers.nix { inherit lib; };
 in
 family: consumerInterfaceName: preferredUplinks: ingressServiceRoute: destination:
 let
@@ -46,21 +45,11 @@ let
       covering = routeForCoveringDst {
         inherit family routes destination;
       };
-      peer = p2pPeers.peerForInterface family interfaces.${ifName};
-      routeViaPeer = { dst = destination; proto = "default"; } // (if family == 4 then { via4 = peer; } else { via6 = peer; });
     in
-    if ingressServiceRoute && ifName != consumerInterfaceName && isNonEmptyString peer then
-      routeViaPeer
-    else if exact != null then
+    if exact != null then
       exact
     else if covering != null && isNonEmptyString (if family == 4 then (covering.via4 or null) else (covering.via6 or null)) then
       covering
-    else if covering != null && isNonEmptyString peer then
-      routeViaPeer
-    else if includeConsumerInterface && ifName == consumerInterfaceName && isNonEmptyString peer then
-      routeViaPeer
-    else if preferredUplinks != [ ] && laneMatchesPreferredUplinks interfaces.${ifName} preferredUplinks && isNonEmptyString peer then
-      routeViaPeer
     else
       routeForExactDstWithGateway family routes defaultDst;
 in

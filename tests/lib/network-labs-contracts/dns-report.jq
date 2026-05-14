@@ -46,8 +46,8 @@ def dns_contract_violations:
     else empty end;
 
 def has_dst($routes; $destination):
-  ([($routes.ipv4 // [])[] | select((.dst // "") == $destination)] | length) > 0
-  or ([($routes.ipv6 // [])[] | select((.dst // "") == $destination)] | length) > 0;
+  ([($routes.ipv4 // [])[] | select((.dst // "") == $destination or (.dst // "") == ($destination + "/32"))] | length) > 0
+  or ([($routes.ipv6 // [])[] | select((.dst // "") == $destination or (.dst // "") == ($destination + "/128"))] | length) > 0;
 
 def access_dns_route_violations:
   sites as $site

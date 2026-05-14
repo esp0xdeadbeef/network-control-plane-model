@@ -2,7 +2,7 @@
 
 let
   inherit (helpers) sortedNames;
-  inherit (common) attrsOrEmpty listContains listOrEmpty overlayNameFromInterfaceName;
+  inherit (common) attrsOrEmpty listContains listOrEmpty;
 
   overlayNames = sortedNames siteOverlayNameSet;
 
@@ -51,7 +51,7 @@ let
           [ lane.uplink ];
     in
     if isOverlayInterface iface then
-      backingRef.name or (overlayNameFromInterfaceName ifName)
+      backingRef.name or null
     else if uplinks != [ ] then
       firstOverlayName uplinks
     else

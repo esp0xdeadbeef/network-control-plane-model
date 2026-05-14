@@ -2,7 +2,7 @@
 
 let
   inherit (helpers) hasAttr sortedNames;
-  addDnsContracts = import ./dns-contracts.nix { inherit lib helpers common ipam; };
+  addDnsContracts = import ./dns-contracts.nix { inherit lib helpers common; };
 in
 {
   accessAdvertisements,

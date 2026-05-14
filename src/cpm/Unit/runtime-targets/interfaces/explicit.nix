@@ -103,6 +103,7 @@ let
     // (if portBinding != null && builtins.isAttrs (portBinding.attach or null) then { attach = portBinding.attach; } else { })
     // (if sourceKind == "wan" then { upstream = requireString "${ifacePath}.upstream" (ifaceAttrs.upstream or null); } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (ifaceAttrs.wan or null) then { wan = ifaceAttrs.wan; } else { })
+    // (if sourceKind == "tenant" then { tenant = requireString "${ifacePath}.tenant" (ifaceAttrs.tenant or null); } else { })
     // (if sourceKind == "tenant" && ((ifaceAttrs.logical or false) == true) then { logical = true; } else { })
     // (if sourceKind == "wan" && validatedHostUplink != null then { hostUplink = validatedHostUplink; } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (validatedHostUplink.ipv4 or null) then { ipv4 = validatedHostUplink.ipv4; } else { })

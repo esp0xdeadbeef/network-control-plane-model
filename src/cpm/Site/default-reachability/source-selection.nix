@@ -11,7 +11,6 @@
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs sortedNames;
   inherit (common)
-    accessNodeNameFromAdjacencyId
     attrsOrEmpty
     defaultDst
     listContains
@@ -19,7 +18,6 @@ let
     makeStringSet
     routesContainDefault
     uniqueStrings
-    uplinkNameFromAdjacencyId
     ;
 
   runtimeRoutedIPv6PrefixesForTenant =
@@ -223,10 +221,11 @@ let
               (uplinkName: !hasAttr uplinkName siteOverlayNameSet)
               (selectedUplinkNamesForTarget sourceEntry.target)
             ++ defaultSourceUplinkNamesForFamily family sourceEntry.targetName sourceEntry.target
-          );
+      );
       firstStep = if builtins.length candidate.steps == 0 then null else builtins.elemAt candidate.steps 0;
-      uplinkName = if firstStep == null then null else uplinkNameFromAdjacencyId firstStep.adjacencyId;
-      accessNodeName = if firstStep == null then null else accessNodeNameFromAdjacencyId firstStep.adjacencyId;
+      firstStepLane = attrsOrEmpty (if firstStep == null then null else firstStep.laneMeta or null);
+      uplinkName = firstStepLane.uplink or null;
+      accessNodeName = firstStepLane.access or null;
       delegatedAccess = isNonEmptyString accessNodeName && isDelegatedIPv6AccessNode accessNodeName;
     in
     if firstStep == null || uplinkName == null then
