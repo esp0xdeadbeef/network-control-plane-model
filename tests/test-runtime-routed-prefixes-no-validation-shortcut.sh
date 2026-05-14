@@ -160,7 +160,8 @@ nix run --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -
   "${examples_root}/ipv6-pd-downstream-delegation/inventory-nixos.nix" \
   "${static_output}" >/dev/null
 
-if ! BGP_OUTPUT="${bgp_output}" STATIC_OUTPUT="${static_output}" nix eval \
+check_result="$(
+  BGP_OUTPUT="${bgp_output}" STATIC_OUTPUT="${static_output}" nix eval \
   --extra-experimental-features 'nix-command flakes' \
   --impure --expr '
     let
@@ -209,7 +210,10 @@ if ! BGP_OUTPUT="${bgp_output}" STATIC_OUTPUT="${static_output}" nix eval \
       && staticAccess.routingMode == "static"
       && hasPrefixBySource "/run/s88-ipv6-pd/wan.prefix" (staticRa.routedPrefixes or [ ])
       && !(staticAccess ? bgp)
-  ' >/dev/null; then
+  '
+)"
+
+if [[ "${check_result}" != "true" ]]; then
   echo "FAIL runtime-routed-prefixes-no-validation-shortcut: CPM did not preserve both BGP and static modeled runtime IPv6 prefix contracts" >&2
   exit 1
 fi

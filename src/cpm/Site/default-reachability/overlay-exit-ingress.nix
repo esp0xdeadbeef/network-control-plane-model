@@ -35,6 +35,10 @@ let
     let lane = laneFor iface;
     in (lane.kind or null) == "access-uplink" && (lane.access or null) == sourceNode && !laneUsesOverlay lane;
 
+  isNonOverlayCoreLane = iface:
+    let lane = laneFor iface;
+    in (lane.kind or null) == "uplink" && !laneUsesOverlay lane;
+
   hasDefault = family: routes:
     builtins.any (route: (route.dst or null) == defaultDst family) (listOrEmpty routes);
 
@@ -106,6 +110,24 @@ let
     in
     if candidates == [ ] then null else builtins.head candidates;
 
+  nonOverlayCoreGateway =
+    family: interfaces:
+    let
+      candidates =
+        builtins.filter
+          (gateway: gateway != null)
+          (builtins.map
+            (ifName:
+              let
+                iface = interfaces.${ifName};
+                routes = attrsOrEmpty (iface.routes or null);
+                peerAddress = p2pPeerAddress family iface;
+              in
+              if peerAddress != null then peerAddress else firstGateway family (if family == 4 then routes.ipv4 or [ ] else routes.ipv6 or [ ]))
+            (builtins.filter (ifName: isNonOverlayCoreLane interfaces.${ifName}) (sortedNames interfaces)));
+    in
+    if candidates == [ ] then null else builtins.head candidates;
+
   routeGatewayMatches = family: gateway: route:
     if family == 4 then (route.via4 or null) == gateway else (route.via6 or null) == gateway;
 
@@ -148,7 +170,12 @@ in
     }:
     let
       sourceHasNonOverlayDefault = hasNonOverlayDefault family sourceNode interfaces;
-      gateway = policyLaneGateway family sourceNode interfaces;
+      coreGateway = nonOverlayCoreGateway family interfaces;
+      gateway =
+        if coreGateway != null then
+          coreGateway
+        else
+          policyLaneGateway family sourceNode interfaces;
     in
     if sourceHasNonOverlayDefault || gateway == null then
       interfaces

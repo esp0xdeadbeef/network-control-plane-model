@@ -1,6 +1,6 @@
 { lib, helpers }:
 
-{ sitePath, siteAttrs, transit, runtimeTargets, allSiteEntries ? [ ], uplinkRouting ? { } }:
+{ sitePath, siteAttrs, transit, runtimeTargets, allSiteEntries ? [ ], allRuntimeRoutedIPv6Prefixes ? [ ], uplinkRouting ? { } }:
 
 let
   inherit (helpers)
@@ -97,10 +97,14 @@ let
 
   routeSynthesis = import ./Site/default-reachability/route-synthesis.nix {
     inherit
+      lib
       helpers
       common
       ipam
       sitePath
+      siteAttrs
+      allSiteEntries
+      allRuntimeRoutedIPv6Prefixes
       siteOverlayNameSet
       overlayExitPeerSiteByName
       runtimeTargetNames
