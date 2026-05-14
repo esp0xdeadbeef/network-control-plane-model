@@ -1,7 +1,12 @@
 {
+  lib,
   helpers,
   common,
   sitePath,
+  siteAttrs,
+  allSiteEntries,
+  allRuntimeRoutedIPv6Prefixes,
+  siteOverlayNameSet,
   sortedCandidatePaths,
   preferredFirstHopMatchesSource,
   routeHelpers,
@@ -14,6 +19,19 @@ let
   inherit (routeHelpers)
     findInterfaceNameForAdjacency
     ;
+  p2pPeers = import ../../ControlModule/route-augmentation/p2p-peers.nix { inherit lib; };
+
+  siteId = siteAttrs.siteId or null;
+
+  remoteRuntimeRoutedPrefixes =
+    builtins.filter
+      (prefix:
+        builtins.isAttrs prefix
+        && (prefix.siteId or null) != siteId
+        && (prefix.family or null) == "ipv6"
+        && (prefix.allocation or null) == "runtime"
+        && prefixHasSourceFile prefix)
+      allRuntimeRoutedIPv6Prefixes;
 
   prefixHasSourceFile =
     prefix: builtins.isAttrs prefix && builtins.isString (prefix.sourceFile or null) && prefix.sourceFile != "";
@@ -31,6 +49,8 @@ let
   buildRoute =
     accessNodeName: prefix: via6:
     {
+      family = 6;
+      metric = 50;
       sourceFile = prefix.sourceFile;
       delegatedPrefix = prefix;
       via6 = via6;
@@ -50,7 +70,7 @@ let
       let
         candidates =
           builtins.filter
-            (candidate: candidate.steps != [ ] && preferredFirstHopMatchesSource 6 candidate)
+            (candidate: candidate.steps != [ ])
             (sortedCandidatePaths 6 (makeStringSet [ accessNodeName ]) nodeName);
         candidateEntries =
           builtins.map
@@ -97,6 +117,73 @@ let
         in
         interfaces // { ${interfaceName} = updatedIface; };
 
+  routeForRemotePrefix =
+    iface: prefix:
+    let peer = p2pPeers.peerForInterface 6 iface;
+    in
+    if peer == null then
+      null
+    else
+      buildRoute (prefix.accessNode or "remote-runtime-routed-prefix") prefix peer;
+
+  addRemotePrefixRoutesToInterface =
+    iface:
+    let
+      routes = attrsOrEmpty (iface.routes or null);
+      existing = listOrEmpty (routes.ipv6 or null);
+      updated =
+        builtins.foldl'
+          (acc: prefix:
+            let route = routeForRemotePrefix iface prefix;
+            in
+            if route == null || routeExists acc prefix.sourceFile route.via6 then
+              acc
+            else
+              acc ++ [ route ])
+          existing
+          remoteRuntimeRoutedPrefixes;
+    in
+    iface // { routes = routes // { ipv6 = updated; }; };
+
+  isRemoteReturnInterface =
+    targetRole: iface:
+    let
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+      lane = attrsOrEmpty (backingRef.lane or null);
+      laneUplinks =
+        if builtins.isList (lane.uplinks or null) then
+          lane.uplinks
+        else if lane.uplink or null == null then
+          [ ]
+        else
+          [ lane.uplink ];
+      laneUsesOverlay = builtins.any (uplinkName: hasAttr uplinkName siteOverlayNameSet) laneUplinks;
+      isTransit = (backingRef.kind or null) == "link" && (iface.addr6 or null) != null;
+    in
+    remoteRuntimeRoutedPrefixes != [ ]
+    && isTransit
+    && (
+      targetRole == "core"
+      || (targetRole == "upstream-selector" && laneUsesOverlay)
+    );
+
+  addRemotePrefixRoutes =
+    target:
+    let
+      targetRole = target.role or null;
+      effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (effective.interfaces or null);
+      updatedInterfaces =
+        builtins.mapAttrs
+          (_: iface:
+            if isRemoteReturnInterface targetRole iface then
+              addRemotePrefixRoutesToInterface iface
+            else
+              iface)
+          interfaces;
+    in
+    target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
+
 in
 {
   add = targetName: target:
@@ -113,5 +200,5 @@ in
           interfaces
           (sortedNames runtimeRoutedIPv6PrefixesByAccessNode);
     in
-    target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
+    addRemotePrefixRoutes (target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; });
 }

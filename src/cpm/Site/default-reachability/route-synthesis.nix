@@ -1,8 +1,12 @@
 {
+  lib,
   helpers,
   common,
   ipam,
   sitePath,
+  siteAttrs,
+  allSiteEntries,
+  allRuntimeRoutedIPv6Prefixes,
   siteOverlayNameSet,
   overlayExitPeerSiteByName,
   runtimeTargetNames,
@@ -66,9 +70,14 @@ let
   };
   runtimeRoutedPrefixRoutes = import ./runtime-routed-prefix-routes.nix {
     inherit
+      lib
       helpers
       common
       sitePath
+      siteAttrs
+      allSiteEntries
+      allRuntimeRoutedIPv6Prefixes
+      siteOverlayNameSet
       sortedCandidatePaths
       preferredFirstHopMatchesSource
       routeHelpers

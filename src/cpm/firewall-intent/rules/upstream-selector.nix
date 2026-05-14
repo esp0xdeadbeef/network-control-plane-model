@@ -18,6 +18,24 @@ let
       (iface: common.laneKind iface == "access-uplink" && common.laneUplink iface != null)
       transitInterfaces;
 
+  familyRoutes = routes:
+    listOrEmpty (routes.ipv4 or null) ++ listOrEmpty (routes.ipv6 or null);
+
+  routeIntent = route: attrsOrEmpty (route.intent or null);
+
+  runtimeRoutedPrefixSourceFiles = iface:
+    builtins.filter
+      (sourceFile: builtins.isString sourceFile && sourceFile != "")
+      (
+        builtins.map
+          (route: route.sourceFile or null)
+          (builtins.filter
+            (route:
+              builtins.isAttrs route
+              && ((routeIntent route).kind or null) == "runtime-routed-prefix-return")
+            (familyRoutes (attrsOrEmpty (iface.routes or null))))
+      );
+
   coreForPolicy = policyIface:
     let
       matchesCore =
@@ -84,11 +102,6 @@ let
           fromCores
       );
 
-  routeIntent = route: attrsOrEmpty (route.intent or null);
-
-  familyRoutes = routes:
-    listOrEmpty (routes.ipv4 or null) ++ listOrEmpty (routes.ipv6 or null);
-
   hasOverlayUnderlayEndpointRoute = overlayName: iface:
     let routes = familyRoutes (attrsOrEmpty (iface.routes or null));
     in
@@ -147,6 +160,46 @@ let
               toCores)
           fromCores
       );
+
+  runtimeRoutedPrefixPublicEgressRules =
+    let
+      fromCoresWithSourceFiles =
+        builtins.filter (entry: entry.sourceFiles != [ ]) (
+          builtins.map
+            (iface: {
+              inherit iface;
+              sourceFiles = runtimeRoutedPrefixSourceFiles iface;
+            })
+            coreInterfaces
+        );
+    in
+    builtins.concatLists (
+      builtins.map
+        (fromEntry:
+          builtins.concatLists (
+            builtins.map
+              (toIface:
+                if toIface.runtimeIfName == fromEntry.iface.runtimeIfName then
+                  [ ]
+                else
+                  [
+                    {
+                      action = "accept";
+                      intent = {
+                        kind = "runtime-routed-prefix-public-egress";
+                        source = "inventory-routed-prefix";
+                      };
+                      fromInterface = fromEntry.iface.runtimeIfName;
+                      toInterface = toIface.runtimeIfName;
+                      sourceFiles = fromEntry.sourceFiles;
+                      family = 6;
+                      applyTcpMssClamp = false;
+                    }
+                  ])
+              coreInterfaces
+          ))
+        fromCoresWithSourceFiles
+    );
 in
   (builtins.concatLists (
     builtins.map
@@ -159,3 +212,4 @@ in
   ))
   ++ (builtins.concatLists (builtins.map externalTransitRule relations))
   ++ (builtins.concatLists (builtins.map overlayUnderlayTransitRule relations))
+  ++ runtimeRoutedPrefixPublicEgressRules
