@@ -114,6 +114,15 @@ let
       listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null)
     );
 
+  ipv6NatSourcePrefixes =
+    uniqueStrings (
+      builtins.map
+        (prefix: (attrsOrEmpty prefix).ipv6 or null)
+        (builtins.filter
+          (prefix: hasIPv6Prefix prefix && !(hasRoutedIPv6Prefix prefix))
+          (listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null)))
+    );
+
   ruleBuilders = import ./firewall-intent/rules.nix { };
   inherit (ruleBuilders)
     buildAccessRules
@@ -190,6 +199,11 @@ let
           builtins.map
             (iface: iface.runtimeIfName)
             (builtins.filter hasHostIPv6 wanInterfaces)
+        else
+          [ ];
+      masqueradeSourcePrefixes6 =
+        if nat6Enabled then
+          ipv6NatSourcePrefixes
         else
           [ ];
       tcpMssClampInterfaces =

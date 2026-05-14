@@ -137,6 +137,8 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
         branchSimulatedIsp.natIntent.families.ipv6 == true;
       branchSimulatedIspMasqueradesWan6 =
         branchSimulatedIsp.natIntent.masqueradeInterfaces6 == [ "wan" ];
+      branchSimulatedIspNat6ScopesPrivateBranchOnly =
+        branchSimulatedIsp.natIntent.masqueradeSourcePrefixes6 == [ "fd42:dead:feed:10::/64" ];
     }
 ' > "${output_json}.checks"
 
