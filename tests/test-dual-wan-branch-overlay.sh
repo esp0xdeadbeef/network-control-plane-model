@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${repo_root}/tests/lib/direct-test-guard.sh"
 example_root="${repo_root}/../network-labs/examples"
 
 fail() { echo "$1" >&2; exit 1; }

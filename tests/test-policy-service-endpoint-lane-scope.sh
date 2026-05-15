@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+source "${repo_root}/tests/lib/direct-test-guard.sh"
+cd "$repo_root"
+
+# shellcheck disable=SC2016
+expr='
+let
+  flake = builtins.getFlake ("path:" + toString ./.);
+  system = builtins.currentSystem;
+  labs = flake.inputs.network-labs.outPath;
+  built = flake.lib.${system}.compileAndBuildFromPaths {
+    inputPath = labs + "/examples/s-router-public-overlay-service/intent.nix";
+    inventoryPath = labs + "/examples/s-router-public-overlay-service/inventory-nixos.nix";
+  };
+  rules =
+    built.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".forwardingIntent.rules;
+  serviceRules =
+    builtins.filter
+      (rule: (rule.relationId or null) == "allow-sitec-wan-to-dmz-nebula")
+      rules;
+  expectedRule = rule:
+    (rule.action or null) == "accept"
+    && (rule.trafficType or null) == "nebula"
+    && (rule.fromInterface or null) == "up-dmz-wan"
+    && (rule.toInterface or null) == "downstream-dmz";
+in
+  builtins.length serviceRules == 1
+  && expectedRule (builtins.head serviceRules)
+'
+
+if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+  echo "PASS policy-service-endpoint-lane-scope"
+else
+  echo "FAIL policy-service-endpoint-lane-scope" >&2
+  exit 1
+fi

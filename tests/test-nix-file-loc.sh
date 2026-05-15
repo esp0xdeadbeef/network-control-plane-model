@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${repo_root}/tests/lib/direct-test-guard.sh"
 limit="${NIX_LOC_LIMIT:-200}"
 hard_limit="${NIX_LOC_HARD_LIMIT:-500}"
 regression_note="${repo_root}/regression.md"

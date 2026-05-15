@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+source "${repo_root}/tests/lib/direct-test-guard.sh"
 cd "$repo_root"
 
 # shellcheck disable=SC2016
