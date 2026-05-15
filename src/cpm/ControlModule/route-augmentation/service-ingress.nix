@@ -119,6 +119,34 @@ let
           };
       };
 
+  routeIntent = route: attrsOrEmpty (route.intent or null);
+
+  overlayReturnRoutes =
+    family: ifName: interfacesAcc:
+    let
+      peer = p2pPeers.peerForInterface family interfacesAcc.${ifName};
+      existingRoutes = routesFor family interfacesAcc.${ifName};
+      candidateRoutes =
+        lib.concatMap
+          (sourceIfName:
+            builtins.filter
+              (route:
+                builtins.isAttrs route
+                && ((routeIntent route).kind or null) == "overlay-reachability"
+                && isNonEmptyString (route.dst or null)
+                && !routePresent family existingRoutes route.dst)
+              (routesFor family interfacesAcc.${sourceIfName}))
+          interfaceNames;
+    in
+    if !isNonEmptyString peer then
+      [ ]
+    else
+      builtins.map
+        (route:
+          (builtins.removeAttrs route [ "via4" "via6" ])
+          // (if family == 4 then { via4 = peer; } else { via6 = peer; }))
+        candidateRoutes;
+
   addRoute =
     interfacesAcc: relation:
     let
@@ -144,14 +172,15 @@ let
                 ingressIfName = ingressInterfaceFor providerAccessNodes providerIfName uplinkName;
                 providerIface = if providerIfName == null then null else inner.${providerIfName};
                 providerLane = if providerIface == null then { } else interfaceLane providerIface;
-                peer =
+                ingressPeer =
                   if ingressIfName == null then
                     null
                   else if (providerLane.kind or null) == "access" then
                     p2pPeers.peerForInterface family providerIface
                   else
                     p2pPeers.peerForInterface family inner.${ingressIfName};
-                route =
+                routeForPeer =
+                  peer:
                   { dst = endpoint; proto = "service-ingress"; }
                   // (if family == 4 then { via4 = peer; } else { via6 = peer; })
                   // {
@@ -164,16 +193,31 @@ let
                     // lib.optionalAttrs (trafficType != null) { inherit trafficType; };
                   };
                 routeIfNames =
-                  if ingressIfName == null then
-                    [ ]
+                  if ingressIfName != null then
+                    [ ingressIfName ] ++ externalIngressInterfacesFor uplinkName
                   else
-                    [ ingressIfName ] ++ externalIngressInterfacesFor uplinkName;
+                    externalIngressInterfacesFor uplinkName;
               in
-              if ingressIfName == null || !isNonEmptyString peer then
+              if routeIfNames == [ ] then
                 inner
               else
                 builtins.foldl'
-                  (acc: ifName: addRouteToInterface family route endpoint ifName acc)
+                  (acc: ifName:
+                    let
+                      peer = if ingressIfName == null then p2pPeers.peerForInterface family acc.${ifName} else ingressPeer;
+                      routeAcc =
+                        if !isNonEmptyString peer then
+                          acc
+                        else
+                          addRouteToInterface family (routeForPeer peer) endpoint ifName acc;
+                    in
+                    if ingressIfName == null || ifName != ingressIfName then
+                      routeAcc
+                    else
+                      builtins.foldl'
+                        (returnAcc: returnRoute: addRouteToInterface family returnRoute returnRoute.dst ifName returnAcc)
+                        routeAcc
+                        (overlayReturnRoutes family ifName routeAcc))
                   inner
                   routeIfNames)
             outer
