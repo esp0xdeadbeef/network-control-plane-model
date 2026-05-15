@@ -41,6 +41,7 @@ jq -e '
           and (.fromInterface == "core-nebula")
           and (.toInterface == "core-isp")
           and ((.trafficType // "any") == "any")
+          and ((.sourceFiles // []) == [])
         )
     ]
   | length == 0

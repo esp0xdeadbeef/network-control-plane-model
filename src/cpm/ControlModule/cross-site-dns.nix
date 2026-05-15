@@ -67,6 +67,19 @@ let
       )
     );
 
+  overlayServiceDnsAllowFrom =
+    import ./cross-site-dns/overlay-service-allow-from.nix {
+      inherit
+        lib
+        helpers
+        cpmData
+        runtimeTargetEntries
+        entryKey
+        dnsListenersForTarget
+        interfaceCidrsForTarget
+        ;
+    };
+
   extraDnsAllowFromByProvider =
     builtins.listToAttrs (
       builtins.map
@@ -93,6 +106,7 @@ let
                         [ ])
                     runtimeTargetEntries
                 )
+                ++ overlayServiceDnsAllowFrom providerEntry providerListeners
               );
         })
         runtimeTargetEntries
