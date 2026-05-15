@@ -110,7 +110,11 @@ let
           )
         );
       filteredDerivedForwarders = builtins.filter (addr: !(builtins.elem addr listenAddresses)) derivedForwarders;
-      mergedForwarders = if filteredDerivedForwarders == [ ] then explicitForwarders else uniqueStrings filteredDerivedForwarders;
+      mergedForwarders =
+        if explicitForwarders != [ ] then
+          explicitForwarders
+        else
+          uniqueStrings filteredDerivedForwarders;
       mergedAllowFrom = if derivedAllowFrom == [ ] then explicitAllowFrom else uniqueStrings (explicitAllowFrom ++ derivedAllowFrom);
       mergedOutgoingInterfaces =
         if explicitOutgoingInterfaces != [ ] then
