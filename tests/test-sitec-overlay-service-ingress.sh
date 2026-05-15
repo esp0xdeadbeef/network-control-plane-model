@@ -20,9 +20,11 @@ let
   site = built.control_plane_model.data.esp.hetz;
   upstream = site.runtimeTargets."esp-hetz-router-upstream";
   policy = site.runtimeTargets."esp-hetz-router-policy";
+  nebulaCore = site.runtimeTargets."esp-hetz-router-nebula-core";
   dns = site.runtimeTargets."esp-hetz-router-access-dmz".services.dns;
   upstreamIfs = upstream.effectiveRuntimeRealization.interfaces;
   policyIfs = policy.effectiveRuntimeRealization.interfaces;
+  nebulaCoreIfs = nebulaCore.effectiveRuntimeRealization.interfaces;
   upstreamRules = upstream.forwardingIntent.rules or [ ];
   policyRules = policy.forwardingIntent.rules or [ ];
 
@@ -42,8 +44,12 @@ let
 in
   builtins.elem "10.20.70.0/24" (dns.allowFrom or [ ])
   && builtins.elem "fd42:dead:beef:70::/64" (dns.allowFrom or [ ])
+  && hasRoute4 (nebulaCoreIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "10.90.10.1" "10.80.0.11"
+  && hasRoute6 (nebulaCoreIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "fd42:dead:cafe:10::1" "fd42:dead:cafe:1000:0:0:0:b"
   && hasRoute4 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "10.90.10.1" "10.80.0.14"
   && hasRoute6 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "fd42:dead:cafe:10::1" "fd42:dead:cafe:1000:0:0:0:e"
+  && hasRoute4 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "10.20.70.0/24" "10.80.0.10"
+  && hasRoute4 (policyIfs."p2p-hetz-router-policy-hetz-router-upstream--access-hetz-router-access-dmz--uplink-wan".routes.ipv4 or [ ]) "10.20.70.0/24" "10.80.0.15"
   && hasRoute4 (upstreamIfs."p2p-hetz-router-policy-hetz-router-upstream--access-hetz-router-access-dmz--uplink-wan".routes.ipv4 or [ ]) "10.90.10.1" "10.80.0.14"
   && hasRoute6 (upstreamIfs."p2p-hetz-router-policy-hetz-router-upstream--access-hetz-router-access-dmz--uplink-wan".routes.ipv6 or [ ]) "fd42:dead:cafe:10::1" "fd42:dead:cafe:1000:0:0:0:e"
   && hasRoute4 (policyIfs."p2p-hetz-router-policy-hetz-router-upstream--access-hetz-router-access-dmz--uplink-wan".routes.ipv4 or [ ]) "10.90.10.1" "10.80.0.8"
