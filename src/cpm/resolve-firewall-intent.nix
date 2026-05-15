@@ -1,6 +1,6 @@
 { helpers }:
 
-{ sitePath, siteAttrs, runtimeTargets, policyEndpointBindings ? { } }:
+{ sitePath, siteAttrs, runtimeTargets, policyEndpointBindings ? { }, services ? [ ] }:
 
 let
   inherit (helpers)
@@ -290,6 +290,7 @@ let
         rules = buildPolicyRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;
           relations = siteRelations;
+          inherit services;
           inherit transitInterfaces;
         };
       }

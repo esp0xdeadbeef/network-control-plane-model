@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${repo_root}/tests/lib/direct-test-guard.sh"
 regression="${repo_root}/regression.md"
 
 if [[ ! -f "${regression}" ]]; then

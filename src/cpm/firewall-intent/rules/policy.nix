@@ -1,6 +1,6 @@
 { common }:
 
-{ endpointBindings, relations, transitInterfaces }:
+{ endpointBindings, relations, services ? [ ], transitInterfaces }:
 let
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };
   listOrEmpty = value: if builtins.isList value then value else [ ];
@@ -30,6 +30,15 @@ let
   tenantBindings = attrsOrEmpty (endpointBindings.tenants or null);
   externalBindings = attrsOrEmpty (endpointBindings.externals or null);
   serviceBindings = attrsOrEmpty (endpointBindings.services or null);
+  serviceRecords =
+    builtins.listToAttrs (
+      builtins.map
+        (service: {
+          name = service.name;
+          value = service;
+        })
+        (builtins.filter (service: builtins.isAttrs service && builtins.isString (service.name or null) && service.name != "") (listOrEmpty services))
+    );
 
   accessNodesForTenant = tenantName:
     if !builtins.hasAttr tenantName tenantBindings then
@@ -67,12 +76,30 @@ let
     else
       [ ];
 
+  serviceKnown = endpoint:
+    let serviceNames = namesForEndpoint "service" endpoint;
+    in builtins.any (serviceName: builtins.hasAttr serviceName serviceBindings || builtins.hasAttr serviceName serviceRecords) serviceNames;
+
+  serviceProviderTenants = endpoint:
+    uniqueStrings (
+      builtins.concatLists (
+        builtins.map
+          (serviceName:
+            if builtins.hasAttr serviceName serviceRecords then
+              listOrEmpty (serviceRecords.${serviceName}.providerTenants or null)
+            else
+              [ ])
+          (namesForEndpoint "service" endpoint)
+      )
+    );
+
   accessNodesForEndpoint = endpoint:
     uniqueStrings (
       builtins.concatLists (
         builtins.map accessNodesForTenant (
           namesForEndpoint "tenant" endpoint
           ++ namesForEndpoint "tenant-set" endpoint
+          ++ serviceProviderTenants endpoint
         )
       )
     );
@@ -83,10 +110,6 @@ let
         builtins.map externalUplinks (namesForEndpoint "external" endpoint)
       )
     );
-
-  serviceKnown = endpoint:
-    let serviceNames = namesForEndpoint "service" endpoint;
-    in builtins.any (serviceName: builtins.hasAttr serviceName serviceBindings) serviceNames;
 
   accessIfacesForNodes = accessNodes:
     builtins.filter
@@ -100,9 +123,12 @@ let
         && (uplinks == [ ] || builtins.elem (common.laneUplink iface) uplinks))
       uplinkInterfaces;
 
-  serviceIfacesFor = accessNodes:
-    let sameAccessUplinks = uplinkIfacesFor accessNodes [ ];
-    in if sameAccessUplinks != [ ] then sameAccessUplinks else uplinkInterfaces;
+  serviceIfacesFor = accessNodes: peerAccessNodes:
+    if accessNodes != [ ] then
+      accessIfacesForNodes accessNodes
+    else
+      let sameAccessUplinks = uplinkIfacesFor peerAccessNodes [ ];
+      in if sameAccessUplinks != [ ] then sameAccessUplinks else uplinkInterfaces;
 
   relationId = relation:
     if builtins.isString (relation.id or null) && relation.id != "" then
@@ -124,7 +150,7 @@ let
     else if (endpointValue.kind or null) == "external" then
       uplinkIfacesFor peerAccessNodes uplinks
     else if (endpointValue.kind or null) == "service" && serviceKnown endpoint then
-      serviceIfacesFor peerAccessNodes
+      serviceIfacesFor accessNodes peerAccessNodes
     else if endpointValue == "any" || endpoint == "any" then
       accessInterfaces ++ uplinkIfacesFor peerAccessNodes [ ]
     else

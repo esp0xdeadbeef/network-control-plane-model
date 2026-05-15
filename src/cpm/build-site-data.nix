@@ -423,21 +423,6 @@ let
       runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
     };
 
-  firewallIntent =
-    resolveFirewallIntent {
-      inherit sitePath siteAttrs policyEndpointBindings;
-      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
-    };
-
-  finalizeRuntimeTargets = import ./ControlModule/runtime-targets/finalize.nix {
-    inherit lib helpers common ipam;
-  };
-  runtimeTargets =
-    finalizeRuntimeTargets {
-      inherit accessAdvertisements firewallIntent;
-      normalizedRuntimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
-    };
-
   dnsServiceUplinks = import ./ControlModule/dns-policy/service-uplinks.nix {
     inherit lib uniqueStrings dnsServiceRouteSpecs;
   };
@@ -459,6 +444,23 @@ let
       sitePath
       ;
   };
+
+  firewallIntent =
+    resolveFirewallIntent {
+      services = resolvedServices;
+      inherit sitePath siteAttrs policyEndpointBindings;
+      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
+    };
+
+  finalizeRuntimeTargets = import ./ControlModule/runtime-targets/finalize.nix {
+    inherit lib helpers common ipam;
+  };
+  runtimeTargets =
+    finalizeRuntimeTargets {
+      inherit accessAdvertisements firewallIntent;
+      normalizedRuntimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
+    };
+
 in
 import ./Site/build-data/output.nix {
   inherit
