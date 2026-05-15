@@ -276,7 +276,9 @@ let
             buildDownstreamSelectorRules transitInterfaces
           else
             buildUpstreamSelectorRules {
+              endpointBindings = attrsOrEmpty policyEndpointBindings;
               relations = siteRelations;
+              inherit services;
               inherit transitInterfaces;
             };
       }

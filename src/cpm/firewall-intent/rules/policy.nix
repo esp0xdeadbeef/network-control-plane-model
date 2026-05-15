@@ -148,7 +148,11 @@ let
     if (endpointValue.kind or null) == "tenant" || (endpointValue.kind or null) == "tenant-set" then
       accessIfacesForNodes accessNodes
     else if (endpointValue.kind or null) == "external" then
-      uplinkIfacesFor peerAccessNodes uplinks
+      let
+        exact = uplinkIfacesFor peerAccessNodes uplinks;
+        peerIsService = (attrsOrEmpty peerEndpoint).kind or null == "service";
+      in
+      if exact != [ ] || !peerIsService then exact else uplinkIfacesFor peerAccessNodes [ ]
     else if (endpointValue.kind or null) == "service" && serviceKnown endpoint then
       serviceIfacesFor accessNodes peerAccessNodes
     else if endpointValue == "any" || endpoint == "any" then

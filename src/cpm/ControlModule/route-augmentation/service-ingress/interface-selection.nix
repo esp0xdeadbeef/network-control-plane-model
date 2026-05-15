@@ -56,16 +56,27 @@ let
           [ providerLane.access ]
         else
           [ ];
+      exact =
+        lib.findFirst
+          (ifName:
+            let lane = interfaceLane interfaces.${ifName};
+            in
+            (lane.kind or null) == "access-uplink"
+            && builtins.elem (lane.access or null) providerAccess
+            && builtins.elem uplinkName (laneUplinks lane))
+          null
+          interfaceNames;
+      providerAccessUplink =
+        lib.findFirst
+          (ifName:
+            let lane = interfaceLane interfaces.${ifName};
+            in
+            (lane.kind or null) == "access-uplink"
+            && builtins.elem (lane.access or null) providerAccess)
+          null
+          interfaceNames;
     in
-    lib.findFirst
-      (ifName:
-        let lane = interfaceLane interfaces.${ifName};
-        in
-        (lane.kind or null) == "access-uplink"
-        && builtins.elem (lane.access or null) providerAccess
-        && builtins.elem uplinkName (laneUplinks lane))
-      null
-      interfaceNames;
+    if exact != null then exact else providerAccessUplink;
 
   externalIngressInterfacesFor =
     uplinkName:

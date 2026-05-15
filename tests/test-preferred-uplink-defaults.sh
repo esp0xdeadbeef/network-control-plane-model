@@ -62,8 +62,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     hasDefault6 = routes:
       builtins.any (route: (route.dst or null) == "::/0") routes;
 
-    hasRouteVia = dst: viaField: via: routes:
-      builtins.any (route: (route.dst or null) == dst && (route.${viaField} or null) == via) routes;
+    hasRuntimeRouteVia = family: sourceFile: viaField: via: routes:
+      builtins.any
+        (route:
+          (route.family or null) == family
+          && (route.sourceFile or null) == sourceFile
+          && ((route.intent or { }).kind or null) == "overlay-underlay-reachability"
+          && (route.${viaField} or null) == via)
+        routes;
 
     countDefaultVia = dst: viaField: via: routes:
       builtins.length (
@@ -147,8 +153,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       && hasDefaultVia6 "fd42:dead:feed:1000:0:0:0:6" (routes6For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector");
 
     branchUpstreamUnderlayEndpointsUseWanCore =
-      hasRouteVia "198.51.100.10/32" "via4" "10.50.0.6" (routes4For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector")
-      && hasRouteVia "2001:db8:51::10/128" "via6" "fd42:dead:feed:1000:0:0:0:6" (routes6For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector");
+      hasRuntimeRouteVia 4 "/run/secrets/site-c-lighthouse-public-ipv4" "via4" "10.50.0.6" (routes4For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector")
+      && hasRuntimeRouteVia 4 "/run/secrets/hetzner-public-ipv4" "via4" "10.50.0.6" (routes4For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector")
+      && hasRuntimeRouteVia 6 "/run/secrets/site-c-lighthouse-public-ipv6" "via6" "fd42:dead:feed:1000:0:0:0:6" (routes6For branchUpstream "p2p-b-router-core-simulated-isp-b-router-upstream-selector");
 
     siteC = data.control_plane_model.data.esp0xdeadbeef."site-c";
     siteCPolicy = siteC.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy";
