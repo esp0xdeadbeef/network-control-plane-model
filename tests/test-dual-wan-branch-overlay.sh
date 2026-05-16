@@ -32,6 +32,24 @@ run_one() {
       siteB = data.control_plane_model.data.enterpriseB."site-b";
       overlayA = siteA.overlays."east-west";
       overlayB = siteB.overlays."east-west";
+      hasUnderlayRelation = site:
+        builtins.any
+          (relation:
+            (relation.from or { }) == { kind = "external"; name = "east-west"; }
+            && ((relation.to or { }).kind or null) == "service"
+            && (relation.trafficType or null) == "nebula"
+            && (relation.action or null) == "allow")
+          (site.communicationContract.allowedRelations or [ ]);
+      hasNebulaPort = site:
+        builtins.any
+          (trafficType:
+            trafficType.name == "nebula"
+            && builtins.any
+              (match:
+                ((match.proto or null) == "udp" || (match.proto or null) == "tcp")
+                && builtins.any (port: port == 4242) (match.dports or [ ]))
+              (trafficType.match or [ ]))
+          (site.communicationContract.trafficTypes or [ ]);
       rtA = siteA.runtimeTargets."enterpriseA-site-a-s-router-core-isp-b";
       upstreamA = siteA.runtimeTargets."enterpriseA-site-a-s-router-upstream-selector";
       upstreamCoreB =
@@ -51,6 +69,10 @@ run_one() {
     in
       overlayA.terminateOn == [ "s-router-core-isp-b" ]
       && overlayB.terminateOn == [ "b-router-core" ]
+      && hasUnderlayRelation siteA
+      && hasUnderlayRelation siteB
+      && hasNebulaPort siteA
+      && hasNebulaPort siteB
       && overlayA.ipam.ipv4.prefix == "100.96.10.0/24"
       && overlayA.ipam.ipv6.prefix == "fd42:dead:beef:ee::/64"
       && overlayB.ipam.ipv4.prefix == "100.96.10.0/24"
