@@ -13,13 +13,12 @@
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      nixpkgs-network,
-      network-forwarding-model,
-      network-labs,
-      ...
+    { self
+    , nixpkgs
+    , nixpkgs-network
+    , network-forwarding-model
+    , network-labs
+    , ...
     }:
     let
       systems = [
@@ -81,22 +80,26 @@
         in
         rec {
           build =
-            {
-              input,
-              inventory ? { },
+            { input
+            , inventory ? { }
+            , validateForwardingModel ? true
+            , validateRuntimeModel ? false
+            ,
             }:
             import ./src/main.nix {
-              inherit input inventory lib;
+              inherit input inventory lib validateForwardingModel validateRuntimeModel;
             };
 
           get_CPM =
-            {
-              input,
-              inventory ? { },
+            { input
+            , inventory ? { }
+            , validateForwardingModel ? true
+            , validateRuntimeModel ? false
+            ,
             }:
             buildCPM {
               forwardingModel = input;
-              inherit inventory;
+              inherit inventory validateForwardingModel validateRuntimeModel;
             };
 
           getCPM = get_CPM;
@@ -104,19 +107,23 @@
           readInput = readValue;
 
           compileAndBuild =
-            {
-              input,
-              inventory ? { },
+            { input
+            , inventory ? { }
+            , validateForwardingModel ? true
+            , validateRuntimeModel ? false
+            ,
             }:
             build {
               input = forwardingLib.buildFromCompilerInputs { inherit input; };
-              inherit inventory;
+              inherit inventory validateForwardingModel validateRuntimeModel;
             };
 
           compileAndBuildFromPaths =
-            {
-              inputPath,
-              inventoryPath ? null,
+            { inputPath
+            , inventoryPath ? null
+            , validateForwardingModel ? true
+            , validateRuntimeModel ? false
+            ,
             }:
             compileAndBuild {
               input = readValue inputPath;
@@ -125,21 +132,22 @@
                   { }
                 else
                   readValue inventoryPath;
+              inherit validateForwardingModel validateRuntimeModel;
             };
 
           writeJSON =
-            {
-              input,
-              inventory ? { },
-              name ? "output-control-plane-model.json",
+            { input
+            , inventory ? { }
+            , name ? "output-control-plane-model.json"
+            ,
             }:
             pkgs.writeText name (builtins.toJSON (build { inherit input inventory; }));
 
           writeCompileAndBuildJSON =
-            {
-              inputPath,
-              inventoryPath ? null,
-              name ? "output-control-plane-model.json",
+            { inputPath
+            , inventoryPath ? null
+            , name ? "output-control-plane-model.json"
+            ,
             }:
             pkgs.writeText name (
               builtins.toJSON (

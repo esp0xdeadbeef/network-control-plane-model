@@ -1,5 +1,11 @@
 # ./src/main.nix
-{ input, inventory ? {}, lib ? {} }:
+{ input
+, inventory ? { }
+, lib ? { }
+, validateForwardingModel ? true
+, validateRuntimeModel ? false
+,
+}:
 
 let
   localLib = import ../lib/utils.nix;
@@ -18,7 +24,7 @@ let
       (
         deriveCPM {
           forwardingModel = input;
-          inherit inventory;
+          inherit inventory validateForwardingModel validateRuntimeModel;
         }
       );
 

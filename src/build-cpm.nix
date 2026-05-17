@@ -1,11 +1,11 @@
 { lib }:
-args@{ forwardingModel, ... }:
+args@{ forwardingModel, validateForwardingModel ? true, validateRuntimeModel ? false, ... }:
 let
   helpers =
     import ./cpm/cpm-contract-support.nix { inherit lib; };
 
   passthroughArgs =
-    builtins.removeAttrs args [ "forwardingModel" ];
+    builtins.removeAttrs args [ "forwardingModel" "validateForwardingModel" "validateRuntimeModel" ];
 
   validatorArgs = {
     helpers = helpers;
@@ -17,10 +17,14 @@ let
       helpers = helpers;
       lib = lib;
       forwardingModel = forwardingModel;
+      inherit validateRuntimeModel;
     };
 
   _validated =
-    import ./cpm/validate-forwarding-model.nix validatorArgs forwardingModel;
+    if validateForwardingModel then
+      import ./cpm/validate-forwarding-model.nix validatorArgs forwardingModel
+    else
+      true;
 
   cpm =
     import ./cpm cpmArgs;
