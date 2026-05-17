@@ -3,66 +3,67 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-archive_json="$(mktemp)"
-out_dir="$(mktemp -d)"
-violations_jsonl="$(mktemp)"
-trap 'rm -f "${archive_json}" "${violations_jsonl}"; rm -rf "${out_dir}"' EXIT
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+default_jobs="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')"
+jobs="${TEST_JOBS:-${CPM_TEST_JOBS:-${default_jobs}}}"
+case "${jobs}" in
+  ''|*[!0-9]*|0)
+    echo "error: TEST_JOBS must be a positive integer, got '${jobs}'" >&2
+    exit 2
+    ;;
+esac
 
-labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
-    let
-      archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
-      labs = archived.inputs."network-labs" or null;
-      labsPath = if labs == null then null else labs.path or null;
-    in
-      if labsPath == null then throw "tests: missing archived network-labs input path" else labsPath
-  '
-)"
+mapfile -t tests < <(find "${repo_root}/tests/nebula-provider-contract" -maxdepth 1 -type f -name '*.sh' | sort)
 
-: >"${violations_jsonl}"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "${tmp_dir}"' EXIT
 
-for example in \
-  single-wan-with-nebula \
-  single-wan-with-nebula-any-to-any-fw \
-  overlay-east-west \
-  dual-wan-branch-overlay \
-  dual-wan-branch-overlay-bgp \
-  s-router-overlay-dns-lane-policy
-do
-  example_dir="${labs_path}/examples/${example}"
-  output_json="${out_dir}/${example}.json"
+declare -A pid_to_name=()
+declare -A pid_to_log=()
+running=0
+failures=0
 
-  nix run "${repo_root}#compile-and-build-control-plane-model" -- \
-    "${example_dir}/intent.nix" \
-    "${example_dir}/inventory-nixos.nix" \
-    "${output_json}" >/dev/null
+wait_for_one() {
+  local finished_pid
+  local status=0
+  wait -n -p finished_pid || status=$?
 
-  jq -r --arg example "${example}" '
-    .control_plane_model.data
-    | to_entries[] as $enterprise
-    | $enterprise.value
-    | to_entries[] as $site
-    | ($site.value.overlays // {})
-    | to_entries[]
-    | select((.value.provider // "") == "nebula")
-    | select((.value.nebula // null) == null)
-    | "!!!! "
-      + $example
-      + " "
-      + $enterprise.key
-      + "."
-      + $site.key
-      + " overlay="
-      + .key
-      + " declares provider=nebula but has no provider-specific nebula contract"
-  ' "${output_json}" >>"${violations_jsonl}"
+  local name="${pid_to_name[${finished_pid}]}"
+  local log_file="${pid_to_log[${finished_pid}]}"
+  unset "pid_to_name[${finished_pid}]"
+  unset "pid_to_log[${finished_pid}]"
+  running=$((running - 1))
+
+  if ((status == 0)); then
+    tail -n 1 "${log_file}"
+  else
+    printf 'FAIL %s (exit %s)\n' "${name}" "${status}" >&2
+    sed "s/^/[${name}] /" "${log_file}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+for test_path in "${tests[@]}"; do
+  test_name="$(basename "${test_path}")"
+  log_file="${tmp_dir}/${test_name}.log"
+  bash "${test_path}" >"${log_file}" 2>&1 &
+  pid=$!
+  pid_to_name["${pid}"]="${test_name}"
+  pid_to_log["${pid}"]="${log_file}"
+  running=$((running + 1))
+
+  while ((running >= jobs)); do
+    wait_for_one
+  done
 done
 
-if [[ -s "${violations_jsonl}" ]]; then
-  cat "${violations_jsonl}" >&2
+while ((running > 0)); do
+  wait_for_one
+done
+
+if ((failures > 0)); then
+  printf 'error: %s/%s nebula provider contract tests failed\n' "${failures}" "${#tests[@]}" >&2
   exit 1
 fi
 
-echo "PASS nebula-overlays-have-provider-contract"
+echo "PASS nebula-overlays-have-provider-contract examples=${#tests[@]}"
