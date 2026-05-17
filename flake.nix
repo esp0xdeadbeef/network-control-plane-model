@@ -82,12 +82,13 @@
           build =
             { input
             , inventory ? { }
+            , includeForwardingModelErrorContext ? false
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
             ,
             }:
             import ./src/main.nix {
-              inherit input inventory lib validateForwardingModel validateRuntimeModel;
+              inherit input inventory lib includeForwardingModelErrorContext validateForwardingModel validateRuntimeModel;
             };
 
           get_CPM =
@@ -109,18 +110,20 @@
           compileAndBuild =
             { input
             , inventory ? { }
+            , includeForwardingModelErrorContext ? false
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
             ,
             }:
             build {
               input = forwardingLib.buildFromCompilerInputs { inherit input; };
-              inherit inventory validateForwardingModel validateRuntimeModel;
+              inherit inventory includeForwardingModelErrorContext validateForwardingModel validateRuntimeModel;
             };
 
           compileAndBuildFromPaths =
             { inputPath
             , inventoryPath ? null
+            , includeForwardingModelErrorContext ? false
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
             ,
@@ -132,7 +135,7 @@
                   { }
                 else
                   readValue inventoryPath;
-              inherit validateForwardingModel validateRuntimeModel;
+              inherit includeForwardingModelErrorContext validateForwardingModel validateRuntimeModel;
             };
 
           writeJSON =
