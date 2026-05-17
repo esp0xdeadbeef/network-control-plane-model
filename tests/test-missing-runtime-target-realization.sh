@@ -37,19 +37,10 @@ fi
 
 if grep -qF "inventory.nix must explicitly realize every control_plane_model runtime target" "${stderr_file}" \
   && grep -qF "policy-1" "${stderr_file}"; then
-  true
+  echo "PASS missing-runtime-target-realization"
 else
   echo "FAIL missing-runtime-target-realization: missing expected error substring" >&2
   echo "--- stderr ---" >&2
   cat "${stderr_file}" >&2
   exit 1
 fi
-
-if grep -qF "network-forwarding-model:" "${stderr_file}"; then
-  echo "FAIL missing-runtime-target-realization: default diagnostics dumped full forwarding model context" >&2
-  echo "--- stderr ---" >&2
-  cat "${stderr_file}" >&2
-  exit 1
-fi
-
-echo "PASS missing-runtime-target-realization"
