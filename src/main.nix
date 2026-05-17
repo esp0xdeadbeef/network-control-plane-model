@@ -2,7 +2,6 @@
 { input
 , inventory ? { }
 , lib ? { }
-, includeForwardingModelErrorContext ? false
 , validateForwardingModel ? true
 , validateRuntimeModel ? false
 ,
@@ -14,25 +13,20 @@ let
 
   deriveCPM = import ./build-cpm.nix { lib = effectiveLib; };
 
-  rawCpm =
-    deriveCPM {
-      forwardingModel = input;
-      inherit inventory validateForwardingModel validateRuntimeModel;
-    };
+  forwardingModelDump = builtins.toJSON input;
 
   cpm =
-    if includeForwardingModelErrorContext then
-      let
-        forwardingModelDump = builtins.toJSON input;
-      in
     builtins.addErrorContext
       ''
         network-forwarding-model:
         ${forwardingModelDump}
       ''
-      rawCpm
-    else
-      rawCpm;
+      (
+        deriveCPM {
+          forwardingModel = input;
+          inherit inventory validateForwardingModel validateRuntimeModel;
+        }
+      );
 
   merged = {
     control_plane_model = cpm;
