@@ -1,4 +1,10 @@
-{ lib, helpers, forwardingModel, inventory ? { } }:
+{ lib
+, helpers
+, forwardingModel
+, inventory ? { }
+, validateRuntimeModel ? false
+,
+}:
 
 let
   inherit (helpers)
@@ -23,6 +29,11 @@ let
   endpointInventoryIndex =
     import ./inventory-endpoint-index.nix {
       inherit helpers inventory;
+    };
+
+  inventoryValidation =
+    import ./ControlModule/inventory-validation.nix {
+      inherit helpers;
     };
 
   buildSiteData =
@@ -81,19 +92,23 @@ let
   };
 
   _validatedRuntimeModel =
-    import ./validate-runtime-model.nix {
-      inherit helpers;
-    } {
-      inherit cpm;
-    };
+    if validateRuntimeModel then
+      import ./validate-runtime-model.nix
+        {
+          inherit helpers;
+        }
+        {
+          inherit cpm;
+        }
+    else
+      true;
 
   _validatedInventory =
-    import ../validate-inventory.nix {
-      inherit lib;
-    } {
-      inherit inventory cpm;
-      forwardingModel = normalizedInterfaceTags;
-    };
+    inventoryValidation
+      {
+        forwardingModel = normalizedInterfaceTags;
+        inherit inventory realizationIndex;
+      };
 in
 builtins.seq
   (forceAll [ _validatedRuntimeModel _validatedInventory ])
