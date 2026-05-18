@@ -170,12 +170,13 @@ in
     }:
     let
       sourceHasNonOverlayDefault = hasNonOverlayDefault family sourceNode interfaces;
+      overlayGateway = policyLaneGateway family sourceNode interfaces;
       coreGateway = nonOverlayCoreGateway family interfaces;
       gateway =
-        if coreGateway != null then
-          coreGateway
+        if overlayGateway != null then
+          overlayGateway
         else
-          policyLaneGateway family sourceNode interfaces;
+          coreGateway;
     in
     if sourceHasNonOverlayDefault || gateway == null then
       interfaces
