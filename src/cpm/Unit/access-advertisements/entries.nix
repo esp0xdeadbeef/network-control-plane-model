@@ -11,6 +11,7 @@ let
     boolOr
     failForwarding
     isNonEmptyString
+    defaultDHCP4Pool
     resolveAdvertisedIPv4Targets
     resolveAdvertisedIPv6Targets
     validateOptionalResolvedIPv4Match
@@ -48,7 +49,13 @@ let
       _routerMatch =
         validateOptionalResolvedIPv4Match entryPath "router" (attrs.router or null) routerAddress
           "must match realized tenant interface address '${routerAddress}' or use 'router-self'";
-      pool = if enabled then requireAttrs "${entryPath}.pool" (attrs.pool or null) else { };
+      pool =
+        if !enabled then
+          { }
+        else if builtins.isAttrs (attrs.pool or null) then
+          requireAttrs "${entryPath}.pool" attrs.pool
+        else
+          defaultDHCP4Pool entryPath subnet;
       dnsServers =
         if enabled then resolveAdvertisedIPv4Targets entryPath "dnsServers" routerAddress (attrs.dnsServers or null) else [ ];
       bindInterface =

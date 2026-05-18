@@ -43,8 +43,9 @@ let
       intentKind = routeIntentKind r;
     in
     builtins.isAttrs r
-    && builtins.isString dst
     && (
+      intentKind == "runtime-routed-prefix-return"
+      || (builtins.isString dst && (
       dst == (if family == 4 then "0.0.0.0/0" else "::/0")
       || proto == "uplink"
       || proto == "overlay"
@@ -52,6 +53,7 @@ let
       || intentKind == "internal-reachability"
       || intentKind == "realized-interface-route"
       || (if family == 4 then isHostRoute4 dst else isHostRoute6 dst)
+      ))
     );
 
   filterRoutesForBgp =
@@ -82,7 +84,7 @@ let
             builtins.filter
               (prefix:
                 (prefix.family or null) == "ipv6"
-                && ((prefix.allocation or null) == "runtime" || (prefix.source or null) == "inventory-routed-prefix"))
+                && ((prefix.allocation or null) == "runtime" || (prefix.source or null) == "intent-routed-prefix"))
               (listOrEmpty (routedPrefixesByTenant.${tenantName} or null)))
           tenantNetworkNames;
     in

@@ -10,8 +10,7 @@ matches="$(
     --line-number \
     --with-filename \
     'routeViaPeer|peerForInterface|p2p-peers' \
-    "${repo_root}/src/cpm/ControlModule/route-augmentation/dns" \
-    "${repo_root}/src/cpm/ControlModule/runtime-targets/dns-contracts.nix" \
+    "${repo_root}/src/cpm" \
     2>/dev/null || true
 )"
 

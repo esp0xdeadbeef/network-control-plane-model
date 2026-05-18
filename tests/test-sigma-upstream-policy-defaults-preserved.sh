@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${repo_root}/tests/lib/direct-test-guard.sh"
+
+archive_json="$(mktemp)"
+work_dir="$(mktemp -d)"
+trap 'rm -f "${archive_json}"; rm -rf "${work_dir}"' EXIT
+
+nix flake archive --json "path:${repo_root}" >"${archive_json}"
+
+labs_path="$(
+  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+    let
+      archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
+      labs = archived.inputs."network-labs" or null;
+      labsPath = if labs == null then null else labs.path or null;
+    in
+      if labsPath == null then throw "tests: missing archived network-labs input path" else labsPath
+  '
+)"
+
+lab_dir="${labs_path}/labs/lab-s-sigma/s-router-test-three-site"
+inventory_nix="${work_dir}/inventory.nix"
+output_json="${work_dir}/cpm.json"
+
+cat >"${inventory_nix}" <<EOF
+import ${lab_dir}/getResolvedInventory.nix { renderer = "nixos"; }
+EOF
+
+nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+  "${lab_dir}/intent.nix" \
+  "${inventory_nix}" \
+  "${output_json}" >/dev/null
+
+jq -e '
+  def default4: map(select(.dst == "0.0.0.0/0"));
+  def default6: map(select(.dst == "::/0"));
+  def lanes($uplink):
+    map(select((.lane.uplink // "") == $uplink) | .lane.access) | sort;
+  def expect($actual; $expected):
+    if $actual == $expected then true
+    else error("expected " + ($expected | @json) + " got " + ($actual | @json))
+    end;
+
+  .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-upstream"
+    .effectiveRuntimeRealization.interfaces as $ifs
+  | ($ifs."p2p-nixos-router-core-isp-a-nixos-router-upstream".routes.ipv4 | default4) as $a4
+  | ($ifs."p2p-nixos-router-core-isp-a-nixos-router-upstream".routes.ipv6 | default6) as $a6
+  | ($ifs."p2p-nixos-router-core-isp-b-nixos-router-upstream".routes.ipv4 | default4) as $b4
+  | ($ifs."p2p-nixos-router-core-isp-b-nixos-router-upstream".routes.ipv6 | default6) as $b6
+  | ($ifs."p2p-nixos-router-core-nebula-nixos-router-upstream".routes.ipv4 | default4) as $ew4
+  | ($ifs."p2p-nixos-router-core-nebula-nixos-router-upstream".routes.ipv6 | default6) as $ew6
+  | ["nixos-router-access-admin", "nixos-router-access-client", "nixos-router-access-dmz", "nixos-router-access-mgmt", "nixos-router-access-streaming"] as $normalAccess
+  | expect(($a4 | lanes("isp-a")); $normalAccess)
+  | expect(($a6 | lanes("isp-a")); $normalAccess)
+  | expect(($b4 | lanes("isp-b")); $normalAccess)
+  | expect(($b6 | lanes("isp-b")); $normalAccess)
+  | expect(($ew4 | lanes("east-west")); ["nixos-router-access-hostile"])
+  | expect(($ew6 | lanes("east-west")); ["nixos-router-access-hostile"])
+' "${output_json}" >/dev/null
+
+echo "PASS sigma-upstream-policy-defaults-preserved"

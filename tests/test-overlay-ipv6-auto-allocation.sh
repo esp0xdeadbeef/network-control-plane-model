@@ -11,7 +11,7 @@ output_json="${tmp_dir}/output.json"
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
-labs_path="${NETWORK_LABS_PATH:-$(
+labs_path="$(
   ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
@@ -20,7 +20,7 @@ labs_path="${NETWORK_LABS_PATH:-$(
     in
       if labsPath == null then throw "tests: missing archived network-labs input path" else labsPath
   '
-)}"
+)"
 
 intent_path="${labs_path}/examples/single-wan-with-nebula/intent.nix"
 inventory_path="${labs_path}/examples/single-wan-with-nebula/inventory-nixos.nix"
@@ -35,10 +35,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     node = data.control_plane_model.data.esp0xdeadbeef."site-a".overlays.nebula.nodes."s-router-core-nebula";
   in
-    node.addr4 == "100.64.200.10/32"
-    && node.addr6 == "fd00:64:200:0:0:0:0:a/128"
+    node.addr4 == "100.96.10.1/32"
+    && node.addr6 == "fd42:dead:beef:ee::1/128"
 ' >/dev/null || {
-  echo "!!!! overlay-ipv6-auto-allocation: CPM must allocate IPv6 overlay node addresses from inventory ipam.ipv6.prefix; this is CPM inventory-to-overlay realization, not renderer guessing" >&2
+  echo "!!!! overlay-ipv6-auto-allocation: CPM must preserve explicit inventory overlay node addresses while taking overlay pool policy from NFM; this is CPM inventory-to-overlay realization, not renderer guessing" >&2
   exit 1
 }
 

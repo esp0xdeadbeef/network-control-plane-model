@@ -5,7 +5,6 @@
 let
   inherit (helpers) isNonEmptyString;
 
-  deriveDefaultReachability = import ./default-reachability-model.nix { inherit lib helpers; };
   resolveAccessAdvertisements = import ./resolve-access-advertisements.nix { inherit helpers; };
   resolveFirewallIntent = import ./resolve-firewall-intent.nix { inherit helpers; };
   resolvePolicyEndpointBindings = import ./resolve-policy-endpoint-bindings.nix { inherit helpers; };
@@ -47,12 +46,6 @@ let
     upstreamSelectorNodeName
     ;
 
-  collectRuntimeRoutedIPv6Prefixes =
-    import ./Site/build-data/runtime-routed-prefixes.nix {
-      inherit helpers common inventory;
-    };
-  allRuntimeRoutedIPv6Prefixes = collectRuntimeRoutedIPv6Prefixes allSiteEntries;
-
   dnsContext = import ./Site/build-data/dns-context.nix {
     inherit
       lib
@@ -89,23 +82,14 @@ let
       sitePath
       siteAttrs
       inventoryAttrs
-      allSiteEntries
       domains
       uplinkNames
-      allowedRelations
-      attachments
-      nodes
-      serviceDefinitions
-      providerEndpointForServiceProvider
-      providerTenantsForServiceProvider
-      dnsServiceRouteSpecs
       resolveRoutedPrefixes
       enterpriseName
       siteName
       ;
   };
   inherit (forwardingContext)
-    augmentRuntimeTargetRoutes
     bgpSiteAsn
     bgpTopology
     ipv6Plan
@@ -130,7 +114,6 @@ let
       ipam
       realizationIndex
       endpointInventoryIndex
-      deriveDefaultReachability
       resolveAccessAdvertisements
       resolvePolicyEndpointBindings
       resolveFirewallIntent
@@ -140,7 +123,6 @@ let
       siteAttrs
       transitAttrs
       allSiteEntries
-      allRuntimeRoutedIPv6Prefixes
       attachments
       domains
       links
@@ -164,7 +146,6 @@ let
       policyDerivedDnsDirectEgressBlockedForListeners
       policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForTenants
-      augmentRuntimeTargetRoutes
       normalizeRuntimeTargetRoutes
       ;
   };

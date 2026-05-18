@@ -24,10 +24,11 @@ let
     inherit common ipam lib;
   };
   buildOverlayNodeAddresses = import ./overlay-node-addresses.nix {
-    inherit addressPolicy common helpers ipam lib;
+    inherit addressPolicy common helpers lib;
   };
 
   overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
+  forwardingOverlayPools = attrsOrEmpty (siteAttrs.overlayAddressPools or null);
   overlayNames = sortedNames overlayReachability;
 
   overlayProvisioning =
@@ -42,14 +43,13 @@ let
             terminateOn =
               lib.sort (a: b: a < b) (
                 map toString (listOrEmpty (ov.terminateOn or null))
-              );
+            );
 
             overlayNodesCfg = attrsOrEmpty (cfg.nodes or null);
-            overlayIpamCfg = attrsOrEmpty (cfg.ipam or null);
-            overlayIpamNodesCfg = attrsOrEmpty (overlayIpamCfg.nodes or null);
+            forwardingIpamCfg = attrsOrEmpty (forwardingOverlayPools.${overlayName} or null);
 
-            overlayIpamV4 = attrsOrEmpty (overlayIpamCfg.ipv4 or null);
-            overlayIpamV6 = attrsOrEmpty (overlayIpamCfg.ipv6 or null);
+            overlayIpamV4 = attrsOrEmpty (forwardingIpamCfg.ipv4 or null);
+            overlayIpamV6 = attrsOrEmpty (forwardingIpamCfg.ipv6 or null);
             addressSourcePolicy = attrsOrEmpty (cfg.addressSourcePolicy or null);
             providerName = if isNonEmptyString (cfg.provider or null) then cfg.provider else null;
 
@@ -77,13 +77,8 @@ let
             overlayNodeAddrs = buildOverlayNodeAddresses {
               inherit
                 addressSourcePolicy
-                ipamV4OffsetStart
-                ipamV4PerNodePrefixLength
                 ipamV4Prefix
-                ipamV6OffsetStart
-                ipamV6PerNodePrefixLength
                 ipamV6Prefix
-                overlayIpamNodesCfg
                 overlayNodesCfg
                 overlayPath
                 terminateOn

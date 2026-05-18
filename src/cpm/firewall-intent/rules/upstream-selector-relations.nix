@@ -131,7 +131,7 @@ in
                       action = "accept";
                       intent = {
                         kind = "runtime-routed-prefix-public-egress";
-                        source = "inventory-routed-prefix";
+                        source = "intent-routed-prefix";
                       };
                       fromInterface = fromEntry.iface.runtimeIfName;
                       toInterface = toIface.runtimeIfName;

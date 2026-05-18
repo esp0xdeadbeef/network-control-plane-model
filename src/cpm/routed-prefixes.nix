@@ -16,35 +16,33 @@ let
     requireString
     ;
 
-  failInventory = path: message:
-    throw "inventory.nix update required: ${path}: ${message}";
-
   attrsOrEmpty = value:
     if builtins.isAttrs value then value else { };
 
   routedPrefixAttrs =
-    { inventoryPrefix, prefixName, family, sourceFile }:
+    { intentPrefix, prefixName, family, sourceFile }:
     {
       name = prefixName;
       inherit family sourceFile;
-      source = "inventory-routed-prefix";
+      source = "intent-routed-prefix";
       intent = {
         kind = "routed-tenant-prefix";
         source = "intent";
       };
-      delegatedPrefixLength = inventoryPrefix.delegatedPrefixLength or 64;
-      perTenantPrefixLength = inventoryPrefix.perTenantPrefixLength or 64;
-      slot = inventoryPrefix.slot or 0;
+      allocation = intentPrefix.allocation or "runtime";
+      delegatedPrefixLength = intentPrefix.delegatedPrefixLength or 64;
+      perTenantPrefixLength = intentPrefix.perTenantPrefixLength or 64;
+      slot = intentPrefix.slot or 0;
     }
     // (
-      if isNonEmptyString (inventoryPrefix.prefixPostfix or null) then
-        { prefixPostfix = inventoryPrefix.prefixPostfix; }
+      if isNonEmptyString (intentPrefix.prefixPostfix or null) then
+        { prefixPostfix = intentPrefix.prefixPostfix; }
       else
         { }
     )
     // (
-      if isNonEmptyString (inventoryPrefix.staticIPv4 or null) then
-        { staticIPv4 = inventoryPrefix.staticIPv4; }
+      if isNonEmptyString (intentPrefix.staticIPv4 or null) then
+        { staticIPv4 = intentPrefix.staticIPv4; }
       else
         { }
     );
@@ -56,25 +54,16 @@ let
       intentAttrs = requireAttrs prefixPath intentPrefix;
       prefixName = requireString "${prefixPath}.name" (intentAttrs.name or null);
       family = toString (intentAttrs.family or "ipv6");
-      tenantInventory = attrsOrEmpty (siteTenantsCfg.${tenantName} or null);
-      inventoryPrefixes = attrsOrEmpty (tenantInventory.routedPrefixes or null);
-      inventoryPath =
-        "inventory.controlPlane.sites.${enterpriseName}.${siteName}.tenants.${tenantName}.routedPrefixes.${prefixName}";
-      inventoryPrefix =
-        if hasAttr prefixName inventoryPrefixes then
-          requireAttrs inventoryPath inventoryPrefixes.${prefixName}
-        else
-          failInventory inventoryPath "routed prefix '${prefixName}' for tenant '${tenantName}' requires inventory realization";
       sourceFile =
-        if isNonEmptyString (inventoryPrefix.sourceFile or null) then
-          inventoryPrefix.sourceFile
+        if isNonEmptyString (intentAttrs.sourceFile or null) then
+          intentAttrs.sourceFile
         else
-          failInventory "${inventoryPath}.sourceFile" "sourceFile is required for runtime prefix realization";
+          throw "${prefixPath}.sourceFile is required for runtime routed prefix '${prefixName}'";
     in
     if family != "ipv6" then
-      failInventory prefixPath "only family = \"ipv6\" routed prefixes are supported right now"
+      throw "${prefixPath}: only family = \"ipv6\" routed prefixes are supported right now"
     else
-      routedPrefixAttrs { inherit inventoryPrefix prefixName family sourceFile; };
+      routedPrefixAttrs { intentPrefix = intentAttrs; inherit prefixName family sourceFile; };
 
   tenantNames = map (tenant: requireString "${sitePath}.domains.tenants[].name" (tenant.name or null)) domains.tenants;
 

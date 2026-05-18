@@ -130,11 +130,7 @@ validate_output() {
           accessDhcp4 = builtins.elemAt access.advertisements.dhcp4 0;
           accessIpv6Ra = builtins.elemAt access.advertisements.ipv6Ra 0;
         in
-          access.routingAuthority.defaultReachability
-          && policy.routingAuthority.defaultReachability
-          && upstream.routingAuthority.defaultReachability
-          && core.routingAuthority.defaultReachability
-          && hasRoute coreWAN.ipv4 "0.0.0.0/0"
+          hasRoute coreWAN.ipv4 "0.0.0.0/0"
           && hasRoute coreWAN.ipv6 "::/0"
           && hasIPv4Via upstreamCore.ipv4 "0.0.0.0/0" "169.254.12.0"
           && hasIPv6Via upstreamCore.ipv6 "::/0" "fd00:12::0"
@@ -488,7 +484,6 @@ bash "${repo_root}/tests/test-link-lane-preservation.sh"
 bash "${repo_root}/tests/test-transit-endpoint-return-routes.sh"
 bash "${repo_root}/tests/test-public-overlay-service-binding.sh"
 bash "${repo_root}/tests/test-policy-service-endpoint-lane-scope.sh"
-bash "${repo_root}/tests/test-service-ingress-provider-tenant-lane.sh"
 bash "${repo_root}/tests/test-service-provider-endpoints.sh"
 bash "${repo_root}/tests/test-runtime-routed-prefixes-no-validation-shortcut.sh"
 bash "${repo_root}/tests/test-traffic-path-contract-propagation.sh"

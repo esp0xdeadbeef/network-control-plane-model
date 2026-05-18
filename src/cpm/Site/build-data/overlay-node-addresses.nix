@@ -2,19 +2,13 @@
   addressPolicy,
   common,
   helpers,
-  ipam,
   lib,
 }:
 
 {
   addressSourcePolicy,
-  ipamV4OffsetStart,
-  ipamV4PerNodePrefixLength,
   ipamV4Prefix,
-  ipamV6OffsetStart,
-  ipamV6PerNodePrefixLength,
   ipamV6Prefix,
-  overlayIpamNodesCfg,
   overlayNodesCfg,
   overlayPath,
   terminateOn,
@@ -22,56 +16,29 @@
 
 let
   inherit (helpers) isNonEmptyString sortedNames;
-  inherit (common) attrsOrEmpty uniqueStrings;
+  inherit (common) attrsOrEmpty failInventory uniqueStrings;
 
-  explicitOverlayNodeNames =
-    lib.sort (a: b: a < b) (
-      uniqueStrings ((sortedNames overlayNodesCfg) ++ (sortedNames overlayIpamNodesCfg))
-    );
+  overlayNodeNames = lib.sort (a: b: a < b) (uniqueStrings (terminateOn ++ sortedNames overlayNodesCfg));
 
-  overlayNodeNames = lib.sort (a: b: a < b) (uniqueStrings (terminateOn ++ explicitOverlayNodeNames));
-
-  resolveOverlayAddr =
-    { family, nodeName, idx }:
-    let
-      nodeCfg = attrsOrEmpty (overlayNodesCfg.${nodeName} or null);
-      nodeIpamCfg = attrsOrEmpty (overlayIpamNodesCfg.${nodeName} or null);
-      nodeOverrideAddr4 = nodeCfg.addr4 or (nodeIpamCfg.addr4 or null);
-      nodeOverrideAddr6 = nodeCfg.addr6 or (nodeIpamCfg.addr6 or null);
+  requireOverlayAddr =
+    { field, nodeCfg, nodeName }:
+    let value = nodeCfg.${field} or null;
     in
-    if family == 4 then
-      if isNonEmptyString nodeOverrideAddr4 then
-        nodeOverrideAddr4
-      else if ipamV4Prefix != null then
-        ipam.allocOne {
-          family = 4;
-          prefix = ipamV4Prefix;
-          perNodePrefixLength = ipamV4PerNodePrefixLength;
-          offset = ipamV4OffsetStart + idx;
-        }
-      else
-        null
-    else if isNonEmptyString nodeOverrideAddr6 then
-      nodeOverrideAddr6
-    else if ipamV6Prefix != null then
-      ipam.allocOne {
-        family = 6;
-        prefix = ipamV6Prefix;
-        perNodePrefixLength = ipamV6PerNodePrefixLength;
-        offset = ipamV6OffsetStart + idx;
-      }
+    if isNonEmptyString value then
+      value
     else
-      null;
+      failInventory
+        "${overlayPath}.nodes.${nodeName}.${field}"
+        "explicit overlay node address is required; NFM owns the pool, inventory must realize the concrete /32 or /128";
 
   overlayNodeAddrs =
     builtins.listToAttrs (
-      lib.imap0
-        (idx: nodeName:
+      builtins.map
+        (nodeName:
           let
             nodeCfg = attrsOrEmpty (overlayNodesCfg.${nodeName} or null);
-            nodeIpamCfg = attrsOrEmpty (overlayIpamNodesCfg.${nodeName} or null);
-            addr4 = resolveOverlayAddr { family = 4; inherit nodeName idx; };
-            addr6 = resolveOverlayAddr { family = 6; inherit nodeName idx; };
+            addr4 = requireOverlayAddr { field = "addr4"; inherit nodeCfg nodeName; };
+            addr6 = requireOverlayAddr { field = "addr6"; inherit nodeCfg nodeName; };
             _addr4InPool = addressPolicy.validateAddress {
               address = addr4;
               family = 4;
@@ -88,18 +55,20 @@ let
           builtins.seq _addr4InPool (builtins.seq _addr6InPool {
             name = nodeName;
             value =
-              { }
-              // (if isNonEmptyString addr4 then { addr4 = addr4; } else { })
-              // (if isNonEmptyString addr6 then { addr6 = addr6; } else { })
+              {
+                inherit addr4 addr6;
+              }
               // addressPolicy.sourceMetadata {
                 address = addr4;
                 family = 4;
-                inherit addressSourcePolicy nodeCfg nodeIpamCfg overlayPath;
+                inherit addressSourcePolicy nodeCfg overlayPath;
+                nodeIpamCfg = { };
               }
               // addressPolicy.sourceMetadata {
                 address = addr6;
                 family = 6;
-                inherit addressSourcePolicy nodeCfg nodeIpamCfg overlayPath;
+                inherit addressSourcePolicy nodeCfg overlayPath;
+                nodeIpamCfg = { };
               };
           }))
         overlayNodeNames
@@ -107,15 +76,17 @@ let
 
   _uniqueOverlayAddresses =
     helpers.ensureUniqueEntries
-      "${overlayPath}.ipam.nodes.*.addr"
+      "${overlayPath}.nodes.*.addr"
       (
         builtins.concatLists (
           builtins.map
             (nodeName:
               let node = overlayNodeAddrs.${nodeName};
               in
-              (if isNonEmptyString (node.addr4 or null) then [ { name = "4|${node.addr4}"; value = nodeName; } ] else [ ])
-              ++ (if isNonEmptyString (node.addr6 or null) then [ { name = "6|${node.addr6}"; value = nodeName; } ] else [ ]))
+              [
+                { name = "4|${node.addr4}"; value = nodeName; }
+                { name = "6|${node.addr6}"; value = nodeName; }
+              ])
             (sortedNames overlayNodeAddrs)
         )
       );

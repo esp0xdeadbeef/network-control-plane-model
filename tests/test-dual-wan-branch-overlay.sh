@@ -3,7 +3,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-example_root="${repo_root}/../network-labs/examples"
+archive_json="$(mktemp)"
+trap 'rm -f "${archive_json}"' EXIT
+
+nix flake archive --json "path:${repo_root}" >"${archive_json}"
+labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
+example_root="${labs_root}/examples"
 
 fail() { echo "$1" >&2; exit 1; }
 

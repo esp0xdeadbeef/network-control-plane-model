@@ -10,7 +10,7 @@ archive_json="${tmp_dir}/archive.json"
 violations_tsv="${tmp_dir}/violations.tsv"
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
-labs_root="${LABS_ROOT:-$(jq -er '.inputs["network-labs"].path' "${archive_json}")}"
+labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 examples_root="${labs_root}/examples"
 
 : >"${violations_tsv}"
@@ -80,38 +80,41 @@ while IFS= read -r -d '' inventory_path; do
                 (siteName: site:
                   concatMapAttrs
                     (tenantName: tenant:
-                      builtins.map
-                        (prefixName: {
-                          inherit enterpriseName siteName tenantName;
-                          name = prefixName;
-                          sourceFile = normalizeSource (tenant.routedPrefixes.${prefixName}.sourceFile or null);
-                        })
+                      builtins.concatMap
+                        (prefixName:
+                          let
+                            routed = attrsOrEmpty tenant.routedPrefixes.${prefixName};
+                            hasSemanticFields =
+                              routed ? sourceFile
+                              || routed ? delegatedPrefixLength
+                              || routed ? perTenantPrefixLength
+                              || routed ? slot
+                              || routed ? prefixPostfix;
+                          in
+                          if hasSemanticFields then
+                            [
+                              {
+                                inherit enterpriseName siteName tenantName;
+                                name = prefixName;
+                                sourceFile = normalizeSource (routed.sourceFile or null);
+                              }
+                            ]
+                          else
+                            [ ])
                         (attrNames (tenant.routedPrefixes or { })))
                     (site.tenants or { }))
                 enterprise)
             (inventory.controlPlane.sites or { });
 
-        missingInventory =
+        inventorySemanticLeak =
           builtins.map
             (entry: {
-              status = "missing-inventory-routed-prefix";
+              status = "inventory-routed-prefix-semantic-leak";
               inventory = relInventory;
               routedPrefix = "${entry.enterpriseName}.${entry.siteName}.${entry.tenantName}.${entry.name}";
-              detail = "runtime IPv6 routed prefix from intent has no inventory tenant routedPrefixes realization";
+              detail = "runtime IPv6 routed-prefix semantics must live in intent, not inventory tenant routedPrefixes";
             })
-            (builtins.filter
-              (entry:
-                entry.family == "ipv6"
-                && entry.allocation == "runtime"
-                && builtins.filter
-                  (inventoryEntry:
-                    inventoryEntry.enterpriseName == entry.enterpriseName
-                    && inventoryEntry.siteName == entry.siteName
-                    && inventoryEntry.tenantName == entry.tenantName
-                    && inventoryEntry.name == entry.name
-                    && inventoryEntry.sourceFile != null)
-                  inventoryRouted == [ ])
-              intentRouted);
+            inventoryRouted;
 
         externalValidationShortcuts =
           concatMapAttrs
@@ -138,7 +141,7 @@ while IFS= read -r -d '' inventory_path; do
                   [ ])
             ((attrsOrEmpty (inventory.realization or { })).nodes or { });
       in
-        missingInventory ++ externalValidationShortcuts
+        inventorySemanticLeak ++ externalValidationShortcuts
     ' | jq -r '.[] | [.status, .inventory, .routedPrefix, .detail] | @tsv' >>"${violations_tsv}"
 done < <(find "${examples_root}" -mindepth 2 -maxdepth 2 \( -name 'inventory.nix' -o -name 'inventory-clab.nix' -o -name 'inventory-nixos.nix' \) -print0 | sort -z)
 
@@ -183,6 +186,32 @@ check_result="$(
       staticSite = staticData.control_plane_model.data.esp0xdeadbeef."site-a";
       staticAccess = staticSite.runtimeTargets."esp0xdeadbeef-site-a-s-router-access-client-b";
       staticRa = builtins.head staticAccess.advertisements.ipv6Ra;
+      staticReturnRoutes =
+        builtins.concatLists (
+          builtins.concatMap
+            (targetName:
+              let target = staticSite.runtimeTargets.${targetName};
+              in builtins.map
+                (ifName: ((target.effectiveRuntimeRealization.interfaces.${ifName} or { }).routes.ipv6 or [ ]))
+                (builtins.attrNames (target.effectiveRuntimeRealization.interfaces or { })))
+            (builtins.attrNames staticSite.runtimeTargets)
+        );
+      staticP2pGuaAddrs =
+        builtins.concatLists (
+          builtins.concatMap
+            (targetName:
+              let target = staticSite.runtimeTargets.${targetName};
+              in builtins.concatMap
+                (ifName:
+                  let
+                    iface = target.effectiveRuntimeRealization.interfaces.${ifName};
+                    addr6 = iface.addr6 or iface.ipv6 or null;
+                    isGua = builtins.isString addr6 && !(builtins.substring 0 2 addr6 == "fd");
+                  in
+                  if (iface.kind or null) == "p2p" && isGua then [ "${targetName}.${ifName}.${addr6}" ] else [ ])
+                (builtins.attrNames (target.effectiveRuntimeRealization.interfaces or { })))
+            (builtins.attrNames staticSite.runtimeTargets)
+        );
 
       hasPrefixBySource = sourceFile: prefixes:
         builtins.any
@@ -195,10 +224,18 @@ check_result="$(
           (route:
             (route.sourceFile or null) == sourceFile
             && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return"
-            && ((route.intent or { }).source or null) == "inventory-routed-prefix"
+            && ((route.intent or { }).source or null) == "intent-routed-prefix"
             && ((route.intent or { }).accessNode or null) == "b-router-access-hostile"
             && (route.via6 or null) == "fd42:dead:feed:1000:0:0:0:5")
           routes;
+      hasStaticReturnRoute = targetNode: sourceFile:
+        builtins.any
+          (route:
+            (route.sourceFile or null) == sourceFile
+            && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return"
+            && ((route.intent or { }).source or null) == "intent-routed-prefix"
+            && ((route.intent or { }).accessNode or null) == targetNode)
+          staticReturnRoutes;
     in
       bgpAccess.routingMode == "bgp"
       && builtins.elem "fd42:dead:feed:70::1/64" bgpAccess.bgp.networks.ipv6
@@ -208,8 +245,16 @@ check_result="$(
       && !(bgpAccess ? externalValidation)
       && !(bgpRa ? externalValidation)
       && staticSite.routing.mode == "static"
+      && staticSite.ipv6.pd.delegatedPrefixLength == 48
+      && staticSite.ipv6.pd.perTenantPrefixLength == 64
+      && staticSite.ipv6.pd.uplink == "wan"
+      && staticSite.ipv6.tenants.client-a.mode == "dhcpv6"
+      && staticSite.ipv6.tenants.client-b.mode == "slaac"
+      && staticSite.ipv6.tenants.mgmt.mode == "static"
       && staticAccess.routingMode == "static"
       && hasPrefixBySource "/run/s88-ipv6-pd/wan.prefix" (staticRa.routedPrefixes or [ ])
+      && hasStaticReturnRoute "s-router-access-client-b" "/run/s88-ipv6-pd/wan.prefix"
+      && staticP2pGuaAddrs == [ ]
       && !(staticAccess ? bgp)
   '
 )"

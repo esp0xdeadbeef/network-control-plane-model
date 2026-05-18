@@ -10,24 +10,35 @@ let
   stripMask = value:
     if builtins.isString value then builtins.elemAt (lib.splitString "/" value) 0 else null;
 
+  pow2 = n: builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) n);
+
   cidrContainsIPv6 =
     cidr: address:
     let
-      parsedCidr = builtins.tryEval (lib.network.ipv6.fromString cidr);
-      parsedAddress = builtins.tryEval (lib.network.ipv6.fromString address);
+      parsedCidr = ipam.splitCIDR cidr;
+      cidrAddr = if parsedCidr == null then null else ipam.parseIPv6 parsedCidr.addr;
+      addr = ipam.parseIPv6 address;
     in
-    if !(parsedCidr.success && parsedAddress.success) then
+    if parsedCidr == null || cidrAddr == null || addr == null then
       false
     else
       let
-        prefixLength = parsedCidr.value.prefixLength;
-        fullHextets = builtins.div prefixLength 16;
-        aligned = lib.mod prefixLength 16 == 0;
-        matchingPrefix =
-          builtins.genList (idx: builtins.elemAt parsedAddress.value._address idx) fullHextets
-          == builtins.genList (idx: builtins.elemAt parsedCidr.value._address idx) fullHextets;
+        fullHextets = builtins.div parsedCidr.prefixLen 16;
+        partialBits = lib.mod parsedCidr.prefixLen 16;
+        fullMatch =
+          builtins.genList (idx: builtins.elemAt addr idx) fullHextets
+          == builtins.genList (idx: builtins.elemAt cidrAddr idx) fullHextets;
+        partialMatch =
+          if partialBits == 0 then
+            true
+          else
+            let
+              block = pow2 (16 - partialBits);
+              idx = fullHextets;
+            in
+            builtins.div (builtins.elemAt addr idx) block == builtins.div (builtins.elemAt cidrAddr idx) block;
       in
-      aligned && matchingPrefix;
+      fullMatch && partialMatch;
 
   cidrContains =
     family: cidr: address:
