@@ -5,7 +5,6 @@
   ipam,
   realizationIndex,
   endpointInventoryIndex,
-  deriveDefaultReachability,
   resolveAccessAdvertisements,
   resolvePolicyEndpointBindings,
   resolveFirewallIntent,
@@ -13,7 +12,6 @@
   siteAttrs,
   transitAttrs,
   allSiteEntries,
-  allRuntimeRoutedIPv6Prefixes,
   attachments,
   domains,
   links,
@@ -37,7 +35,6 @@
   policyDerivedDnsDirectEgressBlockedForListeners,
   policyDerivedDnsDirectEgressBlockedForTenants,
   policyDerivedDnsForwardersForTenants,
-  augmentRuntimeTargetRoutes,
   normalizeRuntimeTargetRoutes,
   enterpriseName,
   siteName,
@@ -74,27 +71,8 @@ let
       ;
   };
 
-  siteAttrsForDefaultReachability =
-    siteAttrs
-    // {
-      tenants = siteTenantsCfg;
-      ipv6 = siteIpv6Cfg;
-      inherit routedPrefixesByTenant;
-    };
-
-  defaultReachability =
-    deriveDefaultReachability {
-      inherit sitePath allSiteEntries allRuntimeRoutedIPv6Prefixes uplinkRouting;
-      siteAttrs = siteAttrsForDefaultReachability;
-      transit = transitAttrs;
-      runtimeTargets = runtimeTargetContext.initialRuntimeTargets;
-    };
-
-  runtimeTargetsWithRouteAugmentation =
-    augmentRuntimeTargetRoutes defaultReachability.runtimeTargets;
-
   normalizedRuntimeTargets =
-    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetsWithRouteAugmentation;
+    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetContext.initialRuntimeTargets;
 
   finalControlPlane = import ./final-control-plane.nix {
     inherit
@@ -121,5 +99,5 @@ let
 
 in
 finalControlPlane // {
-  forwardingSemantics = defaultReachability.forwardingSemantics;
+  forwardingSemantics = siteAttrs.forwardingSemantics or { };
 }

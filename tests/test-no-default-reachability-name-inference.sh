@@ -10,8 +10,7 @@ matches="$(
     --line-number \
     --with-filename \
     'interfaceNameHasUplinkWanPreference|interfaceNameTargetsDestination|overlayNameFromInterfaceName|accessNodeNameFromAdjacencyId|uplinkNameFromAdjacencyId|--access-|--uplink-|builtins\.match ".*--|builtins\.split "--' \
-    "${repo_root}/src/cpm/Site/default-reachability" \
-    "${repo_root}/src/cpm/default-reachability-model.nix" \
+    "${repo_root}/src/cpm" \
     2>/dev/null || true
 )"
 

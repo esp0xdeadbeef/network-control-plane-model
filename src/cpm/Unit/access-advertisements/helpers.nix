@@ -111,6 +111,23 @@ let
       (idx: resolveAdvertisedIPv6Target entryPath fieldName routerAddress idx (builtins.elemAt configured idx))
       (builtins.length configured);
 
+  defaultDHCP4Pool = entryPath: subnet:
+    let
+      match = if isNonEmptyString subnet then builtins.match "([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3})\\.0/24" subnet else null;
+    in
+    if match == null then
+      failForwarding
+        "${entryPath}.pool"
+        "cannot derive default DHCPv4 pool from tenant IPv4 prefix '${toString subnet}'; use a modeled /24 tenant prefix or add explicit pool realization"
+    else
+      let
+        base = builtins.elemAt match 0;
+      in
+      {
+        start = "${base}.100";
+        end = "${base}.200";
+      };
+
 in
 {
   inherit
@@ -118,6 +135,7 @@ in
     boolOr
     failForwarding
     failInventory
+    defaultDHCP4Pool
     isNonEmptyString
     resolveAdvertisedIPv4Targets
     resolveAdvertisedIPv6Targets

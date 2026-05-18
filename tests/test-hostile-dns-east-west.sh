@@ -10,7 +10,7 @@ trap 'rm -f "'"${archive_json}"'" "'"${output_json}"'"' EXIT
 
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 
-labs_path="${LABS_ROOT:-$(
+labs_path="$(
   ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
@@ -22,7 +22,7 @@ labs_path="${LABS_ROOT:-$(
       else
         labsPath
   '
-)}"
+)"
 
 intent_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix"
 inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix"

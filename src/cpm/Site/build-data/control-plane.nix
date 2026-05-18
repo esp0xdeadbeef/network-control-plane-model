@@ -2,6 +2,7 @@
   helpers,
   common,
   inventoryAttrs,
+  siteAttrs,
   enterpriseName,
   siteName,
   uplinkNames,
@@ -30,7 +31,7 @@ let
   siteOverlays = attrsOrEmpty (siteControlPlaneCfg.overlays or null);
   siteUplinksCfg = attrsOrEmpty (siteControlPlaneCfg.uplinks or null);
   siteTenantsCfg = attrsOrEmpty (siteControlPlaneCfg.tenants or null);
-  siteIpv6Cfg = attrsOrEmpty (siteControlPlaneCfg.ipv6 or null);
+  siteIpv6Cfg = attrsOrEmpty (siteAttrs.ipv6 or null) // attrsOrEmpty (siteControlPlaneCfg.ipv6 or null);
 
   routingMode =
     let

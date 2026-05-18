@@ -9,50 +9,19 @@
   sitePath,
   siteAttrs,
   inventoryAttrs,
-  allSiteEntries,
   domains,
   uplinkNames,
-  allowedRelations,
-  attachments,
-  nodes,
-  serviceDefinitions,
-  providerEndpointForServiceProvider,
-  providerTenantsForServiceProvider,
-  dnsServiceRouteSpecs,
 }:
 
 let
   controlPlane = import ./control-plane.nix {
-    inherit helpers common inventoryAttrs enterpriseName siteName uplinkNames;
+    inherit helpers common inventoryAttrs siteAttrs enterpriseName siteName uplinkNames;
   };
   overlayData = import ./overlay-provisioning.nix {
     inherit lib helpers common ipam siteAttrs sitePath;
     inherit (controlPlane) siteOverlays;
   };
-  overlayTransit = import ../../ControlModule/overlay-transit/context.nix {
-    inherit lib helpers common allSiteEntries sitePath;
-    inherit (overlayData) overlayNames overlayProvisioning;
-  };
-  routeHelpers = import ../../ControlModule/route-helpers.nix { inherit lib helpers common ipam; };
-  augmentRuntimeTargetRoutes = import ../../ControlModule/route-augmentation {
-    inherit
-      lib
-      helpers
-      common
-      ipam
-      routeHelpers
-      sitePath
-      allowedRelations
-      attachments
-      nodes
-      serviceDefinitions
-      providerEndpointForServiceProvider
-      providerTenantsForServiceProvider
-      dnsServiceRouteSpecs
-      ;
-    inherit (overlayData) overlayNames;
-    inherit (overlayTransit) overlayTransitEndpointAddressesByOverlay;
-  };
+  routeNormalizer = import ./normalize-runtime-routes.nix { inherit common; };
   ipv6Data = import ./ipv6-plan.nix {
     inherit
       helpers
@@ -83,10 +52,9 @@ in
     overlayProvisioning
     overlayReachability
     ;
-  inherit (routeHelpers) normalizeRuntimeTargetRoutes;
+  inherit (routeNormalizer) normalizeRuntimeTargetRoutes;
   inherit (ipv6Data)
     ipv6Plan
     routedPrefixesByTenant
     ;
-  inherit augmentRuntimeTargetRoutes;
 }

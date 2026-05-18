@@ -101,7 +101,8 @@ let
     tenantName:
     let
       tcfg = attrsOrEmpty (siteTenantsCfg.${tenantName} or null);
-      v6 = attrsOrEmpty (tcfg.ipv6 or null);
+      modelTenantIpv6 = attrsOrEmpty ((attrsOrEmpty (siteIpv6Cfg.tenants or null)).${tenantName} or null);
+      v6 = modelTenantIpv6 // attrsOrEmpty (tcfg.ipv6 or null);
       mode = v6.mode or null;
     in
     if ipv6PdUplink == null then
@@ -125,7 +126,8 @@ let
     tenantName:
     let
       tcfg = attrsOrEmpty (siteTenantsCfg.${tenantName} or null);
-      v6 = attrsOrEmpty (tcfg.ipv6 or null);
+      modelTenantIpv6 = attrsOrEmpty ((attrsOrEmpty (siteIpv6Cfg.tenants or null)).${tenantName} or null);
+      v6 = modelTenantIpv6 // attrsOrEmpty (tcfg.ipv6 or null);
       prefixes = v6.prefixes or null;
       path = "inventory.controlPlane.sites.${enterpriseName}.${siteName}.tenants.${tenantName}.ipv6.prefixes";
     in
