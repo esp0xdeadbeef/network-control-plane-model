@@ -87,6 +87,8 @@ let
       helpers
       common
       sitePath
+      siteAttrs
+      allRuntimeRoutedIPv6Prefixes
       siteOverlayNameSet
       delegatedSourceUsesOverlayEgress
       isDelegatedIPv6AccessNode
