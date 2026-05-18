@@ -20,12 +20,16 @@ let
       uplinkName = lane.uplink or null;
       accessNodeName = lane.access or null;
       usesOverlay = isNonEmptyString uplinkName && hasAttr uplinkName siteOverlayNameSet;
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+      ifaceUsesOverlay = (iface.kind or null) == "overlay" || (backingRef.kind or null) == "overlay";
       delegatedAccess = isNonEmptyString accessNodeName && isDelegatedIPv6AccessNode accessNodeName;
+      delegatedPublicEgress = ((attrsOrEmpty (route.intent or null)).kind or null) == "delegated-public-egress";
     in
-    (
-      !usesOverlay || delegatedAccess
-    )
-    && !(family == 6 && delegatedAccess && isNonEmptyString uplinkName && !usesOverlay);
+    if ifaceUsesOverlay then
+      delegatedPublicEgress
+    else
+      (!usesOverlay || delegatedAccess)
+      && !(family == 6 && delegatedAccess && isNonEmptyString uplinkName && !usesOverlay);
 
   stripNonDelegatedOverlayDefaults =
     family: iface: routes:
