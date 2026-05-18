@@ -28,41 +28,14 @@ let
 
   p2pPeers = import ./p2p-peers.nix { inherit lib; };
 
-  relationUplinks =
-    relation:
-    let from = attrsOrEmpty (relation.from or null);
-    in
-    if builtins.isList (from.uplinks or null) then
-      from.uplinks
-    else if isNonEmptyString (from.name or null) then
-      [ from.name ]
-    else
-      [ ];
-
-  serviceIngressRelations =
-    builtins.filter
-      (relation:
-        let
-          attrs = attrsOrEmpty relation;
-          from = attrsOrEmpty (attrs.from or null);
-          to = attrsOrEmpty (attrs.to or null);
-        in
-        (attrs.action or "allow") == "allow"
-        && (from.kind or null) == "external"
-        && relationUplinks attrs != [ ]
-        && (to.kind or null) == "service"
-        && isNonEmptyString (to.name or null)
-        && attrsOrEmpty (serviceDefinitions.${to.name} or null) != { })
-      allowedRelations;
-
-  endpointAddressesForService =
-    serviceName:
-    lib.concatMap
-      (provider:
-        let endpoint = providerEndpointForServiceProvider provider;
-        in
-        (endpoint.ipv4 or [ ]) ++ (endpoint.ipv6 or [ ]))
-      (listOrEmpty ((serviceDefinitions.${serviceName} or { }).providers or null));
+  serviceIngressContext = import ./service-ingress/context.nix {
+    inherit lib helpers common allowedRelations serviceDefinitions providerEndpointForServiceProvider;
+  };
+  inherit (serviceIngressContext)
+    endpointAddressesForService
+    relationUplinks
+    serviceIngressRelations
+    ;
 
   providerAccess = import ./service-ingress/provider-access.nix {
     inherit lib helpers common sitePath attachments nodes serviceDefinitions providerTenantsForServiceProvider;
@@ -82,42 +55,20 @@ let
       (effective.interfaces or null);
   interfaceNames = builtins.attrNames interfaces;
 
-  routeFamily = destination: if builtins.match ".*:.*" destination == null then 4 else 6;
-  routesFor =
-    family: iface:
-    let routes = attrsOrEmpty (iface.routes or null);
-    in
-    if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
+  routeUtils = import ./service-ingress/routes.nix {
+    inherit helpers common routePresent;
+  };
+  inherit (routeUtils)
+    addRouteToInterface
+    routeFamily
+    routeForPeer
+    routesFor
+    ;
 
   interfaceSelection = import ./service-ingress/interface-selection.nix {
     inherit lib helpers interfaceNames interfaces routeForCoveringDst routesFor;
   };
   inherit (interfaceSelection) externalIngressInterfacesFor ingressInterfaceFor providerInterfaceFor;
-
-  addRouteToInterface =
-    family: route: destination: ifName: interfacesAcc:
-    let
-      iface = interfacesAcc.${ifName};
-      existingRoutes = routesFor family iface;
-    in
-    if routePresent family existingRoutes destination then
-      interfacesAcc
-    else
-      interfacesAcc
-      // {
-        ${ifName} =
-          iface
-          // {
-            routes =
-              (attrsOrEmpty (iface.routes or null))
-              // (
-                if family == 4 then
-                  { ipv4 = existingRoutes ++ [ route ]; }
-                else
-                  { ipv6 = existingRoutes ++ [ route ]; }
-              );
-          };
-      };
 
   routeIntent = route: attrsOrEmpty (route.intent or null);
 
@@ -179,19 +130,6 @@ let
                     p2pPeers.peerForInterface family providerIface
                   else
                     p2pPeers.peerForInterface family inner.${ingressIfName};
-                routeForPeer =
-                  peer:
-                  { dst = endpoint; proto = "service-ingress"; }
-                  // (if family == 4 then { via4 = peer; } else { via6 = peer; })
-                  // {
-                    intent = {
-                      kind = "service-ingress";
-                      service = serviceName;
-                      source = "service-ingress";
-                    }
-                    // lib.optionalAttrs (relationId != null) { relation = relationId; }
-                    // lib.optionalAttrs (trafficType != null) { inherit trafficType; };
-                  };
                 routeIfNames =
                   if ingressIfName != null then
                     [ ingressIfName ] ++ externalIngressInterfacesFor uplinkName
@@ -209,7 +147,7 @@ let
                         if !isNonEmptyString peer then
                           acc
                         else
-                          addRouteToInterface family (routeForPeer peer) endpoint ifName acc;
+                          addRouteToInterface family (routeForPeer family serviceName relationId trafficType endpoint peer) endpoint ifName acc;
                     in
                     if ingressIfName == null || ifName != ingressIfName then
                       routeAcc

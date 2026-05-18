@@ -96,11 +96,15 @@ fi
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "
   let
     flake = builtins.getFlake \"path:${repo_root}\";
+    built =
+      flake.lib.${system}.compileAndBuildFromPaths {
+        inputPath = \"${bad_input}\";
+        inventoryPath = \"${example_root}/inventory-nixos.nix\";
+      };
+    rules =
+      built.control_plane_model.data.esp0xdeadbeef.site-stable.runtimeTargets.\"esp0xdeadbeef-site-stable-s-router-policy\".forwardingIntent.rules;
   in
-    flake.lib.${system}.compileAndBuildFromPaths {
-      inputPath = \"${bad_input}\";
-      inventoryPath = \"${example_root}/inventory-nixos.nix\";
-    }
+    builtins.deepSeq rules true
 " >/dev/null 2>"${stderr_file}"; then
   echo "FAIL policy-deny-precedence: shadowed DNS deny unexpectedly evaluated" >&2
   echo "expected compile failure for mutated priority-stability example with deny-admin-dns-to-wan priority=220 after allow-admin-to-wan priority=200" >&2

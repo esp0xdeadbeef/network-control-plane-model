@@ -3,61 +3,19 @@
 { enterpriseName, siteName, site }:
 
 let
-  inherit (helpers)
-    ensureUniqueEntries
-    hasAttr
-    isNonEmptyString
-    logicalKey
-    requireAttrs
-    requireList
-    requireRoutes
-    requireString
-    sortedNames
-    ;
+  inherit (helpers) isNonEmptyString;
 
-  deriveDefaultReachability =
-    import ./default-reachability-model.nix {
-      inherit lib helpers;
-    };
-
-  resolveAccessAdvertisements =
-    import ./resolve-access-advertisements.nix {
-      inherit helpers;
-    };
-
-  resolveFirewallIntent =
-    import ./resolve-firewall-intent.nix {
-      inherit helpers;
-    };
-
-  resolvePolicyEndpointBindings =
-    import ./resolve-policy-endpoint-bindings.nix {
-      inherit helpers;
-    };
-
-  resolveRoutedPrefixes =
-    import ./routed-prefixes.nix {
-      inherit helpers;
-    };
-
-  ipam =
-    import ./ipam.nix {
-      inherit lib;
-    };
+  deriveDefaultReachability = import ./default-reachability-model.nix { inherit lib helpers; };
+  resolveAccessAdvertisements = import ./resolve-access-advertisements.nix { inherit helpers; };
+  resolveFirewallIntent = import ./resolve-firewall-intent.nix { inherit helpers; };
+  resolvePolicyEndpointBindings = import ./resolve-policy-endpoint-bindings.nix { inherit helpers; };
+  resolveRoutedPrefixes = import ./routed-prefixes.nix { inherit helpers; };
+  ipam = import ./ipam.nix { inherit lib; };
 
   common = import ./Site/build-data/common.nix {
     inherit helpers ipam enterpriseRoot;
   };
-  inherit (common)
-    allSiteEntries
-    attrsOrEmpty
-    cidrContainsAddress
-    failForwarding
-    failInventory
-    listOrEmpty
-    mergeRoutes
-    uniqueStrings
-    ;
+  inherit (common) allSiteEntries;
 
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
   siteInput = import ./Site/build-data/input.nix {
@@ -89,86 +47,13 @@ let
     upstreamSelectorNodeName
     ;
 
-  collectRuntimeRoutedIPv6PrefixesForSite =
-    entry:
-    let
-      entrySite = attrsOrEmpty (entry.site or null);
-      entryDomains = attrsOrEmpty (entrySite.domains or null);
-      entryOwnership = attrsOrEmpty (entryDomains.ownership or entrySite.ownership or null);
-      entryPrefixes = listOrEmpty (entryOwnership.prefixes or null);
-      inventorySite =
-        attrsOrEmpty (
-          inventory.controlPlane.sites.${entry.enterpriseKey}.${entry.siteKey} or null
-        );
-      inventoryTenants = attrsOrEmpty (inventorySite.tenants or null);
-    in
-    builtins.concatLists (
-      builtins.map
-        (tenantPrefix:
-          let
-            tenantName = tenantPrefix.name or null;
-            intentRoutedPrefixes = listOrEmpty (tenantPrefix.routedPrefixes or null);
-            inventoryRoutedPrefixes =
-              if isNonEmptyString tenantName then
-                attrsOrEmpty (inventoryTenants.${tenantName}.routedPrefixes or null)
-              else
-                { };
-          in
-          builtins.concatLists (
-            builtins.map
-              (intentRoutedPrefix:
-                let
-                  prefixName = intentRoutedPrefix.name or null;
-                  family = toString (intentRoutedPrefix.family or "ipv6");
-                  allocation = intentRoutedPrefix.allocation or null;
-                  inventoryPrefix =
-                    if isNonEmptyString prefixName then
-                      attrsOrEmpty (inventoryRoutedPrefixes.${prefixName} or null)
-                    else
-                      { };
-                  sourceFile = inventoryPrefix.sourceFile or null;
-                in
-                if
-                  family == "ipv6"
-                  && allocation == "runtime"
-                  && isNonEmptyString tenantName
-                  && isNonEmptyString prefixName
-                  && isNonEmptyString sourceFile
-                then
-                  [
-                    ({
-                      inherit family sourceFile;
-                      enterpriseName = entry.enterpriseKey;
-                      siteName = entry.siteKey;
-                      siteId = entry.siteId;
-                      tenantName = tenantName;
-                      name = prefixName;
-                      source = "inventory-routed-prefix";
-                      allocation = "runtime";
-                      delegatedPrefixLength = inventoryPrefix.delegatedPrefixLength or 64;
-                      perTenantPrefixLength = inventoryPrefix.perTenantPrefixLength or 64;
-                      slot = inventoryPrefix.slot or 0;
-                    }
-                    // (
-                      if isNonEmptyString (inventoryPrefix.prefixPostfix or null) then
-                        { prefixPostfix = inventoryPrefix.prefixPostfix; }
-                      else
-                        { }
-                    ))
-                  ]
-                else
-                  [ ])
-              intentRoutedPrefixes
-          ))
-        entryPrefixes
-    );
+  collectRuntimeRoutedIPv6Prefixes =
+    import ./Site/build-data/runtime-routed-prefixes.nix {
+      inherit helpers common inventory;
+    };
+  allRuntimeRoutedIPv6Prefixes = collectRuntimeRoutedIPv6Prefixes allSiteEntries;
 
-  allRuntimeRoutedIPv6Prefixes =
-    builtins.concatLists (
-      builtins.map collectRuntimeRoutedIPv6PrefixesForSite allSiteEntries
-    );
-
-  dnsPolicy = import ./ControlModule/dns-policy {
+  dnsContext = import ./Site/build-data/dns-context.nix {
     inherit
       lib
       helpers
@@ -183,14 +68,7 @@ let
       serviceDefinitions
       ;
   };
-  inherit (dnsPolicy)
-    providerEndpointForServiceProvider
-    providerTenantsForServiceProvider
-    ;
-  dnsPolicyDerived = import ./ControlModule/dns-policy/derived-services.nix {
-    inherit lib helpers dnsPolicy sitePath allowedRelations serviceDefinitions;
-  };
-  inherit (dnsPolicyDerived)
+  inherit (dnsContext)
     dnsServiceRouteSpecs
     policyDerivedDnsAllowFromForListeners
     policyDerivedDnsAllowedClassesForListeners
@@ -198,300 +76,109 @@ let
     policyDerivedDnsDirectEgressBlockedForListeners
     policyDerivedDnsDirectEgressBlockedForTenants
     policyDerivedDnsForwardersForTenants
+    providerEndpointForServiceProvider
+    providerTenantsForServiceProvider
     ;
 
-  controlPlane = import ./Site/build-data/control-plane.nix {
-    inherit helpers common inventoryAttrs enterpriseName siteName uplinkNames;
-  };
-  inherit (controlPlane)
-    bgpSiteAsn
-    bgpTopology
-    routingMode
-    siteControlPlaneCfg
-    siteIpv6Cfg
-    siteOverlays
-    siteRouting
-    siteTenantsCfg
-    siteUplinksCfg
-    uplinkRouting
-    ;
-
-  overlayData = import ./Site/build-data/overlay-provisioning.nix {
-    inherit lib helpers common ipam siteAttrs siteOverlays sitePath;
-  };
-  inherit (overlayData)
-    overlayNames
-    overlayProvisioning
-    overlayReachability
-    ;
-
-  overlayTransit = import ./ControlModule/overlay-transit/context.nix {
-    inherit lib helpers common allSiteEntries sitePath overlayNames overlayProvisioning;
-  };
-  inherit (overlayTransit)
-    overlayTransitEndpointAddressesByOverlay
-    ;
-
-  routeHelpers = import ./ControlModule/route-helpers.nix { inherit lib helpers common ipam; };
-  inherit (routeHelpers)
-    normalizeRuntimeTargetRoutes
-    ;
-
-  augmentDnsServiceRoutesForTarget = import ./ControlModule/route-augmentation/dns.nix {
-    inherit lib helpers common ipam routeHelpers sitePath dnsServiceRouteSpecs;
-  };
-
-  augmentServiceIngressRoutesForTarget = import ./ControlModule/route-augmentation/service-ingress.nix {
+  forwardingContext = import ./Site/build-data/forwarding-context.nix {
     inherit
       lib
       helpers
       common
       ipam
-      routeHelpers
       sitePath
+      siteAttrs
+      inventoryAttrs
+      allSiteEntries
+      domains
+      uplinkNames
       allowedRelations
       attachments
       nodes
       serviceDefinitions
       providerEndpointForServiceProvider
       providerTenantsForServiceProvider
-      ;
-  };
-
-  augmentOverlayTransitEndpointRoutesForTarget = import ./ControlModule/route-augmentation/overlay-transit.nix {
-    inherit helpers common routeHelpers sitePath overlayNames overlayTransitEndpointAddressesByOverlay;
-  };
-
-  augmentOverlayUnderlayEndpointRoutesForTarget = import ./ControlModule/route-augmentation/overlay-underlay.nix {
-    inherit common helpers routeHelpers overlayTransitEndpointAddressesByOverlay;
-    siteOverlayNameSet = builtins.listToAttrs (map (name: { inherit name; value = true; }) overlayNames);
-  };
-
-  ipv6Data = import ./Site/build-data/ipv6-plan.nix {
-    inherit
-      helpers
-      common
+      dnsServiceRouteSpecs
       resolveRoutedPrefixes
       enterpriseName
       siteName
-      sitePath
-      domains
-      siteTenantsCfg
-      siteIpv6Cfg
-      uplinkNames
       ;
   };
-  inherit (ipv6Data)
+  inherit (forwardingContext)
+    augmentRuntimeTargetRoutes
+    bgpSiteAsn
+    bgpTopology
     ipv6Plan
+    normalizeRuntimeTargetRoutes
+    overlayNames
+    overlayProvisioning
+    overlayReachability
     routedPrefixesByTenant
+    routingMode
+    siteIpv6Cfg
+    siteRouting
+    siteTenantsCfg
+    siteUplinksCfg
+    uplinkRouting
     ;
 
-  backingRefResolver = import ./Unit/runtime-targets/interfaces/backing-ref.nix {
-    inherit lib helpers common enterpriseName siteName sitePath attachments links;
-  };
-  inherit (backingRefResolver)
-    resolveBackingRef
-    ;
-
-  hostUplinkValidator = import ./Unit/runtime-targets/interfaces/host-uplink.nix {
-    inherit helpers common;
-  };
-  inherit (hostUplinkValidator)
-    requireExplicitHostUplinkAddressing
-    ;
-
-  buildExplicitInterfaceEntry = import ./Unit/runtime-targets/interfaces/explicit.nix {
-    inherit helpers common sitePath overlayProvisioning resolveBackingRef requireExplicitHostUplinkAddressing;
-  };
-
-  buildSyntheticUplinkInterfaceEntry = import ./Unit/runtime-targets/interfaces/synthetic-uplink.nix {
-    inherit helpers common sitePath enterpriseName siteName overlayNames requireExplicitHostUplinkAddressing;
-  };
-
-  runtimeServices = import ./Unit/runtime-services {
+  runtimePipeline = import ./Site/build-data/runtime-pipeline.nix {
     inherit
       lib
       helpers
+      common
+      ipam
+      realizationIndex
+      endpointInventoryIndex
+      deriveDefaultReachability
+      resolveAccessAdvertisements
+      resolvePolicyEndpointBindings
+      resolveFirewallIntent
+      enterpriseName
+      siteName
       sitePath
+      siteAttrs
+      transitAttrs
+      allSiteEntries
+      allRuntimeRoutedIPv6Prefixes
       attachments
-      attrsOrEmpty
-      failInventory
+      domains
+      links
+      nodes
+      policyNodeName
+      routingMode
+      bgpSiteAsn
+      bgpTopology
+      uplinkRouting
+      overlayProvisioning
+      overlayNames
+      siteTenantsCfg
+      siteIpv6Cfg
+      routedPrefixesByTenant
+      dnsServiceRouteSpecs
+      providerEndpointForServiceProvider
+      providerTenantsForServiceProvider
       policyDerivedDnsAllowFromForListeners
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsAllowedClassesForTenants
       policyDerivedDnsDirectEgressBlockedForListeners
       policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForTenants
-      uniqueStrings
+      augmentRuntimeTargetRoutes
+      normalizeRuntimeTargetRoutes
       ;
   };
-  inherit (runtimeServices)
-    resolveRuntimeServices
-    tenantAttachmentsForNode
-    ;
-
-  runtimeContainers = import ./Unit/runtime-targets/containers.nix {
-    inherit helpers common sitePath;
-  };
-  inherit (runtimeContainers)
-    resolveRuntimeContainers
-    ;
-
-  runtimeBgp = import ./Unit/runtime-targets/bgp.nix {
-    inherit lib helpers common sitePath nodes policyNodeName bgpSiteAsn routedPrefixesByTenant;
-  };
-  inherit (runtimeBgp)
-    bgpNetworksForNode
-    bgpNeighborsForNode
-    filterRoutesForBgp
-    routerRoleSet
-    ;
-
-  runtimeTargetBuilder = import ./Unit/runtime-targets {
-    inherit
-      lib
-      helpers
-      common
-      realizationIndex
-      enterpriseName
-      siteName
-      sitePath
-      nodes
-      routingMode
-      bgpSiteAsn
-      bgpTopology
-      uplinkRouting
-      buildExplicitInterfaceEntry
-      buildSyntheticUplinkInterfaceEntry
-      resolveRuntimeContainers
-      resolveRuntimeServices
-      bgpNetworksForNode
-      bgpNeighborsForNode
-      filterRoutesForBgp
-      routerRoleSet
-      ;
-  };
-  initialRuntimeTargets = runtimeTargetBuilder.runtimeTargets;
-
-  siteAttrsForDefaultReachability =
-    siteAttrs
-    // {
-      tenants = siteTenantsCfg;
-      ipv6 = siteIpv6Cfg;
-      inherit routedPrefixesByTenant;
-    };
-
-  defaultReachability =
-    deriveDefaultReachability {
-      inherit sitePath allSiteEntries allRuntimeRoutedIPv6Prefixes uplinkRouting;
-      siteAttrs = siteAttrsForDefaultReachability;
-      transit = transitAttrs;
-      runtimeTargets = initialRuntimeTargets;
-    };
-
-  runtimeTargetsWithOverlayTransitEndpointRoutes =
-    builtins.listToAttrs (
-      builtins.map
-        (targetName: {
-          name = targetName;
-          value =
-            augmentDnsServiceRoutesForTarget
-              targetName
-              (augmentServiceIngressRoutesForTarget
-                targetName
-                (augmentOverlayTransitEndpointRoutesForTarget
-                  targetName
-                  (augmentOverlayUnderlayEndpointRoutesForTarget
-                    targetName
-                    defaultReachability.runtimeTargets.${targetName})));
-        })
-        (sortedNames defaultReachability.runtimeTargets)
-    );
-
-  normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes =
-    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetsWithOverlayTransitEndpointRoutes;
-
-  accessAdvertisements =
-    resolveAccessAdvertisements {
-      inherit sitePath siteAttrs realizationIndex endpointInventoryIndex routedPrefixesByTenant;
-      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
-    };
-
-  policyEndpointBindings =
-    resolvePolicyEndpointBindings {
-      inherit sitePath siteAttrs attachments domains;
-      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
-    };
-
-  dnsServiceUplinks = import ./ControlModule/dns-policy/service-uplinks.nix {
-    inherit lib uniqueStrings dnsServiceRouteSpecs;
-  };
-  inherit (dnsServiceUplinks)
-    preferredDnsUplinksByRelationForService
-    preferredDnsUplinksForService
-    ;
-
-  resolvedServices = import ./Site/build-data/services.nix {
-    inherit
-      lib
-      helpers
-      uniqueStrings
-      policyEndpointBindings
-      providerEndpointForServiceProvider
-      providerTenantsForServiceProvider
-      preferredDnsUplinksByRelationForService
-      preferredDnsUplinksForService
-      sitePath
-      ;
-  };
-
-  firewallIntent =
-    resolveFirewallIntent {
-      services = resolvedServices;
-      inherit sitePath siteAttrs policyEndpointBindings;
-      runtimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
-    };
-
-  finalizeRuntimeTargets = import ./ControlModule/runtime-targets/finalize.nix {
-    inherit lib helpers common ipam;
-  };
-  runtimeTargets =
-    finalizeRuntimeTargets {
-      inherit accessAdvertisements firewallIntent;
-      normalizedRuntimeTargets = normalizedRuntimeTargetsWithOverlayTransitEndpointRoutes;
-    };
-
-in
-import ./Site/build-data/output.nix {
-  inherit
-    lib
+  inherit (runtimePipeline)
     accessAdvertisements
-    attachments
-    bgpSiteAsn
-    bgpTopology
-    communicationContract
-    coreNodeNames
-    domainsValue
-    isNonEmptyString
-    ipv6Plan
-    overlayProvisioning
-    policyAttrs
+    forwardingSemantics
     policyEndpointBindings
-    policyNodeName
-    routedPrefixesByTenant
-    routingMode
+    resolvedServices
     runtimeTargets
-    siteAttrs
-    siteDisplayName
-    siteId
-    tenantPrefixOwners
-    trafficPaths
-    transitAttrs
-    uplinkCoreNames
-    uplinkNames
-    uplinkRouting
-    upstreamSelectorNodeName
     ;
-  forwardingSemantics = defaultReachability.forwardingSemantics;
+
+  emitOutput = import ./Site/build-data/output.nix;
+in
+emitOutput {
+  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayProvisioning policyAttrs policyEndpointBindings policyNodeName routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
   services = resolvedServices;
 }

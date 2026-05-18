@@ -1,0 +1,125 @@
+{
+  lib,
+  helpers,
+  common,
+  ipam,
+  realizationIndex,
+  endpointInventoryIndex,
+  deriveDefaultReachability,
+  resolveAccessAdvertisements,
+  resolvePolicyEndpointBindings,
+  resolveFirewallIntent,
+  sitePath,
+  siteAttrs,
+  transitAttrs,
+  allSiteEntries,
+  allRuntimeRoutedIPv6Prefixes,
+  attachments,
+  domains,
+  links,
+  nodes,
+  policyNodeName,
+  bgpSiteAsn,
+  bgpTopology,
+  routingMode,
+  uplinkRouting,
+  overlayProvisioning,
+  overlayNames,
+  siteTenantsCfg,
+  siteIpv6Cfg,
+  routedPrefixesByTenant,
+  dnsServiceRouteSpecs,
+  providerEndpointForServiceProvider,
+  providerTenantsForServiceProvider,
+  policyDerivedDnsAllowFromForListeners,
+  policyDerivedDnsAllowedClassesForListeners,
+  policyDerivedDnsAllowedClassesForTenants,
+  policyDerivedDnsDirectEgressBlockedForListeners,
+  policyDerivedDnsDirectEgressBlockedForTenants,
+  policyDerivedDnsForwardersForTenants,
+  augmentRuntimeTargetRoutes,
+  normalizeRuntimeTargetRoutes,
+  enterpriseName,
+  siteName,
+}:
+
+let
+  runtimeTargetContext = import ./runtime-target-context.nix {
+    inherit
+      lib
+      helpers
+      common
+      realizationIndex
+      enterpriseName
+      siteName
+      sitePath
+      attachments
+      links
+      nodes
+      policyNodeName
+      routingMode
+      bgpSiteAsn
+      bgpTopology
+      uplinkRouting
+      overlayProvisioning
+      overlayNames
+      siteTenantsCfg
+      routedPrefixesByTenant
+      policyDerivedDnsAllowFromForListeners
+      policyDerivedDnsAllowedClassesForListeners
+      policyDerivedDnsAllowedClassesForTenants
+      policyDerivedDnsDirectEgressBlockedForListeners
+      policyDerivedDnsDirectEgressBlockedForTenants
+      policyDerivedDnsForwardersForTenants
+      ;
+  };
+
+  siteAttrsForDefaultReachability =
+    siteAttrs
+    // {
+      tenants = siteTenantsCfg;
+      ipv6 = siteIpv6Cfg;
+      inherit routedPrefixesByTenant;
+    };
+
+  defaultReachability =
+    deriveDefaultReachability {
+      inherit sitePath allSiteEntries allRuntimeRoutedIPv6Prefixes uplinkRouting;
+      siteAttrs = siteAttrsForDefaultReachability;
+      transit = transitAttrs;
+      runtimeTargets = runtimeTargetContext.initialRuntimeTargets;
+    };
+
+  runtimeTargetsWithRouteAugmentation =
+    augmentRuntimeTargetRoutes defaultReachability.runtimeTargets;
+
+  normalizedRuntimeTargets =
+    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetsWithRouteAugmentation;
+
+  finalControlPlane = import ./final-control-plane.nix {
+    inherit
+      lib
+      helpers
+      common
+      ipam
+      resolveAccessAdvertisements
+      resolvePolicyEndpointBindings
+      resolveFirewallIntent
+      sitePath
+      siteAttrs
+      attachments
+      domains
+      realizationIndex
+      endpointInventoryIndex
+      routedPrefixesByTenant
+      dnsServiceRouteSpecs
+      providerEndpointForServiceProvider
+      providerTenantsForServiceProvider
+      normalizedRuntimeTargets
+      ;
+  };
+
+in
+finalControlPlane // {
+  forwardingSemantics = defaultReachability.forwardingSemantics;
+}
