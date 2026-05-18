@@ -31,27 +31,9 @@ let
     let lane = laneFor iface;
     in (lane.kind or null) == "access-uplink" && (lane.access or null) == sourceNode && laneUsesOverlay lane;
 
-  isNonOverlayPolicyLane = sourceNode: iface:
-    let lane = laneFor iface;
-    in (lane.kind or null) == "access-uplink" && (lane.access or null) == sourceNode && !laneUsesOverlay lane;
-
   isNonOverlayCoreLane = iface:
     let lane = laneFor iface;
     in (lane.kind or null) == "uplink" && !laneUsesOverlay lane;
-
-  hasDefault = family: routes:
-    builtins.any (route: (route.dst or null) == defaultDst family) (listOrEmpty routes);
-
-  hasNonOverlayDefault = family: sourceNode: interfaces:
-    builtins.any
-      (ifName:
-        let
-          iface = interfaces.${ifName};
-          routes = attrsOrEmpty (iface.routes or null);
-        in
-        isNonOverlayPolicyLane sourceNode iface
-        && hasDefault family (if family == 4 then routes.ipv4 or [ ] else routes.ipv6 or [ ]))
-      (sortedNames interfaces);
 
   isDelegatedPublicEgress = route:
     ((attrsOrEmpty (route.intent or null)).kind or null) == "delegated-public-egress";
@@ -169,7 +151,6 @@ in
       interfaces,
     }:
     let
-      sourceHasNonOverlayDefault = hasNonOverlayDefault family sourceNode interfaces;
       overlayGateway = policyLaneGateway family sourceNode interfaces;
       coreGateway = nonOverlayCoreGateway family interfaces;
       gateway =
@@ -178,7 +159,7 @@ in
         else
           coreGateway;
     in
-    if sourceHasNonOverlayDefault || gateway == null then
+    if gateway == null then
       interfaces
     else
       builtins.foldl'
