@@ -2,6 +2,8 @@
   helpers,
   common,
   sitePath,
+  siteAttrs,
+  allRuntimeRoutedIPv6Prefixes,
   siteOverlayNameSet,
   delegatedSourceUsesOverlayEgress,
   isDelegatedIPv6AccessNode,
@@ -41,6 +43,30 @@ let
 
   addOverlayExitIngress =
     family: interfaces:
+    let
+      siteId = siteAttrs.siteId or null;
+      remoteRuntimeRoutedAccessNodeSet = builtins.listToAttrs (
+        builtins.map
+          (prefix: {
+            name = prefix.accessNode;
+            value = true;
+          })
+          (builtins.filter
+            (prefix:
+              builtins.isAttrs prefix
+              && (prefix.siteId or null) != siteId
+              && builtins.isString (prefix.accessNode or null)
+              && prefix.accessNode != ""
+              && (prefix.family or null) == "ipv6"
+              && (prefix.allocation or null) == "runtime")
+            allRuntimeRoutedIPv6Prefixes)
+      );
+      overlayExitSourceNodes =
+        sortedNames (
+          remoteRuntimeRoutedAccessNodeSet
+          // builtins.listToAttrs (builtins.map (sourceNode: { name = sourceNode; value = true; }) runtimeRoutedIPv6AccessNodeNames)
+        );
+    in
     builtins.foldl'
       (current: sourceNode:
         overlayExitIngress.add {
@@ -48,7 +74,7 @@ let
           interfaces = current;
         })
       interfaces
-      runtimeRoutedIPv6AccessNodeNames;
+      overlayExitSourceNodes;
 
 in
 {

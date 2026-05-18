@@ -31,8 +31,16 @@ let
     let lane = laneFor iface;
     in (lane.kind or null) == "access-uplink" && (lane.access or null) == sourceNode && laneUsesOverlay lane;
 
+  isCoreExitLane = iface:
+    let lane = laneFor iface;
+    in (lane.kind or null) == "uplink" && !laneUsesOverlay lane;
+
   isDelegatedPublicEgress = route:
     ((attrsOrEmpty (route.intent or null)).kind or null) == "delegated-public-egress";
+
+  isDefaultReachability = family: route:
+    (route.dst or null) == defaultDst family
+    && ((attrsOrEmpty (route.intent or null)).kind or null) == "default-reachability";
 
   firstGateway =
     family: routes:
@@ -69,6 +77,26 @@ let
           ipam.renderIPv6 ((builtins.genList (i: if i == idx then peerLast else builtins.elemAt parsed6 i) 8));
     in
     if family == 4 then peer4 else peer6;
+
+  firstCoreExitGateway =
+    family: interfaces:
+    let
+      field = if family == 4 then "via4" else "via6";
+      candidates =
+        builtins.filter
+          (gateway: gateway != null)
+          (builtins.map
+            (ifName:
+              let
+                iface = interfaces.${ifName};
+                routes = attrsOrEmpty (iface.routes or null);
+                familyRoutes = if family == 4 then routes.ipv4 or [ ] else routes.ipv6 or [ ];
+                defaults = builtins.filter (route: isDefaultReachability family route && route.${field} or null != null) familyRoutes;
+              in
+              if defaults == [ ] then p2pPeerAddress family iface else (builtins.head defaults).${field})
+            (builtins.filter (ifName: isCoreExitLane interfaces.${ifName}) (sortedNames interfaces)));
+    in
+    if candidates == [ ] then null else builtins.head candidates;
 
   policyLaneGateway =
     family: sourceNode: interfaces:
@@ -134,7 +162,11 @@ in
       interfaces,
     }:
     let
-      overlayGateway = policyLaneGateway family sourceNode interfaces;
+      overlayGateway =
+        let
+          coreGateway = firstCoreExitGateway family interfaces;
+        in
+        if coreGateway != null then coreGateway else policyLaneGateway family sourceNode interfaces;
     in
     builtins.foldl'
       (acc: ifName: acc // { ${ifName} = addRoute family sourceNode overlayGateway acc.${ifName}; })
