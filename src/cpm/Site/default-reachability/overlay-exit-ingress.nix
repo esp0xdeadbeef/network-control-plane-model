@@ -31,10 +31,6 @@ let
     let lane = laneFor iface;
     in (lane.kind or null) == "access-uplink" && (lane.access or null) == sourceNode && laneUsesOverlay lane;
 
-  isNonOverlayCoreLane = iface:
-    let lane = laneFor iface;
-    in (lane.kind or null) == "uplink" && !laneUsesOverlay lane;
-
   isDelegatedPublicEgress = route:
     ((attrsOrEmpty (route.intent or null)).kind or null) == "delegated-public-egress";
 
@@ -92,24 +88,6 @@ let
     in
     if candidates == [ ] then null else builtins.head candidates;
 
-  nonOverlayCoreGateway =
-    family: interfaces:
-    let
-      candidates =
-        builtins.filter
-          (gateway: gateway != null)
-          (builtins.map
-            (ifName:
-              let
-                iface = interfaces.${ifName};
-                routes = attrsOrEmpty (iface.routes or null);
-                peerAddress = p2pPeerAddress family iface;
-              in
-              if peerAddress != null then peerAddress else firstGateway family (if family == 4 then routes.ipv4 or [ ] else routes.ipv6 or [ ]))
-            (builtins.filter (ifName: isNonOverlayCoreLane interfaces.${ifName}) (sortedNames interfaces)));
-    in
-    if candidates == [ ] then null else builtins.head candidates;
-
   routeGatewayMatches = family: gateway: route:
     if family == 4 then (route.via4 or null) == gateway else (route.via6 or null) == gateway;
 
@@ -126,6 +104,11 @@ let
     let
       routes = attrsOrEmpty (iface.routes or null);
       existing = if family == 4 then listOrEmpty (routes.ipv4 or null) else listOrEmpty (routes.ipv6 or null);
+      routeGateway =
+        if gateway != null then
+          gateway
+        else
+          p2pPeerAddress family iface;
       route = {
         dst = defaultDst family;
         intent = {
@@ -136,9 +119,9 @@ let
         metric = 50;
         policyOnly = true;
         proto = "overlay";
-      } // (if family == 4 then { via4 = gateway; } else { via6 = gateway; });
+      } // (if family == 4 then { via4 = routeGateway; } else { via6 = routeGateway; });
     in
-    if routeExists family sourceNode gateway existing then
+    if routeGateway == null || routeExists family sourceNode routeGateway existing then
       iface
     else
       iface // { routes = routes // (if family == 4 then { ipv4 = existing ++ [ route ]; } else { ipv6 = existing ++ [ route ]; }); };
@@ -152,18 +135,9 @@ in
     }:
     let
       overlayGateway = policyLaneGateway family sourceNode interfaces;
-      coreGateway = nonOverlayCoreGateway family interfaces;
-      gateway =
-        if overlayGateway != null then
-          overlayGateway
-        else
-          coreGateway;
     in
-    if gateway == null then
+    builtins.foldl'
+      (acc: ifName: acc // { ${ifName} = addRoute family sourceNode overlayGateway acc.${ifName}; })
       interfaces
-    else
-      builtins.foldl'
-        (acc: ifName: acc // { ${ifName} = addRoute family sourceNode gateway acc.${ifName}; })
-        interfaces
-        (builtins.filter (ifName: isOverlayCoreIngress interfaces.${ifName}) (sortedNames interfaces));
+      (builtins.filter (ifName: isOverlayCoreIngress interfaces.${ifName}) (sortedNames interfaces));
 }
