@@ -53,11 +53,11 @@ let
     else
       routeForExactDstWithGateway family routes defaultDst;
 in
-lib.findFirst
-  (route: route != null)
-  null
-  (builtins.map
-    (ifName:
+builtins.foldl'
+  (found: ifName:
+    if found != null then
+      found
+    else
       let
         candidateIface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
         candidateRoutes = attrsOrEmpty (candidateIface.routes or null);
@@ -65,4 +65,5 @@ lib.findFirst
           if family == 4 then listOrEmpty (candidateRoutes.ipv4 or null) else listOrEmpty (candidateRoutes.ipv6 or null);
       in
       routeForDestinationOrDefault ifName familyRoutes)
-    candidateInterfaceNames)
+  null
+  candidateInterfaceNames
