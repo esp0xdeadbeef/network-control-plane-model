@@ -4,6 +4,7 @@
   common,
   ipam,
   inventoryAttrs,
+  allSiteEntries,
   siteAttrs,
   siteOverlays,
   sitePath,
@@ -39,6 +40,63 @@ let
     in
     attrsOrEmpty (sites.${enterpriseName} or null);
 
+  resolvePeerSiteEntry =
+    peerSite:
+    lib.findFirst
+      (entry:
+        entry.siteId == peerSite
+        || entry.siteDisplayName == peerSite
+        || "${entry.enterpriseKey}.${entry.siteKey}" == peerSite)
+      null
+      allSiteEntries;
+
+  runtimeRoutedPrefixesForPeerSite =
+    peerSite:
+    let
+      peerEntry = resolvePeerSiteEntry peerSite;
+      peerDomains = if peerEntry == null then { } else attrsOrEmpty (peerEntry.site.domains or null);
+      peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
+    in
+    lib.concatMap
+      (tenant:
+        let
+          tenantAttrs = attrsOrEmpty tenant;
+          tenantName = tenantAttrs.name or null;
+          routedPrefixes = listOrEmpty (tenantAttrs.routedPrefixes or null);
+        in
+        lib.concatMap
+          (prefix:
+            let
+              prefixAttrs = attrsOrEmpty prefix;
+              sourceFile = prefixAttrs.sourceFile or null;
+            in
+            if
+              (prefixAttrs.allocation or "runtime") == "runtime"
+              && (prefixAttrs.family or "ipv6") == "ipv6"
+              && isNonEmptyString sourceFile
+            then
+              [
+                {
+                  family = 6;
+                  inherit sourceFile;
+                  tenant = tenantName;
+                  prefixName = prefixAttrs.name or null;
+                  delegatedPrefixLength = prefixAttrs.delegatedPrefixLength or 64;
+                  perTenantPrefixLength = prefixAttrs.perTenantPrefixLength or 64;
+                  slot = prefixAttrs.slot or 0;
+                }
+              ]
+            else
+              [ ])
+          routedPrefixes)
+      peerTenants;
+
+  overlayPeerRuntimeRoutedPrefixes =
+    peerSites:
+    lib.unique (
+      lib.concatMap runtimeRoutedPrefixesForPeerSite peerSites
+    );
+
   overlayNodePrefixesFor =
     overlayName:
     let
@@ -70,6 +128,14 @@ let
             overlayPath = "${sitePath}.overlayReachability.${overlayName}";
             ov = helpers.requireAttrs overlayPath overlayReachability.${overlayName};
             cfg = attrsOrEmpty (siteOverlays.${overlayName} or null);
+            peerSites0 = listOrEmpty (ov.peerSites or null);
+            peerSites =
+              if peerSites0 != [ ] then
+                peerSites0
+              else if isNonEmptyString (ov.peerSite or null) then
+                [ ov.peerSite ]
+              else
+                [ ];
 
             terminateOn =
               lib.sort (a: b: a < b) (
@@ -123,10 +189,11 @@ let
               {
                 name = overlayName;
                 peerSite = ov.peerSite or null;
-                peerSites = listOrEmpty (ov.peerSites or null);
+                peerSites = peerSites;
                 terminateOn = terminateOn;
                 nodes = overlayNodeAddrs;
                 nodeRoutePrefixes = overlayNodePrefixes;
+                peerRuntimeRoutedPrefixes = overlayPeerRuntimeRoutedPrefixes peerSites;
               }
               // (
                 if ipamV4Prefix != null || ipamV6Prefix != null then
