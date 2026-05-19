@@ -94,16 +94,6 @@ let
       let
         lane = attrsOrEmpty (route.lane or null);
       in
-      (route.dst or null) == defaultDst family
-      && (lane.access or "") != ""
-      && builtins.elem (lane.uplink or "") overlayNames
-      && !(builtins.elem (lane.access or "") runtimePrefixExitNodes)
-    then
-      null
-    else if
-      let
-        lane = attrsOrEmpty (route.lane or null);
-      in
       family == 6
       && (route.dst or null) == defaultDst family
       && (lane.access or "") != ""

@@ -80,9 +80,7 @@ def default_route_lane_violations:
   | ($overlays | index($uplink)) as $overlayIndex
   | ($delegated | index($access)) as $delegatedIndex
   | select($access != "")
-  | if ($overlayIndex != null and $delegatedIndex == null) then
-      violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "overlay default route on non-delegated access " + $access + " via " + $uplink)
-    elif (($overlays | length) > 0 and $family.family == "ipv6" and $delegatedIndex != null and $uplink != "" and $overlayIndex == null) then
+  | if (($overlays | length) > 0 and $family.family == "ipv6" and $delegatedIndex != null and $uplink != "" and $overlayIndex == null) then
       violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "delegated IPv6 default prefers non-overlay access " + $access + " via " + $uplink)
     else
       empty
