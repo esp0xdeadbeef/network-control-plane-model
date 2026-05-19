@@ -10,6 +10,7 @@
   siteAttrs,
   inventoryAttrs,
   allSiteEntries,
+  attachments,
   domains,
   uplinkNames,
 }:
@@ -22,7 +23,6 @@ let
     inherit lib helpers common ipam inventoryAttrs siteAttrs sitePath enterpriseName allSiteEntries;
     inherit (controlPlane) siteOverlays;
   };
-  routeNormalizer = import ./normalize-runtime-routes.nix { inherit common; };
   ipv6Data = import ./ipv6-plan.nix {
     inherit
       helpers
@@ -35,6 +35,11 @@ let
       uplinkNames
       ;
     inherit (controlPlane) siteIpv6Cfg siteTenantsCfg;
+  };
+  routeNormalizer = import ./normalize-runtime-routes.nix {
+    inherit lib common attachments;
+    inherit (overlayData) overlayNames;
+    inherit (ipv6Data) routedPrefixesByTenant;
   };
 in
 {

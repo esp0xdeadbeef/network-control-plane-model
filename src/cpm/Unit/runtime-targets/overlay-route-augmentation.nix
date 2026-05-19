@@ -4,149 +4,47 @@
   common,
   ipam,
   overlayProvisioning,
+  attachments,
+  routedPrefixesByTenant,
 }:
 
 let
   inherit (helpers) hasAttr isNonEmptyString sortedNames;
   inherit (common) attrsOrEmpty listOrEmpty mergeRoutes;
 
-  overlayUnderlayEndpoints =
-    let
-      keyed = builtins.listToAttrs (
-        builtins.map
-          (endpoint: {
-            name = "${toString (endpoint.family or "")}|${endpoint.sourceFile or ""}";
-            value = endpoint;
-          })
-          (
-            builtins.filter
-              (endpoint: builtins.isAttrs endpoint && isNonEmptyString (endpoint.sourceFile or null))
-              (lib.concatLists (
-                builtins.map
-                  (overlayName:
-                    builtins.map
-                      (endpoint: endpoint // { overlay = overlayName; })
-                      (builtins.filter builtins.isAttrs (listOrEmpty (overlayProvisioning.${overlayName}.underlayEndpoints or null))))
-                  (sortedNames overlayProvisioning)
-              ))
-          )
-      );
-    in
-    builtins.map (key: keyed.${key}) (sortedNames keyed);
-  p2pPeerAddress =
-    family: cidr:
-    let
-      parsed = if builtins.isString cidr then ipam.splitCIDR cidr else null;
-      expectedPrefixLen = if family == 4 then 31 else 127;
-      parsedAddress =
-        if parsed == null || parsed.prefixLen != expectedPrefixLen then
-          null
-        else if family == 4 then
-          ipam.parseIPv4 parsed.addr
-        else
-          ipam.parseIPv6 parsed.addr;
-      ipv4PeerInt =
-        if parsedAddress == null || family != 4 then
-          null
-        else
-          let addrInt = ipam.ipv4ToInt parsedAddress;
-          in if lib.mod addrInt 2 == 0 then addrInt + 1 else addrInt - 1;
-      ipv6Peer =
-        if parsedAddress == null || family != 6 then
-          null
-        else
-          builtins.genList
-            (idx: if idx == 7 then (if lib.mod (builtins.elemAt parsedAddress 7) 2 == 0 then (builtins.elemAt parsedAddress 7) + 1 else (builtins.elemAt parsedAddress 7) - 1) else builtins.elemAt parsedAddress idx)
-            8;
-    in
-    if parsedAddress == null then null else if family == 4 then ipam.renderIPv4 (ipam.ipv4FromInt ipv4PeerInt) else ipam.renderIPv6 ipv6Peer;
-  interfaceOverlayLaneNames =
-    iface:
-    let
-      lane = ((iface.backingRef or { }).lane or { });
-      uplinks = listOrEmpty (lane.uplinks or null);
-      single = lane.uplink or null;
-    in
-    if (lane.kind or null) != "uplink" then [ ] else uplinks ++ (if isNonEmptyString single then [ single ] else [ ]);
-  interfaceOverlayNames =
-    interfaces:
-    builtins.filter
-      (overlayName: hasAttr overlayName overlayProvisioning)
-      (lib.unique (
-        lib.concatMap
-          (ifName:
-            let iface = interfaces.${ifName};
-            in if (iface.sourceKind or null) == "overlay" then [ ((iface.backingRef or { }).name or null) ] else [ ])
-          (sortedNames interfaces)
-      ));
+  base = import ./overlay-route-augmentation/base.nix {
+    inherit lib helpers common ipam overlayProvisioning attachments routedPrefixesByTenant;
+  };
+  inherit (base)
+    defaultViaFor
+    interfaceOverlayLaneNames
+    interfaceOverlayNames
+    overlayUnderlayEndpoints
+    p2pPeerAddress
+    runtimePrefixExitNodes
+    ;
 
-  defaultViaRoutes =
-    family: routes:
-    builtins.filter
-      (route: ((route.intent or { }).kind or null) == "default-reachability" && (route.${if family == 4 then "via4" else "via6"} or null) != null)
-      (listOrEmpty (routes.${if family == 4 then "ipv4" else "ipv6"} or null));
+  routeBuilders = import ./overlay-route-augmentation/routes.nix {
+    inherit lib helpers common overlayProvisioning overlayUnderlayEndpoints runtimePrefixExitNodes;
+    inherit (base) defaultViaRoutes;
+  };
+  inherit (routeBuilders)
+    delegatedOverlayDefaultRoutes
+    delegatedOverlayDefaultsVia
+    delegatedOverlayExitDefaultsVia
+    defaultReachabilityVia
+    overlayEndpointRoutesVia
+    overlayNodeRoutesVia
+    overlayRuntimeRoutedPrefixRoutes
+    overlayRuntimeRoutedPrefixRoutesVia
+    underlayEndpointRoutes
+    withoutGenericOverlayDefaults
+    ;
 
-  underlayEndpointRoutes =
-    family: routes:
-    let
-      viaField = if family == 4 then "via4" else "via6";
-      endpoints = builtins.filter (endpoint: (endpoint.family or null) == family && isNonEmptyString (endpoint.sourceFile or null)) overlayUnderlayEndpoints;
-    in
-    lib.concatMap
-      (defaultRoute:
-        builtins.map
-          (endpoint: {
-            inherit family;
-            sourceFile = endpoint.sourceFile;
-            proto = "underlay";
-            overlay = endpoint.overlay;
-            intent = { kind = "overlay-underlay-reachability"; source = "overlay-underlay-endpoint"; };
-            ${viaField} = defaultRoute.${viaField};
-          })
-          endpoints)
-      (defaultViaRoutes family routes);
-
-  overlayEndpointRoutesVia =
-    family: overlayNamesForInterface: via:
-    let
-      viaField = if family == 4 then "via4" else "via6";
-      endpoints =
-        builtins.filter
-          (endpoint: (endpoint.family or null) == family && isNonEmptyString (endpoint.sourceFile or null) && builtins.elem (endpoint.overlay or null) overlayNamesForInterface)
-          overlayUnderlayEndpoints;
-    in
-    if !isNonEmptyString via then [ ] else builtins.map (endpoint: {
-      inherit family;
-      sourceFile = endpoint.sourceFile;
-      proto = "underlay";
-      overlay = endpoint.overlay;
-      intent = { kind = "overlay-underlay-reachability"; source = "overlay-underlay-endpoint"; };
-      ${viaField} = via;
-    }) endpoints;
-
-  overlayNodeRoutesVia =
-    family: overlayNamesForInterface: via:
-    let
-      viaField = if family == 4 then "via4" else "via6";
-      prefixField = if family == 4 then "ipv4" else "ipv6";
-      prefixes = lib.unique (lib.concatMap (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixes.${prefixField} or null)) overlayNamesForInterface);
-    in
-    if !isNonEmptyString via then [ ] else builtins.map (dst: {
-      inherit dst family;
-      proto = "internal";
-      intent = { kind = "overlay-node-reachability"; };
-      ${viaField} = via;
-    }) prefixes;
-
-  overlayRuntimeRoutedPrefixRoutesVia =
-    overlayNamesForInterface: via:
-    let prefixes = lib.unique (lib.concatMap (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.peerRuntimeRoutedPrefixes or null)) overlayNamesForInterface);
-    in
-    if !isNonEmptyString via then [ ] else builtins.map (prefix: prefix // {
-      proto = "overlay";
-      intent = { kind = "runtime-routed-prefix-return"; source = "intent-routed-prefix"; };
-      via6 = via;
-    }) prefixes;
+  selectorRoutes = import ./overlay-route-augmentation/selector.nix {
+    inherit lib helpers overlayProvisioning runtimePrefixExitNodes p2pPeerAddress defaultReachabilityVia;
+  };
+  inherit (selectorRoutes) accessOverlayDefaults;
 
   addOverlayNodeRoutesToSelector =
     nodeRole: interfaces:
@@ -174,18 +72,76 @@ let
       let nodeOverlayNames = interfaceOverlayNames interfaces;
       in
       if nodeOverlayNames == [ ] then interfaces else lib.mapAttrs (_: iface:
-        let
-          laneOverlayNames = builtins.filter (name: builtins.elem name nodeOverlayNames) (interfaceOverlayLaneNames iface);
-          routes = attrsOrEmpty (iface.routes or null);
-          extraRoutes = {
-            ipv4 = overlayEndpointRoutesVia 4 laneOverlayNames (p2pPeerAddress 4 (iface.addr4 or null));
-            ipv6 = overlayEndpointRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null));
-          };
+          let
+            laneOverlayNames = builtins.filter (name: builtins.elem name nodeOverlayNames) (interfaceOverlayLaneNames iface);
+            peer4 = p2pPeerAddress 4 (iface.addr4 or null);
+            peer6 = p2pPeerAddress 6 (iface.addr6 or null);
+            routes = attrsOrEmpty (iface.routes or null);
+            extraRoutes = {
+              ipv4 = (defaultReachabilityVia 4 peer4) ++ (overlayEndpointRoutesVia 4 laneOverlayNames peer4);
+              ipv6 = (defaultReachabilityVia 6 peer6) ++ (overlayEndpointRoutesVia 6 laneOverlayNames peer6);
+            };
         in
         if (iface.sourceKind or null) != "p2p" || laneOverlayNames == [ ] || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then iface else iface // { routes = mergeRoutes routes extraRoutes; }) interfaces;
+
+  addDelegatedOverlayDefaultRoutesToCore =
+    nodeRole: interfaces:
+    if nodeRole != "core" || runtimePrefixExitNodes == [ ] then
+      interfaces
+    else
+      lib.mapAttrs
+        (_: iface:
+          let
+            routes = attrsOrEmpty (iface.routes or null);
+            delegatedDefaults = {
+              ipv4 = delegatedOverlayDefaultRoutes 4 routes;
+              ipv6 = delegatedOverlayDefaultRoutes 6 routes;
+            };
+            cleanedRoutes =
+              routes
+              // {
+                ipv4 = withoutGenericOverlayDefaults 4 routes;
+                ipv6 = withoutGenericOverlayDefaults 6 routes;
+              };
+          in
+          if (iface.sourceKind or null) != "overlay" || (delegatedDefaults.ipv4 == [ ] && delegatedDefaults.ipv6 == [ ]) then
+            iface
+          else
+            iface // { routes = mergeRoutes cleanedRoutes delegatedDefaults; })
+        interfaces;
+
+  addRuntimePrefixReturnsToCoreOverlay =
+    nodeRole: interfaces:
+    if nodeRole != "core" then
+      interfaces
+    else
+      lib.mapAttrs
+        (_: iface:
+          let
+            overlayName = ((iface.backingRef or { }).name or null);
+            routes = attrsOrEmpty (iface.routes or null);
+            extraRoutes = {
+              ipv4 = [ ];
+              ipv6 = if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then overlayRuntimeRoutedPrefixRoutes overlayName else [ ];
+            };
+          in
+          if (iface.sourceKind or null) != "overlay" || extraRoutes.ipv6 == [ ] then
+            iface
+          else
+            iface // { routes = mergeRoutes routes extraRoutes; })
+        interfaces;
+
 in
 nodeRole: interfaces:
-let coreInterfaces = addOverlayUnderlayEndpointRoutesToCore nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces);
+let
+  selectorDefaultVia4 = defaultViaFor 4 interfaces;
+  selectorDefaultVia6 = defaultViaFor 6 interfaces;
+  coreInterfaces =
+    addRuntimePrefixReturnsToCoreOverlay nodeRole (
+      addDelegatedOverlayDefaultRoutesToCore nodeRole (
+        addOverlayUnderlayEndpointRoutesToCore nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
+      )
+    );
 in
 if nodeRole != "upstream-selector" || overlayUnderlayEndpoints == [ ] then
   coreInterfaces
@@ -193,8 +149,35 @@ else
   lib.mapAttrs
     (_: iface:
       let
+        laneOverlayNames = builtins.filter (name: builtins.elem name (sortedNames overlayProvisioning)) (interfaceOverlayLaneNames iface);
         routes = attrsOrEmpty (iface.routes or null);
-        extraRoutes = { ipv4 = underlayEndpointRoutes 4 routes; ipv6 = underlayEndpointRoutes 6 routes; };
+        policyDefaults =
+          builtins.filter
+            (route: (route.policyOnly or false) == true && ((route.intent or { }).kind or null) == "default-reachability")
+            ((listOrEmpty (routes.ipv4 or null)) ++ (listOrEmpty (routes.ipv6 or null)));
+        peer4 = p2pPeerAddress 4 (iface.addr4 or null);
+        peer6 = p2pPeerAddress 6 (iface.addr6 or null);
+        accessDefaults = accessOverlayDefaults iface coreInterfaces;
+        delegatedDefaults =
+          if (iface.sourceKind or null) == "p2p" && laneOverlayNames != [ ] then
+            {
+              ipv4 =
+                if policyDefaults != [ ] then
+                  delegatedOverlayExitDefaultsVia 4 peer4
+                else
+                  delegatedOverlayDefaultsVia 4 laneOverlayNames selectorDefaultVia4;
+              ipv6 =
+                if policyDefaults != [ ] then
+                  delegatedOverlayExitDefaultsVia 6 peer6
+                else
+                  delegatedOverlayDefaultsVia 6 laneOverlayNames selectorDefaultVia6;
+            }
+          else
+            { ipv4 = [ ]; ipv6 = [ ]; };
+        extraRoutes = {
+          ipv4 = (underlayEndpointRoutes 4 routes) ++ delegatedDefaults.ipv4 ++ accessDefaults.ipv4;
+          ipv6 = (underlayEndpointRoutes 6 routes) ++ delegatedDefaults.ipv6 ++ accessDefaults.ipv6;
+        };
       in
       if extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ] then iface else iface // { routes = mergeRoutes routes extraRoutes; })
     coreInterfaces

@@ -12,6 +12,8 @@
   bgpTopology,
   uplinkRouting,
   overlayProvisioning,
+  attachments,
+  routedPrefixesByTenant,
   buildExplicitInterfaceEntry,
   buildSyntheticUplinkInterfaceEntry,
   resolveRuntimeContainers,
@@ -89,7 +91,7 @@ let
 
   addOverlayUnderlayEndpointRoutes =
     import ./overlay-route-augmentation.nix {
-      inherit lib helpers common ipam overlayProvisioning;
+      inherit lib helpers common ipam overlayProvisioning attachments routedPrefixesByTenant;
     };
 
   buildRuntimeTarget =

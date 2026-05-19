@@ -67,6 +67,8 @@ let
       in
       if rendered == expected then true else failInventory "${entryPath}.${fieldName}" message;
 
+  toInt = value: builtins.fromJSON value;
+
   resolveAdvertisedIPv4Target = entryPath: fieldName: routerAddress: index: rawValue:
     let
       address = requireString "${entryPath}.${fieldName}[${toString index}]" rawValue;
@@ -113,19 +115,41 @@ let
 
   defaultDHCP4Pool = entryPath: subnet:
     let
-      match = if isNonEmptyString subnet then builtins.match "([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3})\\.0/24" subnet else null;
+      match =
+        if isNonEmptyString subnet then
+          builtins.match "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})/([0-9]{1,2})" subnet
+        else
+          null;
+      hostCountByPrefix = {
+        "24" = 256;
+        "25" = 128;
+        "26" = 64;
+        "27" = 32;
+        "28" = 16;
+        "29" = 8;
+        "30" = 4;
+      };
     in
     if match == null then
       failForwarding
         "${entryPath}.pool"
-        "cannot derive default DHCPv4 pool from tenant IPv4 prefix '${toString subnet}'; use a modeled /24 tenant prefix or add explicit pool realization"
+        "cannot derive default DHCPv4 pool from tenant IPv4 prefix '${toString subnet}'; expected an IPv4 CIDR with prefix length /24 through /30"
+    else if !(hasAttr (builtins.elemAt match 4) hostCountByPrefix) then
+      failForwarding
+        "${entryPath}.pool"
+        "cannot derive default DHCPv4 pool from tenant IPv4 prefix '${toString subnet}'; expected prefix length /24 through /30"
     else
       let
-        base = builtins.elemAt match 0;
+        prefix = "${builtins.elemAt match 0}.${builtins.elemAt match 1}.${builtins.elemAt match 2}";
+        hostBase = toInt (builtins.elemAt match 3);
+        prefixLength = builtins.elemAt match 4;
+        hostCount = hostCountByPrefix.${prefixLength};
+        startHost = if prefixLength == "24" then hostBase + 100 else hostBase + 2;
+        endHost = if prefixLength == "24" then hostBase + 200 else hostBase + hostCount - 2;
       in
       {
-        start = "${base}.100";
-        end = "${base}.200";
+        start = "${prefix}.${toString startHost}";
+        end = "${prefix}.${toString endHost}";
       };
 
 in
