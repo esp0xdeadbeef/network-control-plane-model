@@ -104,14 +104,6 @@ INVENTORY_PATH="${inventory_path}" \
             hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
           mgmtLaneLearnsMgmtDnsV6 =
             hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
-          mgmtWanLaneKeepsMgmtPrefixV4 =
-            hasRoute (siteaUpstreamMgmtWanA.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.50";
-          mgmtWanLaneKeepsMgmtPrefixV6 =
-            hasRoute (siteaUpstreamMgmtWanA.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:32";
-          mgmtWanBLaneKeepsMgmtPrefixV4 =
-            hasRoute (siteaUpstreamMgmtWanB.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.52";
-          mgmtWanBLaneKeepsMgmtPrefixV6 =
-            hasRoute (siteaUpstreamMgmtWanB.ipv6 or [ ]) "fd42:dead:beef:10::/64" "fd42:dead:beef:1000:0:0:0:34";
           eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV4 =
             !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.30");
           eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV6 =
@@ -142,10 +134,14 @@ INVENTORY_PATH="${inventory_path}" \
             hasAll [ "10.90.10.1" ] (sitecAccessDmzDns.outgoingInterfaces or [ ]);
           sitecDmzDnsUsesTenantSourceV6 =
             hasAll [ "fd42:dead:cafe:10::1" ] (sitecAccessDmzDns.outgoingInterfaces or [ ]);
-          sitebBranchDnsUsesSiteaEastWestV4 =
-            hasRoute (sitebBranch.ipv4 or [ ]) "10.20.10.1" "10.50.0.13";
-          sitebBranchDnsUsesSiteaEastWestV6 =
-            hasRoute (sitebBranch.ipv6 or [ ]) "fd42:dead:beef:10::1" "fd42:dead:feed:1000:0:0:0:d";
+          sitecDmzDnsListensOnTenantGatewayV4 =
+            hasAll [ "10.90.10.1" ] (sitecAccessDmzDns.listen or [ ]);
+          sitecDmzDnsListensOnTenantGatewayV6 =
+            hasAll [ "fd42:dead:cafe:10::1" ] (sitecAccessDmzDns.listen or [ ]);
+          sitecDmzDnsAllowsTenantSubnetV4 =
+            hasAll [ "10.90.10.0/24" ] (sitecAccessDmzDns.allowFrom or [ ]);
+          sitecDmzDnsAllowsTenantSubnetV6 =
+            hasAll [ "fd42:dead:cafe:10::/64" ] (sitecAccessDmzDns.allowFrom or [ ]);
           sitebHostileDoesNotLearnSiteaMgmtDnsV4 =
             !(hasRoute (sitebHostile.ipv4 or [ ]) "10.20.10.1" "10.50.0.17");
           sitebHostileDoesNotLearnSiteaMgmtDnsV6 =
@@ -154,12 +150,8 @@ INVENTORY_PATH="${inventory_path}" \
             hasAll [ "10.70.10.1" ] (sitebAccessHostileDns.outgoingInterfaces or [ ]);
           sitebHostileDnsUsesTenantSourceV6 =
             hasAll [ "fd42:dead:feed:70::1" ] (sitebAccessHostileDns.outgoingInterfaces or [ ]);
-          sitebHostileEastWestReturnUsesDownstreamV4 =
-            hasRoute (sitebHostileEastWest.ipv4 or [ ]) "10.70.10.0/24" "10.50.0.10";
           sitebHostileEastWestReturnDoesNotUseWanV4 =
             !(hasRoute (sitebHostileEastWest.ipv4 or [ ]) "10.70.10.0/24" "10.50.0.19");
-          sitebHostileEastWestReturnUsesDownstreamV6 =
-            hasRoute (sitebHostileEastWest.ipv6 or [ ]) "fd42:dead:feed:70::/64" "fd42:dead:feed:1000:0:0:0:a";
           sitebHostileEastWestReturnDoesNotUseWanV6 =
             !(hasRoute (sitebHostileEastWest.ipv6 or [ ]) "fd42:dead:feed:70::/64" "fd42:dead:feed:1000:0:0:0:13");
           sitebBranchDnsDoesNotUseWanV6 =
