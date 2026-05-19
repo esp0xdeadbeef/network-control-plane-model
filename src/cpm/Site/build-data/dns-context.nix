@@ -46,6 +46,7 @@ in
     policyDerivedDnsAllowedClassesForTenants
     policyDerivedDnsDirectEgressBlockedForListeners
     policyDerivedDnsDirectEgressBlockedForTenants
+    policyDerivedDnsForwardersForListeners
     policyDerivedDnsForwardersForTenants
     ;
 }

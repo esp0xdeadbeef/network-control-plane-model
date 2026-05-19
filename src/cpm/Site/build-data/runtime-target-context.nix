@@ -23,6 +23,7 @@
   policyDerivedDnsAllowedClassesForTenants,
   policyDerivedDnsDirectEgressBlockedForListeners,
   policyDerivedDnsDirectEgressBlockedForTenants,
+  policyDerivedDnsForwardersForListeners,
   policyDerivedDnsForwardersForTenants,
 }:
 
@@ -61,6 +62,7 @@ let
       policyDerivedDnsAllowedClassesForTenants
       policyDerivedDnsDirectEgressBlockedForListeners
       policyDerivedDnsDirectEgressBlockedForTenants
+      policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
       uniqueStrings
       ;

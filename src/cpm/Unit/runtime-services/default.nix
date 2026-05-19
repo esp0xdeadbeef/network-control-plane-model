@@ -10,6 +10,7 @@
   policyDerivedDnsAllowedClassesForTenants,
   policyDerivedDnsDirectEgressBlockedForListeners,
   policyDerivedDnsDirectEgressBlockedForTenants,
+  policyDerivedDnsForwardersForListeners,
   policyDerivedDnsForwardersForTenants,
   uniqueStrings,
 }:
@@ -96,7 +97,15 @@ let
       derivedOutgoingInterfaces =
         builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listenAddresses;
       tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
-      derivedForwarders = policyDerivedDnsForwardersForTenants tenantNames;
+      derivedForwarders = uniqueStrings (
+        (policyDerivedDnsForwardersForTenants tenantNames)
+        ++ (
+          if builtins.isList (dnsService.listen or null) then
+            policyDerivedDnsForwardersForListeners dnsService.listen
+          else
+            [ ]
+        )
+      );
       derivedAllowFrom =
         if builtins.isList (dnsService.listen or null) then policyDerivedDnsAllowFromForListeners dnsService.listen else [ ];
       derivedAllowedClasses =

@@ -2,6 +2,8 @@
   lib,
   helpers,
   common,
+  policyDerivedDnsAllowedClassesForListeners,
+  policyDerivedDnsForwardersForListeners,
 }:
 
 let
@@ -45,6 +47,14 @@ let
       listeners = advertisedDnsListeners advertisements;
       sources = advertisedDnsSources advertisements;
       existingDns = attrsOrEmpty (target.services.dns or null);
+      existingForwarders = listOrEmpty (existingDns.forwarders or null);
+      derivedForwarders = policyDerivedDnsForwardersForListeners listeners;
+      forwarders = if existingForwarders != [ ] then existingForwarders else derivedForwarders;
+      allowedUpstreamClasses =
+        lib.unique (
+          listOrEmpty (existingDns.allowedUpstreamClasses or null)
+          ++ policyDerivedDnsAllowedClassesForListeners listeners
+        );
       localContracts = builtins.map routeContractForListener listeners;
       mergedDns =
         existingDns
@@ -52,6 +62,15 @@ let
           listen = lib.unique (listOrEmpty (existingDns.listen or null) ++ listeners);
           allowFrom = lib.unique (listOrEmpty (existingDns.allowFrom or null) ++ sources);
           blockDirectEgress = true;
+          forwarders = forwarders;
+          allowedUpstreamClasses = allowedUpstreamClasses;
+          outgoingInterfaces =
+            if listOrEmpty (existingDns.outgoingInterfaces or null) != [ ] then
+              listOrEmpty (existingDns.outgoingInterfaces or null)
+            else if forwarders != [ ] then
+              builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners
+            else
+              [ ];
           routeContracts = lib.unique (listOrEmpty (existingDns.routeContracts or null) ++ localContracts);
           policyMatrix = lib.unique (listOrEmpty (existingDns.policyMatrix or null) ++ localContracts);
         };

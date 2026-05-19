@@ -16,6 +16,8 @@
   dnsServiceRouteSpecs,
   providerEndpointForServiceProvider,
   providerTenantsForServiceProvider,
+  policyDerivedDnsAllowedClassesForListeners,
+  policyDerivedDnsForwardersForListeners,
   normalizedRuntimeTargets,
 }:
 
@@ -62,7 +64,14 @@ let
     };
 
   finalizeRuntimeTargets = import ../../ControlModule/runtime-targets/finalize.nix {
-    inherit lib helpers common ipam;
+    inherit
+      lib
+      helpers
+      common
+      ipam
+      policyDerivedDnsAllowedClassesForListeners
+      policyDerivedDnsForwardersForListeners
+      ;
   };
 
   runtimeTargets =
