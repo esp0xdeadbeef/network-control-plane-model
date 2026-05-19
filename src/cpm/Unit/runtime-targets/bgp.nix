@@ -45,6 +45,7 @@ let
     builtins.isAttrs r
     && (
       intentKind == "runtime-routed-prefix-return"
+      || intentKind == "overlay-underlay-reachability"
       || (builtins.isString dst && (
       dst == (if family == 4 then "0.0.0.0/0" else "::/0")
       || proto == "uplink"
