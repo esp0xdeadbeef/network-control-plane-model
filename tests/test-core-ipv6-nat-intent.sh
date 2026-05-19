@@ -29,10 +29,11 @@ nix eval \
     in {
       checks = {
         coreNatEnabled = nat.enabled == true;
-        coreNatSeesIpv6Uplink = nat.uplinkFamilies.ipv6 == [ "ens4" ];
         coreNatEnablesIpv4 = nat.families.ipv4 == true;
-        coreNatEnablesIpv6 = nat.families.ipv6 == true;
-        coreNatMasqueradesWan = nat.masqueradeInterfaces == [ "ens4" ];
+        coreNatDoesNotInventIpv6 = nat.families.ipv6 == false;
+        coreNatMasqueradesWan4 = nat.masqueradeInterfaces4 == [ "ens4" ];
+        coreNatDoesNotMasqueradeWan6 = nat.masqueradeInterfaces6 == [ ];
+        coreNatHasNoIpv6SourcePrefixes = nat.masqueradeSourcePrefixes6 == [ ];
       };
       context = {
         node = core.logicalNode;

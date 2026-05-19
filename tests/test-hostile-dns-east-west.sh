@@ -66,10 +66,6 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
         ."p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-hostile--uplink-east-west".routes;
-    hostileIngress =
-      siteB.runtimeTargets."espbranch-site-b-b-router-policy"
-        .effectiveRuntimeRealization.interfaces
-        ."p2p-b-router-downstream-selector-b-router-policy--access-b-router-access-hostile".routes;
     hostileUpstreamCore =
       siteB.runtimeTargets."espbranch-site-b-b-router-upstream-selector"
         .effectiveRuntimeRealization.interfaces
@@ -91,10 +87,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
     {
       hostileEwHasSiteaMgmtV4 = hasDst hostileEw "10.20.10.0/24";
       hostileEwHasSiteaMgmtV6 = hasDst hostileEw "fd42:dead:beef:0010:0000:0000:0000:0000/64";
-      hostileIngressDnsUsesEastWestV4 = hasRouteVia4 hostileIngress "10.90.10.1" "10.50.0.17";
-      hostileIngressDnsUsesEastWestV6 = hasRouteVia6 hostileIngress "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:11";
-      hostileUpstreamCoreDnsUsesNebulaV4 = hasRouteVia4 hostileUpstreamCore "10.90.10.1" "10.50.0.4";
-      hostileUpstreamCoreDnsUsesNebulaV6 = hasRouteVia6 hostileUpstreamCore "fd42:dead:cafe:10::1" "fd42:dead:feed:1000:0:0:0:4";
+      hostileEwDnsUsesEastWestV4 = hasRouteVia4 hostileEw "10.90.10.0/24" "10.50.0.17";
+      hostileEwDnsUsesEastWestV6 = hasRouteVia6 hostileEw "fd42:dead:cafe:0010:0000:0000:0000:0000/64" "fd42:dead:feed:1000:0:0:0:11";
+      hostileUpstreamCoreDnsUsesNebulaV4 = hasRouteVia4 hostileUpstreamCore "10.90.10.0/24" "10.50.0.4";
+      hostileUpstreamCoreDnsUsesNebulaV6 = hasRouteVia6 hostileUpstreamCore "fd42:dead:cafe:0010:0000:0000:0000:0000/64" "fd42:dead:feed:1000:0:0:0:4";
       hostileUpstreamPolicyEastWestDoesNotLoopSitecDnsV4 = !(hasDst hostileUpstreamPolicyEastWest "10.90.10.1");
       hostileUpstreamPolicyEastWestDoesNotLoopSitecDnsV6 = !(hasDst hostileUpstreamPolicyEastWest "fd42:dead:cafe:10::1");
       hostileAccessAdsPresent = hostileAccessAds != [ ];
@@ -134,12 +130,12 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       branchUpstreamNoBranchToHostile = !(hasRule branchUpstream.rules "policy-branch" "policy-hostile");
       branchNebulaCoreNoNat = !(branchNebulaCore.natIntent.enabled);
       branchNebulaCoreNoMasquerade = branchNebulaCore.natIntent.masqueradeInterfaces == [ ];
-      branchSimulatedIspNat6 =
-        branchSimulatedIsp.natIntent.families.ipv6 == true;
-      branchSimulatedIspMasqueradesWan6 =
-        branchSimulatedIsp.natIntent.masqueradeInterfaces6 == [ "wan" ];
-      branchSimulatedIspNat6ScopesPrivateBranchOnly =
-        branchSimulatedIsp.natIntent.masqueradeSourcePrefixes6 == [ "fd42:dead:feed:10::/64" ];
+      branchSimulatedIspDoesNotInventNat6 =
+        branchSimulatedIsp.natIntent.families.ipv6 == false;
+      branchSimulatedIspDoesNotMasqueradeWan6 =
+        branchSimulatedIsp.natIntent.masqueradeInterfaces6 == [ ];
+      branchSimulatedIspHasNoNat6SourcePrefixes =
+        branchSimulatedIsp.natIntent.masqueradeSourcePrefixes6 == [ ];
     }
 ' > "${output_json}.checks"
 
