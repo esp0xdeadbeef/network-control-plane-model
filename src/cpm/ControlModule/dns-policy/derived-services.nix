@@ -43,6 +43,7 @@ in
   inherit dnsServiceRouteSpecs;
 
   policyDerivedDnsForwardersForTenants = forwarders.forTenants;
+  policyDerivedDnsForwardersForListeners = forwarders.forListeners;
   policyDerivedDnsAllowFromForListeners = forwarders.allowFromForListeners;
   policyDerivedDnsAllowedClassesForTenants = allowedClasses.forTenants;
   policyDerivedDnsAllowedClassesForListeners = allowedClasses.forListeners;

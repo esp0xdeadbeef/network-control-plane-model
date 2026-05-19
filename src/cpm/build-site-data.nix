@@ -68,6 +68,7 @@ let
     policyDerivedDnsAllowedClassesForTenants
     policyDerivedDnsDirectEgressBlockedForListeners
     policyDerivedDnsDirectEgressBlockedForTenants
+    policyDerivedDnsForwardersForListeners
     policyDerivedDnsForwardersForTenants
     providerEndpointForServiceProvider
     providerTenantsForServiceProvider
@@ -145,6 +146,7 @@ let
       policyDerivedDnsAllowedClassesForTenants
       policyDerivedDnsDirectEgressBlockedForListeners
       policyDerivedDnsDirectEgressBlockedForTenants
+      policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
       normalizeRuntimeTargetRoutes
       ;

@@ -1,8 +1,23 @@
-{ lib, helpers, common, ipam }:
+{
+  lib,
+  helpers,
+  common,
+  ipam,
+  policyDerivedDnsAllowedClassesForListeners,
+  policyDerivedDnsForwardersForListeners,
+}:
 
 let
   inherit (helpers) hasAttr sortedNames;
-  addDnsContracts = import ./dns-contracts.nix { inherit lib helpers common; };
+  addDnsContracts = import ./dns-contracts.nix {
+    inherit
+      lib
+      helpers
+      common
+      policyDerivedDnsAllowedClassesForListeners
+      policyDerivedDnsForwardersForListeners
+      ;
+  };
 in
 {
   accessAdvertisements,

@@ -9,11 +9,27 @@ let
     tenantPrefixesForName
     ;
   inherit (context)
+    allowedDnsExternalRelations
     dnsRelations
     hostedDnsServicesForListeners
     providersForService
     uniqueStrings
     ;
+
+  defaultPublicForwarders = [
+    "1.1.1.1"
+    "9.9.9.9"
+    "2606:4700:4700::1111"
+    "2620:fe::fe"
+  ];
+
+  hasServiceExternalDnsEgress = serviceName:
+    builtins.any
+      (relation:
+        builtins.isAttrs (relation.from or null)
+        && (relation.from.kind or null) == "service"
+        && (relation.from.name or null) == serviceName)
+      allowedDnsExternalRelations;
 in
 {
   forTenants = tenantNames:
@@ -31,6 +47,12 @@ in
           lib.concatMap (serviceName: lib.concatMap providerAddressesForDnsService (providersForService serviceName)) allowedDnsServices)
         tenantNames
     );
+
+  forListeners = listenAddrs:
+    let
+      hostedDnsServices = hostedDnsServicesForListeners listenAddrs;
+    in
+    if builtins.any hasServiceExternalDnsEgress hostedDnsServices then defaultPublicForwarders else [ ];
 
   allowFromForListeners = listenAddrs:
     uniqueStrings (
