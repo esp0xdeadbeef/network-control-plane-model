@@ -8,6 +8,7 @@
   policyDerivedDnsAllowFromForListeners,
   policyDerivedDnsAllowedClassesForListeners,
   policyDerivedDnsAllowedClassesForTenants,
+  policyDerivedDnsDirectEgressBlockedTenants,
   policyDerivedDnsDirectEgressBlockedForListeners,
   policyDerivedDnsDirectEgressBlockedForTenants,
   policyDerivedDnsForwardersForListeners,
@@ -115,9 +116,10 @@ let
             if builtins.isList (dnsService.listen or null) then
               policyDerivedDnsAllowedClassesForListeners dnsService.listen
             else
-              [ ]
+            [ ]
           )
         );
+      directEgressBlockedTenants = policyDerivedDnsDirectEgressBlockedTenants tenantNames;
       filteredDerivedForwarders = builtins.filter (addr: !(builtins.elem addr listenAddresses)) derivedForwarders;
       mergedForwarders =
         if explicitForwarders != [ ] then
@@ -148,6 +150,7 @@ let
         // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; }
         // lib.optionalAttrs (mergedOutgoingInterfaces != [ ]) { outgoingInterfaces = mergedOutgoingInterfaces; }
         // lib.optionalAttrs (mergedAllowedClasses != [ ]) { allowedUpstreamClasses = mergedAllowedClasses; }
+        // lib.optionalAttrs blockDirectEgress { inherit directEgressBlockedTenants; }
         // lib.optionalAttrs blockDirectEgress { blockDirectEgress = true; };
     };
 

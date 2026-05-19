@@ -9,28 +9,31 @@ let
     hostedDnsServicesForListeners
     relationPriority
     ;
+
+  blockedTenantsFor = tenantNames:
+    builtins.filter
+      (tenantName:
+        builtins.any
+          (deny:
+            let
+              denyPriority = relationPriority deny;
+              hasMatchingAllow =
+                builtins.any
+                  (allow:
+                    relationPriority allow <= denyPriority
+                    && externalEndpointsOverlap (allow.to or { }) (deny.to or { })
+                    && relationEndpointMatchesTenant tenantName (allow.from or null)
+                    && relationEndpointMatchesTenant tenantName (deny.from or null))
+                  allowedDnsExternalRelations;
+            in
+            !hasMatchingAllow && relationEndpointMatchesTenant tenantName (deny.from or null))
+          deniedDnsExternalRelations)
+      tenantNames;
 in
 {
-  blockedForTenants = tenantNames:
-    builtins.any
-      (deny:
-        let
-          denyPriority = relationPriority deny;
-          hasMatchingAllow =
-            builtins.any
-              (allow:
-                relationPriority allow <= denyPriority
-                && externalEndpointsOverlap (allow.to or { }) (deny.to or { })
-                && builtins.any
-                  (tenantName:
-                    relationEndpointMatchesTenant tenantName (allow.from or null)
-                    && relationEndpointMatchesTenant tenantName (deny.from or null))
-                  tenantNames)
-              allowedDnsExternalRelations;
-        in
-        !hasMatchingAllow
-        && builtins.any (tenantName: relationEndpointMatchesTenant tenantName (deny.from or null)) tenantNames)
-      deniedDnsExternalRelations;
+  inherit blockedTenantsFor;
+
+  blockedForTenants = tenantNames: (builtins.length (blockedTenantsFor tenantNames)) > 0;
 
   blockedForListeners = listenAddrs:
     let
