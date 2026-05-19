@@ -64,9 +64,9 @@ let
   ];
 
   defaultRoutePreference = [
-    "local-access"
-    "overlay-core"
     "service-dns"
+    "overlay-core"
+    "local-access"
     "explicit-egress-default"
   ];
 

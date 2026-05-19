@@ -128,8 +128,8 @@ def public_resolvers:
 
 def expected_dns_route_preference:
   [
-    "local-access",
-    "overlay-core",
     "service-dns",
+    "overlay-core",
+    "local-access",
     "explicit-egress-default"
   ];
