@@ -93,6 +93,7 @@ in
     cidrContainsAddress
     failForwarding
     failInventory
+    ipam
     listOrEmpty
     mergeRoutes
     uniqueStrings

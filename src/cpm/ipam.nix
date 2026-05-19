@@ -11,6 +11,7 @@ in
 {
   inherit (common) splitCIDR;
   inherit (ipv4)
+    ipv4FromInt
     ipv4NetworkBaseInt
     ipv4ToInt
     parseIPv4
