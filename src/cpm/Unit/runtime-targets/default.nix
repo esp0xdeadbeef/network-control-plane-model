@@ -240,6 +240,56 @@ let
         })
         endpoints;
 
+  overlayNodeRoutesVia =
+    family: overlayNamesForInterface: via:
+    let
+      viaField = if family == 4 then "via4" else "via6";
+      prefixField = if family == 4 then "ipv4" else "ipv6";
+      prefixes =
+        lib.unique (
+          lib.concatMap
+            (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixes.${prefixField} or null))
+            overlayNamesForInterface
+        );
+    in
+    if !isNonEmptyString via then
+      [ ]
+    else
+      builtins.map
+        (dst: {
+          inherit dst family;
+          proto = "internal";
+          intent = {
+            kind = "overlay-node-reachability";
+          };
+          ${viaField} = via;
+        })
+        prefixes;
+
+  addOverlayNodeRoutesToSelector =
+    nodeRole: interfaces:
+    if !(nodeRole == "policy" || nodeRole == "upstream-selector") then
+      interfaces
+    else
+      lib.mapAttrs
+        (_ifName: iface:
+          let
+            laneOverlayNames =
+              builtins.filter
+                (name: builtins.elem name (sortedNames overlayProvisioning))
+                (interfaceOverlayLaneNames iface);
+            routes = attrsOrEmpty (iface.routes or null);
+            extraRoutes = {
+              ipv4 = overlayNodeRoutesVia 4 laneOverlayNames (p2pPeerAddress 4 (iface.addr4 or null));
+              ipv6 = overlayNodeRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null));
+            };
+          in
+          if (iface.sourceKind or null) != "p2p" || laneOverlayNames == [ ] || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then
+            iface
+          else
+            iface // { routes = mergeRoutes routes extraRoutes; })
+        interfaces;
+
   addOverlayUnderlayEndpointRoutesToCore =
     nodeRole: interfaces:
     if nodeRole != "core" || overlayUnderlayEndpoints == [ ] then
@@ -270,7 +320,8 @@ let
   addOverlayUnderlayEndpointRoutes =
     nodeRole: interfaces:
     let
-      coreInterfaces = addOverlayUnderlayEndpointRoutesToCore nodeRole interfaces;
+      selectorInterfaces = addOverlayNodeRoutesToSelector nodeRole interfaces;
+      coreInterfaces = addOverlayUnderlayEndpointRoutesToCore nodeRole selectorInterfaces;
     in
     if nodeRole != "upstream-selector" || overlayUnderlayEndpoints == [ ] then
       coreInterfaces
