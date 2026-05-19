@@ -85,6 +85,7 @@ let
       siteAttrs
       inventoryAttrs
       allSiteEntries
+      attachments
       domains
       uplinkNames
       resolveRoutedPrefixes

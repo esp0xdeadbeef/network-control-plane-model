@@ -93,6 +93,8 @@ let
       bgpTopology
       uplinkRouting
       overlayProvisioning
+      attachments
+      routedPrefixesByTenant
       buildExplicitInterfaceEntry
       buildSyntheticUplinkInterfaceEntry
       ;

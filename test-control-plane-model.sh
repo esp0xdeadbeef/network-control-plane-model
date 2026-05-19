@@ -15,6 +15,7 @@ fi
 "$ROOT/tests/test-upstream-selector-nebula-underlay-core-transit.sh"
 "$ROOT/tests/test-runtime-underlay-endpoint-source-routes.sh"
 "$ROOT/tests/test-transit-default-routes-are-classified.sh"
+"$ROOT/tests/test-small-prefix-dhcp-pools.sh"
 "$ROOT/tests/test-network-labs-inventory-sweep.sh"
 
 if command -v jq >/dev/null 2>&1; then

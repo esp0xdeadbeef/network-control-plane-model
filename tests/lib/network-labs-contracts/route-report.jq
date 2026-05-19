@@ -25,7 +25,7 @@ def route_shape_violations:
       $route.family == "ipv6"
       and (($route.data.sourceFile // "") != "")
       and (($intent.kind // "") == "runtime-routed-prefix-return")
-      and (($intent.source // "") == "inventory-routed-prefix")
+      and ((($intent.source // "") == "inventory-routed-prefix") or (($intent.source // "") == "intent-routed-prefix"))
     ) as $isRuntimeRoutedPrefixReturn
   | (
       (($route.data.sourceFile // "") != "")
@@ -82,7 +82,7 @@ def default_route_lane_violations:
   | select($access != "")
   | if ($overlayIndex != null and $delegatedIndex == null) then
       violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "overlay default route on non-delegated access " + $access + " via " + $uplink)
-    elif ($family.family == "ipv6" and $delegatedIndex != null and $uplink != "" and $overlayIndex == null) then
+    elif (($overlays | length) > 0 and $family.family == "ipv6" and $delegatedIndex != null and $uplink != "" and $overlayIndex == null) then
       violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "delegated IPv6 default prefers non-overlay access " + $access + " via " + $uplink)
     else
       empty

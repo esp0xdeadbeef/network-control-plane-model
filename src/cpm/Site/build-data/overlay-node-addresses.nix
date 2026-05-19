@@ -9,6 +9,7 @@
   addressSourcePolicy,
   ipamV4Prefix,
   ipamV6Prefix,
+  overlayNodeIpamCfg,
   overlayNodesCfg,
   overlayPath,
   terminateOn,
@@ -21,8 +22,8 @@ let
   overlayNodeNames = lib.sort (a: b: a < b) (uniqueStrings (terminateOn ++ sortedNames overlayNodesCfg));
 
   requireOverlayAddr =
-    { field, nodeCfg, nodeName }:
-    let value = nodeCfg.${field} or null;
+    { field, nodeCfg, nodeIpamCfg, nodeName }:
+    let value = nodeIpamCfg.${field} or (nodeCfg.${field} or null);
     in
     if isNonEmptyString value then
       value
@@ -37,8 +38,9 @@ let
         (nodeName:
           let
             nodeCfg = attrsOrEmpty (overlayNodesCfg.${nodeName} or null);
-            addr4 = requireOverlayAddr { field = "addr4"; inherit nodeCfg nodeName; };
-            addr6 = requireOverlayAddr { field = "addr6"; inherit nodeCfg nodeName; };
+            nodeIpamCfg = attrsOrEmpty (overlayNodeIpamCfg.${nodeName} or null);
+            addr4 = requireOverlayAddr { field = "addr4"; inherit nodeCfg nodeIpamCfg nodeName; };
+            addr6 = requireOverlayAddr { field = "addr6"; inherit nodeCfg nodeIpamCfg nodeName; };
             _addr4InPool = addressPolicy.validateAddress {
               address = addr4;
               family = 4;
@@ -61,14 +63,12 @@ let
               // addressPolicy.sourceMetadata {
                 address = addr4;
                 family = 4;
-                inherit addressSourcePolicy nodeCfg overlayPath;
-                nodeIpamCfg = { };
+                inherit addressSourcePolicy nodeCfg nodeIpamCfg overlayPath;
               }
               // addressPolicy.sourceMetadata {
                 address = addr6;
                 family = 6;
-                inherit addressSourcePolicy nodeCfg overlayPath;
-                nodeIpamCfg = { };
+                inherit addressSourcePolicy nodeCfg nodeIpamCfg overlayPath;
               };
           }))
         overlayNodeNames

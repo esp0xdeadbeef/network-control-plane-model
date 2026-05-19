@@ -57,6 +57,7 @@ let
             );
 
             overlayNodesCfg = attrsOrEmpty (cfg.nodes or null);
+            overlayNodeIpamCfg = attrsOrEmpty ((attrsOrEmpty (cfg.ipam or null)).nodes or null);
             forwardingIpamCfg = attrsOrEmpty (forwardingOverlayPools.${overlayName} or null);
 
             overlayIpamV4 = attrsOrEmpty (forwardingIpamCfg.ipv4 or null);
@@ -90,6 +91,7 @@ let
                 addressSourcePolicy
                 ipamV4Prefix
                 ipamV6Prefix
+                overlayNodeIpamCfg
                 overlayNodesCfg
                 overlayPath
                 terminateOn
