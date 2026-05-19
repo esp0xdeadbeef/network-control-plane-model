@@ -3,9 +3,11 @@
   helpers,
   common,
   ipam,
+  inventoryAttrs,
   siteAttrs,
   siteOverlays,
   sitePath,
+  enterpriseName,
 }:
 
 let
@@ -30,6 +32,35 @@ let
   overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
   forwardingOverlayPools = attrsOrEmpty (siteAttrs.overlayAddressPools or null);
   overlayNames = sortedNames overlayReachability;
+  enterpriseControlPlaneSites =
+    let
+      cp = attrsOrEmpty (inventoryAttrs.controlPlane or null);
+      sites = attrsOrEmpty (cp.sites or null);
+    in
+    attrsOrEmpty (sites.${enterpriseName} or null);
+
+  overlayNodePrefixesFor =
+    overlayName:
+    let
+      siteOverlayNodes =
+        lib.concatMap
+          (siteKey:
+            let
+              siteCfg = attrsOrEmpty (enterpriseControlPlaneSites.${siteKey} or null);
+              overlays = attrsOrEmpty (siteCfg.overlays or null);
+              overlayCfg = attrsOrEmpty (overlays.${overlayName} or null);
+            in
+            builtins.attrValues (attrsOrEmpty (overlayCfg.nodes or null)))
+          (sortedNames enterpriseControlPlaneSites);
+      nodeAddr = family: node:
+        let field = if family == 4 then "addr4" else "addr6";
+        in node.${field} or null;
+      valid = value: builtins.isString value && value != "";
+    in
+    {
+      ipv4 = uniqueStrings (builtins.filter valid (map (nodeAddr 4) siteOverlayNodes));
+      ipv6 = uniqueStrings (builtins.filter valid (map (nodeAddr 6) siteOverlayNodes));
+    };
 
   overlayProvisioning =
     builtins.listToAttrs (
@@ -84,6 +115,7 @@ let
                 terminateOn
                 ;
             };
+            overlayNodePrefixes = overlayNodePrefixesFor overlayName;
           in
           {
             name = overlayName;
@@ -94,6 +126,7 @@ let
                 peerSites = listOrEmpty (ov.peerSites or null);
                 terminateOn = terminateOn;
                 nodes = overlayNodeAddrs;
+                nodeRoutePrefixes = overlayNodePrefixes;
               }
               // (
                 if ipamV4Prefix != null || ipamV6Prefix != null then
