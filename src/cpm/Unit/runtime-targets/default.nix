@@ -11,6 +11,7 @@
   bgpSiteAsn,
   bgpTopology,
   uplinkRouting,
+  overlayProvisioning,
   buildExplicitInterfaceEntry,
   buildSyntheticUplinkInterfaceEntry,
   resolveRuntimeContainers,
@@ -23,7 +24,7 @@
 
 let
   inherit (helpers) hasAttr isNonEmptyString logicalKey requireAttrs requireString sortedNames;
-  inherit (common) attrsOrEmpty failInventory;
+  inherit (common) attrsOrEmpty failInventory listOrEmpty mergeRoutes;
 
   defaultPortBindings = {
     byLink = { };
@@ -86,6 +87,83 @@ let
             ])
         (sortedNames effectiveRuntimeInterfaces);
 
+  overlayUnderlayEndpoints =
+    let
+      keyed =
+        builtins.listToAttrs (
+          builtins.map
+            (endpoint: {
+              name = "${toString (endpoint.family or "")}|${endpoint.sourceFile or ""}";
+              value = endpoint;
+            })
+            (
+              builtins.filter
+                (endpoint: builtins.isAttrs endpoint && isNonEmptyString (endpoint.sourceFile or null))
+                (lib.concatLists (
+                  builtins.map
+                    (overlayName:
+                      builtins.map
+                        (endpoint: endpoint // { overlay = overlayName; })
+                        (builtins.filter builtins.isAttrs (listOrEmpty (overlayProvisioning.${overlayName}.underlayEndpoints or null))))
+                    (sortedNames overlayProvisioning)
+                ))
+            )
+        );
+    in
+    builtins.map (key: keyed.${key}) (sortedNames keyed);
+
+  defaultViaRoutes =
+    family: routes:
+    builtins.filter
+      (route:
+        ((route.intent or { }).kind or null) == "default-reachability"
+        && (route.${if family == 4 then "via4" else "via6"} or null) != null)
+      (listOrEmpty (routes.${if family == 4 then "ipv4" else "ipv6"} or null));
+
+  underlayEndpointRoutes =
+    family: routes:
+    let
+      viaField = if family == 4 then "via4" else "via6";
+      defaults = defaultViaRoutes family routes;
+      endpoints = builtins.filter (endpoint: (endpoint.family or null) == family && isNonEmptyString (endpoint.sourceFile or null)) overlayUnderlayEndpoints;
+    in
+    lib.concatMap
+      (defaultRoute:
+        builtins.map
+          (endpoint: {
+            family = family;
+            sourceFile = endpoint.sourceFile;
+            proto = "underlay";
+            overlay = endpoint.overlay;
+            intent = {
+              kind = "overlay-underlay-reachability";
+              source = "overlay-underlay-endpoint";
+            };
+            ${viaField} = defaultRoute.${viaField};
+          })
+          endpoints)
+      defaults;
+
+  addOverlayUnderlayEndpointRoutes =
+    nodeRole: interfaces:
+    if nodeRole != "upstream-selector" || overlayUnderlayEndpoints == [ ] then
+      interfaces
+    else
+      lib.mapAttrs
+        (_ifName: iface:
+          let
+            routes = attrsOrEmpty (iface.routes or null);
+            extraRoutes = {
+              ipv4 = underlayEndpointRoutes 4 routes;
+              ipv6 = underlayEndpointRoutes 6 routes;
+            };
+          in
+          if extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ] then
+            iface
+          else
+            iface // { routes = mergeRoutes routes extraRoutes; })
+        interfaces;
+
   buildRuntimeTarget =
     nodeName:
     let
@@ -112,7 +190,7 @@ let
         builtins.map
           (uplinkName: buildSyntheticUplinkInterfaceEntry { inherit nodeName uplinkName portBindings targetHostName targetId realizedTarget; uplinkValue = uplinkAttrs.${uplinkName}; })
           (builtins.filter (uplinkName: !hasExplicitWANForUplink nodeInterfaces uplinkName) (sortedNames uplinkAttrs));
-      runtimeInterfaces = builtins.listToAttrs (explicitEntries ++ syntheticEntries);
+      runtimeInterfaces = addOverlayUnderlayEndpointRoutes nodeRole (builtins.listToAttrs (explicitEntries ++ syntheticEntries));
       effectiveRuntimeInterfaces = if isBgpRouter then lib.mapAttrs (_: iface: iface // { routes = filterRoutesForBgp (iface.routes or { }); }) runtimeInterfaces else runtimeInterfaces;
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
       placement =

@@ -90,6 +90,7 @@ let
       bgpSiteAsn
       bgpTopology
       uplinkRouting
+      overlayProvisioning
       buildExplicitInterfaceEntry
       buildSyntheticUplinkInterfaceEntry
       ;
