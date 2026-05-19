@@ -32,6 +32,7 @@
   policyDerivedDnsAllowFromForListeners,
   policyDerivedDnsAllowedClassesForListeners,
   policyDerivedDnsAllowedClassesForTenants,
+  policyDerivedDnsDirectEgressBlockedTenants,
   policyDerivedDnsDirectEgressBlockedForListeners,
   policyDerivedDnsDirectEgressBlockedForTenants,
   policyDerivedDnsForwardersForListeners,
@@ -66,6 +67,7 @@ let
       policyDerivedDnsAllowFromForListeners
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsAllowedClassesForTenants
+      policyDerivedDnsDirectEgressBlockedTenants
       policyDerivedDnsDirectEgressBlockedForListeners
       policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForListeners

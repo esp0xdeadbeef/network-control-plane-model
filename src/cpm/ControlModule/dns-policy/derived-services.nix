@@ -47,6 +47,7 @@ in
   policyDerivedDnsAllowFromForListeners = forwarders.allowFromForListeners;
   policyDerivedDnsAllowedClassesForTenants = allowedClasses.forTenants;
   policyDerivedDnsAllowedClassesForListeners = allowedClasses.forListeners;
+  policyDerivedDnsDirectEgressBlockedTenants = directEgress.blockedTenantsFor;
   policyDerivedDnsDirectEgressBlockedForTenants = directEgress.blockedForTenants;
   policyDerivedDnsDirectEgressBlockedForListeners = directEgress.blockedForListeners;
 }

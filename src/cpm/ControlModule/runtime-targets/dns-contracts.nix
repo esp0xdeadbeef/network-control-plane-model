@@ -62,6 +62,7 @@ let
           listen = lib.unique (listOrEmpty (existingDns.listen or null) ++ listeners);
           allowFrom = lib.unique (listOrEmpty (existingDns.allowFrom or null) ++ sources);
           blockDirectEgress = true;
+          directEgressBlockedTenants = listOrEmpty (existingDns.directEgressBlockedTenants or null);
           forwarders = forwarders;
           allowedUpstreamClasses = allowedUpstreamClasses;
           outgoingInterfaces =

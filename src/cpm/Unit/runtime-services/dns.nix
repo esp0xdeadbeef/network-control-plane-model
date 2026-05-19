@@ -133,6 +133,8 @@ in
           normalizeStringList dnsPath dns "deniedResolverCidrs"
         else
           publicResolverCidrs;
+      directEgressBlockedTenants =
+        if dns ? directEgressBlockedTenants then normalizeStringList dnsPath dns "directEgressBlockedTenants" else null;
       routeContracts = requireList "${dnsPath}.routeContracts" (dns.routeContracts or [ ]);
       policyMatrix = requireList "${dnsPath}.policyMatrix" (dns.policyMatrix or [ ]);
       localZones =
@@ -175,13 +177,13 @@ in
           (requireList path value);
     in
     builtins.seq _forwarderConflict (
-      builtins.seq _killSwitchNoPublicFallback (
-      { }
+      builtins.seq _killSwitchNoPublicFallback ({ }
       // { implementation = "unbound"; }
       // lib.optionalAttrs (listen != [ ]) { inherit listen; }
       // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
       // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }
       // lib.optionalAttrs (outgoingInterfaces != [ ]) { inherit outgoingInterfaces; }
+      // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
       // {
         inherit
           allowedUpstreamClasses
@@ -194,6 +196,5 @@ in
       }
       // lib.optionalAttrs (localZones != [ ]) { inherit localZones; }
       // lib.optionalAttrs (localRecords != [ ]) { inherit localRecords; }
-      )
-    );
+      ));
 }
