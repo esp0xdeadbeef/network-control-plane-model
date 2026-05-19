@@ -63,6 +63,15 @@ let
       runtimeTargets = normalizedRuntimeTargets;
     };
 
+  routeDnsServiceReachability = import ../../ControlModule/runtime-targets/dns-service-routes.nix {
+    inherit lib common;
+  };
+
+  routeAugmentedRuntimeTargets =
+    routeDnsServiceReachability {
+      inherit firewallIntent normalizedRuntimeTargets;
+    };
+
   finalizeRuntimeTargets = import ../../ControlModule/runtime-targets/finalize.nix {
     inherit
       lib
@@ -76,7 +85,8 @@ let
 
   runtimeTargets =
     finalizeRuntimeTargets {
-      inherit accessAdvertisements firewallIntent normalizedRuntimeTargets;
+      inherit accessAdvertisements firewallIntent;
+      normalizedRuntimeTargets = routeAugmentedRuntimeTargets;
     };
 
 in

@@ -24,6 +24,13 @@ let
     let accessNodes = serviceAccessNodes endpoint;
     in builtins.filter (iface: builtins.elem (common.laneAccess iface) accessNodes) policyInterfaces;
 
+  servicePolicyInterfacesForExternal = fromEndpoint: toEndpoint:
+    let
+      wantedUplinks = externalUplinks fromEndpoint;
+      candidates = servicePolicyInterfacesFor toEndpoint;
+    in
+    builtins.filter (iface: builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wantedUplinks) candidates;
+
   hasOverlayUnderlayEndpointRoute = overlayName: iface:
     builtins.any
       (route:
@@ -100,7 +107,7 @@ in
     if (relation.action or "allow") != "allow" || (fromEndpoint.kind or null) != "external" || (toEndpoint.kind or null) != "service" then
       [ ]
     else
-      pairRules relation (coreInterfacesFor fromEndpoint) (servicePolicyInterfacesFor toEndpoint) { };
+      pairRules relation (coreInterfacesFor fromEndpoint) (servicePolicyInterfacesForExternal fromEndpoint toEndpoint) { };
 
   runtimeRoutedPrefixPublicEgressRules =
     let

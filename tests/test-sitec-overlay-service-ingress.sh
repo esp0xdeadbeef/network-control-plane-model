@@ -45,12 +45,14 @@ in
   builtins.elem "10.20.70.0/24" (dns.allowFrom or [ ])
   && builtins.elem "fd42:dead:beef:70::/64" (dns.allowFrom or [ ])
   && hasRoute4 (nebulaCoreIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.11"
+  && hasRoute4 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "10.90.10.0/24" "10.80.0.14"
+  && hasRoute6 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "fd42:dead:cafe:0010:0000:0000:0000:0000/64" "fd42:dead:cafe:1000:0:0:0:e"
   && hasRoute4 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "10.20.70.0/24" "10.80.0.10"
   && hasRoute4 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "100.96.10.1/32" "10.80.0.10"
   && hasRoute4 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4 or [ ]) "100.96.10.3/32" "10.80.0.10"
   && hasRoute6 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "fd42:dead:beef:ee::1/128" "fd42:dead:cafe:1000:0:0:0:a"
   && hasRoute6 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "fd42:dead:beef:ee::3/128" "fd42:dead:cafe:1000:0:0:0:a"
-  && hasRule upstreamRules "allow-overlay-to-hostile-public-dns" "core-nebula" "policy-dmz-wan"
+  && hasRule upstreamRules "allow-overlay-to-hostile-public-dns" "core-nebula" "pol-dmz-ew"
   && hasRule policyRules "allow-overlay-to-hostile-public-dns" "up-dmz-ew" "downstream-dmz"
 '
 
