@@ -24,7 +24,7 @@
 
 let
   inherit (helpers) hasAttr isNonEmptyString logicalKey requireAttrs requireString sortedNames;
-  inherit (common) attrsOrEmpty failInventory listOrEmpty mergeRoutes;
+  inherit (common) attrsOrEmpty failInventory ipam listOrEmpty mergeRoutes;
 
   defaultPortBindings = {
     byLink = { };
@@ -144,10 +144,136 @@ let
           endpoints)
       defaults;
 
+  p2pPeerAddress =
+    family: cidr:
+    let
+      parsed = if builtins.isString cidr then ipam.splitCIDR cidr else null;
+      expectedPrefixLen = if family == 4 then 31 else 127;
+      parsedAddress =
+        if parsed == null || parsed.prefixLen != expectedPrefixLen then
+          null
+        else if family == 4 then
+          ipam.parseIPv4 parsed.addr
+        else
+          ipam.parseIPv6 parsed.addr;
+      ipv4PeerInt =
+        if parsedAddress == null || family != 4 then
+          null
+        else
+          let addrInt = ipam.ipv4ToInt parsedAddress;
+          in if lib.mod addrInt 2 == 0 then addrInt + 1 else addrInt - 1;
+      ipv6Peer =
+        if parsedAddress == null || family != 6 then
+          null
+        else
+          let
+            lastIdx = 7;
+            last = builtins.elemAt parsedAddress lastIdx;
+            peerLast = if lib.mod last 2 == 0 then last + 1 else last - 1;
+          in
+          builtins.genList (idx: if idx == lastIdx then peerLast else builtins.elemAt parsedAddress idx) 8;
+    in
+    if parsedAddress == null then
+      null
+    else if family == 4 then
+      ipam.renderIPv4 (ipam.ipv4FromInt ipv4PeerInt)
+    else
+      ipam.renderIPv6 ipv6Peer;
+
+  interfaceOverlayLaneNames =
+    iface:
+    let
+      lane = ((iface.backingRef or { }).lane or { });
+      uplinks = listOrEmpty (lane.uplinks or null);
+      single = lane.uplink or null;
+    in
+    if (lane.kind or null) != "uplink" then
+      [ ]
+    else
+      uplinks ++ (if isNonEmptyString single then [ single ] else [ ]);
+
+  interfaceOverlayNames =
+    interfaces:
+    builtins.filter
+      (overlayName: hasAttr overlayName overlayProvisioning)
+      (
+        lib.unique (
+          lib.concatMap
+            (ifName:
+              let
+                iface = interfaces.${ifName};
+              in
+              if (iface.sourceKind or null) == "overlay" then
+                [ ((iface.backingRef or { }).name or null) ]
+              else
+                [ ])
+            (sortedNames interfaces)
+        )
+      );
+
+  overlayEndpointRoutesVia =
+    family: overlayNamesForInterface: via:
+    let
+      viaField = if family == 4 then "via4" else "via6";
+      endpoints =
+        builtins.filter
+          (endpoint:
+            (endpoint.family or null) == family
+            && isNonEmptyString (endpoint.sourceFile or null)
+            && builtins.elem (endpoint.overlay or null) overlayNamesForInterface)
+          overlayUnderlayEndpoints;
+    in
+    if !isNonEmptyString via then
+      [ ]
+    else
+      builtins.map
+        (endpoint: {
+          family = family;
+          sourceFile = endpoint.sourceFile;
+          proto = "underlay";
+          overlay = endpoint.overlay;
+          intent = {
+            kind = "overlay-underlay-reachability";
+            source = "overlay-underlay-endpoint";
+          };
+          ${viaField} = via;
+        })
+        endpoints;
+
+  addOverlayUnderlayEndpointRoutesToCore =
+    nodeRole: interfaces:
+    if nodeRole != "core" || overlayUnderlayEndpoints == [ ] then
+      interfaces
+    else
+      let
+        nodeOverlayNames = interfaceOverlayNames interfaces;
+      in
+      if nodeOverlayNames == [ ] then
+        interfaces
+      else
+        lib.mapAttrs
+          (_ifName: iface:
+            let
+              laneOverlayNames = builtins.filter (name: builtins.elem name nodeOverlayNames) (interfaceOverlayLaneNames iface);
+              routes = attrsOrEmpty (iface.routes or null);
+              extraRoutes = {
+                ipv4 = overlayEndpointRoutesVia 4 laneOverlayNames (p2pPeerAddress 4 (iface.addr4 or null));
+                ipv6 = overlayEndpointRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null));
+              };
+            in
+            if (iface.sourceKind or null) != "p2p" || laneOverlayNames == [ ] || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then
+              iface
+            else
+              iface // { routes = mergeRoutes routes extraRoutes; })
+          interfaces;
+
   addOverlayUnderlayEndpointRoutes =
     nodeRole: interfaces:
+    let
+      coreInterfaces = addOverlayUnderlayEndpointRoutesToCore nodeRole interfaces;
+    in
     if nodeRole != "upstream-selector" || overlayUnderlayEndpoints == [ ] then
-      interfaces
+      coreInterfaces
     else
       lib.mapAttrs
         (_ifName: iface:
@@ -162,7 +288,7 @@ let
             iface
           else
             iface // { routes = mergeRoutes routes extraRoutes; })
-        interfaces;
+        coreInterfaces;
 
   buildRuntimeTarget =
     nodeName:
