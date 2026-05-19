@@ -48,9 +48,9 @@ Required CPM output per access runtime target:
   services.dns.killSwitch.blockImplicitDefaultRouteDns = true
   services.dns.killSwitch.allowPublicResolverFallback = false
   services.dns.routePreference = [
-    "local-access"
-    "overlay-core"
     "service-dns"
+    "overlay-core"
+    "local-access"
     "explicit-egress-default"
   ]
   services.dns.allowedUpstreamClasses = <from ${expected_path}>
@@ -113,9 +113,9 @@ OUTPUT_JSON="${output_json}" EXPECTED_JSON="${expected_path}" nix eval --impure 
     runtimeTargets = site.runtimeTargets or { };
 
     routePreference = [
-      "local-access"
-      "overlay-core"
       "service-dns"
+      "overlay-core"
+      "local-access"
       "explicit-egress-default"
     ];
 
