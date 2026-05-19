@@ -266,6 +266,32 @@ let
         })
         prefixes;
 
+  overlayRuntimeRoutedPrefixRoutesVia =
+    overlayNamesForInterface: via:
+    let
+      prefixes =
+        lib.unique (
+          lib.concatMap
+            (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.peerRuntimeRoutedPrefixes or null))
+            overlayNamesForInterface
+        );
+    in
+    if !isNonEmptyString via then
+      [ ]
+    else
+      builtins.map
+        (prefix:
+          prefix
+          // {
+            proto = "overlay";
+            intent = {
+              kind = "runtime-routed-prefix-return";
+              source = "intent-routed-prefix";
+            };
+            via6 = via;
+          })
+        prefixes;
+
   addOverlayNodeRoutesToSelector =
     nodeRole: interfaces:
     if !(nodeRole == "policy" || nodeRole == "upstream-selector") then
@@ -281,7 +307,9 @@ let
             routes = attrsOrEmpty (iface.routes or null);
             extraRoutes = {
               ipv4 = overlayNodeRoutesVia 4 laneOverlayNames (p2pPeerAddress 4 (iface.addr4 or null));
-              ipv6 = overlayNodeRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null));
+              ipv6 =
+                (overlayNodeRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)))
+                ++ (overlayRuntimeRoutedPrefixRoutesVia laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)));
             };
           in
           if (iface.sourceKind or null) != "p2p" || laneOverlayNames == [ ] || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then

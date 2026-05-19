@@ -83,6 +83,7 @@ let
       sitePath
       siteAttrs
       inventoryAttrs
+      allSiteEntries
       domains
       uplinkNames
       resolveRoutedPrefixes

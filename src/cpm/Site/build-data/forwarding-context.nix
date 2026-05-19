@@ -9,6 +9,7 @@
   sitePath,
   siteAttrs,
   inventoryAttrs,
+  allSiteEntries,
   domains,
   uplinkNames,
 }:
@@ -18,7 +19,7 @@ let
     inherit helpers common inventoryAttrs siteAttrs enterpriseName siteName uplinkNames;
   };
   overlayData = import ./overlay-provisioning.nix {
-    inherit lib helpers common ipam inventoryAttrs siteAttrs sitePath enterpriseName;
+    inherit lib helpers common ipam inventoryAttrs siteAttrs sitePath enterpriseName allSiteEntries;
     inherit (controlPlane) siteOverlays;
   };
   routeNormalizer = import ./normalize-runtime-routes.nix { inherit common; };
