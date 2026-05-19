@@ -464,6 +464,7 @@ run_external_examples
 bash "${repo_root}/tests/test-dual-wan-branch-overlay.sh"
 bash "${repo_root}/tests/test-hostile-dns-east-west.sh"
 bash "${repo_root}/tests/test-dns-service-policy-routes.sh"
+bash "${repo_root}/tests/test-access-dns-router-self-listeners.sh"
 bash "${repo_root}/tests/test-no-default-reachability-name-inference.sh"
 bash "${repo_root}/tests/test-no-dns-route-peer-fallback.sh"
 bash "${repo_root}/tests/test-core-ipv6-nat-intent.sh"

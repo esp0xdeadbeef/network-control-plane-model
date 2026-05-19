@@ -44,19 +44,26 @@ let
       advertisements = attrsOrEmpty (target.advertisements or null);
       listeners = advertisedDnsListeners advertisements;
       sources = advertisedDnsSources advertisements;
+      existingDns = attrsOrEmpty (target.services.dns or null);
       localContracts = builtins.map routeContractForListener listeners;
+      mergedDns =
+        existingDns
+        // {
+          listen = lib.unique (listOrEmpty (existingDns.listen or null) ++ listeners);
+          allowFrom = lib.unique (listOrEmpty (existingDns.allowFrom or null) ++ sources);
+          blockDirectEgress = true;
+          routeContracts = lib.unique (listOrEmpty (existingDns.routeContracts or null) ++ localContracts);
+          policyMatrix = lib.unique (listOrEmpty (existingDns.policyMatrix or null) ++ localContracts);
+        };
     in
-    if (target.role or null) != "access" || listeners == [ ] || attrsOrEmpty (target.services.dns or null) != { } then
+    if (target.role or null) != "access" || listeners == [ ] then
       target
     else
       target
       // {
         services = (attrsOrEmpty (target.services or null)) // {
-          dns = normalizeDnsService "runtimeTargets.${target.logicalNode.name or "access"}.services" {
-            listen = listeners;
-            allowFrom = sources;
-            routeContracts = localContracts;
-            policyMatrix = localContracts;
+          dns = (normalizeDnsService "runtimeTargets.${target.logicalNode.name or "access"}.services" mergedDns) // {
+            blockDirectEgress = true;
           };
         };
       };
