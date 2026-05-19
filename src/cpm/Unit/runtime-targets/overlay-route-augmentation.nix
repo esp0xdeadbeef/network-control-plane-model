@@ -131,15 +131,22 @@ let
             iface // { routes = mergeRoutes routes extraRoutes; })
         interfaces;
 
+  addRuntimePrefixReturnsToWanCore =
+    import ./overlay-route-augmentation/wan-core-returns.nix {
+      inherit lib helpers common overlayProvisioning p2pPeerAddress;
+    };
+
 in
 nodeRole: interfaces:
 let
   selectorDefaultVia4 = defaultViaFor 4 interfaces;
   selectorDefaultVia6 = defaultViaFor 6 interfaces;
   coreInterfaces =
-    addRuntimePrefixReturnsToCoreOverlay nodeRole (
-      addDelegatedOverlayDefaultRoutesToCore nodeRole (
-        addOverlayUnderlayEndpointRoutesToCore nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
+    addRuntimePrefixReturnsToWanCore nodeRole (
+      addRuntimePrefixReturnsToCoreOverlay nodeRole (
+        addDelegatedOverlayDefaultRoutesToCore nodeRole (
+          addOverlayUnderlayEndpointRoutesToCore nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
+        )
       )
     );
 in
