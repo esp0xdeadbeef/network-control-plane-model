@@ -18,11 +18,7 @@ let
         inherit family;
         dst = route.dst or null;
         intent = route.intent or null;
-        lane =
-          if (route.dst or null) == defaultDst family then
-            null
-          else
-            route.lane or null;
+        lane = route.lane or null;
         metric = route.metric or null;
         policyOnly = route.policyOnly or null;
         proto = route.proto or null;

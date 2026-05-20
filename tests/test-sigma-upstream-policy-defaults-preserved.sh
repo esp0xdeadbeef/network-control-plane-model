@@ -39,12 +39,15 @@ jq -e '
   def default6: map(select(.dst == "::/0"));
   def lanes($uplink):
     map(select((.lane.uplink // "") == $uplink) | .lane.access) | sort;
+  def delegatedExitNodes:
+    map(select((.intent.kind // "") == "delegated-public-egress") | .intent.exitNode) | sort;
   def expect($actual; $expected):
     if $actual == $expected then true
     else error("expected " + ($expected | @json) + " got " + ($actual | @json))
     end;
 
-  .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-upstream"
+  . as $root
+  | .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-upstream"
     .effectiveRuntimeRealization.interfaces as $ifs
   | ($ifs."p2p-nixos-router-core-isp-a-nixos-router-upstream".routes.ipv4 | default4) as $a4
   | ($ifs."p2p-nixos-router-core-isp-a-nixos-router-upstream".routes.ipv6 | default6) as $a6
@@ -52,13 +55,25 @@ jq -e '
   | ($ifs."p2p-nixos-router-core-isp-b-nixos-router-upstream".routes.ipv6 | default6) as $b6
   | ($ifs."p2p-nixos-router-core-nebula-nixos-router-upstream".routes.ipv4 | default4) as $ew4
   | ($ifs."p2p-nixos-router-core-nebula-nixos-router-upstream".routes.ipv6 | default6) as $ew6
-  | ["nixos-router-access-admin", "nixos-router-access-client", "nixos-router-access-dmz", "nixos-router-access-mgmt", "nixos-router-access-streaming"] as $normalAccess
+  | ["nixos-router-access-admin", "nixos-router-access-client", "nixos-router-access-mgmt", "nixos-router-access-streaming"] as $normalAccess
   | expect(($a4 | lanes("isp-a")); $normalAccess)
   | expect(($a6 | lanes("isp-a")); $normalAccess)
   | expect(($b4 | lanes("isp-b")); $normalAccess)
   | expect(($b6 | lanes("isp-b")); $normalAccess)
   | expect(($ew4 | lanes("east-west")); ["nixos-router-access-hostile"])
   | expect(($ew6 | lanes("east-west")); ["nixos-router-access-hostile"])
+
+  | $root.control_plane_model.data.esp.clab.runtimeTargets."esp-clab-router-upstream"
+      .effectiveRuntimeRealization.interfaces as $clabIfs
+  | ($clabIfs."p2p-clab-router-core-simulated-isp-clab-router-upstream".routes.ipv4 | default4) as $clabWan4
+  | ($clabIfs."p2p-clab-router-core-simulated-isp-clab-router-upstream".routes.ipv6 | default6) as $clabWan6
+  | ($clabIfs."p2p-clab-router-core-nebula-clab-router-upstream".routes.ipv4 | default4) as $clabEw4
+  | ($clabIfs."p2p-clab-router-core-nebula-clab-router-upstream".routes.ipv6 | default6) as $clabEw6
+  | expect(($clabWan4 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-streaming"])
+  | expect(($clabWan6 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-streaming"])
+  | expect(($clabEw4 | lanes("east-west")); ["clab-router-access-hostile"])
+  | expect(($clabEw6 | lanes("east-west")); ["clab-router-access-hostile"])
+  | expect(($clabEw6 | delegatedExitNodes); ["clab-router-access-client", "clab-router-access-hostile"])
 ' "${output_json}" >/dev/null
 
 echo "PASS sigma-upstream-policy-defaults-preserved"
