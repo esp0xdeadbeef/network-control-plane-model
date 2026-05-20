@@ -27,7 +27,7 @@
             node-a = {
               role = "core";
               interfaces = {
-                eth0 = {};
+                eth0 = { };
               };
             };
 

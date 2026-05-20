@@ -29,7 +29,7 @@ let
                 let
                   logicalKey = "${siteContract.enterpriseName}|${siteContract.siteName}|${nodeName}";
                 in
-                !hasAttr logicalKey realizationIndex.byLogical)
+                  !hasAttr logicalKey realizationIndex.byLogical)
               (sortedNames siteContract.nodeContracts)))
         (sortedNames sitesByKey)
     );

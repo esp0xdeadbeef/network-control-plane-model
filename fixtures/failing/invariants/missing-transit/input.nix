@@ -4,7 +4,7 @@
       site = {
         ams = {
           transport = {
-            overlays = {};
+            overlays = { };
           };
         };
       };

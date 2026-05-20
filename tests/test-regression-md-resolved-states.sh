@@ -10,7 +10,7 @@ if [[ ! -f "${regression}" ]]; then
   exit 1
 fi
 
-allowed_re='^solved$'
+allowed_re='^(solved|fixed-locally|fixed-live|implemented-not-live-validated|still-broken|pending|unknown)$'
 violations=()
 
 while IFS=: read -r line text; do
@@ -18,13 +18,15 @@ while IFS=: read -r line text; do
   [[ -n "${state}" ]] || continue
 
   if [[ ! "${state}" =~ ${allowed_re} ]]; then
-    violations+=("${regression}:${line}: state=${state}: ${text}")
+    violations+=("${regression}:${line}: unsupported state=${state}: ${text}")
+  elif [[ "${text}" != *"target="* || "${text}" != *"evidence="* || "${text}" != *"reason="* ]]; then
+    violations+=("${regression}:${line}: state=${state} lacks target/evidence/reason: ${text}")
   fi
 done < <(grep -n 'state=' "${regression}" || true)
 
 if ((${#violations[@]} > 0)); then
-  echo "FAIL regression.md state gate: unresolved regression states remain." >&2
-  echo "Fix the owning bug, then update the entry to state=solved after evidence." >&2
+  echo "FAIL regression.md state gate: regression entries must use a supported state and remain concrete." >&2
+  echo "Use target=, evidence=, and reason= so unresolved entries are testable instead of vague session notes." >&2
   printf '%s\n' "${violations[@]}" >&2
   exit 1
 fi

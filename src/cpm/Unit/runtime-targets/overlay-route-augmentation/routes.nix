@@ -1,15 +1,18 @@
-{
-  lib,
-  helpers,
-  common,
-  overlayProvisioning,
-  overlayUnderlayEndpoints,
-  defaultViaRoutes,
-  runtimePrefixExitNodes,
+{ lib
+, helpers
+, common
+, overlayProvisioning
+, overlayUnderlayEndpoints
+, defaultViaRoutes
+, runtimePrefixExitNodes
+,
 }:
 let
   inherit (helpers) isNonEmptyString;
   inherit (common) listOrEmpty;
+  prefixRoutes = import ./prefix-routes.nix {
+    inherit lib helpers common overlayProvisioning runtimePrefixExitNodes;
+  };
   delegatedOverlayDefaultRoutes =
     family: routes:
     let
@@ -21,7 +24,7 @@ let
           overlayName = route.overlay or null;
           overlay = if isNonEmptyString overlayName then overlayProvisioning.${overlayName} or { } else { };
         in
-        overlay.publicExitPeerSite or route.peerSite or null;
+          overlay.publicExitPeerSite or route.peerSite or null;
       overlayDefaults =
         builtins.filter
           (route:
@@ -32,21 +35,21 @@ let
     in
     lib.concatMap
       (route:
-        builtins.map
-          (exitNode:
-            route
-            // {
-              policyOnly = true;
-              scope = "link";
-              intent = {
-                kind = "delegated-public-egress";
-                inherit exitNode;
-              };
-            }
-            // lib.optionalAttrs (isNonEmptyString (publicExitPeerSiteFor route)) {
-              peerSite = publicExitPeerSiteFor route;
-            })
-          runtimePrefixExitNodes)
+      builtins.map
+        (exitNode:
+        route
+        // {
+          policyOnly = true;
+          scope = "link";
+          intent = {
+            kind = "delegated-public-egress";
+            inherit exitNode;
+          };
+        }
+        // lib.optionalAttrs (isNonEmptyString (publicExitPeerSiteFor route)) {
+          peerSite = publicExitPeerSiteFor route;
+        })
+        runtimePrefixExitNodes)
       overlayDefaults;
   withoutGenericOverlayDefaults =
     family: routes:
@@ -56,11 +59,11 @@ let
     builtins.filter
       (
         route:
-        !(
-          (route.dst or null) == defaultDst
-          && ((route.intent or { }).kind or null) == "overlay-reachability"
-          && (route.proto or null) == "overlay"
-        )
+          !(
+            (route.dst or null) == defaultDst
+            && ((route.intent or { }).kind or null) == "overlay-reachability"
+            && (route.proto or null) == "overlay"
+          )
       )
       (listOrEmpty (routes.${if family == 4 then "ipv4" else "ipv6"} or null));
   underlayEndpointRoutes =
@@ -71,19 +74,19 @@ let
     in
     lib.concatMap
       (defaultRoute:
-        builtins.map
-          (endpoint: {
-            inherit family;
-            sourceFile = endpoint.sourceFile;
-            proto = "underlay";
-            overlay = endpoint.overlay;
-            intent = {
-              kind = "overlay-underlay-reachability";
-              source = "overlay-underlay-endpoint";
-            };
-            ${viaField} = defaultRoute.${viaField};
-          })
-          endpoints)
+      builtins.map
+        (endpoint: {
+          inherit family;
+          sourceFile = endpoint.sourceFile;
+          proto = "underlay";
+          overlay = endpoint.overlay;
+          intent = {
+            kind = "overlay-underlay-reachability";
+            source = "overlay-underlay-endpoint";
+          };
+          ${viaField} = defaultRoute.${viaField};
+        })
+        endpoints)
       (defaultViaRoutes family routes);
   overlayEndpointRoutesVia =
     family: overlayNamesForInterface: via:
@@ -94,17 +97,20 @@ let
           (endpoint: (endpoint.family or null) == family && isNonEmptyString (endpoint.sourceFile or null) && builtins.elem (endpoint.overlay or null) overlayNamesForInterface)
           overlayUnderlayEndpoints;
     in
-    if !isNonEmptyString via then [ ] else builtins.map (endpoint: {
-      inherit family;
-      sourceFile = endpoint.sourceFile;
-      proto = "underlay";
-      overlay = endpoint.overlay;
-      intent = {
-        kind = "overlay-underlay-reachability";
-        source = "overlay-underlay-endpoint";
-      };
-      ${viaField} = via;
-    }) endpoints;
+    if !isNonEmptyString via then [ ] else
+    builtins.map
+      (endpoint: {
+        inherit family;
+        sourceFile = endpoint.sourceFile;
+        proto = "underlay";
+        overlay = endpoint.overlay;
+        intent = {
+          kind = "overlay-underlay-reachability";
+          source = "overlay-underlay-endpoint";
+        };
+        ${viaField} = via;
+      })
+      endpoints;
   overlayNodeRoutesVia =
     family: overlayNamesForInterface: via:
     let
@@ -112,60 +118,15 @@ let
       prefixField = if family == 4 then "ipv4" else "ipv6";
       prefixes = lib.unique (lib.concatMap (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixes.${prefixField} or null)) overlayNamesForInterface);
     in
-    if !isNonEmptyString via then [ ] else builtins.map (dst: {
-      inherit dst family;
-      proto = "internal";
-      intent = { kind = "overlay-node-reachability"; };
-      ${viaField} = via;
-    }) prefixes;
-  overlayRuntimeRoutedPrefixRoutesVia =
-    overlayNamesForInterface: via:
-    let
-      prefixes = lib.unique (lib.concatMap (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.peerRuntimeRoutedPrefixes or null)) overlayNamesForInterface);
-    in
-    if !isNonEmptyString via then [ ] else builtins.map (prefix: prefix // {
-      proto = "overlay";
-      intent = {
-        kind = "runtime-routed-prefix-return";
-        source = "intent-routed-prefix";
-      };
-      via6 = via;
-    }) prefixes;
-  delegatedOverlayDefaultsVia =
-    family: overlayNamesForInterface: via:
-    let
-      dst = if family == 4 then "0.0.0.0/0" else "::/0";
-      viaField = if family == 4 then "via4" else "via6";
-      prefixes = lib.unique (lib.concatMap (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.peerRuntimeRoutedPrefixes or null)) overlayNamesForInterface);
-    in
-    if !isNonEmptyString via || prefixes == [ ] then [ ] else builtins.map (prefix: {
-      inherit dst family;
-      policyOnly = true;
-      proto = "default";
-      intent = {
-        kind = "delegated-public-egress";
-        source = "intent-routed-prefix";
-      };
-      ${viaField} = via;
-    }
-    // (if isNonEmptyString (prefix.sourceFile or null) then { sourceFile = prefix.sourceFile; } else { })
-    // (if isNonEmptyString (prefix.tenant or null) then { tenant = prefix.tenant; } else { })) prefixes;
-  delegatedOverlayExitDefaultsVia =
-    family: via:
-    let
-      dst = if family == 4 then "0.0.0.0/0" else "::/0";
-      viaField = if family == 4 then "via4" else "via6";
-    in
-    if !isNonEmptyString via then [ ] else builtins.map (exitNode: {
-      inherit dst family;
-      policyOnly = true;
-      proto = "default";
-      intent = {
-        kind = "delegated-public-egress";
-        inherit exitNode;
-      };
-      ${viaField} = via;
-    }) runtimePrefixExitNodes;
+    if !isNonEmptyString via then [ ] else
+    builtins.map
+      (dst: {
+        inherit dst family;
+        proto = "internal";
+        intent = { kind = "overlay-node-reachability"; };
+        ${viaField} = via;
+      })
+      prefixes;
   defaultReachabilityVia =
     family: via:
     let
@@ -178,22 +139,15 @@ let
       intent = { kind = "default-reachability"; };
       ${viaField} = via;
     }];
-  overlayRuntimeRoutedPrefixRoutes =
-    overlayName:
-    builtins.map
-      (prefix:
-        prefix
-        // {
-          proto = "overlay";
-          intent = {
-            kind = "runtime-routed-prefix-return";
-            source = "intent-routed-prefix";
-          };
-        })
-      (listOrEmpty (overlayProvisioning.${overlayName}.peerRuntimeRoutedPrefixes or null));
 in
 {
-  inherit delegatedOverlayDefaultRoutes delegatedOverlayDefaultsVia delegatedOverlayExitDefaultsVia defaultReachabilityVia;
-  inherit overlayEndpointRoutesVia overlayNodeRoutesVia overlayRuntimeRoutedPrefixRoutes overlayRuntimeRoutedPrefixRoutesVia;
+  inherit delegatedOverlayDefaultRoutes defaultReachabilityVia;
+  inherit overlayEndpointRoutesVia overlayNodeRoutesVia;
+  inherit (prefixRoutes)
+    delegatedOverlayDefaultsVia
+    delegatedOverlayExitDefaultsVia
+    overlayRuntimeRoutedPrefixRoutes
+    overlayRuntimeRoutedPrefixRoutesVia
+    ;
   inherit underlayEndpointRoutes withoutGenericOverlayDefaults;
 }

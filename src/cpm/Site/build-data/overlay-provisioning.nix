@@ -1,14 +1,14 @@
-{
-  lib,
-  helpers,
-  common,
-  ipam,
-  inventoryAttrs,
-  allSiteEntries,
-  siteAttrs,
-  siteOverlays,
-  sitePath,
-  enterpriseName,
+{ lib
+, helpers
+, common
+, ipam
+, inventoryAttrs
+, allSiteEntries
+, siteAttrs
+, siteOverlays
+, sitePath
+, enterpriseName
+,
 }:
 
 let
@@ -57,7 +57,7 @@ let
             terminateOn =
               lib.sort (a: b: a < b) (
                 map toString (listOrEmpty (ov.terminateOn or null))
-            );
+              );
 
             overlayNodesCfg = attrsOrEmpty (cfg.nodes or null);
             overlayNodeIpamCfg = attrsOrEmpty ((attrsOrEmpty (cfg.ipam or null)).nodes or null);

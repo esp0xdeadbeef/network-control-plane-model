@@ -21,14 +21,15 @@ let
     builtins.filter
       (rule: (rule.relationId or null) == "allow-sitec-wan-to-dmz-nebula")
       rules;
-  expectedRule = rule:
+  expectedRuleFor = fromInterface: rule:
     (rule.action or null) == "accept"
     && (rule.trafficType or null) == "nebula"
-    && (rule.fromInterface or null) == "up-dmz-wan"
+    && (rule.fromInterface or null) == fromInterface
     && (rule.toInterface or null) == "downstream-dmz";
 in
-  builtins.length serviceRules == 1
-  && expectedRule (builtins.head serviceRules)
+  builtins.length serviceRules == 2
+  && builtins.any (expectedRuleFor "up-client-wan") serviceRules
+  && builtins.any (expectedRuleFor "up-dmz-wan") serviceRules
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then

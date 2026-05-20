@@ -1,11 +1,11 @@
-{
-  lib,
-  helpers,
-  common,
-  allSiteEntries,
-  sitePath,
-  overlayNames,
-  overlayProvisioning,
+{ lib
+, helpers
+, common
+, allSiteEntries
+, sitePath
+, overlayNames
+, overlayProvisioning
+,
 }:
 
 let
@@ -16,9 +16,9 @@ let
     peerSite:
     lib.findFirst
       (entry:
-        entry.siteId == peerSite
-        || entry.siteDisplayName == peerSite
-        || "${entry.enterpriseKey}.${entry.siteKey}" == peerSite)
+      entry.siteId == peerSite
+      || entry.siteDisplayName == peerSite
+      || "${entry.enterpriseKey}.${entry.siteKey}" == peerSite)
       null
       allSiteEntries;
 
@@ -26,24 +26,24 @@ let
     transitValue:
     builtins.foldl'
       (acc: adjacency:
-        let
-          endpoints = requireList "${sitePath}.transit.adjacencies[*].endpoints" (adjacency.endpoints or null);
-          applyEndpoint =
-            state: endpoint:
-            let
-              nodeName = requireString "${sitePath}.transit.adjacencies[*].endpoints[*].unit" (endpoint.unit or null);
-              local = attrsOrEmpty (endpoint.local or null);
-              existing = if builtins.hasAttr nodeName state then state.${nodeName} else { ipv4 = [ ]; ipv6 = [ ]; };
-            in
-            state
-            // {
-              ${nodeName} = {
-                ipv4 = if isNonEmptyString (local.ipv4 or null) then uniqueStrings (existing.ipv4 ++ [ local.ipv4 ]) else existing.ipv4;
-                ipv6 = if isNonEmptyString (local.ipv6 or null) then uniqueStrings (existing.ipv6 ++ [ local.ipv6 ]) else existing.ipv6;
-              };
+      let
+        endpoints = requireList "${sitePath}.transit.adjacencies[*].endpoints" (adjacency.endpoints or null);
+        applyEndpoint =
+          state: endpoint:
+          let
+            nodeName = requireString "${sitePath}.transit.adjacencies[*].endpoints[*].unit" (endpoint.unit or null);
+            local = attrsOrEmpty (endpoint.local or null);
+            existing = if builtins.hasAttr nodeName state then state.${nodeName} else { ipv4 = [ ]; ipv6 = [ ]; };
+          in
+          state
+          // {
+            ${nodeName} = {
+              ipv4 = if isNonEmptyString (local.ipv4 or null) then uniqueStrings (existing.ipv4 ++ [ local.ipv4 ]) else existing.ipv4;
+              ipv6 = if isNonEmptyString (local.ipv6 or null) then uniqueStrings (existing.ipv6 ++ [ local.ipv6 ]) else existing.ipv6;
             };
-        in
-        builtins.foldl' applyEndpoint acc endpoints)
+          };
+      in
+      builtins.foldl' applyEndpoint acc endpoints)
       { }
       (listOrEmpty (transitValue.adjacencies or null));
 
@@ -82,24 +82,24 @@ let
               acc: entry:
               builtins.foldl'
                 (state: nodeName:
-                  let
-                    existing =
-                      if builtins.hasAttr nodeName state then
-                        state.${nodeName}
-                      else
-                        {
-                          ipv4 = [ ];
-                          ipv6 = [ ];
-                        };
-                    node = entry.byNode.${nodeName};
-                  in
-                  state
-                  // {
-                    ${nodeName} = {
-                      ipv4 = uniqueStrings (existing.ipv4 ++ listOrEmpty (node.ipv4 or null));
-                      ipv6 = uniqueStrings (existing.ipv6 ++ listOrEmpty (node.ipv6 or null));
-                    };
-                  })
+                let
+                  existing =
+                    if builtins.hasAttr nodeName state then
+                      state.${nodeName}
+                    else
+                      {
+                        ipv4 = [ ];
+                        ipv6 = [ ];
+                      };
+                  node = entry.byNode.${nodeName};
+                in
+                state
+                // {
+                  ${nodeName} = {
+                    ipv4 = uniqueStrings (existing.ipv4 ++ listOrEmpty (node.ipv4 or null));
+                    ipv6 = uniqueStrings (existing.ipv6 ++ listOrEmpty (node.ipv6 or null));
+                  };
+                })
                 acc
                 (sortedNames entry.byNode);
           in

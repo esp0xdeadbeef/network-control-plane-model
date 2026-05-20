@@ -1,7 +1,7 @@
-{
-  common,
-  ipam,
-  lib,
+{ common
+, ipam
+, lib
+,
 }:
 
 let
@@ -54,17 +54,17 @@ let
     let
       field = if family == 4 then "addr4SecretName" else "addr6SecretName";
     in
-    nodeCfg.${field} or (nodeIpamCfg.${field} or null);
+      nodeCfg.${field} or (nodeIpamCfg.${field} or null);
 
   validateSource =
-    {
-      address,
-      allowedClasses,
-      family,
-      nodeCfg,
-      nodeIpamCfg,
-      overlayPath,
-      required,
+    { address
+    , allowedClasses
+    , family
+    , nodeCfg
+    , nodeIpamCfg
+    , overlayPath
+    , required
+    ,
     }:
     let
       sourceClass = sourceClassFor family nodeCfg nodeIpamCfg;
@@ -89,12 +89,12 @@ let
 in
 {
   validateAddress =
-    {
-      address,
-      family,
-      nodeName,
-      overlayPath,
-      prefix,
+    { address
+    , family
+    , nodeName
+    , overlayPath
+    , prefix
+    ,
     }:
     if address == null || prefix == null then
       true
@@ -104,13 +104,13 @@ in
       failInventory "${overlayPath}.ipam.nodes.${nodeName}.addr${toString family}" "address '${address}' is outside overlay pool '${prefix}'";
 
   sourceMetadata =
-    {
-      address,
-      addressSourcePolicy,
-      family,
-      nodeCfg,
-      nodeIpamCfg,
-      overlayPath,
+    { address
+    , addressSourcePolicy
+    , family
+    , nodeCfg
+    , nodeIpamCfg
+    , overlayPath
+    ,
     }:
     validateSource {
       inherit address family nodeCfg nodeIpamCfg overlayPath;

@@ -1,10 +1,10 @@
-{
-  lib,
-  helpers,
-  overlayProvisioning,
-  runtimePrefixExitNodes,
-  p2pPeerAddress,
-  defaultReachabilityVia,
+{ lib
+, helpers
+, overlayProvisioning
+, runtimePrefixExitNodes
+, p2pPeerAddress
+, defaultReachabilityVia
+,
 }:
 let
   inherit (helpers) hasAttr sortedNames;
@@ -34,13 +34,13 @@ let
     family: accessNode: uplink: via:
     builtins.map
       (route:
-        route
-        // {
-          policyOnly = true;
-          metric = 2000;
-          reason = "policy-derived-default";
-          lane = { access = accessNode; inherit uplink; };
-        })
+      route
+      // {
+        policyOnly = true;
+        metric = 2000;
+        reason = "policy-derived-default";
+        lane = { access = accessNode; inherit uplink; };
+      })
       (defaultReachabilityVia family via);
 
   accessOverlayDefaults =

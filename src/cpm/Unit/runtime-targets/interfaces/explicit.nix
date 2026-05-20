@@ -1,15 +1,17 @@
-{
-  helpers,
-  common,
-  sitePath,
-  overlayProvisioning,
-  resolveBackingRef,
-  requireExplicitHostUplinkAddressing,
+{ helpers
+, common
+, sitePath
+, overlayProvisioning
+, uplinkRouting
+, resolveBackingRef
+, requireExplicitHostUplinkAddressing
+,
 }:
 
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireRoutes requireString;
   inherit (common) attrsOrEmpty failInventory mergeRoutes;
+  staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
 
   portBindingForInterface =
     { sourceKind, backingRef, ifName, portBindings }:
@@ -80,11 +82,16 @@ let
       resolvedHostUplink;
 
   interfaceRoutes = requireRoutes ifacePath (ifaceAttrs.routes or null);
+  uplinkStaticRoutes =
+    if sourceKind == "wan" && hasAttr (backingRef.upstreamAlias or "") uplinkRouting then
+      staticUplinkRoutes uplinkRouting.${backingRef.upstreamAlias}
+    else
+      { ipv4 = [ ]; ipv6 = [ ]; };
   effectiveRoutes =
     if portBinding != null && builtins.isAttrs (portBinding.interfaceRoutes or null) then
-      mergeRoutes interfaceRoutes portBinding.interfaceRoutes
+      mergeRoutes (mergeRoutes interfaceRoutes portBinding.interfaceRoutes) uplinkStaticRoutes
     else
-      interfaceRoutes;
+      mergeRoutes interfaceRoutes uplinkStaticRoutes;
 
   value =
     {

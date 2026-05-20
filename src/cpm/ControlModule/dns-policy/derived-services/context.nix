@@ -1,10 +1,10 @@
-{
-  lib,
-  helpers,
-  dnsPolicy,
-  sitePath,
-  allowedRelations,
-  serviceDefinitions,
+{ lib
+, helpers
+, dnsPolicy
+, sitePath
+, allowedRelations
+, serviceDefinitions
+,
 }:
 
 let

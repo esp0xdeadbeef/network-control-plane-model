@@ -20,6 +20,25 @@ let
     let wanted = externalUplinks endpoint;
     in builtins.filter (iface: builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wanted) coreInterfaces;
 
+  externalIngressInterfacesFor = endpoint:
+    let
+      wanted = externalUplinks endpoint;
+      matches =
+        builtins.filter
+          (iface: builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wanted)
+          (coreInterfaces ++ policyInterfaces);
+    in
+    builtins.attrValues (
+      builtins.listToAttrs (
+        map
+          (iface: {
+            name = iface.runtimeIfName;
+            value = iface;
+          })
+          matches
+      )
+    );
+
   servicePolicyInterfacesFor = endpoint:
     let accessNodes = serviceAccessNodes endpoint;
     in builtins.filter (iface: builtins.elem (common.laneAccess iface) accessNodes) policyInterfaces;
@@ -107,7 +126,7 @@ in
     if (relation.action or "allow") != "allow" || (fromEndpoint.kind or null) != "external" || (toEndpoint.kind or null) != "service" then
       [ ]
     else
-      pairRules relation (coreInterfacesFor fromEndpoint) (servicePolicyInterfacesForExternal fromEndpoint toEndpoint) { };
+      pairRules relation (externalIngressInterfacesFor fromEndpoint) (servicePolicyInterfacesForExternal fromEndpoint toEndpoint) { };
 
   runtimeRoutedPrefixPublicEgressRules =
     let

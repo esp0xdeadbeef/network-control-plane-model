@@ -1,4 +1,3 @@
-
 input:
 
 builtins.removeAttrs input [

@@ -1,7 +1,7 @@
-{
-  lib,
-  helpers,
-  failInventory,
+{ lib
+, helpers
+, failInventory
+,
 }:
 
 let

@@ -1,18 +1,18 @@
-{
-  addressPolicy,
-  common,
-  helpers,
-  lib,
+{ addressPolicy
+, common
+, helpers
+, lib
+,
 }:
 
-{
-  addressSourcePolicy,
-  ipamV4Prefix,
-  ipamV6Prefix,
-  overlayNodeIpamCfg,
-  overlayNodesCfg,
-  overlayPath,
-  terminateOn,
+{ addressSourcePolicy
+, ipamV4Prefix
+, ipamV6Prefix
+, overlayNodeIpamCfg
+, overlayNodesCfg
+, overlayPath
+, terminateOn
+,
 }:
 
 let

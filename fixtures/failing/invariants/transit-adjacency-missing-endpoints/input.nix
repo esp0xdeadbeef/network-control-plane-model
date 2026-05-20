@@ -5,7 +5,7 @@
         ams = {
           transit = {
             adjacencies = [
-              {}
+              { }
             ];
             ordering = [
               [ "a" "b" ]

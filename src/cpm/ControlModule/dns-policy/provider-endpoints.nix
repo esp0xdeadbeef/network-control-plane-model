@@ -1,7 +1,7 @@
-{
-  helpers,
-  common,
-  inventoryEndpoints,
+{ helpers
+, common
+, inventoryEndpoints
+,
 }:
 
 let

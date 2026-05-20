@@ -10,11 +10,11 @@ let
     builtins.genList (idx: builtins.elemAt values (start + idx)) len;
 
   allocOne =
-    {
-      family,
-      prefix,
-      perNodePrefixLength,
-      offset,
+    { family
+    , prefix
+    , perNodePrefixLength
+    , offset
+    ,
     }:
     let
       cidr = splitCIDR prefix;

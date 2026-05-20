@@ -1,7 +1,7 @@
-{
-  lib,
-  helpers,
-  failInventory,
+{ lib
+, helpers
+, failInventory
+,
 }:
 
 let
@@ -32,6 +32,7 @@ let
   isIpv6Address =
     value:
     builtins.match "([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}" value != null;
+  defaults = import ./dns-defaults.nix;
 
   normalizeForwarderList = dnsPath: dns: fieldName:
     let
@@ -49,26 +50,6 @@ let
         else
           failInventory path "must contain IPv4 or IPv6 address literals; resolve runtime placeholders before CPM")
       (requireList path (dns.${fieldName} or [ ]));
-
-  publicResolverCidrs = [
-    "1.1.1.1/32"
-    "1.0.0.1/32"
-    "8.8.8.8/32"
-    "8.8.4.4/32"
-    "9.9.9.9/32"
-    "2606:4700:4700::1111/128"
-    "2606:4700:4700::1001/128"
-    "2001:4860:4860::8888/128"
-    "2001:4860:4860::8844/128"
-    "2620:fe::fe/128"
-  ];
-
-  defaultRoutePreference = [
-    "service-dns"
-    "overlay-core"
-    "local-access"
-    "explicit-egress-default"
-  ];
 
   boolOrDefault =
     path: value: default:
@@ -125,14 +106,14 @@ in
         else
           true;
       routePreference =
-        if dns ? routePreference then normalizeStringList dnsPath dns "routePreference" else defaultRoutePreference;
+        if dns ? routePreference then normalizeStringList dnsPath dns "routePreference" else defaults.defaultRoutePreference;
       allowedUpstreamClasses =
         if dns ? allowedUpstreamClasses then normalizeStringList dnsPath dns "allowedUpstreamClasses" else [ "local-access" ];
       deniedResolverCidrs =
         if dns ? deniedResolverCidrs then
           normalizeStringList dnsPath dns "deniedResolverCidrs"
         else
-          publicResolverCidrs;
+          defaults.publicResolverCidrs;
       directEgressBlockedTenants =
         if dns ? directEgressBlockedTenants then normalizeStringList dnsPath dns "directEgressBlockedTenants" else null;
       routeContracts = requireList "${dnsPath}.routeContracts" (dns.routeContracts or [ ]);
@@ -166,8 +147,8 @@ in
                 fieldName:
                 builtins.map
                   (entry:
-                    let rendered = requireString "${recordPath}.${fieldName}[*]" entry;
-                    in if isNonEmptyString rendered then rendered else failInventory "${recordPath}.${fieldName}" "must not contain empty strings")
+                  let rendered = requireString "${recordPath}.${fieldName}[*]" entry;
+                  in if isNonEmptyString rendered then rendered else failInventory "${recordPath}.${fieldName}" "must not contain empty strings")
                   (requireList "${recordPath}.${fieldName}" (attrs.${fieldName} or [ ]));
               a = normalizeRecordValues "a";
               aaaa = normalizeRecordValues "aaaa";
@@ -178,13 +159,13 @@ in
     in
     builtins.seq _forwarderConflict (
       builtins.seq _killSwitchNoPublicFallback ({ }
-      // { implementation = "unbound"; }
-      // lib.optionalAttrs (listen != [ ]) { inherit listen; }
-      // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
-      // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }
-      // lib.optionalAttrs (outgoingInterfaces != [ ]) { inherit outgoingInterfaces; }
-      // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
-      // {
+        // { implementation = "unbound"; }
+        // lib.optionalAttrs (listen != [ ]) { inherit listen; }
+        // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
+        // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }
+        // lib.optionalAttrs (outgoingInterfaces != [ ]) { inherit outgoingInterfaces; }
+        // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
+        // {
         inherit
           allowedUpstreamClasses
           deniedResolverCidrs
@@ -194,7 +175,8 @@ in
           routePreference
           ;
       }
-      // lib.optionalAttrs (localZones != [ ]) { inherit localZones; }
-      // lib.optionalAttrs (localRecords != [ ]) { inherit localRecords; }
-      ));
+        // lib.optionalAttrs (localZones != [ ]) { inherit localZones; }
+        // lib.optionalAttrs (localRecords != [ ]) { inherit localRecords; }
+      )
+    );
 }

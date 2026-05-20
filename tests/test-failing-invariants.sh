@@ -12,6 +12,7 @@ run_case() {
   local expected="$2"
   local input_nix="$3"
   local inventory_nix="$4"
+  local build_args="${5:-}"
 
   local tmp_dir
   tmp_dir="$(mktemp -d)"
@@ -30,7 +31,7 @@ run_case() {
     input = import ${tmp_dir}/input.nix;
     inventory = import ${tmp_dir}/inventory.nix;
   in
-    builder { inherit input inventory; }"
+    builder { inherit input inventory; ${build_args} }"
 
   if nix eval --show-trace --impure --json --expr "${expr}" >/dev/null 2>"${stderr_file}"; then
     echo "FAIL ${name}: evaluation unexpectedly succeeded"
@@ -79,7 +80,69 @@ run_case \
 }
 EOF
 )" \
-  "${inventory_empty}"
+  "$(cat <<'EOF'
+{
+  realization = {
+    nodes = {
+      core-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "core-1";
+        };
+        ports = {
+          p2p-upstream = {
+            link = "link-core-upstream";
+            adapterName = "core-upstream";
+            attach = {
+              kind = "bridge";
+              bridge = "br-core-upstream";
+            };
+            interface = {
+              name = "ens3";
+            };
+          };
+        };
+      };
+      policy-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "policy-1";
+        };
+        ports = { };
+      };
+      upstream-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "upstream-1";
+        };
+        ports = {
+          p2p-core = {
+            link = "link-core-upstream";
+            adapterName = "upstream-core";
+            attach = {
+              kind = "bridge";
+              bridge = "br-core-upstream";
+            };
+            interface = {
+              name = "ens3";
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)"
 
 run_case \
   "unsupported-schema-version" \
@@ -103,7 +166,79 @@ run_case \
 }
 EOF
 )" \
-  "${inventory_empty}"
+  "$(cat <<'EOF'
+{
+  deployment = {
+    hosts = {
+      hypervisor-a = {
+        bridgeNetworks = {
+          br-core-upstream = { };
+        };
+      };
+    };
+  };
+
+  realization = {
+    nodes = {
+      core-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "core-1";
+        };
+        ports = {
+          p2p-upstream = {
+            link = "link-core-upstream";
+            adapterName = "core-upstream";
+            attach = {
+              kind = "bridge";
+              bridge = "br-core-upstream";
+            };
+            interface = {
+              name = "ens3";
+            };
+          };
+        };
+      };
+      policy-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "policy-1";
+        };
+        ports = { };
+      };
+      upstream-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "upstream-1";
+        };
+        ports = {
+          p2p-core = {
+            link = "link-core-upstream";
+            adapterName = "upstream-core";
+            attach = {
+              kind = "bridge";
+              bridge = "br-core-upstream";
+            };
+            interface = {
+              name = "ens3";
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)"
 
 run_case \
   "missing-node-loopback" \
@@ -290,6 +425,11 @@ run_case \
 
             core-1 = {
               role = "core";
+              egressIntent = {
+                exit = true;
+                uplinks = [ "wan" ];
+                wanInterfaces = [ "wan" ];
+              };
               loopback = {
                 ipv4 = "10.255.0.3/32";
                 ipv6 = "fd00:ff::3/128";
@@ -478,7 +618,80 @@ run_case \
 }
 EOF
 )" \
-  "${inventory_empty}"
+  "$(cat <<'EOF'
+{
+  deployment = {
+    hosts = {
+      hypervisor-a = {
+        bridgeNetworks = {
+          br-core-upstream = { };
+        };
+      };
+    };
+  };
+
+  realization = {
+    nodes = {
+      core-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "core-1";
+        };
+        ports = {
+          p2p-upstream = {
+            link = "link-core-upstream";
+            adapterName = "core-upstream";
+            attach = {
+              kind = "bridge";
+              bridge = "br-core-upstream";
+            };
+            interface = {
+              name = "ens3";
+            };
+          };
+        };
+      };
+      policy-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "policy-1";
+        };
+        ports = { };
+      };
+      upstream-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "upstream-1";
+        };
+        ports = {
+          p2p-core = {
+            link = "link-core-upstream";
+            adapterName = "upstream-core";
+            attach = {
+              kind = "bridge";
+              bridge = "br-core-upstream";
+            };
+            interface = {
+              name = "ens3";
+            };
+          };
+        };
+      };
+    };
+  };
+}
+EOF
+)" \
+  "validateRuntimeModel = true;"
 
 run_case \
   "core-role-requires-two-adapters-before-rendering" \
@@ -561,6 +774,11 @@ run_case \
 
             core-1 = {
               role = "core";
+              egressIntent = {
+                exit = true;
+                uplinks = [ "wan" ];
+                wanInterfaces = [ "wan" ];
+              };
               loopback = {
                 ipv4 = "10.255.0.3/32";
                 ipv6 = "fd00:ff::3/128";
@@ -630,10 +848,31 @@ EOF
           };
         };
       };
+      policy-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "policy-1";
+        };
+        ports = { };
+      };
+      upstream-runtime = {
+        host = "hypervisor-a";
+        platform = "linux";
+        logicalNode = {
+          enterprise = "acme";
+          site = "ams";
+          name = "upstream-1";
+        };
+        ports = { };
+      };
     };
   };
 }
 EOF
-)"
+)" \
+  "validateRuntimeModel = true;"
 
 exit "${status}"

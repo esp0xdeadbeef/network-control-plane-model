@@ -13,23 +13,29 @@ let
     else
       { };
 
-  contractIndex = import ./policy-endpoint-bindings/contract-index.nix {
-    inherit helpers bindingCommon;
-  } {
-    inherit sitePath siteAttrs domains;
-  };
+  contractIndex = import ./policy-endpoint-bindings/contract-index.nix
+    {
+      inherit helpers bindingCommon;
+    }
+    {
+      inherit sitePath siteAttrs domains;
+    };
 
-  staticIndex = import ./policy-endpoint-bindings/static-index.nix {
-    inherit helpers bindingCommon;
-  } {
-    inherit sitePath attachments domains;
-  };
+  staticIndex = import ./policy-endpoint-bindings/static-index.nix
+    {
+      inherit helpers bindingCommon;
+    }
+    {
+      inherit sitePath attachments domains;
+    };
 
-  runtimeIndex = import ./policy-endpoint-bindings/runtime-index.nix {
-    inherit helpers bindingCommon;
-  } {
-    inherit sitePath runtimeTargets;
-  };
+  runtimeIndex = import ./policy-endpoint-bindings/runtime-index.nix
+    {
+      inherit helpers bindingCommon;
+    }
+    {
+      inherit sitePath runtimeTargets;
+    };
 
   emit = import ./policy-endpoint-bindings/emit.nix {
     inherit helpers bindingCommon;

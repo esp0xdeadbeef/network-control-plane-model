@@ -1,31 +1,31 @@
-{
-  lib,
-  helpers,
-  common,
-  realizationIndex,
-  enterpriseName,
-  siteName,
-  sitePath,
-  attachments,
-  links,
-  nodes,
-  policyNodeName,
-  routingMode,
-  bgpSiteAsn,
-  bgpTopology,
-  uplinkRouting,
-  overlayProvisioning,
-  overlayNames,
-  siteTenantsCfg,
-  routedPrefixesByTenant,
-  policyDerivedDnsAllowFromForListeners,
-  policyDerivedDnsAllowedClassesForListeners,
-  policyDerivedDnsAllowedClassesForTenants,
-  policyDerivedDnsDirectEgressBlockedTenants,
-  policyDerivedDnsDirectEgressBlockedForListeners,
-  policyDerivedDnsDirectEgressBlockedForTenants,
-  policyDerivedDnsForwardersForListeners,
-  policyDerivedDnsForwardersForTenants,
+{ lib
+, helpers
+, common
+, realizationIndex
+, enterpriseName
+, siteName
+, sitePath
+, attachments
+, links
+, nodes
+, policyNodeName
+, routingMode
+, bgpSiteAsn
+, bgpTopology
+, uplinkRouting
+, overlayProvisioning
+, overlayNames
+, siteTenantsCfg
+, routedPrefixesByTenant
+, policyDerivedDnsAllowFromForListeners
+, policyDerivedDnsAllowedClassesForListeners
+, policyDerivedDnsAllowedClassesForTenants
+, policyDerivedDnsDirectEgressBlockedTenants
+, policyDerivedDnsDirectEgressBlockedForListeners
+, policyDerivedDnsDirectEgressBlockedForTenants
+, policyDerivedDnsForwardersForListeners
+, policyDerivedDnsForwardersForTenants
+,
 }:
 
 let
@@ -40,13 +40,13 @@ let
   };
 
   buildExplicitInterfaceEntry = import ../../Unit/runtime-targets/interfaces/explicit.nix {
-    inherit helpers common sitePath overlayProvisioning;
+    inherit helpers common sitePath overlayProvisioning uplinkRouting;
     inherit (backingRefResolver) resolveBackingRef;
     inherit (hostUplinkValidator) requireExplicitHostUplinkAddressing;
   };
 
   buildSyntheticUplinkInterfaceEntry = import ../../Unit/runtime-targets/interfaces/synthetic-uplink.nix {
-    inherit helpers common sitePath enterpriseName siteName overlayNames;
+    inherit helpers common sitePath enterpriseName siteName overlayNames uplinkRouting;
     inherit (hostUplinkValidator) requireExplicitHostUplinkAddressing;
   };
 

@@ -1,5 +1,5 @@
 {
   enterprise = {
-    acme = {};
+    acme = { };
   };
 }

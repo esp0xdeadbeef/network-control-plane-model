@@ -1,9 +1,9 @@
-{
-  helpers,
-  common,
-  inventory,
-  site,
-  sitePath,
+{ helpers
+, common
+, inventory
+, site
+, sitePath
+,
 }:
 
 let
@@ -70,17 +70,18 @@ let
 
   serviceDefinitions =
     if communicationContract != null && builtins.isList (communicationContract.services or null) then
-      builtins.listToAttrs (
-        builtins.genList
-          (idx:
-            let
-              servicePath = "${sitePath}.communicationContract.services[${toString idx}]";
-              service = requireAttrs servicePath (builtins.elemAt communicationContract.services idx);
-              serviceName = requireString "${servicePath}.name" (service.name or null);
-            in
-            { name = serviceName; value = service; })
-          (builtins.length communicationContract.services)
-      )
+      builtins.listToAttrs
+        (
+          builtins.genList
+            (idx:
+              let
+                servicePath = "${sitePath}.communicationContract.services[${toString idx}]";
+                service = requireAttrs servicePath (builtins.elemAt communicationContract.services idx);
+                serviceName = requireString "${servicePath}.name" (service.name or null);
+              in
+              { name = serviceName; value = service; })
+            (builtins.length communicationContract.services)
+        )
     else
       { };
 

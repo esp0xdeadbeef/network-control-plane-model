@@ -1,11 +1,11 @@
-{
-  lib,
-  helpers,
-  cpmData,
-  runtimeTargetEntries,
-  entryKey,
-  dnsListenersForTarget,
-  interfaceCidrsForTarget,
+{ lib
+, helpers
+, cpmData
+, runtimeTargetEntries
+, entryKey
+, dnsListenersForTarget
+, interfaceCidrsForTarget
+,
 }:
 
 let
@@ -20,9 +20,9 @@ let
         (attachment: attachment.name)
         (builtins.filter
           (attachment:
-            builtins.isAttrs attachment
-            && (attachment.kind or null) == "tenant"
-            && isNonEmptyString (attachment.name or null))
+          builtins.isAttrs attachment
+          && (attachment.kind or null) == "tenant"
+          && isNonEmptyString (attachment.name or null))
           (listOrEmpty (target.attachments or null)))
     );
 
@@ -70,12 +70,12 @@ let
       builtins.concatLists (
         builtins.map
           (endpoint:
-            if builtins.isAttrs endpoint then
-              listOrEmpty (endpoint.ipv4 or null) ++ listOrEmpty (endpoint.ipv6 or null)
-            else if builtins.isString endpoint then
-              [ endpoint ]
-            else
-              [ ])
+          if builtins.isAttrs endpoint then
+            listOrEmpty (endpoint.ipv4 or null) ++ listOrEmpty (endpoint.ipv6 or null)
+          else if builtins.isString endpoint then
+            [ endpoint ]
+          else
+            [ ])
           (listOrEmpty (service.providerEndpoints or null))
       )
     );
@@ -91,10 +91,10 @@ let
         (service: service.name)
         (builtins.filter
           (service:
-            builtins.isAttrs service
-            && isNonEmptyString (service.name or null)
-            && (service.trafficType or null) == "dns"
-            && lib.any (addr: builtins.elem addr listenSet) (providerEndpointAddresses service))
+          builtins.isAttrs service
+          && isNonEmptyString (service.name or null)
+          && (service.trafficType or null) == "dns"
+          && lib.any (addr: builtins.elem addr listenSet) (providerEndpointAddresses service))
           services)
     );
 
@@ -107,20 +107,20 @@ let
     builtins.concatLists (
       builtins.map
         (relationRaw:
-          let
-            relation = attrsOrEmpty relationRaw;
-            from = attrsOrEmpty (relation.from or null);
-            to = attrsOrEmpty (relation.to or null);
-          in
-          if
-            (relation.action or "allow") == "allow"
-            && (from.kind or null) == "external"
-            && (to.kind or null) == "service"
-            && builtins.elem (to.name or "") serviceNames
-          then
-            builtins.map (overlayName: { inherit overlayName; }) (externalNamesForEndpoint from)
-          else
-            [ ])
+        let
+          relation = attrsOrEmpty relationRaw;
+          from = attrsOrEmpty (relation.from or null);
+          to = attrsOrEmpty (relation.to or null);
+        in
+        if
+          (relation.action or "allow") == "allow"
+          && (from.kind or null) == "external"
+          && (to.kind or null) == "service"
+          && builtins.elem (to.name or "") serviceNames
+        then
+          builtins.map (overlayName: { inherit overlayName; }) (externalNamesForEndpoint from)
+        else
+          [ ])
         relations
     );
 
@@ -130,14 +130,14 @@ let
       builtins.concatLists (
         builtins.map
           (relationRaw:
-            let
-              relation = attrsOrEmpty relationRaw;
-              toExternalNames = externalNamesForEndpoint (relation.to or null);
-            in
-            if (relation.action or "allow") == "allow" && builtins.elem overlayName toExternalNames then
-              tenantNamesForEndpoint (relation.from or null)
-            else
-              [ ])
+          let
+            relation = attrsOrEmpty relationRaw;
+            toExternalNames = externalNamesForEndpoint (relation.to or null);
+          in
+          if (relation.action or "allow") == "allow" && builtins.elem overlayName toExternalNames then
+            tenantNamesForEndpoint (relation.from or null)
+          else
+            [ ])
           (allowedRelationsForSite enterpriseName siteName)
       )
     );
@@ -163,9 +163,9 @@ uniqueStrings (
   builtins.concatLists (
     builtins.map
       (overlayService:
-        builtins.concatLists (
-          builtins.map (allowFromForConsumer providerEntry overlayService.overlayName) runtimeTargetEntries
-        ))
+      builtins.concatLists (
+        builtins.map (allowFromForConsumer providerEntry overlayService.overlayName) runtimeTargetEntries
+      ))
       (overlayIngressServicesForProvider providerEntry providerListeners)
   )
 )

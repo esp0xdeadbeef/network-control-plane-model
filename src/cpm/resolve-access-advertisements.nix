@@ -1,12 +1,12 @@
 { helpers }:
 
-{
-  sitePath,
-  siteAttrs,
-  runtimeTargets,
-  realizationIndex,
-  endpointInventoryIndex,
-  routedPrefixesByTenant ? { },
+{ sitePath
+, siteAttrs
+, runtimeTargets
+, realizationIndex
+, endpointInventoryIndex
+, routedPrefixesByTenant ? { }
+,
 }:
 
 let

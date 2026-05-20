@@ -47,13 +47,13 @@ let
       intentKind == "runtime-routed-prefix-return"
       || intentKind == "overlay-underlay-reachability"
       || (builtins.isString dst && (
-      dst == (if family == 4 then "0.0.0.0/0" else "::/0")
-      || proto == "uplink"
-      || proto == "overlay"
-      || intentKind == "overlay-reachability"
-      || intentKind == "internal-reachability"
-      || intentKind == "realized-interface-route"
-      || (if family == 4 then isHostRoute4 dst else isHostRoute6 dst)
+        dst == (if family == 4 then "0.0.0.0/0" else "::/0")
+        || proto == "uplink"
+        || proto == "overlay"
+        || intentKind == "overlay-reachability"
+        || intentKind == "internal-reachability"
+        || intentKind == "realized-interface-route"
+        || (if family == 4 then isHostRoute4 dst else isHostRoute6 dst)
       ))
     );
 
@@ -134,17 +134,17 @@ let
     in
     builtins.map
       (peerName:
-        let
-          peerLoop = loopbacksByNode.${peerName};
-        in
-        {
-          peer_name = peerName;
-          peer_asn = bgpSiteAsn;
-          peer_addr4 = peerLoop.addr4;
-          peer_addr6 = peerLoop.addr6;
-          update_source = "lo";
-          route_reflector_client = isPolicy;
-        })
+      let
+        peerLoop = loopbacksByNode.${peerName};
+      in
+      {
+        peer_name = peerName;
+        peer_asn = bgpSiteAsn;
+        peer_addr4 = peerLoop.addr4;
+        peer_addr6 = peerLoop.addr6;
+        update_source = "lo";
+        route_reflector_client = isPolicy;
+      })
       peerNames;
 in
 {

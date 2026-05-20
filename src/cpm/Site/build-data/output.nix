@@ -1,33 +1,33 @@
-{
-  lib,
-  accessAdvertisements,
-  attachments,
-  bgpSiteAsn,
-  bgpTopology,
-  communicationContract,
-  coreNodeNames,
-  domainsValue,
-  forwardingSemantics,
-  ipv6Plan,
-  isNonEmptyString,
-  overlayProvisioning,
-  policyAttrs,
-  policyEndpointBindings,
-  policyNodeName,
-  routedPrefixesByTenant,
-  routingMode,
-  runtimeTargets,
-  services,
-  siteAttrs,
-  siteDisplayName,
-  siteId,
-  tenantPrefixOwners,
-  trafficPaths,
-  transitAttrs,
-  uplinkCoreNames,
-  uplinkNames,
-  uplinkRouting,
-  upstreamSelectorNodeName,
+{ lib
+, accessAdvertisements
+, attachments
+, bgpSiteAsn
+, bgpTopology
+, communicationContract
+, coreNodeNames
+, domainsValue
+, forwardingSemantics
+, ipv6Plan
+, isNonEmptyString
+, overlayProvisioning
+, policyAttrs
+, policyEndpointBindings
+, policyNodeName
+, routedPrefixesByTenant
+, routingMode
+, runtimeTargets
+, services
+, siteAttrs
+, siteDisplayName
+, siteId
+, tenantPrefixOwners
+, trafficPaths
+, transitAttrs
+, uplinkCoreNames
+, uplinkNames
+, uplinkRouting
+, upstreamSelectorNodeName
+,
 }:
 
 {
@@ -122,7 +122,7 @@
   else
     { }
 )
-// (
+  // (
   if isNonEmptyString (siteAttrs.enterprise or null) then
     {
       enterprise = siteAttrs.enterprise;

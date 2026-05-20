@@ -23,10 +23,12 @@ in
     serviceName:
     builtins.listToAttrs (
       lib.filter (entry: entry.name != null && entry.value != [ ]) (
-        map (spec: {
-          name = spec.relationId or null;
-          value = uniqueStrings (preferredUplinksForSpec spec);
-        }) (specsForService serviceName)
+        map
+          (spec: {
+            name = spec.relationId or null;
+            value = uniqueStrings (preferredUplinksForSpec spec);
+          })
+          (specsForService serviceName)
       )
     );
 }

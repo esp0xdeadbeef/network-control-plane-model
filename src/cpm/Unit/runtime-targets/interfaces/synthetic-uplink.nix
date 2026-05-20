@@ -1,16 +1,18 @@
-{
-  helpers,
-  common,
-  sitePath,
-  enterpriseName,
-  siteName,
-  overlayNames,
-  requireExplicitHostUplinkAddressing,
+{ helpers
+, common
+, sitePath
+, enterpriseName
+, siteName
+, overlayNames
+, uplinkRouting
+, requireExplicitHostUplinkAddressing
+,
 }:
 
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireStringList;
   inherit (common) failInventory mergeRoutes;
+  staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
 
   explicitUplinkRoute = family: dst: {
     inherit dst;
@@ -53,7 +55,12 @@ let
     ipv4 = builtins.map (dst: explicitUplinkRoute 4 dst) (if uplinkAttrs ? ipv4 then requireStringList "${uplinkPath}.ipv4" uplinkAttrs.ipv4 else [ ]);
     ipv6 = builtins.map (dst: explicitUplinkRoute 6 dst) (if uplinkAttrs ? ipv6 then requireStringList "${uplinkPath}.ipv6" uplinkAttrs.ipv6 else [ ]);
   };
-  routes = if portBinding != null && builtins.isAttrs (portBinding.interfaceRoutes or null) then mergeRoutes baseRoutes portBinding.interfaceRoutes else baseRoutes;
+  uplinkStaticRoutes = if hasAttr uplinkName uplinkRouting then staticUplinkRoutes uplinkRouting.${uplinkName} else { ipv4 = [ ]; ipv6 = [ ]; };
+  routes =
+    if portBinding != null && builtins.isAttrs (portBinding.interfaceRoutes or null) then
+      mergeRoutes (mergeRoutes baseRoutes portBinding.interfaceRoutes) uplinkStaticRoutes
+    else
+      mergeRoutes baseRoutes uplinkStaticRoutes;
   value =
     {
       runtimeTarget = targetId;

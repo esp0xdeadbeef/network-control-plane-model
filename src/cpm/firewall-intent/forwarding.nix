@@ -23,9 +23,9 @@ let
       (iface:
         iface.sourceKind == "wan"
         && (!builtins.isList (egressIntent.uplinks or null)
-          || egressIntent.uplinks == [ ]
-          || builtins.elem (iface.upstream or "") (listOrEmpty (egressIntent.uplinks or null))
-          || builtins.elem iface.sourceInterfaceName (listOrEmpty (egressIntent.wanInterfaces or null))))
+        || egressIntent.uplinks == [ ]
+        || builtins.elem (iface.upstream or "") (listOrEmpty (egressIntent.uplinks or null))
+        || builtins.elem iface.sourceInterfaceName (listOrEmpty (egressIntent.wanInterfaces or null))))
       interfaceRecords;
 in
 if role == "access" then

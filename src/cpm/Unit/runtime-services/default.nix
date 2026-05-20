@@ -1,19 +1,19 @@
-{
-  lib,
-  helpers,
-  sitePath,
-  attachments,
-  attrsOrEmpty,
-  failInventory,
-  policyDerivedDnsAllowFromForListeners,
-  policyDerivedDnsAllowedClassesForListeners,
-  policyDerivedDnsAllowedClassesForTenants,
-  policyDerivedDnsDirectEgressBlockedTenants,
-  policyDerivedDnsDirectEgressBlockedForListeners,
-  policyDerivedDnsDirectEgressBlockedForTenants,
-  policyDerivedDnsForwardersForListeners,
-  policyDerivedDnsForwardersForTenants,
-  uniqueStrings,
+{ lib
+, helpers
+, sitePath
+, attachments
+, attrsOrEmpty
+, failInventory
+, policyDerivedDnsAllowFromForListeners
+, policyDerivedDnsAllowedClassesForListeners
+, policyDerivedDnsAllowedClassesForTenants
+, policyDerivedDnsDirectEgressBlockedTenants
+, policyDerivedDnsDirectEgressBlockedForListeners
+, policyDerivedDnsDirectEgressBlockedForTenants
+, policyDerivedDnsForwardersForListeners
+, policyDerivedDnsForwardersForTenants
+, uniqueStrings
+,
 }:
 
 let
@@ -75,11 +75,11 @@ let
     );
 
   resolveRuntimeServices =
-    {
-      nodePath,
-      nodeName,
-      nodeAttrs,
-      targetDef,
+    { nodePath
+    , nodeName
+    , nodeAttrs
+    , targetDef
+    ,
     }:
     let
       normalized = normalizeRuntimeServices targetDef;
@@ -116,7 +116,7 @@ let
             if builtins.isList (dnsService.listen or null) then
               policyDerivedDnsAllowedClassesForListeners dnsService.listen
             else
-            [ ]
+              [ ]
           )
         );
       directEgressBlockedTenants = policyDerivedDnsDirectEgressBlockedTenants tenantNames;

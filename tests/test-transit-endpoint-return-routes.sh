@@ -110,7 +110,7 @@ jq '
     clientEastWestDoesNotLearnWanCoreHost: (has_transit_route4(.policyClientEastWest; "10.80.0.4/32") | not),
     dmzEastWestDoesNotLearnWanCoreHost: (has_transit_route4(.policyDmzEastWest; "10.80.0.4/32") | not),
     dmzWanDoesNotLearnWanCoreHost: (has_transit_route4(.policyDmzWan; "10.80.0.4/32") | not),
-    clientEastWestKeepsAccessP2pAggregate: has_internal_route4(.policyClientEastWest; "10.80.0.0/30"),
+    clientEastWestKeepsAccessP2pLink: has_internal_route4(.policyClientEastWest; "10.80.0.0/31"),
     branchOverlayDoesNotLearnAccessReturnV4: (has_transit_route4(.branchOverlay; "10.50.0.0/32") | not),
     branchOverlayDoesNotLearnAccessReturnV6: (has_transit_route6(.branchOverlay; "fd42:dead:feed:1000:0:0:0:0/128") | not),
     branchNebulaCoreKeepsUnderlayDefaultV4: has_default4(.branchNebulaUpstream; "10.50.0.5"),

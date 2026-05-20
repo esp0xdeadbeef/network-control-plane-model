@@ -1,9 +1,9 @@
-{
-  lib,
-  helpers,
-  common,
-  policyDerivedDnsAllowedClassesForListeners,
-  policyDerivedDnsForwardersForListeners,
+{ lib
+, helpers
+, common
+, policyDerivedDnsAllowedClassesForListeners
+, policyDerivedDnsForwardersForListeners
+,
 }:
 
 let
@@ -152,7 +152,7 @@ let
   targetWithDns = synthesizeRouterSelfDns target;
   dns = attrsOrEmpty (targetWithDns.services.dns or null);
   forwarders = listOrEmpty (dns.forwarders or null);
-      dnsContracts =
+  dnsContracts =
     if forwarders == [ ] then
       dns
     else
@@ -173,6 +173,6 @@ else
   addForwarderRoutes
     (targetWithDns
       // {
-        services = (attrsOrEmpty (target.services or null)) // { dns = dnsContracts; };
-      })
+      services = (attrsOrEmpty (target.services or null)) // { dns = dnsContracts; };
+    })
     forwarders

@@ -1,8 +1,8 @@
-{
-  lib,
-  helpers,
-  common,
-  allSiteEntries,
+{ lib
+, helpers
+, common
+, allSiteEntries
+,
 }:
 
 let
