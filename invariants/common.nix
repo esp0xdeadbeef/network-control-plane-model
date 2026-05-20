@@ -28,13 +28,13 @@ let
   contextString = context:
     let
       segments =
-        (if context ? enterprise && isNonEmptyString context.enterprise then [ "enterprise.${context.enterprise}" ] else [])
-        ++ (if context ? site && isNonEmptyString context.site then [ "site.${context.site}" ] else [])
-        ++ (if context ? node && isNonEmptyString context.node then [ "node.${context.node}" ] else [])
-        ++ (if context ? interface && isNonEmptyString context.interface then [ "interface.${context.interface}" ] else [])
-        ++ (if context ? target && isNonEmptyString context.target then [ "target.${context.target}" ] else []);
+        (if context ? enterprise && isNonEmptyString context.enterprise then [ "enterprise.${context.enterprise}" ] else [ ])
+        ++ (if context ? site && isNonEmptyString context.site then [ "site.${context.site}" ] else [ ])
+        ++ (if context ? node && isNonEmptyString context.node then [ "node.${context.node}" ] else [ ])
+        ++ (if context ? interface && isNonEmptyString context.interface then [ "interface.${context.interface}" ] else [ ])
+        ++ (if context ? target && isNonEmptyString context.target then [ "target.${context.target}" ] else [ ]);
     in
-    if segments == [] then "forwardingModel" else builtins.concatStringsSep "." segments;
+    if segments == [ ] then "forwardingModel" else builtins.concatStringsSep "." segments;
 
   fail = context: message:
     throw "${contextString context}: ${message}";

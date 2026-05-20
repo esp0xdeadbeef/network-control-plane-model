@@ -24,9 +24,9 @@ in
 builtins.concatLists (
   builtins.map
     (accessIface:
-      let
-        policyIface = policyForAccess accessIface;
-      in
-      if policyIface == null then [ ] else common.selectorPairRule accessIface policyIface)
+    let
+      policyIface = policyForAccess accessIface;
+    in
+    if policyIface == null then [ ] else common.selectorPairRule accessIface policyIface)
     accessInterfaces
 )

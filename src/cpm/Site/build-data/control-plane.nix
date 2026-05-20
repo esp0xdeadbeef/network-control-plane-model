@@ -1,11 +1,11 @@
-{
-  helpers,
-  common,
-  inventoryAttrs,
-  siteAttrs,
-  enterpriseName,
-  siteName,
-  uplinkNames,
+{ helpers
+, common
+, inventoryAttrs
+, siteAttrs
+, enterpriseName
+, siteName
+, uplinkNames
+,
 }:
 
 let

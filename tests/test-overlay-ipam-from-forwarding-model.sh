@@ -15,6 +15,9 @@ let
   };
   overlayProvisioning = import ${repo_root}/src/cpm/Site/build-data/overlay-provisioning.nix {
     inherit lib helpers common ipam;
+    allSiteEntries = [ ];
+    enterpriseName = \"acme\";
+    inventoryAttrs = { };
     sitePath = \"forwardingModel.enterprise.acme.site.ams\";
     siteAttrs = {
       overlayReachability.east-west = {

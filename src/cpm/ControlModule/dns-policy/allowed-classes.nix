@@ -1,9 +1,9 @@
-{
-  lib,
-  allowedRelations,
-  dnsPolicy,
-  providersForService,
-  serviceDefinitions,
+{ lib
+, allowedRelations
+, dnsPolicy
+, providersForService
+, serviceDefinitions
+,
 }:
 
 let
@@ -33,11 +33,11 @@ let
     in
     builtins.filter
       (serviceName:
-        let
-          serviceDef = serviceDefinitions.${serviceName};
-          providerAddresses = lib.concatMap providerAddressesForDnsService (providersForService serviceName);
-        in
-        (serviceDef.trafficType or null) == "dns" && lib.any (addr: builtins.elem addr listenSet) providerAddresses)
+      let
+        serviceDef = serviceDefinitions.${serviceName};
+        providerAddresses = lib.concatMap providerAddressesForDnsService (providersForService serviceName);
+      in
+      (serviceDef.trafficType or null) == "dns" && lib.any (addr: builtins.elem addr listenSet) providerAddresses)
       (builtins.attrNames serviceDefinitions);
 in
 {

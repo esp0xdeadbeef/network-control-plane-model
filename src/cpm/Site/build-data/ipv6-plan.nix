@@ -1,14 +1,14 @@
-{
-  helpers,
-  common,
-  resolveRoutedPrefixes,
-  enterpriseName,
-  siteName,
-  sitePath,
-  domains,
-  siteTenantsCfg,
-  siteIpv6Cfg,
-  uplinkNames,
+{ helpers
+, common
+, resolveRoutedPrefixes
+, enterpriseName
+, siteName
+, sitePath
+, domains
+, siteTenantsCfg
+, siteIpv6Cfg
+, uplinkNames
+,
 }:
 
 let
@@ -174,19 +174,21 @@ in
                 tenantSlots = pdTenantSlots;
               };
               tenants = builtins.listToAttrs (
-                map (tenantName:
-                  let
-                    mode = tenantIpv6Mode tenantName;
-                  in
-                  {
-                    name = tenantName;
-                    value =
-                      { inherit mode; }
-                      // (if mode == "static" then
-                        { prefixes = tenantStaticPrefixes tenantName; }
-                      else
-                        { pd = { slot = pdTenantSlots.${tenantName}; prefixLength = ipv6PdPerTenantPrefixLength; }; });
-                  }) tenantNames
+                map
+                  (tenantName:
+                    let
+                      mode = tenantIpv6Mode tenantName;
+                    in
+                    {
+                      name = tenantName;
+                      value =
+                        { inherit mode; }
+                        // (if mode == "static" then
+                          { prefixes = tenantStaticPrefixes tenantName; }
+                        else
+                          { pd = { slot = pdTenantSlots.${tenantName}; prefixLength = ipv6PdPerTenantPrefixLength; }; });
+                    })
+                  tenantNames
               );
             }
         )

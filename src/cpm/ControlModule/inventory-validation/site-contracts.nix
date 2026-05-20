@@ -10,10 +10,12 @@ let
 
   makeStringSet = values:
     builtins.listToAttrs (
-      builtins.map (value: {
-        name = value;
-        value = true;
-      }) values
+      builtins.map
+        (value: {
+          name = value;
+          value = true;
+        })
+        values
     );
 
   nodeInterfaceNames = nodePath: node:
@@ -119,14 +121,14 @@ builtins.listToAttrs (
   builtins.concatLists (
     builtins.map
       (enterpriseName:
-        let
-          enterprisePath = "forwardingModel.enterprise.${enterpriseName}";
-          enterpriseValue = requireAttrs enterprisePath enterpriseRoot.${enterpriseName};
-          sites = requireAttrs "${enterprisePath}.site" (enterpriseValue.site or null);
-        in
-        builtins.map
-          (siteName: buildSiteContract enterpriseName enterprisePath siteName sites.${siteName})
-          (sortedNames sites))
+      let
+        enterprisePath = "forwardingModel.enterprise.${enterpriseName}";
+        enterpriseValue = requireAttrs enterprisePath enterpriseRoot.${enterpriseName};
+        sites = requireAttrs "${enterprisePath}.site" (enterpriseValue.site or null);
+      in
+      builtins.map
+        (siteName: buildSiteContract enterpriseName enterprisePath siteName sites.${siteName})
+        (sortedNames sites))
       (sortedNames enterpriseRoot)
   )
 )

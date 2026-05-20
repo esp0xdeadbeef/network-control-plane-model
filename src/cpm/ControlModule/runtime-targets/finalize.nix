@@ -1,10 +1,10 @@
-{
-  lib,
-  helpers,
-  common,
-  ipam,
-  policyDerivedDnsAllowedClassesForListeners,
-  policyDerivedDnsForwardersForListeners,
+{ lib
+, helpers
+, common
+, ipam
+, policyDerivedDnsAllowedClassesForListeners
+, policyDerivedDnsForwardersForListeners
+,
 }:
 
 let
@@ -19,28 +19,28 @@ let
       ;
   };
 in
-{
-  accessAdvertisements,
-  firewallIntent,
-  normalizedRuntimeTargets,
+{ accessAdvertisements
+, firewallIntent
+, normalizedRuntimeTargets
+,
 }:
 builtins.listToAttrs (
   builtins.map
     (targetName:
-      let
-        hasAccessAdvertisements = hasAttr targetName accessAdvertisements;
-        advertisementAttrs =
-          if hasAccessAdvertisements then
-            { advertisements = accessAdvertisements.${targetName}; }
-          else
-            { };
-        intentAttrs =
-          (if hasAttr targetName firewallIntent.natByTarget then { natIntent = firewallIntent.natByTarget.${targetName}; } else { })
-          // (if hasAttr targetName firewallIntent.forwardingByTarget then { forwardingIntent = firewallIntent.forwardingByTarget.${targetName}; } else { });
-      in
-      {
-        name = targetName;
-        value = addDnsContracts (normalizedRuntimeTargets.${targetName} // intentAttrs // advertisementAttrs);
-      })
+    let
+      hasAccessAdvertisements = hasAttr targetName accessAdvertisements;
+      advertisementAttrs =
+        if hasAccessAdvertisements then
+          { advertisements = accessAdvertisements.${targetName}; }
+        else
+          { };
+      intentAttrs =
+        (if hasAttr targetName firewallIntent.natByTarget then { natIntent = firewallIntent.natByTarget.${targetName}; } else { })
+        // (if hasAttr targetName firewallIntent.forwardingByTarget then { forwardingIntent = firewallIntent.forwardingByTarget.${targetName}; } else { });
+    in
+    {
+      name = targetName;
+      value = addDnsContracts (normalizedRuntimeTargets.${targetName} // intentAttrs // advertisementAttrs);
+    })
     (sortedNames normalizedRuntimeTargets)
 )

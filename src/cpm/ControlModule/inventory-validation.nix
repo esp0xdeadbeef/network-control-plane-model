@@ -33,20 +33,22 @@ let
         else
           failInventory "${targetDef.nodePath}.logicalNode.name" "references unknown forwarding-model node '${logical.name}'";
     in
-      forceAll (
-        builtins.map
+    forceAll (
+      builtins.map
         (portName:
           validatePortBinding {
             inherit targetDef siteContract nodeContract portName;
           })
         (sortedNames targetDef.portBindings.portDefs)
-      );
+    );
 
-  validateRuntimeTargetCoverage = import ./inventory-validation/runtime-target-coverage.nix {
-    inherit helpers;
-  } {
-    inherit sitesByKey realizationIndex;
-  };
+  validateRuntimeTargetCoverage = import ./inventory-validation/runtime-target-coverage.nix
+    {
+      inherit helpers;
+    }
+    {
+      inherit sitesByKey realizationIndex;
+    };
 in
 builtins.seq
   (forceAll (

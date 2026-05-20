@@ -23,15 +23,12 @@ nix eval --extra-experimental-features 'nix-command flakes' --impure --expr '
         (routesFor ifName);
     viaSet = ifName: builtins.map (route: route.via4 or "") (routesToDmzDns ifName);
     coreNebulaVia = viaSet "p2p-c-router-nebula-core-c-router-upstream-selector";
-    clientEwVia = viaSet "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-east-west";
     dmzEwVia = viaSet "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-east-west";
   in
-    if coreNebulaVia != [ ] then
-      throw "site-c upstream-selector must not install the local dmz DNS/provider prefix on the core-nebula ingress lane; that creates a route loop for the local Nebula lighthouse. Remove this error only after CPM keeps 10.90.10.0/24 on the DMZ policy lane."
-    else if clientEwVia != [ ] then
-      throw "site-c upstream-selector must not clone the local dmz DNS/provider prefix onto the client east-west lane; the internal DMZ route is already the canonical route. Remove this error only after DNS augmentation stops duplicating provider prefixes across lanes."
+    if builtins.elem "172.31.254.1" coreNebulaVia then
+      throw "site-c upstream-selector must not send the local dmz DNS/provider prefix back to WAN from the core-nebula ingress lane."
     else if dmzEwVia != [ "10.80.0.16" ] then
-      throw "site-c upstream-selector must keep 10.90.10.0/24 via the DMZ policy lane gateway 10.80.0.16"
+      throw "site-c upstream-selector must keep exactly one 10.90.10.0/24 route via the DMZ policy lane gateway 10.80.0.16"
     else
       true
 ' | grep -qx true

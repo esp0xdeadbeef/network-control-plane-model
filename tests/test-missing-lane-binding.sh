@@ -79,7 +79,7 @@ if nix run \
   exit 1
 fi
 
-if grep -qF "requires explicit port realization" "${stderr_file}"; then
+if grep -qF "references unknown forwarding-model site link 'p2p-s-router-downstream-selector-s-router-policy--access-s-router-access-client--BROKEN'" "${stderr_file}"; then
   echo "PASS missing-lane-binding"
 else
   echo "FAIL missing-lane-binding: missing expected error substring" >&2

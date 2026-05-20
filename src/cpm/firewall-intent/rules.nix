@@ -1,4 +1,4 @@
-{ }:
+{}:
 
 let
   common = import ./rules/common.nix { };

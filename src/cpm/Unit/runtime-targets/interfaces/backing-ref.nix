@@ -1,12 +1,12 @@
-{
-  lib,
-  helpers,
-  common,
-  enterpriseName,
-  siteName,
-  sitePath,
-  attachments,
-  links,
+{ lib
+, helpers
+, common
+, enterpriseName
+, siteName
+, sitePath
+, attachments
+, links
+,
 }:
 
 let

@@ -1,11 +1,11 @@
 { helpers }:
 
-{
-  enterpriseName,
-  siteName,
-  sitePath,
-  domains,
-  siteTenantsCfg,
+{ enterpriseName
+, siteName
+, sitePath
+, domains
+, siteTenantsCfg
+,
 }:
 
 let
@@ -68,10 +68,12 @@ let
   tenantNames = map (tenant: requireString "${sitePath}.domains.tenants[].name" (tenant.name or null)) domains.tenants;
 
   tenantByName = builtins.listToAttrs (
-    map (tenant: {
-      name = requireString "${sitePath}.domains.tenants[].name" (tenant.name or null);
-      value = tenant;
-    }) domains.tenants
+    map
+      (tenant: {
+        name = requireString "${sitePath}.domains.tenants[].name" (tenant.name or null);
+        value = tenant;
+      })
+      domains.tenants
   );
 
   resolveForTenant =
@@ -86,8 +88,10 @@ let
     );
 in
 builtins.listToAttrs (
-  map (tenantName: {
-    name = tenantName;
-    value = resolveForTenant tenantName;
-  }) tenantNames
+  map
+    (tenantName: {
+      name = tenantName;
+      value = resolveForTenant tenantName;
+    })
+    tenantNames
 )

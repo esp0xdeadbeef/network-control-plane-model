@@ -96,10 +96,10 @@ INVENTORY_PATH="${inventory_path}" \
           sitebNebulaCore."p2p-b-router-core-nebula-b-router-upstream-selector".routes;
       in {
         checks = {
-          clientLaneDoesNotLearnMgmtDnsV4 =
-            !(hasRoute (siteaUpstreamClient.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48");
-          clientLaneDoesNotLearnMgmtDnsV6 =
-            !(hasRoute (siteaUpstreamClient.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30");
+          clientLaneLearnsAllowedMgmtDnsV4 =
+            hasRoute (siteaUpstreamClient.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
+          clientLaneLearnsAllowedMgmtDnsV6 =
+            hasRoute (siteaUpstreamClient.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
           mgmtLaneLearnsMgmtDnsV4 =
             hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
           mgmtLaneLearnsMgmtDnsV6 =

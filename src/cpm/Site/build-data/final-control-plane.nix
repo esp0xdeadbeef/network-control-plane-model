@@ -1,24 +1,24 @@
-{
-  lib,
-  helpers,
-  common,
-  ipam,
-  resolveAccessAdvertisements,
-  resolvePolicyEndpointBindings,
-  resolveFirewallIntent,
-  sitePath,
-  siteAttrs,
-  attachments,
-  domains,
-  realizationIndex,
-  endpointInventoryIndex,
-  routedPrefixesByTenant,
-  dnsServiceRouteSpecs,
-  providerEndpointForServiceProvider,
-  providerTenantsForServiceProvider,
-  policyDerivedDnsAllowedClassesForListeners,
-  policyDerivedDnsForwardersForListeners,
-  normalizedRuntimeTargets,
+{ lib
+, helpers
+, common
+, ipam
+, resolveAccessAdvertisements
+, resolvePolicyEndpointBindings
+, resolveFirewallIntent
+, sitePath
+, siteAttrs
+, attachments
+, domains
+, realizationIndex
+, endpointInventoryIndex
+, routedPrefixesByTenant
+, dnsServiceRouteSpecs
+, providerEndpointForServiceProvider
+, providerTenantsForServiceProvider
+, policyDerivedDnsAllowedClassesForListeners
+, policyDerivedDnsForwardersForListeners
+, normalizedRuntimeTargets
+,
 }:
 
 let

@@ -1,15 +1,15 @@
-{
-  lib,
-  helpers,
-  common,
-  inventoryEndpoints,
-  sitePath,
-  domains,
-  attachments,
-  nodes,
-  ownership,
-  allowedRelations,
-  serviceDefinitions,
+{ lib
+, helpers
+, common
+, inventoryEndpoints
+, sitePath
+, domains
+, attachments
+, nodes
+, ownership
+, allowedRelations
+, serviceDefinitions
+,
 }:
 
 let

@@ -1,18 +1,18 @@
-{
-  lib,
-  helpers,
-  common,
-  ipam,
-  resolveRoutedPrefixes,
-  enterpriseName,
-  siteName,
-  sitePath,
-  siteAttrs,
-  inventoryAttrs,
-  allSiteEntries,
-  attachments,
-  domains,
-  uplinkNames,
+{ lib
+, helpers
+, common
+, ipam
+, resolveRoutedPrefixes
+, enterpriseName
+, siteName
+, sitePath
+, siteAttrs
+, inventoryAttrs
+, allSiteEntries
+, attachments
+, domains
+, uplinkNames
+,
 }:
 
 let

@@ -1,4 +1,4 @@
-{ }:
+{}:
 
 let
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };

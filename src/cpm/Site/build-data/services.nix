@@ -1,13 +1,13 @@
-{
-  lib,
-  helpers,
-  uniqueStrings,
-  policyEndpointBindings,
-  providerEndpointForServiceProvider,
-  providerTenantsForServiceProvider,
-  preferredDnsUplinksByRelationForService,
-  preferredDnsUplinksForService,
-  sitePath,
+{ lib
+, helpers
+, uniqueStrings
+, policyEndpointBindings
+, providerEndpointForServiceProvider
+, providerTenantsForServiceProvider
+, preferredDnsUplinksByRelationForService
+, preferredDnsUplinksForService
+, sitePath
+,
 }:
 
 let
@@ -25,7 +25,7 @@ builtins.map
           [ ];
     in
     resolvedService
-    // {
+      // {
       name = serviceName;
       providerEndpoints = builtins.map providerEndpointForServiceProvider providerNames;
       providerTenants = uniqueStrings (

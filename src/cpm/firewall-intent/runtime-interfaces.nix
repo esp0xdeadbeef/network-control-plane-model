@@ -10,11 +10,11 @@ let
 in
 builtins.map
   (ifName:
-    let iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
-    in
-    iface // {
-      sourceInterfaceName = ifName;
-      runtimeIfName = requireString "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName" (iface.runtimeIfName or null);
-      sourceKind = requireString "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.sourceKind" (iface.sourceKind or null);
-    })
+  let iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
+  in
+  iface // {
+    sourceInterfaceName = ifName;
+    runtimeIfName = requireString "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName" (iface.runtimeIfName or null);
+    sourceKind = requireString "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.sourceKind" (iface.sourceKind or null);
+  })
   (sortedNames interfaces)

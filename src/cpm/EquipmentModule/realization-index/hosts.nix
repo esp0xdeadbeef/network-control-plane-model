@@ -1,7 +1,7 @@
-{
-  helpers,
-  failInventory,
-  hostsRoot,
+{ helpers
+, failInventory
+, hostsRoot
+,
 }:
 
 let

@@ -1,7 +1,7 @@
-{
-  lib,
-  helpers,
-  cpmData,
+{ lib
+, helpers
+, cpmData
+,
 }:
 
 let
@@ -59,10 +59,10 @@ let
       builtins.concatLists (
         builtins.map
           (ifName:
-            let iface = attrsOrEmpty interfaces.${ifName};
-            in
-            (lib.optional (isNonEmptyString (iface.addr4 or null)) iface.addr4)
-            ++ (lib.optional (isNonEmptyString (iface.addr6 or null)) iface.addr6))
+          let iface = attrsOrEmpty interfaces.${ifName};
+          in
+          (lib.optional (isNonEmptyString (iface.addr4 or null)) iface.addr4)
+          ++ (lib.optional (isNonEmptyString (iface.addr6 or null)) iface.addr6))
           (sortedNames interfaces)
       )
     );
@@ -92,20 +92,21 @@ let
               [ ]
             else
               uniqueStrings (
-                builtins.concatLists (
-                  builtins.map
-                    (consumerEntry:
-                      let consumerForwarders = dnsForwardersForTarget consumerEntry.target;
-                      in
-                      if
-                        entryKey consumerEntry != entryKey providerEntry
-                        && lib.any (forwarder: builtins.elem forwarder providerListeners) consumerForwarders
-                      then
-                        interfaceCidrsForTarget consumerEntry.target
-                      else
-                        [ ])
-                    runtimeTargetEntries
-                )
+                builtins.concatLists
+                  (
+                    builtins.map
+                      (consumerEntry:
+                        let consumerForwarders = dnsForwardersForTarget consumerEntry.target;
+                        in
+                        if
+                          entryKey consumerEntry != entryKey providerEntry
+                          && lib.any (forwarder: builtins.elem forwarder providerListeners) consumerForwarders
+                        then
+                          interfaceCidrsForTarget consumerEntry.target
+                        else
+                          [ ])
+                      runtimeTargetEntries
+                  )
                 ++ overlayServiceDnsAllowFrom providerEntry providerListeners
               );
         })

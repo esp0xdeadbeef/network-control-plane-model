@@ -1,7 +1,7 @@
-{
-  helpers,
-  ipam,
-  enterpriseRoot,
+{ helpers
+, ipam
+, enterpriseRoot
+,
 }:
 
 let

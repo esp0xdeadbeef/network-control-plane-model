@@ -1,9 +1,9 @@
-{
-  helpers,
-  sitePath,
-  siteAttrs,
-  routedPrefixesByTenant,
-  advertisementHelpers,
+{ helpers
+, sitePath
+, siteAttrs
+, routedPrefixesByTenant
+, advertisementHelpers
+,
 }:
 
 let
@@ -47,10 +47,12 @@ let
   validateNoUnexpectedInterfaces = inventoryPath: tenantInterfaceNames: entries:
     let
       tenantInterfaceSet =
-        builtins.listToAttrs (builtins.map (interfaceName: {
-          name = interfaceName;
-          value = true;
-        }) tenantInterfaceNames);
+        builtins.listToAttrs (builtins.map
+          (interfaceName: {
+            name = interfaceName;
+            value = true;
+          })
+          tenantInterfaceNames);
     in
     builtins.deepSeq
       (builtins.map

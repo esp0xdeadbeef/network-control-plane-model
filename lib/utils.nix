@@ -29,6 +29,6 @@
   isP2PLink = link:
     builtins.isAttrs link
     && (link.kind or null) == "p2p"
-    && builtins.isAttrs (link.endpoints or {})
-    && builtins.length (builtins.attrNames (link.endpoints or {})) == 2;
+    && builtins.isAttrs (link.endpoints or { })
+    && builtins.length (builtins.attrNames (link.endpoints or { })) == 2;
 }

@@ -1,9 +1,9 @@
-{
-  lib,
-  common,
-  overlayNames ? [ ],
-  attachments ? [ ],
-  routedPrefixesByTenant ? { },
+{ lib
+, common
+, overlayNames ? [ ]
+, attachments ? [ ]
+, routedPrefixesByTenant ? { }
+,
 }:
 
 let
@@ -34,19 +34,21 @@ let
     family: routes:
     (builtins.foldl'
       (acc: route:
-        let key = routeKey family route;
-        in
-        if key == null || builtins.hasAttr key acc.seen then
-          acc
-        else
-          {
-            seen = acc.seen // { ${key} = true; };
-            values = acc.values ++ [ route ];
-          })
+      let key = routeKey family route;
+      in
+      if key == null || builtins.hasAttr key acc.seen then
+        acc
+      else
+        {
+          seen = acc.seen // { ${key} = true; };
+          values = acc.values ++ [ route ];
+        })
       { seen = { }; values = [ ]; }
       routes).values;
 
   defaultDst = family: if family == 4 then "0.0.0.0/0" else "::/0";
+  inherit (import ./route-kernel-defaults.nix { inherit defaultDst; }) uniqueKernelDefaults;
+  inherit (import ./route-defaults.nix { inherit attrsOrEmpty defaultDst; }) dropDuplicateUnlanedDefaults;
   rolesWithPolicyDefaults = {
     downstream-selector = true;
     policy = true;
@@ -111,36 +113,6 @@ let
     else
       route;
 
-  hasLanedDefaultWithSameVia =
-    family: route: routes:
-    let
-      viaField = if family == 4 then "via4" else "via6";
-    in
-    builtins.any
-      (
-        other:
-        builtins.isAttrs other
-        && (other.dst or null) == (route.dst or null)
-        && (other.${viaField} or null) == (route.${viaField} or null)
-        && ((attrsOrEmpty (other.lane or null)).access or "") != ""
-      )
-      routes;
-
-  dropDuplicateUnlanedDefaults =
-    family: routes:
-    builtins.filter
-      (
-        route:
-        !(
-          builtins.isAttrs route
-          && (route.dst or null) == defaultDst family
-          && ((route.intent or { }).kind or null) == "default-reachability"
-          && ((attrsOrEmpty (route.lane or null)).access or "") == ""
-          && hasLanedDefaultWithSameVia family route routes
-        )
-      )
-      routes;
-
   normalizeRuntimeTargetRoutes =
     target:
     let
@@ -152,8 +124,8 @@ let
             let
               routes = attrsOrEmpty (iface.routes or null);
               targetRole = target.role or "";
-              ipv4 = dropDuplicateUnlanedDefaults 4 (builtins.filter (route: route != null) (builtins.map (classifyRoute targetRole 4) (listOrEmpty (routes.ipv4 or null))));
-              ipv6 = dropDuplicateUnlanedDefaults 6 (builtins.filter (route: route != null) (builtins.map (classifyRoute targetRole 6) (listOrEmpty (routes.ipv6 or null))));
+              ipv4 = uniqueKernelDefaults 4 (dropDuplicateUnlanedDefaults 4 (builtins.filter (route: route != null) (builtins.map (classifyRoute targetRole 4) (listOrEmpty (routes.ipv4 or null)))));
+              ipv6 = uniqueKernelDefaults 6 (dropDuplicateUnlanedDefaults 6 (builtins.filter (route: route != null) (builtins.map (classifyRoute targetRole 6) (listOrEmpty (routes.ipv6 or null)))));
             in
             if ipv4 == [ ] && ipv6 == [ ] then
               iface

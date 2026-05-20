@@ -1,15 +1,15 @@
-{
-  lib,
-  helpers,
-  common,
-  inventoryEndpoints,
-  sitePath,
-  domains,
-  attachments,
-  nodes,
-  ownership,
-  allowedRelations,
-  serviceDefinitions,
+{ lib
+, helpers
+, common
+, inventoryEndpoints
+, sitePath
+, domains
+, attachments
+, nodes
+, ownership
+, allowedRelations
+, serviceDefinitions
+,
 }:
 
 let
@@ -51,7 +51,8 @@ let
       tenantDef = lib.findFirst (tenant: builtins.isAttrs tenant && (tenant.name or null) == tenantName) null domains.tenants;
       tenantPath = "${sitePath}.domains.tenants.${tenantName}";
     in
-    if tenantDef == null then [ ] else uniqueStrings (
+    if tenantDef == null then [ ] else
+    uniqueStrings (
       lib.optional (isNonEmptyString (tenantDef.ipv4 or null)) (requireString "${tenantPath}.ipv4" tenantDef.ipv4)
       ++ lib.optional (isNonEmptyString (tenantDef.ipv6 or null)) (requireString "${tenantPath}.ipv6" tenantDef.ipv6)
     );
@@ -61,29 +62,31 @@ let
     uniqueStrings (
       (builtins.map
         (attachment:
-          let
-            attachmentAttrs = requireAttrs "${sitePath}.attachments[*]" attachment;
-          in
-          if (attachmentAttrs.kind or null) == "tenant" && (attachmentAttrs.name or null) == tenantName && isNonEmptyString (attachmentAttrs.unit or null) then
-            attachmentAttrs.unit
-          else
-            "")
+        let
+          attachmentAttrs = requireAttrs "${sitePath}.attachments[*]" attachment;
+        in
+        if (attachmentAttrs.kind or null) == "tenant" && (attachmentAttrs.name or null) == tenantName && isNonEmptyString (attachmentAttrs.unit or null) then
+          attachmentAttrs.unit
+        else
+          "")
         attachments)
       ++ (builtins.map
         (nodeName:
-          let
-            nodePath = "${sitePath}.nodes.${nodeName}";
-            nodeAttrs = requireAttrs nodePath nodes.${nodeName};
-            attachedTenants =
-              if builtins.isList (nodeAttrs.attachments or null) then
-                builtins.map (attachment:
+        let
+          nodePath = "${sitePath}.nodes.${nodeName}";
+          nodeAttrs = requireAttrs nodePath nodes.${nodeName};
+          attachedTenants =
+            if builtins.isList (nodeAttrs.attachments or null) then
+              builtins.map
+                (attachment:
                   let
                     attachmentAttrs = requireAttrs "${nodePath}.attachments[*]" attachment;
                   in
-                  if (attachmentAttrs.kind or null) == "tenant" && isNonEmptyString (attachmentAttrs.name or null) then attachmentAttrs.name else "") nodeAttrs.attachments
-              else [ ];
-          in
-          if builtins.elem tenantName attachedTenants then nodeName else "")
+                  if (attachmentAttrs.kind or null) == "tenant" && isNonEmptyString (attachmentAttrs.name or null) then attachmentAttrs.name else "")
+                nodeAttrs.attachments
+            else [ ];
+        in
+        if builtins.elem tenantName attachedTenants then nodeName else "")
         (sortedNames nodes))
     );
 
@@ -96,11 +99,11 @@ let
     in
     uniqueStrings (lib.concatMap
       (ifName:
-        let
-          iface = requireAttrs "${nodePath}.interfaces.${ifName}" nodeInterfaces.${ifName};
-        in
-        lib.optional (isNonEmptyString (iface.addr4 or null)) (requireString "${nodePath}.interfaces.${ifName}.addr4" iface.addr4)
-        ++ lib.optional (isNonEmptyString (iface.addr6 or null)) (requireString "${nodePath}.interfaces.${ifName}.addr6" iface.addr6))
+      let
+        iface = requireAttrs "${nodePath}.interfaces.${ifName}" nodeInterfaces.${ifName};
+      in
+      lib.optional (isNonEmptyString (iface.addr4 or null)) (requireString "${nodePath}.interfaces.${ifName}.addr4" iface.addr4)
+      ++ lib.optional (isNonEmptyString (iface.addr6 or null)) (requireString "${nodePath}.interfaces.${ifName}.addr6" iface.addr6))
       (sortedNames nodeInterfaces));
 
   consumerInterfaceCidrsForTenant = tenantName: uniqueStrings (lib.concatMap interfaceCidrsForNode (attachedNodeNamesForTenant tenantName));

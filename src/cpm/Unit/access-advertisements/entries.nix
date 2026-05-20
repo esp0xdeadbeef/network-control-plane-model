@@ -1,8 +1,8 @@
-{
-  helpers,
-  sitePath,
-  advertisementHelpers,
-  advertisementContext,
+{ helpers
+, sitePath
+, advertisementHelpers
+, advertisementContext
+,
 }:
 
 let

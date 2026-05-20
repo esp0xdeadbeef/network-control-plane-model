@@ -1,21 +1,21 @@
 { helpers, bindingCommon }:
 
-{
-  sitePath,
-  policyInterfaceTags,
-  siteUplinkNames,
-  declaredExternalNames,
-  serviceDefinitions,
-  attachmentsByTenant,
-  domainsByTenant,
-  runtimeTenantBindingsByTenant,
-  runtimeExternalBindingsByName,
-  relationTenantNames,
-  relationExternalNames,
-  serviceNamesFromContract,
-  relationTenantSet,
-  relationExternalSet,
-  relations,
+{ sitePath
+, policyInterfaceTags
+, siteUplinkNames
+, declaredExternalNames
+, serviceDefinitions
+, attachmentsByTenant
+, domainsByTenant
+, runtimeTenantBindingsByTenant
+, runtimeExternalBindingsByName
+, relationTenantNames
+, relationExternalNames
+, serviceNamesFromContract
+, relationTenantSet
+, relationExternalSet
+, relations
+,
 }:
 
 let

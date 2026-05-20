@@ -1,10 +1,10 @@
-{
-  lib,
-  helpers,
-  common,
-  allSiteEntries,
-  inventoryAttrs,
-  enterpriseName,
+{ lib
+, helpers
+, common
+, allSiteEntries
+, inventoryAttrs
+, enterpriseName
+,
 }:
 
 let
@@ -34,32 +34,32 @@ let
     in
     lib.concatMap
       (tenant:
+      let
+        tenantAttrs = attrsOrEmpty tenant;
+        tenantName = tenantAttrs.name or null;
+        routedPrefixes = listOrEmpty (tenantAttrs.routedPrefixes or null);
+      in
+      lib.concatMap
+        (prefix:
         let
-          tenantAttrs = attrsOrEmpty tenant;
-          tenantName = tenantAttrs.name or null;
-          routedPrefixes = listOrEmpty (tenantAttrs.routedPrefixes or null);
+          prefixAttrs = attrsOrEmpty prefix;
+          sourceFile = prefixAttrs.sourceFile or null;
         in
-        lib.concatMap
-          (prefix:
-            let
-              prefixAttrs = attrsOrEmpty prefix;
-              sourceFile = prefixAttrs.sourceFile or null;
-            in
-            if (prefixAttrs.allocation or "runtime") == "runtime" && (prefixAttrs.family or "ipv6") == "ipv6" && isNonEmptyString sourceFile then
-              [
-                {
-                  family = 6;
-                  inherit sourceFile;
-                  tenant = tenantName;
-                  prefixName = prefixAttrs.name or null;
-                  delegatedPrefixLength = prefixAttrs.delegatedPrefixLength or 64;
-                  perTenantPrefixLength = prefixAttrs.perTenantPrefixLength or 64;
-                  slot = prefixAttrs.slot or 0;
-                }
-              ]
-            else
-              [ ])
-          routedPrefixes)
+        if (prefixAttrs.allocation or "runtime") == "runtime" && (prefixAttrs.family or "ipv6") == "ipv6" && isNonEmptyString sourceFile then
+          [
+            {
+              family = 6;
+              inherit sourceFile;
+              tenant = tenantName;
+              prefixName = prefixAttrs.name or null;
+              delegatedPrefixLength = prefixAttrs.delegatedPrefixLength or 64;
+              perTenantPrefixLength = prefixAttrs.perTenantPrefixLength or 64;
+              slot = prefixAttrs.slot or 0;
+            }
+          ]
+        else
+          [ ])
+        routedPrefixes)
       peerTenants;
 in
 {

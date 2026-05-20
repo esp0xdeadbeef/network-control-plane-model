@@ -1,8 +1,8 @@
-{
-  helpers,
-  failInventory,
-  hostIndex,
-  requireRoutes,
+{ helpers
+, failInventory
+, hostIndex
+, requireRoutes
+,
 }:
 
 let

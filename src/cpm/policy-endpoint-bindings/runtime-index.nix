@@ -10,26 +10,26 @@ let
     step: initial:
     builtins.foldl'
       (acc: targetName:
+      let
+        targetPath = "${sitePath}.runtimeTargets.${targetName}";
+        target = requireAttrs targetPath runtimeTargets.${targetName};
+        logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
+        nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
+        egressIntent = attrsOrEmpty (target.egressIntent or null);
+        effective = requireAttrs "${targetPath}.effectiveRuntimeRealization" (target.effectiveRuntimeRealization or null);
+        interfaces = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces" (effective.interfaces or null);
+      in
+      builtins.foldl'
+        (inner: ifName:
         let
-          targetPath = "${sitePath}.runtimeTargets.${targetName}";
-          target = requireAttrs targetPath runtimeTargets.${targetName};
-          logicalNode = requireAttrs "${targetPath}.logicalNode" (target.logicalNode or null);
-          nodeName = requireString "${targetPath}.logicalNode.name" (logicalNode.name or null);
-          egressIntent = attrsOrEmpty (target.egressIntent or null);
-          effective = requireAttrs "${targetPath}.effectiveRuntimeRealization" (target.effectiveRuntimeRealization or null);
-          interfaces = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces" (effective.interfaces or null);
+          iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
+          runtimeInterface = requireString "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName" (iface.runtimeIfName or null);
         in
-        builtins.foldl'
-          (inner: ifName:
-            let
-              iface = requireAttrs "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}" interfaces.${ifName};
-              runtimeInterface = requireString "${targetPath}.effectiveRuntimeRealization.interfaces.${ifName}.runtimeIfName" (iface.runtimeIfName or null);
-            in
-            step inner {
-              inherit targetName targetPath nodeName egressIntent ifName iface runtimeInterface;
-            })
-          acc
-          (sortedNames interfaces))
+        step inner {
+          inherit targetName targetPath nodeName egressIntent ifName iface runtimeInterface;
+        })
+        acc
+        (sortedNames interfaces))
       initial
       (sortedNames runtimeTargets);
 

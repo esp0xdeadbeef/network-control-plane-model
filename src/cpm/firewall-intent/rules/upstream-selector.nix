@@ -1,10 +1,10 @@
 { common }:
 
-{
-  endpointBindings ? { },
-  transitInterfaces,
-  relations ? [ ],
-  services ? [ ],
+{ endpointBindings ? { }
+, transitInterfaces
+, relations ? [ ]
+, services ? [ ]
+,
 }:
 
 let

@@ -38,8 +38,12 @@ let
       accessIfacesForNodes accessNodes
     else if (endpointValue.kind or null) == "external" then
       let
-        exact = uplinkIfacesFor peerAccessNodes uplinks;
         peerIsService = (attrsOrEmpty peerEndpoint).kind or null == "service";
+        exact =
+          if peerIsService then
+            uplinkIfacesFor [ ] uplinks
+          else
+            uplinkIfacesFor peerAccessNodes uplinks;
       in
       if exact != [ ] || !peerIsService then exact else uplinkIfacesFor peerAccessNodes [ ]
     else if (endpointValue.kind or null) == "service" && serviceKnown endpoint then
