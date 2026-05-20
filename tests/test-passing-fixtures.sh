@@ -487,6 +487,7 @@ bash "${repo_root}/tests/test-transit-endpoint-return-routes.sh"
 bash "${repo_root}/tests/test-public-overlay-service-binding.sh"
 bash "${repo_root}/tests/test-policy-service-endpoint-lane-scope.sh"
 bash "${repo_root}/tests/test-service-provider-endpoints.sh"
+bash "${repo_root}/tests/test-delegated-public-egress-peer-site.sh"
 bash "${repo_root}/tests/test-runtime-routed-prefixes-no-validation-shortcut.sh"
 bash "${repo_root}/tests/test-traffic-path-contract-propagation.sh"
 

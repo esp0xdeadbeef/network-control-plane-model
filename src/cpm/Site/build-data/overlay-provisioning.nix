@@ -28,6 +28,9 @@ let
   peerRuntimePrefixes = import ./overlay-peer-runtime-prefixes.nix {
     inherit lib helpers common allSiteEntries inventoryAttrs enterpriseName;
   };
+  publicExitPeer = import ./overlay-public-exit-peer.nix {
+    inherit lib helpers common allSiteEntries;
+  };
   inherit (peerRuntimePrefixes) overlayNodePrefixesFor overlayPeerRuntimeRoutedPrefixes;
 
   overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
@@ -106,6 +109,7 @@ let
                 name = overlayName;
                 peerSite = ov.peerSite or null;
                 peerSites = peerSites;
+                publicExitPeerSite = publicExitPeer.firstPublicExitPeer overlayName peerSites;
                 terminateOn = terminateOn;
                 nodes = overlayNodeAddrs;
                 nodeRoutePrefixes = overlayNodePrefixes;
