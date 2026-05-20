@@ -10,12 +10,18 @@
 let
   inherit (helpers) isNonEmptyString;
   inherit (common) listOrEmpty;
-
   delegatedOverlayDefaultRoutes =
     family: routes:
     let
       defaultDst = if family == 4 then "0.0.0.0/0" else "::/0";
       familyRoutes = listOrEmpty (routes.${if family == 4 then "ipv4" else "ipv6"} or null);
+      publicExitPeerSiteFor =
+        route:
+        let
+          overlayName = route.overlay or null;
+          overlay = if isNonEmptyString overlayName then overlayProvisioning.${overlayName} or { } else { };
+        in
+        overlay.publicExitPeerSite or route.peerSite or null;
       overlayDefaults =
         builtins.filter
           (route:
@@ -36,10 +42,12 @@ let
                 kind = "delegated-public-egress";
                 inherit exitNode;
               };
+            }
+            // lib.optionalAttrs (isNonEmptyString (publicExitPeerSiteFor route)) {
+              peerSite = publicExitPeerSiteFor route;
             })
           runtimePrefixExitNodes)
       overlayDefaults;
-
   withoutGenericOverlayDefaults =
     family: routes:
     let
@@ -55,7 +63,6 @@ let
         )
       )
       (listOrEmpty (routes.${if family == 4 then "ipv4" else "ipv6"} or null));
-
   underlayEndpointRoutes =
     family: routes:
     let
@@ -78,7 +85,6 @@ let
           })
           endpoints)
       (defaultViaRoutes family routes);
-
   overlayEndpointRoutesVia =
     family: overlayNamesForInterface: via:
     let
@@ -99,7 +105,6 @@ let
       };
       ${viaField} = via;
     }) endpoints;
-
   overlayNodeRoutesVia =
     family: overlayNamesForInterface: via:
     let
@@ -113,7 +118,6 @@ let
       intent = { kind = "overlay-node-reachability"; };
       ${viaField} = via;
     }) prefixes;
-
   overlayRuntimeRoutedPrefixRoutesVia =
     overlayNamesForInterface: via:
     let
@@ -127,7 +131,6 @@ let
       };
       via6 = via;
     }) prefixes;
-
   delegatedOverlayDefaultsVia =
     family: overlayNamesForInterface: via:
     let
@@ -147,7 +150,6 @@ let
     }
     // (if isNonEmptyString (prefix.sourceFile or null) then { sourceFile = prefix.sourceFile; } else { })
     // (if isNonEmptyString (prefix.tenant or null) then { tenant = prefix.tenant; } else { })) prefixes;
-
   delegatedOverlayExitDefaultsVia =
     family: via:
     let
@@ -164,7 +166,6 @@ let
       };
       ${viaField} = via;
     }) runtimePrefixExitNodes;
-
   defaultReachabilityVia =
     family: via:
     let
@@ -177,7 +178,6 @@ let
       intent = { kind = "default-reachability"; };
       ${viaField} = via;
     }];
-
   overlayRuntimeRoutedPrefixRoutes =
     overlayName:
     builtins.map
