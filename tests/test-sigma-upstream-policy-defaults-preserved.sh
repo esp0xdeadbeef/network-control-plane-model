@@ -41,6 +41,13 @@ jq -e '
     map(select((.lane.uplink // "") == $uplink) | .lane.access) | sort;
   def delegatedExitNodes:
     map(select((.intent.kind // "") == "delegated-public-egress") | .intent.exitNode) | sort;
+  def laneComplements($access; $destination):
+    map(select(
+      (.policyOnly // false) == true
+      and (.reason // "") == "policy-table-internal-reachability"
+      and (.lane.access // "") == $access
+      and (.dst // "") == $destination
+    ) | .via4) | sort;
   def expect($actual; $expected):
     if $actual == $expected then true
     else error("expected " + ($expected | @json) + " got " + ($actual | @json))
@@ -74,6 +81,13 @@ jq -e '
   | expect(($clabEw4 | lanes("east-west")); ["clab-router-access-hostile"])
   | expect(($clabEw6 | lanes("east-west")); ["clab-router-access-hostile"])
   | expect(($clabEw6 | delegatedExitNodes); ["clab-router-access-client", "clab-router-access-hostile"])
+
+  | $root.control_plane_model.data.esp.clab.runtimeTargets."esp-clab-router-policy"
+      .effectiveRuntimeRealization.interfaces as $clabPolicyIfs
+  | expect(($clabPolicyIfs."p2p-clab-router-downstream-clab-router-policy--access-clab-router-access-streaming".routes.ipv4
+      | laneComplements("clab-router-access-client"; "10.50.50.0/24")); ["10.50.0.26"])
+  | expect(($clabPolicyIfs."p2p-clab-router-downstream-clab-router-policy--access-clab-router-access-client".routes.ipv4
+      | laneComplements("clab-router-access-streaming"; "10.50.20.0/24")); ["10.50.0.18"])
 ' "${output_json}" >/dev/null
 
 echo "PASS sigma-upstream-policy-defaults-preserved"
