@@ -51,18 +51,6 @@ let
     if !builtins.isAttrs route then
       null
     else if
-      let
-        lane = attrsOrEmpty (route.lane or null);
-      in
-      family == 6
-      && (route.dst or null) == defaultDst family
-      && (lane.access or "") != ""
-      && builtins.elem (lane.access or "") runtimeExitNodes
-      && overlayNames != [ ]
-      && !(builtins.elem (lane.uplink or "") overlayNames)
-    then
-      null
-    else if
       builtins.hasAttr targetRole rolesWithPolicyDefaults && (route.dst or null) == defaultDst family
     then
       route
