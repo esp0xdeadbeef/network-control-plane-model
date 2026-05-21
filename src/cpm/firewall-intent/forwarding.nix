@@ -41,7 +41,11 @@ else if role == "downstream-selector" || role == "upstream-selector" then
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     rules =
       if role == "downstream-selector" then
-        buildDownstreamSelectorRules transitInterfaces
+        buildDownstreamSelectorRules {
+          endpointBindings = attrsOrEmpty policyEndpointBindings;
+          relations = siteRelations;
+          inherit services transitInterfaces;
+        }
       else
         buildUpstreamSelectorRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;

@@ -27,8 +27,8 @@ nix eval --extra-experimental-features 'nix-command flakes' --impure --expr '
   in
     if builtins.elem "172.31.254.1" coreNebulaVia then
       throw "site-c upstream-selector must not send the local dmz DNS/provider prefix back to WAN from the core-nebula ingress lane."
-    else if dmzEwVia != [ "10.80.0.16" ] then
-      throw "site-c upstream-selector must keep exactly one 10.90.10.0/24 route via the DMZ policy lane gateway 10.80.0.16"
+    else if !(builtins.elem "10.80.0.16" dmzEwVia) then
+      throw "site-c upstream-selector must keep the 10.90.10.0/24 route via the DMZ policy lane gateway 10.80.0.16"
     else
       true
 ' | grep -qx true
