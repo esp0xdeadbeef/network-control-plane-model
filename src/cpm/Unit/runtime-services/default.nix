@@ -30,6 +30,16 @@ let
   inherit (dns) normalizeDnsService;
   inherit (mdns) normalizeMdnsService;
 
+  orderedUniqueStrings =
+    values:
+    builtins.foldl'
+      (
+        acc: value:
+        if isNonEmptyString value && !(builtins.elem value acc) then acc ++ [ value ] else acc
+      )
+      [ ]
+      values;
+
   normalizeRuntimeServices = targetDef:
     let
       servicesPath = "${targetDef.nodePath}.services";
@@ -98,7 +108,7 @@ let
       derivedOutgoingInterfaces =
         builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listenAddresses;
       tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
-      derivedForwarders = uniqueStrings (
+      derivedForwarders = orderedUniqueStrings (
         (policyDerivedDnsForwardersForTenants tenantNames)
         ++ (
           if builtins.isList (dnsService.listen or null) then
@@ -125,7 +135,7 @@ let
         if explicitForwarders != [ ] then
           explicitForwarders
         else
-          uniqueStrings filteredDerivedForwarders;
+          orderedUniqueStrings filteredDerivedForwarders;
       mergedAllowFrom = if derivedAllowFrom == [ ] then explicitAllowFrom else uniqueStrings (explicitAllowFrom ++ derivedAllowFrom);
       mergedOutgoingInterfaces =
         if explicitOutgoingInterfaces != [ ] then

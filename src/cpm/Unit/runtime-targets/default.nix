@@ -129,7 +129,23 @@ let
         else
           { kind = "logical-node"; target = nodeName; };
       runtimeContainers = resolveRuntimeContainers { inherit nodePath nodeName realizedTarget targetId targetDef nodeAttrs; };
-      runtimeServices = if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then resolveRuntimeServices { inherit nodePath nodeName nodeAttrs targetDef; } else null;
+      logicalServices = if builtins.isAttrs (nodeAttrs.services or null) then nodeAttrs.services else { };
+      inventoryServices = if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then targetDef.node.services else { };
+      mergedServices = logicalServices // inventoryServices;
+      targetDefWithServices =
+        if realizedTarget then
+          targetDef // { node = targetDef.node // { services = mergedServices; }; }
+        else
+          targetDef;
+      runtimeServices =
+        if realizedTarget && mergedServices != { } then
+          resolveRuntimeServices
+            {
+              inherit nodePath nodeName nodeAttrs;
+              targetDef = targetDefWithServices;
+            }
+        else
+          null;
       value =
         {
           logicalNode = logical;

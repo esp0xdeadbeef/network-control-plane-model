@@ -6,7 +6,17 @@
 
 let
   inherit (helpers) requireStringList;
-  inherit (common) attrsOrEmpty failInventory uniqueStrings;
+  inherit (common) attrsOrEmpty failInventory;
+
+  uniqueStrings =
+    list:
+    builtins.foldl'
+      (
+        acc: value:
+        if builtins.isString value && value != "" && !(builtins.elem value acc) then acc ++ [ value ] else acc
+      )
+      [ ]
+      list;
 
   endpointAddresses =
     providerName:

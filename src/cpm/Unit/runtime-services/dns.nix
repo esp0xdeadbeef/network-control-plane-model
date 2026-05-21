@@ -75,6 +75,8 @@ in
           normalizeForwarderList dnsPath dns "upstreams"
         else
           [ ];
+      implementation =
+        if dns ? implementation then requireString "${dnsPath}.implementation" dns.implementation else null;
       outgoingInterfaces =
         if dns ? outgoingInterfaces then normalizeStringList dnsPath dns "outgoingInterfaces" else [ ];
       _forwarderConflict =
@@ -159,7 +161,7 @@ in
     in
     builtins.seq _forwarderConflict (
       builtins.seq _killSwitchNoPublicFallback ({ }
-        // { implementation = "unbound"; }
+        // lib.optionalAttrs (implementation != null) { inherit implementation; }
         // lib.optionalAttrs (listen != [ ]) { inherit listen; }
         // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
         // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }
