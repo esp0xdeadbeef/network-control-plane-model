@@ -77,7 +77,7 @@ jq -e '
   | ($clabIfs."p2p-clab-router-core-nebula-clab-router-upstream".routes.ipv4 | default4) as $clabEw4
   | ($clabIfs."p2p-clab-router-core-nebula-clab-router-upstream".routes.ipv6 | default6) as $clabEw6
   | expect(($clabWan4 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-streaming"])
-  | expect(($clabWan6 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-streaming"])
+  | expect(($clabWan6 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-streaming"])
   | expect(($clabEw4 | lanes("east-west")); ["clab-router-access-hostile"])
   | expect(($clabEw6 | lanes("east-west")); ["clab-router-access-hostile"])
   | expect(($clabEw6 | delegatedExitNodes); ["clab-router-access-client", "clab-router-access-hostile"])
