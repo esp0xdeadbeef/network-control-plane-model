@@ -93,6 +93,7 @@ let
     import ./overlay-route-augmentation.nix {
       inherit lib helpers common ipam overlayProvisioning attachments routedPrefixesByTenant;
     };
+  overlayNames = sortedNames overlayProvisioning;
 
   buildRuntimeTarget =
     nodeName:
@@ -119,7 +120,13 @@ let
       syntheticEntries =
         builtins.map
           (uplinkName: buildSyntheticUplinkInterfaceEntry { inherit nodeName uplinkName portBindings targetHostName targetId realizedTarget; uplinkValue = uplinkAttrs.${uplinkName}; })
-          (builtins.filter (uplinkName: !hasExplicitWANForUplink nodeInterfaces uplinkName) (sortedNames uplinkAttrs));
+          (
+            builtins.filter
+              (uplinkName:
+                !(builtins.elem uplinkName overlayNames)
+                && !hasExplicitWANForUplink nodeInterfaces uplinkName)
+              (sortedNames uplinkAttrs)
+          );
       runtimeInterfaces = addOverlayUnderlayEndpointRoutes nodeRole (builtins.listToAttrs (explicitEntries ++ syntheticEntries));
       effectiveRuntimeInterfaces = if isBgpRouter then lib.mapAttrs (_: iface: iface // { routes = filterRoutesForBgp (iface.routes or { }); }) runtimeInterfaces else runtimeInterfaces;
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
