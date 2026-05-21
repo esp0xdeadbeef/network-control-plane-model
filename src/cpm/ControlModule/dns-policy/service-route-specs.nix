@@ -24,9 +24,13 @@ let
 
   uniqueStrings =
     list:
-    builtins.attrNames (
-      builtins.listToAttrs (map (value: { name = value; value = true; }) list)
-    );
+    builtins.foldl'
+      (
+        acc: value:
+        if builtins.isString value && value != "" && !(builtins.elem value acc) then acc ++ [ value ] else acc
+      )
+      [ ]
+      list;
 
   dnsExternalUplinksForEndpoint =
     endpoint: trafficType:

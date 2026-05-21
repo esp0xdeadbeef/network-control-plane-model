@@ -11,8 +11,15 @@ let
   inherit (helpers) hasAttr requireStringList sortedNames;
   inherit (dnsPolicy) effectiveTrafficTypeForRelation providerAddressesForDnsService;
 
-  uniqueStrings = list:
-    builtins.attrNames (builtins.listToAttrs (map (value: { name = value; value = true; }) list));
+  uniqueStrings =
+    list:
+    builtins.foldl'
+      (
+        acc: value:
+        if builtins.isString value && value != "" && !(builtins.elem value acc) then acc ++ [ value ] else acc
+      )
+      [ ]
+      list;
 
   providersForService = serviceName:
     let
