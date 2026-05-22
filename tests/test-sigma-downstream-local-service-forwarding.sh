@@ -39,17 +39,24 @@ jq -e '
     if $actual == $expected then true
     else error("expected " + ($expected | @json) + " got " + ($actual | @json))
     end;
-  def matching($from; $to; $relation):
+  def matching($from; $to; $relation; $traffic_type):
     map(select(
       (.action // "") == "accept"
       and (.relationId // "") == $relation
-      and (.trafficType // "") == "dns"
+      and (.trafficType // "") == $traffic_type
       and (.fromInterface // "") == $from
       and (.toInterface // "") == $to
     ));
 
-  .control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-downstream".forwardingIntent.rules as $rules
-  | expect(($rules | matching("access-client"; "access-dmz"; "allow-hetz-client-to-dmz-dns") | length); 1)
+  .control_plane_model.data.esp as $esp
+  | $esp.hetz.runtimeTargets."esp-hetz-router-downstream".forwardingIntent.rules as $hetzRules
+  | $esp.clab.runtimeTargets."esp-clab-router-downstream".forwardingIntent.rules as $clabRules
+  | expect(($hetzRules | matching("access-client"; "access-dmz"; "allow-hetz-client-to-dmz-dns"; "dns") | length); 1)
+  | expect(($clabRules | matching("access-client"; "access-mgmt"; "allow-normal-tenants-to-clab-dns"; "dns") | length); 1)
+  | expect(($clabRules | matching("access-dmz"; "access-mgmt"; "allow-normal-tenants-to-clab-dns"; "dns") | length); 1)
+  | expect(($clabRules | matching("access-streaming"; "access-mgmt"; "allow-normal-tenants-to-clab-dns"; "dns") | length); 1)
+  | expect(($clabRules | matching("access-client"; "access-streaming"; "allow-client-to-cast-discovery"; "cast-discovery") | length); 1)
+  | expect(($clabRules | matching("access-client"; "access-streaming"; "allow-client-to-cast-control"; "cast-control") | length); 1)
 ' "${output_json}" >/dev/null
 
 echo "PASS sigma-downstream-local-service-forwarding"
