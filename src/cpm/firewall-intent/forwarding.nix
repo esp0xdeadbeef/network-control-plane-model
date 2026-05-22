@@ -12,21 +12,29 @@ let
     buildUpstreamSelectorRules
     ;
 in
-{ policyEndpointBindings, services, siteRelations, target, interfaceRecords }:
+{
+  overlayNames ? [ ],
+  policyEndpointBindings,
+  services,
+  siteRelations,
+  target,
+  interfaceRecords,
+}:
 let
   role = target.role or null;
   egressIntent = attrsOrEmpty (target.egressIntent or null);
   localInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
   transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p") interfaceRecords;
-  uplinkInterfaces =
-    builtins.filter
-      (iface:
-        iface.sourceKind == "wan"
-        && (!builtins.isList (egressIntent.uplinks or null)
-        || egressIntent.uplinks == [ ]
-        || builtins.elem (iface.upstream or "") (listOrEmpty (egressIntent.uplinks or null))
-        || builtins.elem iface.sourceInterfaceName (listOrEmpty (egressIntent.wanInterfaces or null))))
-      interfaceRecords;
+  uplinkInterfaces = builtins.filter (
+    iface:
+    iface.sourceKind == "wan"
+    && (
+      !builtins.isList (egressIntent.uplinks or null)
+      || egressIntent.uplinks == [ ]
+      || builtins.elem (iface.upstream or "") (listOrEmpty (egressIntent.uplinks or null))
+      || builtins.elem iface.sourceInterfaceName (listOrEmpty (egressIntent.wanInterfaces or null))
+    )
+  ) interfaceRecords;
 in
 if role == "access" then
   {
@@ -50,7 +58,7 @@ else if role == "downstream-selector" || role == "upstream-selector" then
         buildUpstreamSelectorRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;
           relations = siteRelations;
-          inherit services transitInterfaces;
+          inherit overlayNames services transitInterfaces;
         };
   }
 else if role == "policy" then

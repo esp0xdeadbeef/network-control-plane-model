@@ -1,32 +1,43 @@
-{ lib
-, helpers
-, common
-, realizationIndex
-, enterpriseName
-, siteName
-, sitePath
-, nodes
-, routingMode
-, bgpSiteAsn
-, bgpTopology
-, uplinkRouting
-, overlayProvisioning
-, attachments
-, routedPrefixesByTenant
-, buildExplicitInterfaceEntry
-, buildSyntheticUplinkInterfaceEntry
-, resolveRuntimeContainers
-, resolveRuntimeServices
-, bgpNetworksForNode
-, bgpNeighborsForNode
-, filterRoutesForBgp
-, routerRoleSet
-,
+{
+  lib,
+  helpers,
+  common,
+  realizationIndex,
+  enterpriseName,
+  siteName,
+  sitePath,
+  nodes,
+  routingMode,
+  bgpSiteAsn,
+  bgpTopology,
+  uplinkRouting,
+  overlayProvisioning,
+  attachments,
+  routedPrefixesByTenant,
+  buildExplicitInterfaceEntry,
+  buildSyntheticUplinkInterfaceEntry,
+  resolveRuntimeContainers,
+  resolveRuntimeServices,
+  bgpNetworksForNode,
+  bgpNeighborsForNode,
+  filterRoutesForBgp,
+  routerRoleSet,
 }:
 
 let
-  inherit (helpers) hasAttr isNonEmptyString logicalKey requireAttrs requireString sortedNames;
-  inherit (common) attrsOrEmpty failInventory ipam;
+  inherit (helpers)
+    hasAttr
+    isNonEmptyString
+    logicalKey
+    requireAttrs
+    requireString
+    sortedNames
+    ;
+  inherit (common)
+    attrsOrEmpty
+    failInventory
+    ipam
+    ;
 
   defaultPortBindings = {
     byLink = { };
@@ -37,13 +48,13 @@ let
 
   hasExplicitWANForUplink =
     nodeInterfaces: uplinkName:
-    builtins.any
-      (ifName:
+    builtins.any (
+      ifName:
       let
         iface = requireAttrs "${sitePath}.nodes[*].interfaces.${ifName}" nodeInterfaces.${ifName};
       in
-      (iface.kind or null) == "wan" && (iface.upstream or null) == uplinkName)
-      (sortedNames nodeInterfaces);
+      (iface.kind or null) == "wan" && (iface.upstream or null) == uplinkName
+    ) (sortedNames nodeInterfaces);
 
   validateSiteRouting =
     if routingMode == "bgp" then
@@ -61,12 +72,16 @@ let
     if !isBgpRouter then
       [ ]
     else
-      lib.concatMap
-        (ifName:
+      lib.concatMap (
+        ifName:
         let
           iface = effectiveRuntimeInterfaces.${ifName};
           upstream = iface.upstream or null;
-          uplinkCfg = if isNonEmptyString upstream && hasAttr upstream uplinkRouting then uplinkRouting.${upstream} else null;
+          uplinkCfg =
+            if isNonEmptyString upstream && hasAttr upstream uplinkRouting then
+              uplinkRouting.${upstream}
+            else
+              null;
           uplinkMode = if uplinkCfg == null then null else uplinkCfg.mode or null;
           uplinkBgp = if uplinkCfg == null then { } else attrsOrEmpty (uplinkCfg.bgp or null);
           peerAddr4 = uplinkBgp.peerAddr4 or null;
@@ -76,24 +91,41 @@ let
           [ ]
         else
           [
-            ({
-              peer_name = "uplink-${upstream}";
-              peer_kind = "external-uplink";
-              uplink = upstream;
-              peer_asn = uplinkBgp.peerAsn or null;
-              update_source = iface.runtimeIfName or null;
-              route_reflector_client = false;
-            }
-            // (if isNonEmptyString peerAddr4 then { peer_addr4 = peerAddr4; } else { })
-            // (if isNonEmptyString peerAddr6 then { peer_addr6 = peerAddr6; } else { }))
-          ])
-        (sortedNames effectiveRuntimeInterfaces);
+            (
+              {
+                peer_name = "uplink-${upstream}";
+                peer_kind = "external-uplink";
+                uplink = upstream;
+                peer_asn = uplinkBgp.peerAsn or null;
+                update_source = iface.runtimeIfName or null;
+                route_reflector_client = false;
+              }
+              // (if isNonEmptyString peerAddr4 then { peer_addr4 = peerAddr4; } else { })
+              // (if isNonEmptyString peerAddr6 then { peer_addr6 = peerAddr6; } else { })
+            )
+          ]
+      ) (sortedNames effectiveRuntimeInterfaces);
 
-  addOverlayUnderlayEndpointRoutes =
-    import ./overlay-route-augmentation.nix {
-      inherit lib helpers common ipam overlayProvisioning attachments routedPrefixesByTenant;
-    };
+  addOverlayUnderlayEndpointRoutes = import ./overlay-route-augmentation.nix {
+    inherit
+      lib
+      helpers
+      common
+      ipam
+      overlayProvisioning
+      attachments
+      routedPrefixesByTenant
+      ;
+  };
   overlayNames = sortedNames overlayProvisioning;
+  runtimeOriginEgress = import ./runtime-origin-egress.nix {
+    inherit
+      lib
+      helpers
+      common
+      overlayNames
+      ;
+  };
 
   buildRuntimeTarget =
     nodeName:
@@ -103,99 +135,215 @@ let
       nodeRoleRaw = nodeAttrs.role or null;
       nodeRole = if builtins.isString nodeRoleRaw then nodeRoleRaw else "";
       isBgpRouter = routingMode == "bgp" && isNonEmptyString nodeRole && hasAttr nodeRole routerRoleSet;
-      logical = { enterprise = enterpriseName; site = siteName; name = nodeName; };
+      logical = {
+        enterprise = enterpriseName;
+        site = siteName;
+        name = nodeName;
+      };
       logicalId = logicalKey logical;
       realizedTarget = hasAttr logicalId realizationIndex.byLogical;
       targetId = if realizedTarget then realizationIndex.byLogical.${logicalId} else nodeName;
       targetDef = if realizedTarget then realizationIndex.targetDefs.${targetId} else null;
-      targetHostName = if realizedTarget then requireString "${targetDef.nodePath}.host" (targetDef.node.host or null) else null;
-      targetPlatform = if realizedTarget then requireString "${targetDef.nodePath}.platform" (targetDef.node.platform or null) else null;
+      targetHostName =
+        if realizedTarget then
+          requireString "${targetDef.nodePath}.host" (targetDef.node.host or null)
+        else
+          null;
+      targetPlatform =
+        if realizedTarget then
+          requireString "${targetDef.nodePath}.platform" (targetDef.node.platform or null)
+        else
+          null;
       portBindings = if realizedTarget then targetDef.portBindings else defaultPortBindings;
       nodeInterfaces = requireAttrs "${nodePath}.interfaces" (nodeAttrs.interfaces or null);
-      explicitEntries =
-        builtins.map
-          (ifName: buildExplicitInterfaceEntry { inherit nodeName ifName portBindings targetHostName targetId realizedTarget; iface = nodeInterfaces.${ifName}; })
-          (sortedNames nodeInterfaces);
+      explicitEntries = builtins.map (
+        ifName:
+        buildExplicitInterfaceEntry {
+          inherit
+            nodeName
+            ifName
+            portBindings
+            targetHostName
+            targetId
+            realizedTarget
+            ;
+          iface = nodeInterfaces.${ifName};
+        }
+      ) (sortedNames nodeInterfaces);
       uplinkAttrs = if builtins.isAttrs (nodeAttrs.uplinks or null) then nodeAttrs.uplinks else { };
       syntheticEntries =
         builtins.map
-          (uplinkName: buildSyntheticUplinkInterfaceEntry { inherit nodeName uplinkName portBindings targetHostName targetId realizedTarget; uplinkValue = uplinkAttrs.${uplinkName}; })
           (
-            builtins.filter
-              (uplinkName:
-                !(builtins.elem uplinkName overlayNames)
-                && !hasExplicitWANForUplink nodeInterfaces uplinkName)
-              (sortedNames uplinkAttrs)
+            uplinkName:
+            buildSyntheticUplinkInterfaceEntry {
+              inherit
+                nodeName
+                uplinkName
+                portBindings
+                targetHostName
+                targetId
+                realizedTarget
+                ;
+              uplinkValue = uplinkAttrs.${uplinkName};
+            }
+          )
+          (
+            builtins.filter (
+              uplinkName:
+              !(builtins.elem uplinkName overlayNames) && !hasExplicitWANForUplink nodeInterfaces uplinkName
+            ) (sortedNames uplinkAttrs)
           );
-      runtimeInterfaces = addOverlayUnderlayEndpointRoutes nodeRole (builtins.listToAttrs (explicitEntries ++ syntheticEntries));
-      effectiveRuntimeInterfaces = if isBgpRouter then lib.mapAttrs (_: iface: iface // { routes = filterRoutesForBgp (iface.routes or { }); }) runtimeInterfaces else runtimeInterfaces;
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
+      runtimeOriginEgressContract = runtimeOriginEgress.contractFor {
+        inherit nodeRole uplinkAttrs loopback;
+      };
+      runtimeInterfacesBase = addOverlayUnderlayEndpointRoutes nodeRole (
+        builtins.listToAttrs (explicitEntries ++ syntheticEntries)
+      );
+      runtimeInterfaces = runtimeOriginEgress.applyToInterfaces runtimeOriginEgressContract runtimeInterfacesBase;
+      effectiveRuntimeInterfaces =
+        if isBgpRouter then
+          lib.mapAttrs (
+            _: iface: iface // { routes = filterRoutesForBgp (iface.routes or { }); }
+          ) runtimeInterfaces
+        else
+          runtimeInterfaces;
       placement =
         if realizedTarget then
-          { kind = "inventory-realization"; target = targetId; host = targetHostName; platform = targetPlatform; }
+          {
+            kind = "inventory-realization";
+            target = targetId;
+            host = targetHostName;
+            platform = targetPlatform;
+          }
         else
-          { kind = "logical-node"; target = nodeName; };
-      runtimeContainers = resolveRuntimeContainers { inherit nodePath nodeName realizedTarget targetId targetDef nodeAttrs; };
+          {
+            kind = "logical-node";
+            target = nodeName;
+          };
+      runtimeContainers = resolveRuntimeContainers {
+        inherit
+          nodePath
+          nodeName
+          realizedTarget
+          targetId
+          targetDef
+          nodeAttrs
+          ;
+      };
       logicalServices = if builtins.isAttrs (nodeAttrs.services or null) then nodeAttrs.services else { };
-      inventoryServices = if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then targetDef.node.services else { };
+      inventoryServices =
+        if realizedTarget && builtins.isAttrs (targetDef.node.services or null) then
+          targetDef.node.services
+        else
+          { };
       mergedServices = logicalServices // inventoryServices;
       targetDefWithServices =
         if realizedTarget then
-          targetDef // { node = targetDef.node // { services = mergedServices; }; }
+          targetDef
+          // {
+            node = targetDef.node // {
+              services = mergedServices;
+            };
+          }
         else
           targetDef;
       runtimeServices =
         if realizedTarget && mergedServices != { } then
-          resolveRuntimeServices
-            {
-              inherit nodePath nodeName nodeAttrs;
-              inherit loopback;
-              targetDef = targetDefWithServices;
-            }
+          resolveRuntimeServices {
+            inherit nodePath nodeName nodeAttrs;
+            inherit loopback;
+            targetDef = targetDefWithServices;
+          }
         else
           null;
-      value =
-        {
-          logicalNode = logical;
-          role = nodeAttrs.role or null;
-          routingMode = if isBgpRouter then "bgp" else "static";
-          placement = placement;
-          effectiveRuntimeRealization = {
-            loopback = {
-              addr4 = requireString "${nodePath}.loopback.ipv4" (loopback.ipv4 or null);
-              addr6 = requireString "${nodePath}.loopback.ipv6" (loopback.ipv6 or null);
-            };
-            interfaces = effectiveRuntimeInterfaces;
+      value = {
+        logicalNode = logical;
+        role = nodeAttrs.role or null;
+        routingMode = if isBgpRouter then "bgp" else "static";
+        placement = placement;
+        effectiveRuntimeRealization = {
+          loopback = {
+            addr4 = requireString "${nodePath}.loopback.ipv4" (loopback.ipv4 or null);
+            addr6 = requireString "${nodePath}.loopback.ipv6" (loopback.ipv6 or null);
           };
-        }
-        // (
-          if isBgpRouter then
-            {
-              bgp = {
-                asn = bgpSiteAsn;
-                neighbors = (bgpNeighborsForNode nodeName) ++ (ebgpNeighborsForTarget isBgpRouter effectiveRuntimeInterfaces);
-                networks = bgpNetworksForNode nodeRole nodeAttrs effectiveRuntimeInterfaces;
-              };
-            }
-          else
-            { }
-        )
-        // (if runtimeContainers != [ ] then { containers = runtimeContainers; } else { })
-        // (if builtins.isAttrs (nodeAttrs.egressIntent or null) then { egressIntent = nodeAttrs.egressIntent; } else { })
-        // (if builtins.isAttrs (nodeAttrs.forwardingResponsibility or null) then { forwardingResponsibility = nodeAttrs.forwardingResponsibility; } else { })
-        // (if builtins.isAttrs (nodeAttrs.routingAuthority or null) then { routingAuthority = nodeAttrs.routingAuthority; } else { })
-        // (if builtins.isAttrs (nodeAttrs.traversalParticipation or null) then { traversalParticipation = nodeAttrs.traversalParticipation; } else { })
-        // (if builtins.isList (nodeAttrs.forwardingFunctions or null) then { forwardingFunctions = nodeAttrs.forwardingFunctions; } else { })
-        // (if builtins.isList (nodeAttrs.attachments or null) then { attachments = nodeAttrs.attachments; } else { })
-        // (if builtins.isList (nodeAttrs.containers or null) then { declaredContainers = nodeAttrs.containers; } else { })
-        // (if builtins.isAttrs (nodeAttrs.networks or null) then { networks = nodeAttrs.networks; } else { })
-        // (if runtimeServices != null then { services = runtimeServices; } else { });
+          interfaces = effectiveRuntimeInterfaces;
+        };
+      }
+      // (
+        if isBgpRouter then
+          {
+            bgp = {
+              asn = bgpSiteAsn;
+              neighbors =
+                (bgpNeighborsForNode nodeName) ++ (ebgpNeighborsForTarget isBgpRouter effectiveRuntimeInterfaces);
+              networks = bgpNetworksForNode nodeRole nodeAttrs effectiveRuntimeInterfaces;
+            };
+          }
+        else
+          { }
+      )
+      // (if runtimeContainers != [ ] then { containers = runtimeContainers; } else { })
+      // (
+        if builtins.isAttrs (nodeAttrs.egressIntent or null) then
+          { egressIntent = nodeAttrs.egressIntent; }
+        else
+          { }
+      )
+      // (
+        if runtimeOriginEgressContract != null then
+          { runtimeOriginEgress = runtimeOriginEgressContract; }
+        else
+          { }
+      )
+      // (
+        if builtins.isAttrs (nodeAttrs.forwardingResponsibility or null) then
+          { forwardingResponsibility = nodeAttrs.forwardingResponsibility; }
+        else
+          { }
+      )
+      // (
+        if builtins.isAttrs (nodeAttrs.routingAuthority or null) then
+          { routingAuthority = nodeAttrs.routingAuthority; }
+        else
+          { }
+      )
+      // (
+        if builtins.isAttrs (nodeAttrs.traversalParticipation or null) then
+          { traversalParticipation = nodeAttrs.traversalParticipation; }
+        else
+          { }
+      )
+      // (
+        if builtins.isList (nodeAttrs.forwardingFunctions or null) then
+          { forwardingFunctions = nodeAttrs.forwardingFunctions; }
+        else
+          { }
+      )
+      // (
+        if builtins.isList (nodeAttrs.attachments or null) then
+          { attachments = nodeAttrs.attachments; }
+        else
+          { }
+      )
+      // (
+        if builtins.isList (nodeAttrs.containers or null) then
+          { declaredContainers = nodeAttrs.containers; }
+        else
+          { }
+      )
+      // (
+        if builtins.isAttrs (nodeAttrs.networks or null) then { networks = nodeAttrs.networks; } else { }
+      )
+      // (if runtimeServices != null then { services = runtimeServices; } else { });
     in
-    { name = targetId; value = value; };
+    {
+      name = targetId;
+      value = value;
+    };
 in
 {
-  runtimeTargets =
-    builtins.seq validateSiteRouting (
-      builtins.listToAttrs (builtins.map buildRuntimeTarget (sortedNames nodes))
-    );
+  runtimeTargets = builtins.seq validateSiteRouting (
+    builtins.listToAttrs (builtins.map buildRuntimeTarget (sortedNames nodes))
+  );
 }

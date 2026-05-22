@@ -1,10 +1,11 @@
 { common }:
 
-{ endpointBindings ? { }
-, transitInterfaces
-, relations ? [ ]
-, services ? [ ]
-,
+{
+  endpointBindings ? { },
+  transitInterfaces,
+  relations ? [ ],
+  services ? [ ],
+  overlayNames ? [ ],
 }:
 
 let
@@ -14,26 +15,102 @@ let
   relationRules = import ./upstream-selector-relations.nix { inherit common endpointContext; };
   inherit (endpointContext) coreInterfaces policyInterfaces listOrEmpty;
 
-  coreForPolicy = policyIface:
+  routeList =
+    routes:
+    (if builtins.isList (routes.ipv4 or null) then routes.ipv4 else [ ])
+    ++ (if builtins.isList (routes.ipv6 or null) then routes.ipv6 else [ ]);
+
+  uniqueSourcePrefixes =
+    prefixes:
+    builtins.attrValues (
+      builtins.listToAttrs (
+        map (entry: {
+          name = "${builtins.toString (entry.family or "")}|${entry.prefix or ""}";
+          value = entry;
+        }) prefixes
+      )
+    );
+
+  runtimeOriginSourcePrefixes =
+    iface:
     let
-      matchesCore =
-        builtins.filter
-          (coreIface: builtins.elem (common.laneUplink policyIface) (common.uplinks coreIface))
-          coreInterfaces;
+      isHostPrefix =
+        route:
+        builtins.isAttrs route
+        && builtins.isString (route.dst or null)
+        && (route.policyOnly or false) != true
+        && (((route.intent or { }).kind or null) == "internal-reachability")
+        && (builtins.match ".*/32" route.dst != null || builtins.match ".*/128" route.dst != null);
+    in
+    uniqueSourcePrefixes (
+      map (route: {
+        family = if builtins.match ".*:.*" route.dst != null then 6 else 4;
+        prefix = route.dst;
+      }) (builtins.filter isHostPrefix (routeList (iface.routes or { })))
+    );
+
+  isOverlayCoreInterface =
+    iface: builtins.any (uplink: builtins.elem uplink overlayNames) (common.uplinks iface);
+
+  runtimeOriginCoreInterfaces = builtins.filter (
+    iface: isOverlayCoreInterface iface && runtimeOriginSourcePrefixes iface != [ ]
+  ) coreInterfaces;
+
+  wanCoreInterfacesFor =
+    sourceIface:
+    let
+      sourceUplinks = common.uplinks sourceIface;
+    in
+    let
+      candidates = builtins.sort (a: b: a.runtimeIfName < b.runtimeIfName) (
+        builtins.filter (
+          iface:
+          iface.runtimeIfName != sourceIface.runtimeIfName
+          && !(builtins.any (uplink: builtins.elem uplink sourceUplinks) (common.uplinks iface))
+        ) coreInterfaces
+      );
+    in
+    if candidates == [ ] then [ ] else [ (builtins.head candidates) ];
+
+  runtimeOriginRules = builtins.concatLists (
+    map (
+      sourceIface:
+      map (wanIface: {
+        action = "accept";
+        intent = {
+          kind = "runtime-origin-egress";
+          source = "loopback-runtime-identity";
+        };
+        fromInterface = sourceIface.runtimeIfName;
+        toInterface = wanIface.runtimeIfName;
+        sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
+        applyTcpMssClamp = false;
+      }) (wanCoreInterfacesFor sourceIface)
+    ) runtimeOriginCoreInterfaces
+  );
+
+  coreForPolicy =
+    policyIface:
+    let
+      matchesCore = builtins.filter (
+        coreIface: builtins.elem (common.laneUplink policyIface) (common.uplinks coreIface)
+      ) coreInterfaces;
     in
     if matchesCore == [ ] then null else builtins.elemAt matchesCore 0;
 
-  selectorPairRules =
-    builtins.concatLists (
-      map
-        (policyIface:
-          let coreIface = coreForPolicy policyIface;
-          in if coreIface == null then [ ] else common.selectorPairRule policyIface coreIface)
-        policyInterfaces
-    );
+  selectorPairRules = builtins.concatLists (
+    map (
+      policyIface:
+      let
+        coreIface = coreForPolicy policyIface;
+      in
+      if coreIface == null then [ ] else common.selectorPairRule policyIface coreIface
+    ) policyInterfaces
+  );
 in
 selectorPairRules
 ++ builtins.concatLists (map relationRules.externalTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.overlayUnderlayTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.externalServiceTransitRule (listOrEmpty relations))
 ++ relationRules.runtimeRoutedPrefixPublicEgressRules
+++ runtimeOriginRules
