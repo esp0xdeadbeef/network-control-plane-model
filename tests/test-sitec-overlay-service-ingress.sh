@@ -69,7 +69,7 @@ in
   && hasRoute6 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "fd42:dead:beef:ee::1/128" "fd42:dead:cafe:1000:0:0:0:a"
   && hasRoute6 (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "fd42:dead:beef:ee::3/128" "fd42:dead:cafe:1000:0:0:0:a"
   && hasSourceRoute (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6 or [ ]) "/run/secrets/access-node-ipv6-prefix-esp-nixos-router-access-hostile" "fd42:dead:cafe:1000:0:0:0:a"
-  && hasSourceForward upstreamRules "/run/secrets/access-node-ipv6-prefix-esp-nixos-router-access-hostile" "core-nebula" "core"
+  && hasSourceForward upstreamRules "/run/secrets/access-node-ipv6-prefix-esp-nixos-router-access-hostile" "core-nebula" "pol-dmz-ew"
   && hasRule upstreamRules "allow-overlay-to-hostile-public-dns" "core-nebula" "pol-dmz-ew"
   && hasRule policyRules "allow-overlay-to-hostile-public-dns" "up-dmz-ew" "downstream-dmz"
 '
