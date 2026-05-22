@@ -66,6 +66,13 @@ jq -e '
       and ((.intent.kind // "") == "runtime-routed-prefix-public-egress")
       and ((.sourceFiles // []) | index($sourceFile) != null)
     );
+  def hasStaticSourceForward($from; $to; $prefix):
+    any(
+      (.fromInterface // "") == $from
+      and (.toInterface // "") == $to
+      and ((.intent.kind // "") == "runtime-routed-prefix-public-egress")
+      and (((.sourcePrefixes // []) | map(if type == "object" then (.prefix // "") else . end)) | index($prefix) != null)
+    );
   def expect($actual; $expected):
     if $actual == $expected then true
     else error("expected " + ($expected | @json) + " got " + ($actual | @json))
@@ -145,6 +152,13 @@ jq -e '
       "/run/secrets/access-node-ipv6-prefix-esp-nixos-router-access-hostile"
     )) then . else
       error("Hetz hostile routed-prefix public egress must carry sourceFiles onto the policy-to-WAN leg so renderers can emit source-scoped policy rules")
+    end
+  | if ($hetzUpstreamRules | hasStaticSourceForward(
+      "policy-dmz-wan";
+      "core";
+      "10.20.70.0/24"
+    )) then . else
+      error("Hetz hostile IPv4 public egress must carry the static routed source prefix onto the policy-to-WAN leg so renderers can emit source-scoped policy rules")
     end
   | $root.control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-core"
       .effectiveRuntimeRealization.interfaces as $hetzCoreIfs

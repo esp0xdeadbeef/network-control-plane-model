@@ -178,6 +178,35 @@ in
 
   runtimeRoutedPrefixPublicEgressRules =
     let
+      isStaticIpv4RoutedSource =
+        route:
+        let
+          intent = routeIntent route;
+        in
+        builtins.isAttrs route
+        && builtins.isString (route.dst or null)
+        && !(builtins.match ".*:.*" route.dst != null)
+        && (route.family or 4) == 4
+        && (intent.kind or null) == "overlay-reachability";
+
+      runtimeRoutedPrefixStaticSources =
+        iface:
+        map
+          (prefix: {
+            family = 4;
+            inherit prefix;
+          })
+          (
+            builtins.attrNames (
+              builtins.listToAttrs (
+                map (route: {
+                  name = route.dst;
+                  value = true;
+                }) (builtins.filter isStaticIpv4RoutedSource (familyRoutes (attrsOrEmpty (iface.routes or null))))
+              )
+            )
+          );
+
       runtimeRoutedPrefixSourceFiles =
         iface:
         builtins.filter (sourceFile: builtins.isString sourceFile && sourceFile != "") (
@@ -188,12 +217,15 @@ in
             ) (familyRoutes (attrsOrEmpty (iface.routes or null)))
           )
         );
-      fromCoresWithSourceFiles = builtins.filter (entry: entry.sourceFiles != [ ]) (
-        map (iface: {
-          inherit iface;
-          sourceFiles = runtimeRoutedPrefixSourceFiles iface;
-        }) coreInterfaces
-      );
+      fromCoresWithSourceScopes =
+        builtins.filter (entry: entry.sourceFiles != [ ] || entry.sourcePrefixes != [ ])
+          (
+            map (iface: {
+              inherit iface;
+              sourceFiles = runtimeRoutedPrefixSourceFiles iface;
+              sourcePrefixes = runtimeRoutedPrefixStaticSources iface;
+            }) coreInterfaces
+          );
       policyInterfacesForCore =
         coreIface:
         let
@@ -224,23 +256,26 @@ in
           )
         ) coreInterfaces;
       publicEgressExitRulesFor =
-        sourceFiles: ingressPolicyIface:
+        sourceScope: ingressPolicyIface:
         builtins.concatLists (
           map (
             exitPolicyIface:
-            map (coreIface: {
-              action = "accept";
-              intent = {
-                kind = "runtime-routed-prefix-public-egress";
-                source = "intent-routed-prefix";
-                stage = "policy-to-public-uplink";
-              };
-              fromInterface = exitPolicyIface.runtimeIfName;
-              toInterface = coreIface.runtimeIfName;
-              inherit sourceFiles;
-              family = 6;
-              applyTcpMssClamp = false;
-            }) (exitCoreInterfacesFor exitPolicyIface)
+            map (
+              coreIface:
+              {
+                action = "accept";
+                intent = {
+                  kind = "runtime-routed-prefix-public-egress";
+                  source = "intent-routed-prefix";
+                  stage = "policy-to-public-uplink";
+                };
+                fromInterface = exitPolicyIface.runtimeIfName;
+                toInterface = coreIface.runtimeIfName;
+                inherit (sourceScope) sourceFiles sourcePrefixes;
+                applyTcpMssClamp = false;
+              }
+              // (if sourceScope.sourceFiles != [ ] then { family = 6; } else { })
+            ) (exitCoreInterfacesFor exitPolicyIface)
           ) (exitPolicyInterfacesFor ingressPolicyIface)
         );
     in
@@ -254,23 +289,25 @@ in
               [ ]
             else
               [
-                {
-                  action = "accept";
-                  intent = {
-                    kind = "runtime-routed-prefix-public-egress";
-                    source = "intent-routed-prefix";
-                    stage = "overlay-to-policy";
-                  };
-                  fromInterface = fromEntry.iface.runtimeIfName;
-                  toInterface = toIface.runtimeIfName;
-                  sourceFiles = fromEntry.sourceFiles;
-                  family = 6;
-                  applyTcpMssClamp = false;
-                }
+                (
+                  {
+                    action = "accept";
+                    intent = {
+                      kind = "runtime-routed-prefix-public-egress";
+                      source = "intent-routed-prefix";
+                      stage = "overlay-to-policy";
+                    };
+                    fromInterface = fromEntry.iface.runtimeIfName;
+                    toInterface = toIface.runtimeIfName;
+                    inherit (fromEntry) sourceFiles sourcePrefixes;
+                    applyTcpMssClamp = false;
+                  }
+                  // (if fromEntry.sourceFiles != [ ] then { family = 6; } else { })
+                )
               ]
-              ++ publicEgressExitRulesFor fromEntry.sourceFiles toIface
+              ++ publicEgressExitRulesFor fromEntry toIface
           ) (policyInterfacesForCore fromEntry.iface)
         )
-      ) fromCoresWithSourceFiles
+      ) fromCoresWithSourceScopes
     );
 }
