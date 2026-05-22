@@ -39,8 +39,14 @@ jq -e '
   def default6: map(select(.dst == "::/0"));
   def lanes($uplink):
     map(select((.lane.uplink // "") == $uplink and (.lane.access // null) != null) | .lane.access) | sort;
-  def delegatedExitNodes:
-    map(select((.intent.kind // "") == "delegated-public-egress") | .intent.exitNode) | sort;
+  def defaultLaneAccesses($uplink):
+    map(select(
+      (.dst // "") == "::/0"
+      and (.policyOnly // false) == true
+      and (.intent.kind // "") == "default-reachability"
+      and (.lane.uplink // "") == $uplink
+      and (.lane.access // null) != null
+    ) | .lane.access) | sort;
   def laneComplements($access; $destination):
     map(select(
       (.policyOnly // false) == true
@@ -82,7 +88,7 @@ jq -e '
   | expect(($clabWan6 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-mgmt", "clab-router-access-streaming"])
   | expect(($clabEw4 | lanes("east-west")); ["clab-router-access-hostile"])
   | expect(($clabEw6 | lanes("east-west")); ["clab-router-access-hostile"])
-  | expect(($clabEw6 | delegatedExitNodes); ["clab-router-access-client", "clab-router-access-hostile"])
+  | expect(($clabEw6 | defaultLaneAccesses("east-west")); ["clab-router-access-hostile"])
 
   | $root.control_plane_model.data.esp.clab.runtimeTargets."esp-clab-router-policy"
       .effectiveRuntimeRealization.interfaces as $clabPolicyIfs
