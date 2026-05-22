@@ -156,13 +156,19 @@ let
     if forwarders == [ ] then
       dns
     else
-      dns
-      // {
+      let
         allowedUpstreamClasses =
           lib.unique (
             listOrEmpty (dns.allowedUpstreamClasses or null)
             ++ (if builtins.any isPublicResolver forwarders then [ "explicit-egress-default" ] else [ ])
           );
+        roles = attrsOrEmpty (dns.roles or null);
+        recursionRole = attrsOrEmpty (roles.recursion or null);
+      in
+      dns
+      // {
+        allowedUpstreamClasses = allowedUpstreamClasses;
+        roles = roles // { recursion = recursionRole // { allowedUpstreamClasses = allowedUpstreamClasses; }; };
         routeContracts = listOrEmpty (dns.routeContracts or null) ++ builtins.map routeContractForForwarder forwarders;
         policyMatrix = listOrEmpty (dns.policyMatrix or null) ++ builtins.map routeContractForForwarder forwarders;
       };

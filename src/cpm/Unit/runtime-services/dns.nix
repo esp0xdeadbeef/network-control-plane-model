@@ -79,6 +79,21 @@ in
         if dns ? implementation then requireString "${dnsPath}.implementation" dns.implementation else null;
       outgoingInterfaces =
         if dns ? outgoingInterfaces then normalizeStringList dnsPath dns "outgoingInterfaces" else [ ];
+      rolesInput = if dns ? roles then requireAttrs "${dnsPath}.roles" dns.roles else { };
+      localRoleInput = if rolesInput ? local then requireAttrs "${dnsPath}.roles.local" rolesInput.local else { };
+      recursionRoleInput = if rolesInput ? recursion then requireAttrs "${dnsPath}.roles.recursion" rolesInput.recursion else { };
+      localRole =
+        { }
+        // lib.optionalAttrs (localRoleInput ? listen) { listen = normalizeStringList "${dnsPath}.roles.local" localRoleInput "listen"; }
+        // lib.optionalAttrs (localRoleInput ? allowFrom) { allowFrom = normalizeStringList "${dnsPath}.roles.local" localRoleInput "allowFrom"; };
+      recursionRole =
+        { }
+        // lib.optionalAttrs (recursionRoleInput ? outgoingInterfaces) { outgoingInterfaces = normalizeStringList "${dnsPath}.roles.recursion" recursionRoleInput "outgoingInterfaces"; }
+        // lib.optionalAttrs (recursionRoleInput ? allowedUpstreamClasses) { allowedUpstreamClasses = normalizeStringList "${dnsPath}.roles.recursion" recursionRoleInput "allowedUpstreamClasses"; };
+      roles =
+        { }
+        // lib.optionalAttrs (localRole != { }) { local = localRole; }
+        // lib.optionalAttrs (recursionRole != { }) { recursion = recursionRole; };
       _forwarderConflict =
         if dns ? forwarders && dns ? upstreams then
           failInventory dnsPath "must define only one of 'forwarders' or 'upstreams'"
@@ -166,6 +181,7 @@ in
         // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
         // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }
         // lib.optionalAttrs (outgoingInterfaces != [ ]) { inherit outgoingInterfaces; }
+        // lib.optionalAttrs (roles != { }) { inherit roles; }
         // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
         // {
         inherit
