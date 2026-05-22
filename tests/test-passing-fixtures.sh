@@ -493,5 +493,6 @@ bash "${repo_root}/tests/test-service-provider-endpoints.sh"
 bash "${repo_root}/tests/test-delegated-public-egress-peer-site.sh"
 bash "${repo_root}/tests/test-runtime-routed-prefixes-no-validation-shortcut.sh"
 bash "${repo_root}/tests/test-traffic-path-contract-propagation.sh"
+bash "${repo_root}/tests/test-runtime-origin-loopback-egress.sh"
 
 exit 0

@@ -42,6 +42,7 @@ jq -e '
           and (.toInterface == "core-isp")
           and ((.trafficType // "any") == "any")
           and ((.sourceFiles // []) == [])
+          and ((.sourcePrefixes // []) == [])
         )
     ]
   | length == 0
@@ -51,7 +52,8 @@ FAIL upstream-selector nebula underlay core transit.
 
 Overlay ingress must not get a broad upstream-selector firewall allowance to
 the WAN core. Underlay endpoint reachability may only open the modeled Nebula
-traffic type when the matching overlay-underlay endpoint route exists.
+traffic type, and runtime-origin egress must be source-scoped to explicit
+loopback host prefixes.
 EOF
   exit 1
 }

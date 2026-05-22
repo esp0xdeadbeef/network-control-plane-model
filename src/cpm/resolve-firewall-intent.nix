@@ -76,7 +76,12 @@ let
       entry:
       let
         value = buildForwarding {
-          inherit policyEndpointBindings services siteRelations;
+          inherit
+            overlayNames
+            policyEndpointBindings
+            services
+            siteRelations
+            ;
           inherit (entry) target interfaceRecords;
         };
       in

@@ -43,6 +43,7 @@ jq -r '
       and (.value.toInterface // "" | startswith("core-"))
       and ((.value.trafficType // "any") == "any")
       and ((.value.sourceFiles // []) == [])
+      and ((.value.sourcePrefixes // []) == [])
     )
   | "!!!! " + $enterprise.key + "." + $site.key
     + " upstream-selector=" + $target.key
