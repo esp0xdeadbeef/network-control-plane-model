@@ -58,6 +58,14 @@ jq -e '
     any(.dst == $destination and ((.via4 // null) == $via or (.via6 // null) == $via));
   def noRoute($destination; $via):
     all(.dst != $destination or (((.via4 // null) != $via) and ((.via6 // null) != $via)));
+  def hasSourceForward($from; $to; $sourceFile):
+    any(
+      (.fromInterface // "") == $from
+      and (.toInterface // "") == $to
+      and (.family // null) == 6
+      and ((.intent.kind // "") == "runtime-routed-prefix-public-egress")
+      and ((.sourceFiles // []) | index($sourceFile) != null)
+    );
   def expect($actual; $expected):
     if $actual == $expected then true
     else error("expected " + ($expected | @json) + " got " + ($actual | @json))
@@ -128,6 +136,15 @@ jq -e '
   | if ($hetzUpstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6
       | noRoute("::/0"; "fd42:dead:cafe:1000:0:0:0:4")) then . else
       error("Hetz hostile IPv6 overlay ingress must not bypass policy with an unscoped default to core")
+    end
+  | $root.control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-upstream"
+      .forwardingIntent.rules as $hetzUpstreamRules
+  | if ($hetzUpstreamRules | hasSourceForward(
+      "policy-dmz-wan";
+      "core";
+      "/run/secrets/access-node-ipv6-prefix-esp-nixos-router-access-hostile"
+    )) then . else
+      error("Hetz hostile routed-prefix public egress must carry sourceFiles onto the policy-to-WAN leg so renderers can emit source-scoped policy rules")
     end
   | $root.control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-core"
       .effectiveRuntimeRealization.interfaces as $hetzCoreIfs

@@ -205,6 +205,44 @@ in
           );
         in
         if matches == [ ] then [ ] else [ (builtins.head matches) ];
+      exitPolicyInterfacesFor =
+        ingressPolicyIface:
+        builtins.filter (
+          iface:
+          iface.runtimeIfName != ingressPolicyIface.runtimeIfName
+          && (common.laneAccess iface) == (common.laneAccess ingressPolicyIface)
+          && !builtins.any (uplink: builtins.elem uplink (common.uplinks ingressPolicyIface)) (
+            common.uplinks iface
+          )
+        ) policyInterfaces;
+      exitCoreInterfacesFor =
+        exitPolicyIface:
+        builtins.filter (
+          coreIface:
+          builtins.any (uplink: builtins.elem uplink (common.uplinks exitPolicyIface)) (
+            common.uplinks coreIface
+          )
+        ) coreInterfaces;
+      publicEgressExitRulesFor =
+        sourceFiles: ingressPolicyIface:
+        builtins.concatLists (
+          map (
+            exitPolicyIface:
+            map (coreIface: {
+              action = "accept";
+              intent = {
+                kind = "runtime-routed-prefix-public-egress";
+                source = "intent-routed-prefix";
+                stage = "policy-to-public-uplink";
+              };
+              fromInterface = exitPolicyIface.runtimeIfName;
+              toInterface = coreIface.runtimeIfName;
+              inherit sourceFiles;
+              family = 6;
+              applyTcpMssClamp = false;
+            }) (exitCoreInterfacesFor exitPolicyIface)
+          ) (exitPolicyInterfacesFor ingressPolicyIface)
+        );
     in
     builtins.concatLists (
       map (
@@ -221,6 +259,7 @@ in
                   intent = {
                     kind = "runtime-routed-prefix-public-egress";
                     source = "intent-routed-prefix";
+                    stage = "overlay-to-policy";
                   };
                   fromInterface = fromEntry.iface.runtimeIfName;
                   toInterface = toIface.runtimeIfName;
@@ -229,6 +268,7 @@ in
                   applyTcpMssClamp = false;
                 }
               ]
+              ++ publicEgressExitRulesFor fromEntry.sourceFiles toIface
           ) (policyInterfacesForCore fromEntry.iface)
         )
       ) fromCoresWithSourceFiles
