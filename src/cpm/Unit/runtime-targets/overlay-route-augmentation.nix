@@ -44,7 +44,7 @@ let
   selectorRoutes = import ./overlay-route-augmentation/selector.nix {
     inherit lib helpers overlayProvisioning runtimePrefixExitNodes p2pPeerAddress defaultReachabilityVia;
   };
-  inherit (selectorRoutes) accessOverlayDefaults;
+  inherit (selectorRoutes) accessOverlayDefaults overlayIngressPolicyDefaults overlayPolicyLaneDefaults;
 
   addOverlayNodeRoutesToSelector =
     nodeRole: interfaces:
@@ -168,6 +168,8 @@ else
       peer4 = p2pPeerAddress 4 (iface.addr4 or null);
       peer6 = p2pPeerAddress 6 (iface.addr6 or null);
       accessDefaults = accessOverlayDefaults iface coreInterfaces;
+      overlayIngressDefaults = overlayIngressPolicyDefaults iface coreInterfaces;
+      overlayLaneDefaults = overlayPolicyLaneDefaults iface;
       delegatedDefaults =
         if (iface.sourceKind or null) == "p2p" && laneOverlayNames != [ ] then
           {
@@ -185,8 +187,18 @@ else
         else
           { ipv4 = [ ]; ipv6 = [ ]; };
       extraRoutes = {
-        ipv4 = (underlayEndpointRoutes 4 routes) ++ delegatedDefaults.ipv4 ++ accessDefaults.ipv4;
-        ipv6 = (underlayEndpointRoutes 6 routes) ++ delegatedDefaults.ipv6 ++ accessDefaults.ipv6;
+        ipv4 =
+          (underlayEndpointRoutes 4 routes)
+          ++ delegatedDefaults.ipv4
+          ++ accessDefaults.ipv4
+          ++ overlayIngressDefaults.ipv4
+          ++ overlayLaneDefaults.ipv4;
+        ipv6 =
+          (underlayEndpointRoutes 6 routes)
+          ++ delegatedDefaults.ipv6
+          ++ accessDefaults.ipv6
+          ++ overlayIngressDefaults.ipv6
+          ++ overlayLaneDefaults.ipv6;
       };
     in
     if extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ] then iface else iface // { routes = mergeRoutes routes extraRoutes; })

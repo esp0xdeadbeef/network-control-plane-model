@@ -38,7 +38,7 @@ jq -e '
   def default4: map(select(.dst == "0.0.0.0/0"));
   def default6: map(select(.dst == "::/0"));
   def lanes($uplink):
-    map(select((.lane.uplink // "") == $uplink) | .lane.access) | sort;
+    map(select((.lane.uplink // "") == $uplink and (.lane.access // null) != null) | .lane.access) | sort;
   def delegatedExitNodes:
     map(select((.intent.kind // "") == "delegated-public-egress") | .intent.exitNode) | sort;
   def laneComplements($access; $destination):
@@ -48,6 +48,8 @@ jq -e '
       and (.lane.access // "") == $access
       and (.dst // "") == $destination
     ) | .via4) | sort;
+  def hasRoute($destination; $via):
+    any(.dst == $destination and ((.via4 // null) == $via or (.via6 // null) == $via));
   def expect($actual; $expected):
     if $actual == $expected then true
     else error("expected " + ($expected | @json) + " got " + ($actual | @json))
@@ -76,8 +78,8 @@ jq -e '
   | ($clabIfs."p2p-clab-router-core-simulated-isp-clab-router-upstream".routes.ipv6 | default6) as $clabWan6
   | ($clabIfs."p2p-clab-router-core-nebula-clab-router-upstream".routes.ipv4 | default4) as $clabEw4
   | ($clabIfs."p2p-clab-router-core-nebula-clab-router-upstream".routes.ipv6 | default6) as $clabEw6
-  | expect(($clabWan4 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-streaming"])
-  | expect(($clabWan6 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-streaming"])
+  | expect(($clabWan4 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-mgmt", "clab-router-access-streaming"])
+  | expect(($clabWan6 | lanes("wan")); ["clab-router-access-admin", "clab-router-access-client", "clab-router-access-mgmt", "clab-router-access-streaming"])
   | expect(($clabEw4 | lanes("east-west")); ["clab-router-access-hostile"])
   | expect(($clabEw6 | lanes("east-west")); ["clab-router-access-hostile"])
   | expect(($clabEw6 | delegatedExitNodes); ["clab-router-access-client", "clab-router-access-hostile"])
@@ -88,6 +90,23 @@ jq -e '
       | laneComplements("clab-router-access-client"; "10.50.50.0/24")); ["10.50.0.26"])
   | expect(($clabPolicyIfs."p2p-clab-router-downstream-clab-router-policy--access-clab-router-access-client".routes.ipv4
       | laneComplements("clab-router-access-streaming"; "10.50.20.0/24")); ["10.50.0.18"])
+
+  | $root.control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-upstream"
+      .effectiveRuntimeRealization.interfaces as $hetzUpstreamIfs
+  | if ($hetzUpstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv4
+      | hasRoute("0.0.0.0/0"; "10.80.0.14")) then . else
+      error("Hetz hostile IPv4 overlay ingress must policy-route via pol-dmz-ew, matching the live hotpatch that restored hostile egress")
+    end
+  | if ($hetzUpstreamIfs."p2p-hetz-router-policy-hetz-router-upstream--access-hetz-router-access-dmz--uplink-east-west".routes.ipv4
+      | hasRoute("0.0.0.0/0"; "10.80.0.14")) then . else
+      error("Hetz upstream east-west policy lane must retain its own default so return traffic does not fall through an unrelated table")
+    end
+  | $root.control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-core"
+      .effectiveRuntimeRealization.interfaces as $hetzCoreIfs
+  | if ($hetzCoreIfs."p2p-hetz-router-core-hetz-router-upstream".routes.ipv4
+      | hasRoute("10.20.70.0/24"; "10.80.0.5")) then . else
+      error("Hetz WAN core must retain the remote hostile IPv4 return route via upstream")
+    end
 ' "${output_json}" >/dev/null
 
 echo "PASS sigma-upstream-policy-defaults-preserved"
