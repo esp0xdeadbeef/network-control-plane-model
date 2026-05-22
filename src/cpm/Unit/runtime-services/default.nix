@@ -40,6 +40,9 @@ let
       [ ]
       values;
 
+  stripPrefixLength = value:
+    if !(isNonEmptyString value) then "" else builtins.head (lib.splitString "/" value);
+
   normalizeRuntimeServices = targetDef:
     let
       servicesPath = "${targetDef.nodePath}.services";
@@ -89,6 +92,7 @@ let
     , nodeName
     , nodeAttrs
     , targetDef
+    , loopback ? { }
     ,
     }:
     let
@@ -103,6 +107,13 @@ let
       explicitOutgoingInterfaces =
         if builtins.isList (dnsService.outgoingInterfaces or null) then
           requireStringList "${targetDef.nodePath}.services.dns.outgoingInterfaces" dnsService.outgoingInterfaces
+        else
+          [ ];
+      roles = attrsOrEmpty (dnsService.roles or null);
+      recursionRole = attrsOrEmpty (roles.recursion or null);
+      explicitRecursionOutgoingInterfaces =
+        if builtins.isList (recursionRole.outgoingInterfaces or null) then
+          requireStringList "${targetDef.nodePath}.services.dns.roles.recursion.outgoingInterfaces" recursionRole.outgoingInterfaces
         else
           [ ];
       derivedOutgoingInterfaces =
@@ -145,6 +156,32 @@ let
         else
           [ ];
       mergedAllowedClasses = uniqueStrings ((dnsService.allowedUpstreamClasses or [ ]) ++ derivedAllowedClasses);
+      loopbackRecursionSources = orderedUniqueStrings [
+        (stripPrefixLength (loopback.ipv4 or loopback.addr4 or ""))
+        (stripPrefixLength (loopback.ipv6 or loopback.addr6 or ""))
+      ];
+      recursionOutgoingInterfaces =
+        if explicitRecursionOutgoingInterfaces != [ ] then
+          explicitRecursionOutgoingInterfaces
+        else if explicitOutgoingInterfaces != [ ] then
+          explicitOutgoingInterfaces
+        else if (nodeAttrs.role or null) == "core" then
+          loopbackRecursionSources
+        else
+          mergedOutgoingInterfaces;
+      mergedRoles =
+        roles
+        // {
+          recursion = recursionRole // {
+            outgoingInterfaces = recursionOutgoingInterfaces;
+            allowedUpstreamClasses = mergedAllowedClasses;
+          };
+        }
+        // lib.optionalAttrs (listenAddresses != [ ] || mergedAllowFrom != [ ]) {
+          local = (attrsOrEmpty (roles.local or null))
+            // lib.optionalAttrs (listenAddresses != [ ]) { listen = listenAddresses; }
+            // lib.optionalAttrs (mergedAllowFrom != [ ]) { allowFrom = mergedAllowFrom; };
+        };
       blockDirectEgress =
         (policyDerivedDnsDirectEgressBlockedForTenants tenantNames)
         || (
@@ -159,6 +196,7 @@ let
         // lib.optionalAttrs (mergedAllowFrom != [ ]) { allowFrom = mergedAllowFrom; }
         // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; }
         // lib.optionalAttrs (mergedOutgoingInterfaces != [ ]) { outgoingInterfaces = mergedOutgoingInterfaces; }
+        // { roles = mergedRoles; }
         // lib.optionalAttrs (mergedAllowedClasses != [ ]) { allowedUpstreamClasses = mergedAllowedClasses; }
         // lib.optionalAttrs blockDirectEgress { inherit directEgressBlockedTenants; }
         // lib.optionalAttrs blockDirectEgress { blockDirectEgress = true; };

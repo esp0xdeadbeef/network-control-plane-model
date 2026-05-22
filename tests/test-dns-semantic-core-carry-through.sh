@@ -227,6 +227,10 @@ nix eval --impure --expr "
     && ! (targets.core-nebula-runtime.services.dns ? implementation)
     && ! (targets.core-wan-a-runtime.services.dns ? implementation)
     && ! (targets.core-wan-b-runtime.services.dns ? implementation)
+    && targets.core-nebula-runtime.services.dns.roles.recursion.outgoingInterfaces == [ \"10.19.0.4\" \"fd00:19::4\" ]
+    && targets.core-nebula-runtime.services.dns.roles.recursion.allowedUpstreamClasses == [ \"local-access\" ]
+    && targets.core-nebula-runtime.services.dns.roles.local.listen == [ \"100.96.10.1\" \"fd00:96::1\" ]
+    && targets.access-runtime.services.dns.roles.recursion.allowedUpstreamClasses == [ \"local-access\" \"explicit-egress-default\" ]
     && targets.access-runtime.services.dns.forwarders == [
       \"100.96.10.1\"
       \"fd00:96::1\"

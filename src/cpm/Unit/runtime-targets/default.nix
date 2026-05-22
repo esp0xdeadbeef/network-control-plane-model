@@ -149,6 +149,7 @@ let
           resolveRuntimeServices
             {
               inherit nodePath nodeName nodeAttrs;
+              inherit loopback;
               targetDef = targetDefWithServices;
             }
         else
