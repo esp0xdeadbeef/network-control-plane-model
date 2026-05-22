@@ -56,6 +56,8 @@ jq -e '
     ) | .via4) | sort;
   def hasRoute($destination; $via):
     any(.dst == $destination and ((.via4 // null) == $via or (.via6 // null) == $via));
+  def noRoute($destination; $via):
+    all(.dst != $destination or (((.via4 // null) != $via) and ((.via6 // null) != $via)));
   def expect($actual; $expected):
     if $actual == $expected then true
     else error("expected " + ($expected | @json) + " got " + ($actual | @json))
@@ -77,6 +79,22 @@ jq -e '
   | expect(($b6 | lanes("isp-b")); $normalAccess)
   | expect(($ew4 | lanes("east-west")); ["nixos-router-access-hostile"])
   | expect(($ew6 | lanes("east-west")); ["nixos-router-access-hostile"])
+  | if ($ifs."p2p-nixos-router-policy-nixos-router-upstream--access-nixos-router-access-hostile--uplink-east-west".routes.ipv4
+      | hasRoute("0.0.0.0/0"; "10.10.0.16")) then . else
+      error("NixOS hostile upstream policy lane must default toward core-nebula, not back to policy")
+    end
+  | if ($ifs."p2p-nixos-router-policy-nixos-router-upstream--access-nixos-router-access-hostile--uplink-east-west".routes.ipv6
+      | hasRoute("::/0"; "fd42:dead:beef:1000:0:0:0:10")) then . else
+      error("NixOS hostile upstream policy lane must default toward core-nebula for IPv6, not back to policy")
+    end
+  | if ($ifs."p2p-nixos-router-policy-nixos-router-upstream--access-nixos-router-access-hostile--uplink-east-west".routes.ipv4
+      | noRoute("0.0.0.0/0"; "10.10.0.38")) then . else
+      error("NixOS hostile upstream policy lane must not install a default route back to its policy peer")
+    end
+  | if ($ifs."p2p-nixos-router-policy-nixos-router-upstream--access-nixos-router-access-hostile--uplink-east-west".routes.ipv6
+      | noRoute("::/0"; "fd42:dead:beef:1000:0:0:0:26")) then . else
+      error("NixOS hostile upstream policy lane must not install an IPv6 default route back to its policy peer")
+    end
 
   | $root.control_plane_model.data.esp.clab.runtimeTargets."esp-clab-router-upstream"
       .effectiveRuntimeRealization.interfaces as $clabIfs
@@ -103,9 +121,13 @@ jq -e '
       | hasRoute("0.0.0.0/0"; "10.80.0.14")) then . else
       error("Hetz hostile IPv4 overlay ingress must policy-route via pol-dmz-ew, matching the live hotpatch that restored hostile egress")
     end
-  | if ($hetzUpstreamIfs."p2p-hetz-router-policy-hetz-router-upstream--access-hetz-router-access-dmz--uplink-east-west".routes.ipv4
-      | hasRoute("0.0.0.0/0"; "10.80.0.14")) then . else
-      error("Hetz upstream east-west policy lane must retain its own default so return traffic does not fall through an unrelated table")
+  | if ($hetzUpstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6
+      | hasRoute("::/0"; "fd42:dead:cafe:1000:0:0:0:e")) then . else
+      error("Hetz hostile IPv6 overlay ingress must policy-route via the east-west policy lane")
+    end
+  | if ($hetzUpstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes.ipv6
+      | noRoute("::/0"; "fd42:dead:cafe:1000:0:0:0:4")) then . else
+      error("Hetz hostile IPv6 overlay ingress must not bypass policy with an unscoped default to core")
     end
   | $root.control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-core"
       .effectiveRuntimeRealization.interfaces as $hetzCoreIfs
