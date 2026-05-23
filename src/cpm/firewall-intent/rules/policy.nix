@@ -32,18 +32,17 @@ let
               endpointIfacesForPeerAccess relation (relation.to or null) (relation.from or null) (common.laneAccess fromIface);
           in
           map
-            (toIface:
-              common.withSourcePrefixes {
-                inherit action;
-                relationId = id;
-                priority = relation.priority or null;
-                trafficType = relation.trafficType or "any";
-                from = attrsOrEmpty (relation.from or null);
-                to = attrsOrEmpty (relation.to or null);
-                fromInterface = fromIface.runtimeIfName;
-                toInterface = toIface.runtimeIfName;
-                applyTcpMssClamp = false;
-              } (common.sourcePrefixesReachableVia runtimeOriginSourcePrefixes fromIface))
+            (toIface: {
+              inherit action;
+              relationId = id;
+              priority = relation.priority or null;
+              trafficType = relation.trafficType or "any";
+              from = attrsOrEmpty (relation.from or null);
+              to = attrsOrEmpty (relation.to or null);
+              fromInterface = fromIface.runtimeIfName;
+              toInterface = toIface.runtimeIfName;
+              applyTcpMssClamp = false;
+            })
             toIfaces)
         fromIfaces
     );
