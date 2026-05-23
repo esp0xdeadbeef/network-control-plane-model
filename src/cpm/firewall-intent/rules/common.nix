@@ -24,7 +24,7 @@ rec {
     let
       accesses = prefixOriginAccesses prefix;
       ifaceAccess = laneAccess iface;
-      accessOk = accesses == [ ] || (ifaceAccess != null && builtins.elem ifaceAccess accesses);
+      accessOk = accesses != [ ] && ifaceAccess != null && builtins.elem ifaceAccess accesses;
     in
     accessOk;
 
