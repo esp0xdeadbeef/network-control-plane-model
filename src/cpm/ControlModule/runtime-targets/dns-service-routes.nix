@@ -1,4 +1,4 @@
-{ lib, common }:
+{ lib, common, ipam }:
 
 let
   inherit (common) attrsOrEmpty listOrEmpty mergeRoutes;
@@ -75,9 +75,25 @@ let
       && ((attrsOrEmpty (rule.to or null)).kind or null) == "service")
       (listOrEmpty rules);
 
+  serviceEndpointRoutes = import ./service-endpoint-routes.nix {
+    inherit
+      lib
+      common
+      ipam
+      hasP2PPrefixLength
+      routeIntent
+      ;
+  };
+  inherit (serviceEndpointRoutes)
+    endpointRoutes
+    externalServiceRules
+    serviceRecords
+    ;
+
   addRoutesForTarget =
-    target: forwarding:
+    services: target: forwarding:
     let
+      servicesByName = serviceRecords services;
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
       byRuntime = interfaceByRuntimeName interfaces;
@@ -101,28 +117,58 @@ let
               acc // { ${fromIfName} = mergeRoutes previous extraRoutes; })
           { }
           (dnsRules (forwarding.rules or [ ]));
+      endpointExtraByIf =
+        builtins.foldl'
+          (acc: rule:
+            let
+              serviceName = (attrsOrEmpty (rule.to or null)).name or null;
+              fromName = rule.fromInterface or null;
+              toName = rule.toInterface or null;
+            in
+            if
+              !(builtins.hasAttr fromName byRuntime)
+              || !(builtins.hasAttr toName byRuntime)
+              || !(builtins.hasAttr serviceName servicesByName)
+            then
+              acc
+            else
+              let
+                fromIfName = byRuntime.${fromName}.ifName;
+                fromIface = byRuntime.${fromName}.iface;
+                toIface = byRuntime.${toName}.iface;
+                service = servicesByName.${serviceName};
+                extraRoutes = dropRoutesAlreadyOnInterface fromIface {
+                  ipv4 = endpointRoutes 4 rule service toIface;
+                  ipv6 = endpointRoutes 6 rule service toIface;
+                };
+                previous = attrsOrEmpty (acc.${fromIfName} or null);
+              in
+              acc // { ${fromIfName} = mergeRoutes previous extraRoutes; })
+          extraByIf
+          (externalServiceRules (forwarding.rules or [ ]));
       updatedInterfaces =
         builtins.mapAttrs
           (ifName: iface:
-            if !(builtins.hasAttr ifName extraByIf) then
+            if !(builtins.hasAttr ifName endpointExtraByIf) then
               iface
             else
-              iface // { routes = mergeRoutes (attrsOrEmpty (iface.routes or null)) extraByIf.${ifName}; })
+              iface // { routes = mergeRoutes (attrsOrEmpty (iface.routes or null)) endpointExtraByIf.${ifName}; })
           interfaces;
     in
-    if interfaces == { } || extraByIf == { } then
+    if interfaces == { } || endpointExtraByIf == { } then
       target
     else
       target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
 in
 { firewallIntent
 , normalizedRuntimeTargets
+, services ? [ ]
 ,
 }:
 builtins.mapAttrs
   (targetName: target:
   if builtins.hasAttr targetName (firewallIntent.forwardingByTarget or { }) then
-    addRoutesForTarget target firewallIntent.forwardingByTarget.${targetName}
+    addRoutesForTarget services target firewallIntent.forwardingByTarget.${targetName}
   else
     target)
   normalizedRuntimeTargets

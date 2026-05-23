@@ -64,12 +64,13 @@ let
     };
 
   routeDnsServiceReachability = import ../../ControlModule/runtime-targets/dns-service-routes.nix {
-    inherit lib common;
+    inherit lib common ipam;
   };
 
   routeAugmentedRuntimeTargets =
     routeDnsServiceReachability {
       inherit firewallIntent normalizedRuntimeTargets;
+      services = resolvedServices;
     };
 
   finalizeRuntimeTargets = import ../../ControlModule/runtime-targets/finalize.nix {

@@ -22,11 +22,12 @@ labs_path="$(
 )"
 
 # !!!! This is intentionally a CPM boundary alarm, not a renderer nft test.
-# If a router role reaches CPM with zero firewall rules, either CPM failed to
-# project upstream communication policy into role-local rules, or an upstream
-# model failed to provide the policy surface CPM needs. Keep adding narrower
-# tests for the upstream producer when this trips; do not let renderers repair
-# the missing policy by guessing from names or interfaces.
+# If a forwarding router role reaches CPM with zero firewall rules, either CPM
+# failed to project upstream communication policy into role-local rules, or an
+# upstream model failed to provide the policy surface CPM needs. Core nodes with
+# no realized uplink forwarding interface are allowed to be explicit no-forward
+# endpoints; renderers must keep those fail-closed instead of inventing transit
+# policy from names or interfaces.
 : >"${violations_jsonl}"
 
 for inventory in "${labs_path}"/examples/*/inventory-nixos.nix; do
@@ -50,6 +51,10 @@ for inventory in "${labs_path}"/examples/*/inventory-nixos.nix; do
         | ["access", "upstream-selector", "policy", "downstream-selector", "core"]
         | index($role))
     | select(((.value.forwardingIntent.rules // []) | length) == 0)
+    | select(
+        (.value.role // "") != "core"
+        or (((.value.forwardingIntent.uplinkInterfaces // []) | length) > 0)
+      )
     | "!!!! "
       + $example
       + " "
