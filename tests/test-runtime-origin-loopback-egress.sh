@@ -223,6 +223,8 @@ jq -e '
     any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
   def lane_access($iface):
     $iface.backingRef.lane.access // null;
+  def lane_uplink($iface):
+    $iface.backingRef.lane.uplink // null;
   def source_prefixes:
     [ (.runtimeTargets // {})
       | to_entries[]
@@ -232,9 +234,15 @@ jq -e '
     | unique_by((.family | tostring) + "|" + .prefix);
   def origin_accesses($prefix):
     $prefix.origin.accesses // [];
-  def prefix_matches_access($prefix; $access):
+  def origin_uplinks($prefix):
+    $prefix.origin.uplinks // [];
+  def prefix_matches_egress($prefix; $access; $uplink):
     (origin_accesses($prefix) | length) == 0
-    or ($access != null and any(origin_accesses($prefix)[]; . == $access));
+    or (
+      $access != null
+      and any(origin_accesses($prefix)[]; . == $access)
+      and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not))
+    );
   def has_source_rule($rules; $from; $to; $prefix):
     any($rules[]?;
       (.action // "") == "accept"
@@ -262,7 +270,7 @@ jq -e '
       | select(lane_access($to.value) == lane_access($from.value))
       | select(has_default($to.value))
       | $sources[] as $source
-      | select(prefix_matches_access($source; lane_access($from.value)))
+      | select(prefix_matches_egress($source; lane_access($from.value); lane_uplink($to.value)))
       | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
       | {
           target: ($target.name // "<unknown>"),
@@ -281,6 +289,8 @@ jq -e '
       any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
     def lane_access($iface):
       $iface.backingRef.lane.access // null;
+    def lane_uplink($iface):
+      $iface.backingRef.lane.uplink // null;
     def source_prefixes:
       [ (.runtimeTargets // {})
         | to_entries[]
@@ -290,9 +300,15 @@ jq -e '
       | unique_by((.family | tostring) + "|" + .prefix);
     def origin_accesses($prefix):
       $prefix.origin.accesses // [];
-    def prefix_matches_access($prefix; $access):
+    def origin_uplinks($prefix):
+      $prefix.origin.uplinks // [];
+    def prefix_matches_egress($prefix; $access; $uplink):
       (origin_accesses($prefix) | length) == 0
-      or ($access != null and any(origin_accesses($prefix)[]; . == $access));
+      or (
+        $access != null
+        and any(origin_accesses($prefix)[]; . == $access)
+        and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not))
+      );
     def has_source_rule($rules; $from; $to; $prefix):
       any($rules[]?;
         (.action // "") == "accept"
@@ -320,7 +336,7 @@ jq -e '
         | select(lane_access($to.value) == lane_access($from.value))
         | select(has_default($to.value))
         | $sources[] as $source
-        | select(prefix_matches_access($source; lane_access($from.value)))
+        | select(prefix_matches_egress($source; lane_access($from.value); lane_uplink($to.value)))
         | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
         | {
             target: ($target.name // "<unknown>"),
@@ -336,11 +352,21 @@ jq -e '
 jq -e '
   def lane_access($iface):
     $iface.backingRef.lane.access // null;
+  def lane_uplink($iface):
+    $iface.backingRef.lane.uplink // null;
   def origin_accesses($prefix):
     $prefix.origin.accesses // [];
-  def prefix_allowed_on_iface($prefix; $iface):
-    (origin_accesses($prefix) | length) == 0
-    or (lane_access($iface) != null and any(origin_accesses($prefix)[]; . == lane_access($iface)));
+  def origin_uplinks($prefix):
+    $prefix.origin.uplinks // [];
+  def prefix_allowed_from_iface($prefix; $iface):
+    ((origin_accesses($prefix) | length) == 0
+      or lane_access($iface) == null
+      or any(origin_accesses($prefix)[]; . == lane_access($iface)));
+  def prefix_allowed_to_iface($prefix; $iface):
+    ((origin_accesses($prefix) | length) == 0
+      or lane_access($iface) == null
+      or any(origin_accesses($prefix)[]; . == lane_access($iface)))
+    and (lane_uplink($iface) == null or (any(origin_uplinks($prefix)[]; . == lane_uplink($iface)) | not));
   [
     .control_plane_model.data
     | to_entries[].value
@@ -356,7 +382,7 @@ jq -e '
     | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.toInterface // "")) | .value) as $toIface
     | ($rule.sourcePrefixes // [])[] as $prefix
     | select(
-        (prefix_allowed_on_iface($prefix; $fromIface) and prefix_allowed_on_iface($prefix; $toIface))
+        (prefix_allowed_from_iface($prefix; $fromIface) and prefix_allowed_to_iface($prefix; $toIface))
         | not
       )
     | {
@@ -375,11 +401,21 @@ jq -e '
   jq '
     def lane_access($iface):
       $iface.backingRef.lane.access // null;
+    def lane_uplink($iface):
+      $iface.backingRef.lane.uplink // null;
     def origin_accesses($prefix):
       $prefix.origin.accesses // [];
-    def prefix_allowed_on_iface($prefix; $iface):
-      (origin_accesses($prefix) | length) == 0
-      or (lane_access($iface) != null and any(origin_accesses($prefix)[]; . == lane_access($iface)));
+    def origin_uplinks($prefix):
+      $prefix.origin.uplinks // [];
+    def prefix_allowed_from_iface($prefix; $iface):
+      ((origin_accesses($prefix) | length) == 0
+        or lane_access($iface) == null
+        or any(origin_accesses($prefix)[]; . == lane_access($iface)));
+    def prefix_allowed_to_iface($prefix; $iface):
+      ((origin_accesses($prefix) | length) == 0
+        or lane_access($iface) == null
+        or any(origin_accesses($prefix)[]; . == lane_access($iface)))
+      and (lane_uplink($iface) == null or (any(origin_uplinks($prefix)[]; . == lane_uplink($iface)) | not));
     [
       .control_plane_model.data
       | to_entries[].value
@@ -395,7 +431,7 @@ jq -e '
       | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.toInterface // "")) | .value) as $toIface
       | ($rule.sourcePrefixes // [])[] as $prefix
       | select(
-          (prefix_allowed_on_iface($prefix; $fromIface) and prefix_allowed_on_iface($prefix; $toIface))
+          (prefix_allowed_from_iface($prefix; $fromIface) and prefix_allowed_to_iface($prefix; $toIface))
           | not
         )
       | {
@@ -550,9 +586,15 @@ jq -e '
     | unique_by((.family | tostring) + "|" + .prefix);
   def origin_accesses($prefix):
     $prefix.origin.accesses // [];
-  def prefix_matches_access($prefix; $access):
+  def origin_uplinks($prefix):
+    $prefix.origin.uplinks // [];
+  def prefix_matches_egress($prefix; $access; $uplink):
     (origin_accesses($prefix) | length) == 0
-    or ($access != null and any(origin_accesses($prefix)[]; . == $access));
+    or (
+      $access != null
+      and any(origin_accesses($prefix)[]; . == $access)
+      and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not))
+    );
   def has_source_rule($rules; $from; $to; $prefix):
     any($rules[]?;
       (.action // "") == "accept"
@@ -580,7 +622,7 @@ jq -e '
       | select(any(lane_uplinks($from.value)[]?; . == lane_uplink($to.value)))
       | select(has_default($to.value))
       | $sources[] as $source
-      | select(prefix_matches_access($source; lane_access($from.value)))
+      | select(prefix_matches_egress($source; lane_access($from.value); lane_uplink($to.value)))
       | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
       | {
           target: ($target.name // "<unknown>"),
@@ -613,9 +655,15 @@ jq -e '
       | unique_by((.family | tostring) + "|" + .prefix);
     def origin_accesses($prefix):
       $prefix.origin.accesses // [];
-    def prefix_matches_access($prefix; $access):
+    def origin_uplinks($prefix):
+      $prefix.origin.uplinks // [];
+    def prefix_matches_egress($prefix; $access; $uplink):
       (origin_accesses($prefix) | length) == 0
-      or ($access != null and any(origin_accesses($prefix)[]; . == $access));
+      or (
+        $access != null
+        and any(origin_accesses($prefix)[]; . == $access)
+        and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not))
+      );
     def has_source_rule($rules; $from; $to; $prefix):
       any($rules[]?;
         (.action // "") == "accept"
@@ -643,7 +691,7 @@ jq -e '
         | select(any(lane_uplinks($from.value)[]?; . == lane_uplink($to.value)))
         | select(has_default($to.value))
         | $sources[] as $source
-        | select(prefix_matches_access($source; lane_access($from.value)))
+        | select(prefix_matches_egress($source; lane_access($from.value); lane_uplink($to.value)))
         | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
         | {
             target: ($target.name // "<unknown>"),

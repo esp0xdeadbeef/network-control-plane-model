@@ -33,11 +33,11 @@
         "nixpkgs-network": "nixpkgs-network_2"
       },
       "locked": {
-        "lastModified": 1779562374,
-        "narHash": "sha256-w+74tJftz8DMEs9cUgNiTyf6Y+auBMn44z9HUg9rZp8=",
+        "lastModified": 1779576090,
+        "narHash": "sha256-mEpGYYGib04LMnpnv9lNkcnJbCMeuqtfGBNX85v0CYg=",
         "owner": "esp0xdeadbeef",
         "repo": "network-forwarding-model",
-        "rev": "6f49699dbb3aa479c28afec05b62bfaa00695d5b",
+        "rev": "44c83f0476b59eeb8d8fe73267493444af26b99b",
         "type": "github"
       },
       "original": {
