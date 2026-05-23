@@ -30,10 +30,25 @@ let
     else
       listOrEmpty (communicationContract.allowedRelations or null);
   siteTransport = attrsOrEmpty (siteAttrs.transport or null);
+  overlayList = listOrEmpty (siteTransport.overlays or null);
   overlayNames = uniqueStrings (
     sortedNames (attrsOrEmpty (siteAttrs.overlays or null))
     ++ sortedNames (attrsOrEmpty (siteAttrs.overlayReachability or null))
-    ++ map (overlay: overlay.name or null) (listOrEmpty (siteTransport.overlays or null))
+    ++ map (overlay: overlay.name or null) overlayList
+  );
+  overlayUnderlayAccessByName = builtins.listToAttrs (
+    builtins.filter (entry: entry.name != null) (
+      map (
+        overlay:
+        let
+          underlayAccess = attrsOrEmpty (overlay.underlayAccess or null);
+        in
+        {
+          name = overlay.name or null;
+          value = if (underlayAccess.kind or null) == "tenant" then underlayAccess.name or null else null;
+        }
+      ) overlayList
+    )
   );
 
   runtimeInterfaceRecords = import ./firewall-intent/runtime-interfaces.nix { inherit helpers; };
@@ -103,12 +118,20 @@ let
     let
       defaultIfaces = builtins.filter hasDefaultRoute (targetInterfaces target);
       laneValues = map laneAttrs defaultIfaces;
+      runtimeOrigin = attrsOrEmpty (target.runtimeOriginEgress or null);
+      runtimeUplinks =
+        if builtins.isList (runtimeOrigin.uplinks or null) then runtimeOrigin.uplinks else [ ];
+      overlayUnderlayAccesses = map (
+        uplink: overlayUnderlayAccessByName.${uplink} or null
+      ) runtimeUplinks;
     in
     {
       inherit targetName;
       interfaces = uniqueStrings (map (iface: iface.runtimeIfName or null) defaultIfaces);
       accesses = uniqueStrings (
-        map (lane: lane.access or null) laneValues ++ builtins.concatMap (peerAccessesForLink targetName) defaultIfaces
+        map (lane: lane.access or null) laneValues
+        ++ overlayUnderlayAccesses
+        ++ builtins.concatMap (peerAccessesForLink targetName) defaultIfaces
       );
       uplinks = uniqueStrings (
         builtins.concatMap (
