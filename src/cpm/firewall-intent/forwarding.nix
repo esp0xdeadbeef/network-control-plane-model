@@ -42,7 +42,9 @@ if role == "access" then
     mode = "explicit-access-forwarding";
     localInterfaces = map (iface: iface.runtimeIfName) localInterfaces;
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
-    rules = buildAccessRules localInterfaces transitInterfaces;
+    rules = buildAccessRules {
+      inherit localInterfaces transitInterfaces runtimeOriginSourcePrefixes;
+    };
   }
 else if role == "downstream-selector" || role == "upstream-selector" then
   {
