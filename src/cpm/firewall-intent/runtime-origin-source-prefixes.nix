@@ -23,20 +23,6 @@ let
 
   siteTransport = attrsOrEmpty (siteAttrs.transport or null);
   overlayList = listOrEmpty (siteTransport.overlays or null);
-  overlayUnderlayAccessByName = builtins.listToAttrs (
-    builtins.filter (entry: entry.name != null) (
-      map (
-        overlay:
-        let
-          underlayAccess = attrsOrEmpty (overlay.underlayAccess or null);
-        in
-        {
-          name = overlay.name or null;
-          value = if (underlayAccess.kind or null) == "tenant" then underlayAccess.name or null else null;
-        }
-      ) overlayList
-    )
-  );
 
   routeList =
     iface:
@@ -67,6 +53,52 @@ let
     builtins.elem function (if builtins.isList (target.forwardingFunctions or null) then target.forwardingFunctions else [ ]);
   isAccessTarget =
     target: (target.role or null) == "access" || hasForwardingFunction "access-gateway" target;
+
+  tenantAccessNodes =
+    tenantName:
+    uniqueStrings (
+      map (entry: entry.target.logicalNode.name or null) (
+        builtins.filter
+          (
+            entry:
+            isAccessTarget entry.target
+            && builtins.any
+              (
+                iface:
+                (iface.sourceKind or null) == "tenant"
+                && (toString (iface.tenant or "")) == (toString tenantName)
+              )
+              (targetInterfaces entry.target)
+          )
+          targetEntries
+      )
+    );
+
+  underlayAccessNodes =
+    underlayAccess:
+    if (underlayAccess.kind or null) == "tenant" then tenantAccessNodes (underlayAccess.name or "") else [ ];
+
+  overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
+  overlayUnderlayAccessByName =
+    let
+      fromTransport = map (
+        overlay:
+        {
+          name = overlay.name or null;
+          value = underlayAccessNodes (attrsOrEmpty (overlay.underlayAccess or null));
+        }
+      ) overlayList;
+      fromReachability = map (
+        name:
+        {
+          inherit name;
+          value = underlayAccessNodes (attrsOrEmpty (overlayReachability.${name}.underlayAccess or null));
+        }
+      ) (sortedNames overlayReachability);
+    in
+    builtins.listToAttrs (
+      builtins.filter (entry: entry.name != null && entry.value != [ ]) (fromTransport ++ fromReachability)
+    );
 
   peerAccessesForLink =
     targetName: iface:
@@ -102,7 +134,7 @@ let
       interfaces = uniqueStrings (map (iface: iface.runtimeIfName or null) defaultIfaces);
       accesses = uniqueStrings (
         map (lane: lane.access or null) laneValues
-        ++ overlayUnderlayAccesses
+        ++ builtins.concatMap (value: if builtins.isList value then value else [ ]) overlayUnderlayAccesses
         ++ builtins.concatMap (peerAccessesForLink targetName) defaultIfaces
       );
       uplinks = uniqueStrings (

@@ -19,6 +19,9 @@ rec {
   prefixOriginAccesses = prefix:
     if builtins.isList ((prefixOrigin prefix).accesses or null) then (prefixOrigin prefix).accesses else [ ];
 
+  prefixOriginUplinks = prefix:
+    if builtins.isList ((prefixOrigin prefix).uplinks or null) then (prefixOrigin prefix).uplinks else [ ];
+
   prefixMatchesInterfaceLane =
     prefix: iface:
     let
@@ -31,6 +34,22 @@ rec {
   sourcePrefixesForInterface =
     runtimeOriginSourcePrefixes: iface:
     builtins.filter (prefix: prefixMatchesInterfaceLane prefix iface) runtimeOriginSourcePrefixes;
+
+  sourcePrefixAllowedToInterface =
+    prefix: iface:
+    let
+      accesses = prefixOriginAccesses prefix;
+      uplinks = prefixOriginUplinks prefix;
+      ifaceAccess = laneAccess iface;
+      ifaceUplink = laneUplink iface;
+      accessOk = ifaceAccess == null || builtins.elem ifaceAccess accesses;
+      uplinkOk = ifaceUplink == null || !(builtins.elem ifaceUplink uplinks);
+    in
+    accessOk && uplinkOk;
+
+  sourcePrefixesAllowedToInterface =
+    sourcePrefixes: iface:
+    builtins.filter (prefix: sourcePrefixAllowedToInterface prefix iface) sourcePrefixes;
 
   routeList =
     iface:
@@ -104,20 +123,28 @@ rec {
         if sourcePrefixes == [ ] then
           [ ]
         else
-          map (
+          builtins.concatMap (
             toIface:
-            withSourcePrefixes {
-              action = "accept";
-              relationId = "runtime-origin-egress";
-              intent = {
-                kind = "runtime-origin-egress";
-                source = "loopback-runtime-identity";
-                stage = "selector-default-egress";
-              };
-              fromInterface = fromIface.runtimeIfName;
-              toInterface = toIface.runtimeIfName;
-              applyTcpMssClamp = false;
-            } sourcePrefixes
+            let
+              egressPrefixes = sourcePrefixesAllowedToInterface sourcePrefixes toIface;
+            in
+            if egressPrefixes == [ ] then
+              [ ]
+            else
+              [
+                (withSourcePrefixes {
+                  action = "accept";
+                  relationId = "runtime-origin-egress";
+                  intent = {
+                    kind = "runtime-origin-egress";
+                    source = "loopback-runtime-identity";
+                    stage = "selector-default-egress";
+                  };
+                  fromInterface = fromIface.runtimeIfName;
+                  toInterface = toIface.runtimeIfName;
+                  applyTcpMssClamp = false;
+                } egressPrefixes)
+              ]
           ) (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) defaultIfacesForIngress)
       ) interfaces
     );
