@@ -301,7 +301,70 @@ run_external_examples() {
 
   log "Running external examples"
 
-  find "${examples_root}" -mindepth 1 -maxdepth 1 -type d | sort | while read -r dir; do
+  local jobs
+  local timeout_seconds
+  local log_dir
+  local running=0
+  local status=0
+  local finished_pid
+  local rc
+  local name
+  local dir
+  local log_file
+  local -A pid_to_name=()
+  local -A pid_to_log=()
+
+  jobs="${TEST_JOBS:-$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')}"
+  if ! [[ "${jobs}" =~ ^[0-9]+$ ]] || ((jobs < 1)); then
+    jobs=1
+  fi
+  timeout_seconds="${TEST_TIMEOUT_SECONDS:-${NETWORK_REPO_TEST_TIMEOUT_SECONDS:-1800}}"
+  log_dir="$(mktemp -d)"
+
+  finish_external_example() {
+    local pid="$1"
+    local exit_code="$2"
+    local case_log="${pid_to_log[${pid}]}"
+
+    if ((exit_code == 0)); then
+      cat "${case_log}"
+    else
+      cat "${case_log}" >&2
+      status=1
+    fi
+    unset "pid_to_name[${pid}]"
+    unset "pid_to_log[${pid}]"
+  }
+
+  while read -r dir; do
+    name="$(basename "${dir}")"
+    log_file="${log_dir}/${name}.log"
+    CPM_EXTERNAL_EXAMPLE_RUN_ONE=1 CPM_EXTERNAL_EXAMPLE_DIR="${dir}" timeout "${timeout_seconds}" bash "${BASH_SOURCE[0]}" >"${log_file}" 2>&1 &
+    pid_to_name[$!]="${name}"
+    pid_to_log[$!]="${log_file}"
+    running=$((running + 1))
+
+    if ((running >= jobs)); then
+      rc=0
+      wait -n -p finished_pid || rc=$?
+      finish_external_example "${finished_pid}" "${rc}"
+      running=$((running - 1))
+    fi
+  done < <(find "${examples_root}" -mindepth 1 -maxdepth 1 -type d | sort)
+
+  while ((running > 0)); do
+    rc=0
+    wait -n -p finished_pid || rc=$?
+    finish_external_example "${finished_pid}" "${rc}"
+    running=$((running - 1))
+  done
+
+  rm -rf "${log_dir}"
+  return "${status}"
+}
+
+run_external_example() {
+    local dir="$1"
     local name
     local intent
     local inventory
@@ -313,8 +376,8 @@ run_external_examples() {
     intent="${dir}/intent.nix"
     inventory="${dir}/inventory-nixos.nix"
 
-    [[ -f "$intent" ]] || { echo "SKIP ${name} (no intent.nix)"; continue; }
-    [[ -f "$inventory" ]] || { echo "SKIP ${name} (no inventory-nixos.nix)"; continue; }
+    [[ -f "$intent" ]] || { echo "SKIP ${name} (no intent.nix)"; return 0; }
+    [[ -f "$inventory" ]] || { echo "SKIP ${name} (no inventory-nixos.nix)"; return 0; }
 
     log "Example ${name}"
 
@@ -351,8 +414,12 @@ run_external_examples() {
         ;;
     esac
     rm -rf "${tmp_dir}"
-  done
 }
+
+if [[ "${CPM_EXTERNAL_EXAMPLE_RUN_ONE:-0}" == "1" ]]; then
+  run_external_example "${CPM_EXTERNAL_EXAMPLE_DIR:?missing CPM_EXTERNAL_EXAMPLE_DIR}"
+  exit 0
+fi
 
 minimal_input='{
   meta = {
