@@ -61,14 +61,12 @@ rec {
     runtimeOriginSourcePrefixes: interfaces:
     let
       defaultIfaces = builtins.filter hasDefaultRoute interfaces;
-      targetHasRuntimeOriginRoute =
-        builtins.any (hasAnyRuntimeOriginRoute runtimeOriginSourcePrefixes) interfaces;
       sourceScopeFor =
         iface:
         let
           localScope = sourcePrefixesReachableVia runtimeOriginSourcePrefixes iface;
         in
-        if localScope != [ ] then localScope else if targetHasRuntimeOriginRoute then runtimeOriginSourcePrefixes else [ ];
+        if localScope != [ ] then localScope else runtimeOriginSourcePrefixes;
     in
     builtins.concatLists (
       map (
