@@ -47,6 +47,7 @@ let
     delegatedOverlayDefaultRoutes
     delegatedOverlayDefaultsVia
     delegatedOverlayExitDefaultsVia
+    defaultViaRoutes
     defaultReachabilityVia
     overlayEndpointRoutesVia
     overlayNodeRoutesVia
@@ -80,8 +81,7 @@ let
       interfaceOverlayLaneNames
       interfaceOverlayNames
       p2pPeerAddress
-      defaultReachabilityVia
-      overlayEndpointRoutesVia
+      defaultViaRoutes
       overlayNodeRoutesVia
       overlayRuntimeRoutedPrefixRoutes
       overlayRuntimeRoutedPrefixRoutesVia

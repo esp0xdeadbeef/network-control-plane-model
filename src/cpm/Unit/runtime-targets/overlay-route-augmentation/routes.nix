@@ -141,7 +141,7 @@ let
     }];
 in
 {
-  inherit delegatedOverlayDefaultRoutes defaultReachabilityVia;
+  inherit delegatedOverlayDefaultRoutes defaultReachabilityVia defaultViaRoutes;
   inherit overlayEndpointRoutesVia overlayNodeRoutesVia;
   inherit (prefixRoutes)
     delegatedOverlayDefaultsVia

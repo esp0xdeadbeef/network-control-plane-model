@@ -28,8 +28,8 @@ gron_txt="$(mktemp)"
 trap 'rm -f "${output_json}" "${gron_txt}"' EXIT
 
 nix run "${repo_root}#compile-and-build-control-plane-model" -- \
-  "${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" \
-  "${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
+  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
+  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/inventory.nix" \
   "${output_json}" >/dev/null
 
 gron "${output_json}" >"${gron_txt}"
@@ -50,11 +50,11 @@ require_gron_regex() {
   fi
 }
 
-require_gron 'json.control_plane_model.data.esp0xdeadbeef["site-a"].runtimeTargets["esp0xdeadbeef-site-a-s-router-core-nebula"].runtimeOriginEgress.enabled = true;'
-require_gron 'json.control_plane_model.data.esp0xdeadbeef["site-a"].runtimeTargets["esp0xdeadbeef-site-a-s-router-core-nebula"].runtimeOriginEgress.sourcePrefixes[0].prefix = "10.19.0.8/32";'
-require_gron 'json.control_plane_model.data.esp0xdeadbeef["site-a"].runtimeTargets["esp0xdeadbeef-site-a-s-router-core-nebula"].runtimeOriginEgress.sourcePrefixes[1].prefix = "fd42:dead:beef:1900:0:0:0:8/128";'
-require_gron_regex 'json\.control_plane_model\.data\.esp0xdeadbeef\["site-a"\]\.runtimeTargets\["esp0xdeadbeef-site-a-s-router-core-nebula"\]\.effectiveRuntimeRealization\.interfaces\["p2p-s-router-core-nebula-s-router-upstream-selector"\]\.routes\.ipv4\[[0-9]+\]\.preferredSource = "10\.19\.0\.8";'
-require_gron_regex 'json\.control_plane_model\.data\.esp0xdeadbeef\["site-a"\]\.runtimeTargets\["esp0xdeadbeef-site-a-s-router-core-nebula"\]\.effectiveRuntimeRealization\.interfaces\["p2p-s-router-core-nebula-s-router-upstream-selector"\]\.routes\.ipv6\[[0-9]+\]\.preferredSource = "fd42:dead:beef:1900:0:0:0:8";'
+require_gron 'json.control_plane_model.data.esp.nixos.runtimeTargets["esp-nixos-router-core-nebula"].runtimeOriginEgress.enabled = true;'
+require_gron 'json.control_plane_model.data.esp.nixos.runtimeTargets["esp-nixos-router-core-nebula"].runtimeOriginEgress.sourcePrefixes[0].prefix = "10.19.0.8/32";'
+require_gron 'json.control_plane_model.data.esp.nixos.runtimeTargets["esp-nixos-router-core-nebula"].runtimeOriginEgress.sourcePrefixes[1].prefix = "fd42:dead:beef:1900:0:0:0:8/128";'
+require_gron_regex 'json\.control_plane_model\.data\.esp\.nixos\.runtimeTargets\["esp-nixos-router-core-nebula"\]\.effectiveRuntimeRealization\.interfaces\["p2p-nixos-router-access-client-nixos-router-core-nebula"\]\.routes\.ipv4\[[0-9]+\]\.preferredSource = "10\.19\.0\.8";'
+require_gron_regex 'json\.control_plane_model\.data\.esp\.nixos\.runtimeTargets\["esp-nixos-router-core-nebula"\]\.effectiveRuntimeRealization\.interfaces\["p2p-nixos-router-access-client-nixos-router-core-nebula"\]\.routes\.ipv6\[[0-9]+\]\.preferredSource = "fd42:dead:beef:1900:0:0:0:8";'
 
 env \
   REPO_ROOT="${repo_root}" \
@@ -64,9 +64,9 @@ env \
     --impure --expr '
       let
         cpm = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
-        site = cpm.control_plane_model.data.esp0xdeadbeef."site-a";
-        core = site.runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula";
-        upstream = site.runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector";
+        site = cpm.control_plane_model.data.esp.nixos;
+        core = site.runtimeTargets."esp-nixos-router-core-nebula";
+        upstream = site.runtimeTargets."esp-nixos-router-upstream";
         runtimeOrigin = core.runtimeOriginEgress or { };
         sourcePrefixes = runtimeOrigin.sourcePrefixes or [ ];
         hasPrefix = prefix:
@@ -88,10 +88,12 @@ env \
             (rule:
               builtins.any (entry: (entry.prefix or null) == "10.10.0.16/31") (rule.sourcePrefixes or [ ]))
             runtimeRules;
-        coreIface = core.effectiveRuntimeRealization.interfaces."p2p-s-router-core-nebula-s-router-upstream-selector";
-        defaultRoutes = builtins.filter (route: (route.dst or null) == "0.0.0.0/0") (coreIface.routes.ipv4 or [ ]);
-        defaultHasPreferredSource =
-          builtins.any (route: (route.preferredSource or null) == "10.19.0.8") defaultRoutes;
+        underlayIface = core.effectiveRuntimeRealization.interfaces."p2p-nixos-router-access-client-nixos-router-core-nebula";
+        overlayIface = core.effectiveRuntimeRealization.interfaces."p2p-nixos-router-core-nebula-nixos-router-upstream";
+        underlayDefaultRoutes = builtins.filter (route: (route.dst or null) == "0.0.0.0/0") (underlayIface.routes.ipv4 or [ ]);
+        overlayDefaultRoutes = builtins.filter (route: (route.dst or null) == "0.0.0.0/0") (overlayIface.routes.ipv4 or [ ]);
+        underlayDefaultHasPreferredSource =
+          builtins.any (route: (route.preferredSource or null) == "10.19.0.8") underlayDefaultRoutes;
       in
         (runtimeOrigin.enabled or false)
         && hasPrefix "10.19.0.8/32"
@@ -99,11 +101,12 @@ env \
         && builtins.length sourcePrefixes == 2
         && builtins.length allRuntimeRules == 1
         && builtins.length runtimeRules == 1
-        && ((builtins.head runtimeRules).toInterface or null) == "core-a"
+        && ((builtins.head runtimeRules).toInterface or null) == "core-isp-a"
         && ruleHasPrefix "10.19.0.8/32"
         && ruleHasPrefix "fd42:dead:beef:1900:0:0:0:8/128"
         && !ruleHasP2pSource
-        && defaultHasPreferredSource
+        && underlayDefaultHasPreferredSource
+        && builtins.length overlayDefaultRoutes == 0
     ' >/dev/null
 
 echo "PASS runtime-origin-loopback-egress"

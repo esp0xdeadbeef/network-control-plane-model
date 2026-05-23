@@ -21,29 +21,29 @@ labs_path="$(
 )"
 
 nix run "${repo_root}#compile-and-build-control-plane-model" -- \
-  "${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" \
-  "${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
+  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
+  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/inventory.nix" \
   "${output_json}" >/dev/null
 
 jq -e '
-  .control_plane_model.data.espbranch."site-b" as $site
+  .control_plane_model.data.esp.hetz as $site
   | $site.overlays."east-west".underlayEndpoints as $endpoints
-  | $site.runtimeTargets."espbranch-site-b-b-router-upstream-selector"
+  | $site.runtimeTargets."esp-hetz-router-upstream"
     .effectiveRuntimeRealization.interfaces
-    ."p2p-b-router-core-simulated-isp-b-router-upstream-selector".routes as $routes
+    ."p2p-hetz-router-core-hetz-router-upstream".routes as $routes
   | def hasRoute($endpoint):
       if $endpoint.family == 4 then
         any($routes.ipv4[]?;
           .sourceFile == $endpoint.sourceFile
           and .family == 4
-          and .via4 == "10.50.0.6"
+          and .via4 == "10.80.0.6"
           and .proto == "underlay"
           and .intent.kind == "overlay-underlay-reachability")
       elif $endpoint.family == 6 then
         any($routes.ipv6[]?;
           .sourceFile == $endpoint.sourceFile
           and .family == 6
-          and .via6 == "fd42:dead:feed:1000:0:0:0:6"
+          and .via6 == "fd42:dead:cafe:1000:0:0:0:6"
           and .proto == "underlay"
           and .intent.kind == "overlay-underlay-reachability")
       else
@@ -57,24 +57,24 @@ jq -e '
 }
 
 jq -e '
-  .control_plane_model.data.esp0xdeadbeef."site-a" as $site
+  .control_plane_model.data.esp.nixos as $site
   | $site.overlays."east-west".underlayEndpoints as $endpoints
-  | $site.runtimeTargets."esp0xdeadbeef-site-a-s-router-core-nebula"
+  | $site.runtimeTargets."esp-nixos-router-core-nebula"
     .effectiveRuntimeRealization.interfaces
-    ."p2p-s-router-core-nebula-s-router-upstream-selector".routes as $routes
+    ."p2p-nixos-router-access-client-nixos-router-core-nebula".routes as $routes
   | def hasRoute($endpoint):
       if $endpoint.family == 4 then
         any($routes.ipv4[]?;
           .sourceFile == $endpoint.sourceFile
           and .family == 4
-          and .via4 == "10.10.0.17"
+          and .via4 == "10.10.0.2"
           and .proto == "underlay"
           and .intent.kind == "overlay-underlay-reachability")
       elif $endpoint.family == 6 then
         any($routes.ipv6[]?;
           .sourceFile == $endpoint.sourceFile
           and .family == 6
-          and .via6 == "fd42:dead:beef:1000:0:0:0:11"
+          and .via6 == "fd42:dead:beef:1000:0:0:0:2"
           and .proto == "underlay"
           and .intent.kind == "overlay-underlay-reachability")
       else
@@ -83,7 +83,7 @@ jq -e '
     ($endpoints | length) > 0
     and all($endpoints[]; hasRoute(.))
 ' "${output_json}" >/dev/null || {
-  echo "FAIL runtime-underlay-endpoint-source-routes: overlay core must route explicit runtime underlay endpoint secrets toward its uplink-lane upstream peer before overlay split-default routes" >&2
+  echo "FAIL runtime-underlay-endpoint-source-routes: overlay core must route explicit runtime underlay endpoint secrets toward its modeled underlay access peer, not toward the overlay/upstream lane" >&2
   exit 1
 }
 
