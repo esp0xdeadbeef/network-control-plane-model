@@ -71,6 +71,18 @@ let
     ) targetEntries
   );
 
+  runtimeOriginSourcePrefixes = builtins.attrValues (
+    builtins.listToAttrs (
+      builtins.concatMap
+        (entry:
+          map (prefix: {
+            name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
+            value = prefix;
+          }) (listOrEmpty ((attrsOrEmpty (entry.target.runtimeOriginEgress or null)).sourcePrefixes or [ ])))
+        targetEntries
+    )
+  );
+
   forwardingEntries = builtins.filter (entry: entry != null) (
     map (
       entry:
@@ -81,6 +93,7 @@ let
             policyEndpointBindings
             services
             siteRelations
+            runtimeOriginSourcePrefixes
             ;
           inherit (entry) target interfaceRecords;
         };
