@@ -19,6 +19,7 @@ in
   siteRelations,
   target,
   interfaceRecords,
+  runtimeOriginSourcePrefixes ? [ ],
 }:
 let
   role = target.role or null;
@@ -52,13 +53,14 @@ else if role == "downstream-selector" || role == "upstream-selector" then
         buildDownstreamSelectorRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;
           relations = siteRelations;
-          inherit services transitInterfaces;
+          inherit services transitInterfaces runtimeOriginSourcePrefixes;
         }
       else
         buildUpstreamSelectorRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;
           relations = siteRelations;
           inherit overlayNames services transitInterfaces;
+          siteRuntimeOriginSourcePrefixes = runtimeOriginSourcePrefixes;
         };
   }
 else if role == "policy" then
@@ -68,7 +70,7 @@ else if role == "policy" then
     rules = buildPolicyRules {
       endpointBindings = attrsOrEmpty policyEndpointBindings;
       relations = siteRelations;
-      inherit services transitInterfaces;
+      inherit services transitInterfaces runtimeOriginSourcePrefixes;
     };
   }
 else if role == "core" then

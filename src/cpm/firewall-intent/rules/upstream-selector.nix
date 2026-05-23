@@ -6,6 +6,7 @@
   relations ? [ ],
   services ? [ ],
   overlayNames ? [ ],
+  siteRuntimeOriginSourcePrefixes ? [ ],
 }:
 
 let
@@ -104,7 +105,7 @@ let
       let
         coreIface = coreForPolicy policyIface;
       in
-      if coreIface == null then [ ] else common.selectorPairRule policyIface coreIface
+      if coreIface == null then [ ] else common.selectorPairRuleWithRuntimeOriginScope siteRuntimeOriginSourcePrefixes policyIface coreIface
     ) policyInterfaces
   );
 in
@@ -114,3 +115,4 @@ selectorPairRules
 ++ builtins.concatLists (map relationRules.externalServiceTransitRule (listOrEmpty relations))
 ++ relationRules.runtimeRoutedPrefixPublicEgressRules
 ++ runtimeOriginRules
+++ common.runtimeOriginDefaultForwardRules siteRuntimeOriginSourcePrefixes policyInterfaces

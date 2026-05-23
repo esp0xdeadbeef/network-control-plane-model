@@ -4,6 +4,7 @@
 , transitInterfaces
 , relations ? [ ]
 , services ? [ ]
+, runtimeOriginSourcePrefixes ? [ ]
 ,
 }:
 let
@@ -91,7 +92,8 @@ builtins.concatLists (
     let
       policyIface = policyForAccess accessIface;
     in
-    if policyIface == null then [ ] else common.selectorPairRule accessIface policyIface)
+    if policyIface == null then [ ] else common.selectorPairRuleWithRuntimeOriginScope runtimeOriginSourcePrefixes accessIface policyIface)
     accessInterfaces
 )
 ++ builtins.concatLists (map localRelationRules (listOrEmpty relations))
+++ common.runtimeOriginDefaultForwardRules runtimeOriginSourcePrefixes transitInterfaces

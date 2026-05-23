@@ -7,12 +7,107 @@ let
 
   lane = iface: attrsOrEmpty ((backingRef iface).lane or { });
 in
-{
+rec {
   laneKind = iface: (lane iface).kind or null;
 
   laneAccess = iface: (lane iface).access or null;
 
   laneUplink = iface: (lane iface).uplink or null;
+
+  routeList =
+    iface:
+    let
+      routes = attrsOrEmpty (iface.routes or null);
+    in
+    (if builtins.isList (routes.ipv4 or null) then routes.ipv4 else [ ])
+    ++ (if builtins.isList (routes.ipv6 or null) then routes.ipv6 else [ ]);
+
+  routeMatchesPrefix =
+    prefix: route:
+    builtins.isAttrs route
+    && builtins.isString (route.dst or null)
+    && route.dst == (prefix.prefix or "");
+
+  sourcePrefixesReachableVia =
+    runtimeOriginSourcePrefixes: iface:
+    let
+      routes = routeList iface;
+    in
+    builtins.attrValues (
+      builtins.listToAttrs (
+        map (prefix: {
+          name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
+          value = prefix;
+        }) (
+          builtins.filter
+            (prefix: builtins.any (routeMatchesPrefix prefix) routes)
+            runtimeOriginSourcePrefixes
+        )
+      )
+    );
+
+  hasDefaultRoute =
+    iface:
+    builtins.any (
+      route:
+      builtins.isAttrs route && ((route.dst or null) == "0.0.0.0/0" || (route.dst or null) == "::/0")
+    ) (routeList iface);
+
+  hasAnyRuntimeOriginRoute =
+    runtimeOriginSourcePrefixes: iface:
+    sourcePrefixesReachableVia runtimeOriginSourcePrefixes iface != [ ];
+
+  runtimeOriginDefaultForwardRules =
+    runtimeOriginSourcePrefixes: interfaces:
+    let
+      defaultIfaces = builtins.filter hasDefaultRoute interfaces;
+      targetHasRuntimeOriginRoute =
+        builtins.any (hasAnyRuntimeOriginRoute runtimeOriginSourcePrefixes) interfaces;
+      sourceScopeFor =
+        iface:
+        let
+          localScope = sourcePrefixesReachableVia runtimeOriginSourcePrefixes iface;
+        in
+        if localScope != [ ] then localScope else if targetHasRuntimeOriginRoute then runtimeOriginSourcePrefixes else [ ];
+    in
+    builtins.concatLists (
+      map (
+        fromIface:
+        let
+          sourcePrefixes = sourceScopeFor fromIface;
+          fromAccess = laneAccess fromIface;
+          defaultIfacesForIngress =
+            let
+              sameAccessDefaults = builtins.filter (
+                toIface: fromAccess != null && laneAccess toIface == fromAccess
+              ) defaultIfaces;
+            in
+            if sameAccessDefaults != [ ] then sameAccessDefaults else defaultIfaces;
+        in
+        if sourcePrefixes == [ ] then
+          [ ]
+        else
+          map (
+            toIface:
+            withSourcePrefixes {
+              action = "accept";
+              relationId = "runtime-origin-egress";
+              intent = {
+                kind = "runtime-origin-egress";
+                source = "loopback-runtime-identity";
+                stage = "selector-default-egress";
+              };
+              fromInterface = fromIface.runtimeIfName;
+              toInterface = toIface.runtimeIfName;
+              applyTcpMssClamp = false;
+            } sourcePrefixes
+          ) (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) defaultIfacesForIngress)
+      ) interfaces
+    );
+
+  withSourcePrefixes =
+    rule: sourcePrefixes:
+    if sourcePrefixes == [ ] then rule else rule // { inherit sourcePrefixes; };
 
   uplinks = iface:
     let
@@ -38,5 +133,20 @@ in
       toInterface = fromIface.runtimeIfName;
       applyTcpMssClamp = false;
     }
+  ];
+
+  selectorPairRuleWithRuntimeOriginScope = runtimeOriginSourcePrefixes: fromIface: toIface: [
+    (withSourcePrefixes {
+      action = "accept";
+      fromInterface = fromIface.runtimeIfName;
+      toInterface = toIface.runtimeIfName;
+      applyTcpMssClamp = true;
+    } (sourcePrefixesReachableVia runtimeOriginSourcePrefixes fromIface))
+    (withSourcePrefixes {
+      action = "accept";
+      fromInterface = toIface.runtimeIfName;
+      toInterface = fromIface.runtimeIfName;
+      applyTcpMssClamp = false;
+    } (sourcePrefixesReachableVia runtimeOriginSourcePrefixes toIface))
   ];
 }
