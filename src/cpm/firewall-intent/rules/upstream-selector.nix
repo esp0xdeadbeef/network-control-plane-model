@@ -105,7 +105,29 @@ let
       let
         coreIface = coreForPolicy policyIface;
       in
-      if coreIface == null then [ ] else common.selectorPairRuleWithRuntimeOriginScope siteRuntimeOriginSourcePrefixes policyIface coreIface
+      if coreIface == null then
+        [ ]
+      else
+        [
+          (common.withSourcePrefixes {
+            action = "accept";
+            relationId = "runtime-origin-egress";
+            intent = {
+              kind = "runtime-origin-egress";
+              source = "loopback-runtime-identity";
+              stage = "upstream-selector-policy-core-egress";
+            };
+            fromInterface = policyIface.runtimeIfName;
+            toInterface = coreIface.runtimeIfName;
+            applyTcpMssClamp = true;
+          } siteRuntimeOriginSourcePrefixes)
+          (common.withSourcePrefixes {
+            action = "accept";
+            fromInterface = coreIface.runtimeIfName;
+            toInterface = policyIface.runtimeIfName;
+            applyTcpMssClamp = false;
+          } (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
+        ]
     ) policyInterfaces
   );
 in
