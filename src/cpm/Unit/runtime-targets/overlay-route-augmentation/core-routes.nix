@@ -6,8 +6,7 @@
   interfaceOverlayLaneNames,
   interfaceOverlayNames,
   p2pPeerAddress,
-  defaultReachabilityVia,
-  overlayEndpointRoutesVia,
+  defaultViaRoutes,
   overlayNodeRoutesVia,
   overlayRuntimeRoutedPrefixRoutes,
   overlayRuntimeRoutedPrefixRoutesVia,
@@ -20,6 +19,37 @@
 let
   inherit (helpers) hasAttr isNonEmptyString sortedNames;
   inherit (common) attrsOrEmpty mergeRoutes;
+
+  underlayEndpointRoutesFor =
+    family: overlayNames: routes:
+    let
+      viaField = if family == 4 then "via4" else "via6";
+      endpoints =
+        builtins.filter
+          (
+            endpoint:
+            (endpoint.family or null) == family
+            && isNonEmptyString (endpoint.sourceFile or null)
+            && builtins.elem (endpoint.overlay or null) overlayNames
+          )
+          overlayUnderlayEndpoints;
+    in
+    lib.concatMap
+      (defaultRoute:
+        builtins.map
+          (endpoint: {
+            inherit family;
+            sourceFile = endpoint.sourceFile;
+            proto = "underlay";
+            overlay = endpoint.overlay;
+            intent = {
+              kind = "overlay-underlay-reachability";
+              source = "overlay-underlay-endpoint";
+            };
+            ${viaField} = defaultRoute.${viaField};
+          })
+          endpoints)
+      (defaultViaRoutes family routes);
 
   addOverlayNodeRoutesToSelector =
     nodeRole: interfaces:
@@ -64,20 +94,14 @@ let
         lib.mapAttrs (
           _: iface:
           let
-            laneOverlayNames = builtins.filter (name: builtins.elem name nodeOverlayNames) (
-              interfaceOverlayLaneNames iface
-            );
-            peer4 = p2pPeerAddress 4 (iface.addr4 or null);
-            peer6 = p2pPeerAddress 6 (iface.addr6 or null);
             routes = attrsOrEmpty (iface.routes or null);
             extraRoutes = {
-              ipv4 = (defaultReachabilityVia 4 peer4) ++ (overlayEndpointRoutesVia 4 laneOverlayNames peer4);
-              ipv6 = (defaultReachabilityVia 6 peer6) ++ (overlayEndpointRoutesVia 6 laneOverlayNames peer6);
+              ipv4 = underlayEndpointRoutesFor 4 nodeOverlayNames routes;
+              ipv6 = underlayEndpointRoutesFor 6 nodeOverlayNames routes;
             };
           in
           if
             (iface.sourceKind or null) != "p2p"
-            || laneOverlayNames == [ ]
             || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ])
           then
             iface
