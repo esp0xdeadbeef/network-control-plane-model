@@ -104,6 +104,123 @@ jq -e '
     (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
   def has_default($iface):
     any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
+  def link_id($iface):
+    if ($iface.backingRef.kind // "") == "link" then ($iface.backingRef.id // null) else null end;
+  def is_access_target($target):
+    ($target.role // "") == "access" or any(($target.forwardingFunctions // [])[]?; . == "access-gateway");
+  def peer_accesses($targets; $targetName; $iface):
+    link_id($iface) as $link
+    | if $link == null then []
+      else [
+        $targets
+        | to_entries[]
+        | select(.key != $targetName)
+        | select(is_access_target(.value))
+        | select(any((.value.effectiveRuntimeRealization.interfaces // {}) | to_entries[]?; link_id(.value) == $link))
+        | .value.logicalNode // empty
+      ]
+      end;
+  def runtime_origin_prefixes($target):
+    $target.runtimeOriginEgress.sourcePrefixes // [];
+  [
+    .control_plane_model.data
+    | to_entries[].value
+    | to_entries[].value as $site
+    | ($site.runtimeTargets // {}) as $targets
+    | $targets
+    | to_entries[] as $target
+    | select((runtime_origin_prefixes($target.value) | length) > 0)
+    | ($target.value.effectiveRuntimeRealization.interfaces // {})
+    | to_entries[] as $iface
+    | select(has_default($iface.value))
+    | peer_accesses($targets; $target.key; $iface.value)[] as $peerAccess
+    | runtime_origin_prefixes($target.value)[] as $prefix
+    | select(
+        any(
+          $targets
+          | to_entries[]
+          | .value.forwardingIntent.rules[]?
+          | select((.relationId // "") == "runtime-origin-egress")
+          | .sourcePrefixes[]?;
+          (.prefix // "") == ($prefix.prefix // "")
+          and any((.origin.accesses // [])[]?; . == $peerAccess)
+        )
+        | not
+      )
+    | {
+        target: $target.key,
+        defaultInterface: $iface.value.runtimeIfName,
+        peerAccess: $peerAccess,
+        missingOriginPrefix: $prefix.prefix
+      }
+  ] as $missing
+  | ($missing | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: runtime-origin prefixes on direct access underlay defaults must carry the peer access origin in CPM output" >&2
+  jq '
+    def route_list($iface):
+      (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
+    def has_default($iface):
+      any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
+    def link_id($iface):
+      if ($iface.backingRef.kind // "") == "link" then ($iface.backingRef.id // null) else null end;
+    def is_access_target($target):
+      ($target.role // "") == "access" or any(($target.forwardingFunctions // [])[]?; . == "access-gateway");
+    def peer_accesses($targets; $targetName; $iface):
+      link_id($iface) as $link
+      | if $link == null then []
+        else [
+          $targets
+          | to_entries[]
+          | select(.key != $targetName)
+          | select(is_access_target(.value))
+          | select(any((.value.effectiveRuntimeRealization.interfaces // {}) | to_entries[]?; link_id(.value) == $link))
+          | .value.logicalNode // empty
+        ]
+        end;
+    def runtime_origin_prefixes($target):
+      $target.runtimeOriginEgress.sourcePrefixes // [];
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value as $site
+      | ($site.runtimeTargets // {}) as $targets
+      | $targets
+      | to_entries[] as $target
+      | select((runtime_origin_prefixes($target.value) | length) > 0)
+      | ($target.value.effectiveRuntimeRealization.interfaces // {})
+      | to_entries[] as $iface
+      | select(has_default($iface.value))
+      | peer_accesses($targets; $target.key; $iface.value)[] as $peerAccess
+      | runtime_origin_prefixes($target.value)[] as $prefix
+      | select(
+          any(
+            $targets
+            | to_entries[]
+            | .value.forwardingIntent.rules[]?
+            | select((.relationId // "") == "runtime-origin-egress")
+            | .sourcePrefixes[]?;
+            (.prefix // "") == ($prefix.prefix // "")
+            and any((.origin.accesses // [])[]?; . == $peerAccess)
+          )
+          | not
+        )
+      | {
+          target: $target.key,
+          defaultInterface: $iface.value.runtimeIfName,
+          peerAccess: $peerAccess,
+          missingOriginPrefix: $prefix.prefix
+        }
+    ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
+jq -e '
+  def route_list($iface):
+    (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
+  def has_default($iface):
+    any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
   def lane_access($iface):
     $iface.backingRef.lane.access // null;
   def source_prefixes:

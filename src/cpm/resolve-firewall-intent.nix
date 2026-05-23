@@ -55,25 +55,19 @@ let
   laneAttrs =
     iface:
     attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
-  originForTarget =
-    targetName: target:
+  backingRef = iface: attrsOrEmpty (iface.backingRef or null);
+  linkId = iface:
     let
-      interfaces = attrsOrEmpty ((attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null);
-      defaultIfaces = builtins.filter hasDefaultRoute (builtins.attrValues interfaces);
-      laneValues = map laneAttrs defaultIfaces;
+      ref = backingRef iface;
     in
-    {
-      inherit targetName;
-      interfaces = uniqueStrings (map (iface: iface.runtimeIfName or null) defaultIfaces);
-      accesses = uniqueStrings (map (lane: lane.access or null) laneValues);
-      uplinks = uniqueStrings (
-        builtins.concatMap (
-          lane:
-          (if builtins.isString (lane.uplink or null) then [ lane.uplink ] else [ ])
-          ++ (if builtins.isList (lane.uplinks or null) then lane.uplinks else [ ])
-        ) laneValues
-      );
-    };
+    if (ref.kind or null) == "link" && isNonEmptyString (ref.id or null) then ref.id else null;
+  targetInterfaces =
+    target:
+    builtins.attrValues (attrsOrEmpty ((attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null));
+  hasForwardingFunction = function: target:
+    builtins.elem function (if builtins.isList (target.forwardingFunctions or null) then target.forwardingFunctions else [ ]);
+  isAccessTarget =
+    target: (target.role or null) == "access" || hasForwardingFunction "access-gateway" target;
 
   targetEntries = map (
     targetName:
@@ -86,6 +80,44 @@ let
       inherit targetName target interfaceRecords;
     }
   ) (sortedNames runtimeTargets);
+
+  peerAccessesForLink =
+    targetName: iface:
+    let
+      id = linkId iface;
+      peerEntries =
+        if id == null then
+          [ ]
+        else
+          builtins.filter (
+            peer:
+            peer.targetName != targetName
+            && isAccessTarget peer.target
+            && builtins.any (peerIface: linkId peerIface == id) (targetInterfaces peer.target)
+          ) targetEntries;
+    in
+    map (peer: peer.target.logicalNode or null) peerEntries;
+
+  originForTarget =
+    targetName: target:
+    let
+      defaultIfaces = builtins.filter hasDefaultRoute (targetInterfaces target);
+      laneValues = map laneAttrs defaultIfaces;
+    in
+    {
+      inherit targetName;
+      interfaces = uniqueStrings (map (iface: iface.runtimeIfName or null) defaultIfaces);
+      accesses = uniqueStrings (
+        map (lane: lane.access or null) laneValues ++ builtins.concatMap (peerAccessesForLink targetName) defaultIfaces
+      );
+      uplinks = uniqueStrings (
+        builtins.concatMap (
+          lane:
+          (if builtins.isString (lane.uplink or null) then [ lane.uplink ] else [ ])
+          ++ (if builtins.isList (lane.uplinks or null) then lane.uplinks else [ ])
+        ) laneValues
+      );
+    };
 
   natEntries = builtins.filter (entry: entry != null) (
     map (
