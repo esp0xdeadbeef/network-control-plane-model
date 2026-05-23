@@ -54,7 +54,7 @@ scan_group \
 
 scan_group \
   "example-or-site-identity" \
-  '\b(esp0xdeadbeef|enterpriseA|enterpriseB|espbranch|acme|globex|ams|nyc|lon|site-a|site-b|site-c|s-router|b-router|c-router|hetzner|nebula|hostile|branch|s-sigma|lab-s-sigma)\b'
+  '\b(esp0xdeadbeef|enterpriseA|enterpriseB|espbranch|acme|globex|ams|nyc|lon|site-a|site-b|site-c|s-router|b-router|c-router|hetzner|nebula|hostile|branch|s-sigma)\b'
 
 scan_group \
   "tenant-zone-or-service-name" \

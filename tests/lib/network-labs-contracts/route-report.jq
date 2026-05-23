@@ -13,8 +13,11 @@ def route_key($route):
     ($route.data.via4 // ""),
     ($route.data.via6 // ""),
     ($route.data.scope // ""),
+    (($route.data.lane // {}).access // ""),
+    (($route.data.lane // {}).uplink // ""),
     (($route.data.policyOnly // false) | tostring),
-    (($route.data.intent // {}).kind // ($route.data.intent // {}).source // "")
+    (($route.data.intent // {}).kind // ""),
+    (($route.data.intent // {}).source // "")
   ] | @json;
 
 def route_shape_violations:
@@ -64,24 +67,17 @@ def default_route_lane_violations:
   | overlay_names($site) as $overlays
   | delegated_access_nodes($site) as $delegated
   | runtime_targets($site) as $target
-  | ($target.data.effectiveRuntimeRealization.interfaces // {})
-  | to_entries[] as $iface
+  | $delegated[] as $access
   | [
-      { family: "ipv4", dst: "0.0.0.0/0", routes: ($iface.value.routes.ipv4 // []) },
-      { family: "ipv6", dst: "::/0", routes: ($iface.value.routes.ipv6 // []) },
-      { family: "ipv6", dst: "0000:0000:0000:0000:0000:0000:0000:0000/0", routes: ($iface.value.routes.ipv6 // []) }
-    ][]
-  | . as $family
-  | $family.routes[]
-  | select((.dst // "") == $family.dst)
-  | (.lane // {}) as $lane
-  | ($lane.access // "") as $access
-  | ($lane.uplink // "") as $uplink
-  | ($overlays | index($uplink)) as $overlayIndex
-  | ($delegated | index($access)) as $delegatedIndex
-  | select($access != "")
-  | if (($overlays | length) > 0 and $family.family == "ipv6" and $delegatedIndex != null and $uplink != "" and $overlayIndex == null) then
-      violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "delegated IPv6 default prefers non-overlay access " + $access + " via " + $uplink)
+      ($target.data.effectiveRuntimeRealization.interfaces // {})
+      | to_entries[]
+      | (.value.routes.ipv6 // [])[]
+      | select((.dst // "") == "::/0" or (.dst // "") == "0000:0000:0000:0000:0000:0000:0000:0000/0")
+      | select(((.lane // {}).access // "") == $access)
+    ] as $defaults
+  | select(($defaults | length) > 0)
+  | if (($overlays | length) > 0 and ([$defaults[] as $route | select(($overlays | index((($route.lane // {}).uplink // ""))) != null)] | length) == 0) then
+      violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "delegated IPv6 access " + $access + " has defaults but no overlay default lane")
     else
       empty
     end;
