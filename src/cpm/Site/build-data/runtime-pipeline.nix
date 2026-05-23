@@ -99,6 +99,7 @@ let
       providerTenantsForServiceProvider
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsForwardersForListeners
+      normalizeRuntimeTargetRoutes
       normalizedRuntimeTargets
       ;
   };

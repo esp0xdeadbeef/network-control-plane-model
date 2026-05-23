@@ -6,16 +6,22 @@ let
     if !builtins.isAttrs route then
       null
     else
+      let
+        intent = attrsOrEmpty (route.intent or null);
+        lane = attrsOrEmpty (route.lane or null);
+      in
       builtins.toJSON {
         inherit family;
         dst = route.dst or null;
-        intent = route.intent or null;
-        lane = route.lane or null;
-        metric = route.metric or null;
+        intent = {
+          kind = intent.kind or null;
+          source = intent.source or null;
+        };
+        lane = {
+          access = lane.access or null;
+          uplink = lane.uplink or null;
+        };
         policyOnly = route.policyOnly or null;
-        proto = route.proto or null;
-        reason = route.reason or null;
-        table = route.table or null;
         sourceFile = route.sourceFile or null;
         via4 = route.via4 or null;
         via6 = route.via6 or null;

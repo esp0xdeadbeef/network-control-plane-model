@@ -17,6 +17,7 @@
 , providerTenantsForServiceProvider
 , policyDerivedDnsAllowedClassesForListeners
 , policyDerivedDnsForwardersForListeners
+, normalizeRuntimeTargetRoutes
 , normalizedRuntimeTargets
 ,
 }:
@@ -68,10 +69,12 @@ let
   };
 
   routeAugmentedRuntimeTargets =
-    routeDnsServiceReachability {
-      inherit firewallIntent normalizedRuntimeTargets;
-      services = resolvedServices;
-    };
+    builtins.mapAttrs
+      (_targetName: normalizeRuntimeTargetRoutes)
+      (routeDnsServiceReachability {
+        inherit firewallIntent normalizedRuntimeTargets;
+        services = resolvedServices;
+      });
 
   finalizeRuntimeTargets = import ../../ControlModule/runtime-targets/finalize.nix {
     inherit

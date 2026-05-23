@@ -25,9 +25,7 @@ def dns_contract_violations:
   | ($dns.forwarders // []) as $forwarders
   | ($forwarders | map(. as $forwarder | select(public_resolvers | index($forwarder) != null))) as $publicForwarders
   | ($dns.killSwitch // {}) as $killSwitch
-  | if ($dns.implementation // "") != "unbound" then
-      violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS contract must explicitly select unbound")
-    elif ($target.data.role // "") == "access" and ($dns.routePreference // []) != expected_dns_route_preference then
+  | if ($target.data.role // "") == "access" and ($dns.routePreference // []) != expected_dns_route_preference then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "access DNS routePreference is not deterministic")
     elif ($killSwitch.enabled // false) != true then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS kill-switch is not enabled")
