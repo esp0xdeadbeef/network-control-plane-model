@@ -106,15 +106,18 @@ jq -e '
     any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
   def lane_access($iface):
     $iface.backingRef.lane.access // null;
-  def lane_uplink($iface):
-    $iface.backingRef.lane.uplink // null;
-  def lane_uplinks($iface):
-    ($iface.backingRef.lane.uplinks // []) + (if lane_uplink($iface) == null then [] else [lane_uplink($iface)] end);
   def source_prefixes:
     [ (.runtimeTargets // {})
       | to_entries[]
-      | select((.value.runtimeOriginEgress.enabled // false) == true)
-      | (.value.runtimeOriginEgress.sourcePrefixes // [])[] ];
+      | (.value.forwardingIntent.rules // [])[]
+      | select((.relationId // "") == "runtime-origin-egress")
+      | (.sourcePrefixes // [])[] ]
+    | unique_by((.family | tostring) + "|" + .prefix);
+  def origin_accesses($prefix):
+    $prefix.origin.accesses // [];
+  def prefix_matches_access($prefix; $access):
+    (origin_accesses($prefix) | length) == 0
+    or ($access != null and any(origin_accesses($prefix)[]; . == $access));
   def has_source_rule($rules; $from; $to; $prefix):
     any($rules[]?;
       (.action // "") == "accept"
@@ -142,6 +145,7 @@ jq -e '
       | select(lane_access($to.value) == lane_access($from.value))
       | select(has_default($to.value))
       | $sources[] as $source
+      | select(prefix_matches_access($source; lane_access($from.value)))
       | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
       | {
           target: ($target.name // "<unknown>"),
@@ -163,8 +167,15 @@ jq -e '
     def source_prefixes:
       [ (.runtimeTargets // {})
         | to_entries[]
-        | select((.value.runtimeOriginEgress.enabled // false) == true)
-        | (.value.runtimeOriginEgress.sourcePrefixes // [])[] ];
+        | (.value.forwardingIntent.rules // [])[]
+        | select((.relationId // "") == "runtime-origin-egress")
+        | (.sourcePrefixes // [])[] ]
+      | unique_by((.family | tostring) + "|" + .prefix);
+    def origin_accesses($prefix):
+      $prefix.origin.accesses // [];
+    def prefix_matches_access($prefix; $access):
+      (origin_accesses($prefix) | length) == 0
+      or ($access != null and any(origin_accesses($prefix)[]; . == $access));
     def has_source_rule($rules; $from; $to; $prefix):
       any($rules[]?;
         (.action // "") == "accept"
@@ -192,6 +203,7 @@ jq -e '
         | select(lane_access($to.value) == lane_access($from.value))
         | select(has_default($to.value))
         | $sources[] as $source
+        | select(prefix_matches_access($source; lane_access($from.value)))
         | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
         | {
             target: ($target.name // "<unknown>"),
@@ -200,6 +212,85 @@ jq -e '
             missingSourcePrefix: $source.prefix
           }
       ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
+jq -e '
+  def lane_access($iface):
+    $iface.backingRef.lane.access // null;
+  def origin_accesses($prefix):
+    $prefix.origin.accesses // [];
+  def prefix_allowed_on_iface($prefix; $iface):
+    (origin_accesses($prefix) | length) == 0
+    or (lane_access($iface) != null and any(origin_accesses($prefix)[]; . == lane_access($iface)));
+  [
+    .control_plane_model.data
+    | to_entries[].value
+    | to_entries[].value
+    | (.runtimeTargets // {})
+    | to_entries[]
+    | .value as $target
+    | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+    | ($target.forwardingIntent.rules // [])[]
+    | select((.relationId // "") == "runtime-origin-egress")
+    | . as $rule
+    | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
+    | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.toInterface // "")) | .value) as $toIface
+    | ($rule.sourcePrefixes // [])[] as $prefix
+    | select(
+        (prefix_allowed_on_iface($prefix; $fromIface) and prefix_allowed_on_iface($prefix; $toIface))
+        | not
+      )
+    | {
+        target: ($target.name // "<unknown>"),
+        from: ($rule.fromInterface // ""),
+        to: ($rule.toInterface // ""),
+        prefix: ($prefix.prefix // ""),
+        originAccesses: origin_accesses($prefix),
+        fromAccess: lane_access($fromIface),
+        toAccess: lane_access($toIface)
+      }
+  ] as $wrong
+  | ($wrong | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: runtime-origin source prefixes must stay on the modeled origin access lane, not leak to every default-bearing policy lane" >&2
+  jq '
+    def lane_access($iface):
+      $iface.backingRef.lane.access // null;
+    def origin_accesses($prefix):
+      $prefix.origin.accesses // [];
+    def prefix_allowed_on_iface($prefix; $iface):
+      (origin_accesses($prefix) | length) == 0
+      or (lane_access($iface) != null and any(origin_accesses($prefix)[]; . == lane_access($iface)));
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | .value as $target
+      | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+      | ($target.forwardingIntent.rules // [])[]
+      | select((.relationId // "") == "runtime-origin-egress")
+      | . as $rule
+      | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
+      | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.toInterface // "")) | .value) as $toIface
+      | ($rule.sourcePrefixes // [])[] as $prefix
+      | select(
+          (prefix_allowed_on_iface($prefix; $fromIface) and prefix_allowed_on_iface($prefix; $toIface))
+          | not
+        )
+      | {
+          target: ($target.name // "<unknown>"),
+          from: ($rule.fromInterface // ""),
+          to: ($rule.toInterface // ""),
+          prefix: ($prefix.prefix // ""),
+          originAccesses: origin_accesses($prefix),
+          fromAccess: lane_access($fromIface),
+          toAccess: lane_access($toIface)
+        }
+    ]
   ' "${output_json}" >&2
   exit 1
 }
@@ -218,9 +309,10 @@ jq -e '
       | to_entries[].value
       | (.runtimeTargets // {})
       | to_entries[]
-      | select((.value.runtimeOriginEgress.enabled // false) == true)
-      | (.value.runtimeOriginEgress.sourcePrefixes // [])[]
-    ];
+      | (.value.forwardingIntent.rules // [])[]
+      | select((.relationId // "") == "runtime-origin-egress")
+      | (.sourcePrefixes // [])[]
+    ] | unique_by((.family | tostring) + "|" + .prefix);
   def has_source_rule($rules; $from; $to; $prefix):
     any($rules[]?;
       (.action // "") == "accept"
@@ -275,9 +367,10 @@ jq -e '
         | to_entries[].value
         | (.runtimeTargets // {})
         | to_entries[]
-        | select((.value.runtimeOriginEgress.enabled // false) == true)
-        | (.value.runtimeOriginEgress.sourcePrefixes // [])[]
-      ];
+        | (.value.forwardingIntent.rules // [])[]
+        | select((.relationId // "") == "runtime-origin-egress")
+        | (.sourcePrefixes // [])[]
+      ] | unique_by((.family | tostring) + "|" + .prefix);
     def has_source_rule($rules; $from; $to; $prefix):
       any($rules[]?;
         (.action // "") == "accept"
@@ -338,6 +431,11 @@ jq -e '
       | select((.relationId // "") == "runtime-origin-egress")
       | (.sourcePrefixes // [])[] ]
     | unique_by((.family | tostring) + "|" + .prefix);
+  def origin_accesses($prefix):
+    $prefix.origin.accesses // [];
+  def prefix_matches_access($prefix; $access):
+    (origin_accesses($prefix) | length) == 0
+    or ($access != null and any(origin_accesses($prefix)[]; . == $access));
   def has_source_rule($rules; $from; $to; $prefix):
     any($rules[]?;
       (.action // "") == "accept"
@@ -365,6 +463,7 @@ jq -e '
       | select(any(lane_uplinks($from.value)[]?; . == lane_uplink($to.value)))
       | select(has_default($to.value))
       | $sources[] as $source
+      | select(prefix_matches_access($source; lane_access($from.value)))
       | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
       | {
           target: ($target.name // "<unknown>"),
@@ -395,6 +494,11 @@ jq -e '
         | select((.relationId // "") == "runtime-origin-egress")
         | (.sourcePrefixes // [])[] ]
       | unique_by((.family | tostring) + "|" + .prefix);
+    def origin_accesses($prefix):
+      $prefix.origin.accesses // [];
+    def prefix_matches_access($prefix; $access):
+      (origin_accesses($prefix) | length) == 0
+      or ($access != null and any(origin_accesses($prefix)[]; . == $access));
     def has_source_rule($rules; $from; $to; $prefix):
       any($rules[]?;
         (.action // "") == "accept"
@@ -422,6 +526,7 @@ jq -e '
         | select(any(lane_uplinks($from.value)[]?; . == lane_uplink($to.value)))
         | select(has_default($to.value))
         | $sources[] as $source
+        | select(prefix_matches_access($source; lane_access($from.value)))
         | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
         | {
             target: ($target.name // "<unknown>"),

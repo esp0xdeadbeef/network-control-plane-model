@@ -39,6 +39,41 @@ let
   runtimeInterfaceRecords = import ./firewall-intent/runtime-interfaces.nix { inherit helpers; };
   buildNat = import ./firewall-intent/nat.nix { inherit helpers; };
   buildForwarding = import ./firewall-intent/forwarding.nix { inherit helpers; };
+  routeList =
+    iface:
+    let
+      routes = attrsOrEmpty (iface.routes or null);
+    in
+    (if builtins.isList (routes.ipv4 or null) then routes.ipv4 else [ ])
+    ++ (if builtins.isList (routes.ipv6 or null) then routes.ipv6 else [ ]);
+  hasDefaultRoute =
+    iface:
+    builtins.any (
+      route:
+      builtins.isAttrs route && ((route.dst or null) == "0.0.0.0/0" || (route.dst or null) == "::/0")
+    ) (routeList iface);
+  laneAttrs =
+    iface:
+    attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
+  originForTarget =
+    targetName: target:
+    let
+      interfaces = attrsOrEmpty ((attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null);
+      defaultIfaces = builtins.filter hasDefaultRoute (builtins.attrValues interfaces);
+      laneValues = map laneAttrs defaultIfaces;
+    in
+    {
+      inherit targetName;
+      interfaces = uniqueStrings (map (iface: iface.runtimeIfName or null) defaultIfaces);
+      accesses = uniqueStrings (map (lane: lane.access or null) laneValues);
+      uplinks = uniqueStrings (
+        builtins.concatMap (
+          lane:
+          (if builtins.isString (lane.uplink or null) then [ lane.uplink ] else [ ])
+          ++ (if builtins.isList (lane.uplinks or null) then lane.uplinks else [ ])
+        ) laneValues
+      );
+    };
 
   targetEntries = map (
     targetName:
@@ -75,9 +110,12 @@ let
     builtins.listToAttrs (
       builtins.concatMap
         (entry:
+          let
+            origin = originForTarget entry.targetName entry.target;
+          in
           map (prefix: {
             name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
-            value = prefix;
+            value = prefix // { inherit origin; };
           }) (listOrEmpty ((attrsOrEmpty (entry.target.runtimeOriginEgress or null)).sourcePrefixes or [ ])))
         targetEntries
     )
