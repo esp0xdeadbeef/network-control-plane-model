@@ -1,6 +1,10 @@
 { common }:
 
-localInterfaces: transitInterfaces:
+{
+  localInterfaces,
+  transitInterfaces,
+  runtimeOriginSourcePrefixes ? [ ],
+}:
 builtins.concatLists (
   builtins.map
     (localIface:
@@ -11,3 +15,4 @@ builtins.concatLists (
     ))
     localInterfaces
 )
+++ common.runtimeOriginDefaultForwardRules runtimeOriginSourcePrefixes transitInterfaces

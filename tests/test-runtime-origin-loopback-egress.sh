@@ -210,4 +210,119 @@ jq -e '
   exit 1
 }
 
+jq -e '
+  def route_list($iface):
+    (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
+  def has_default($iface):
+    any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
+  def routes_runtime_origin($iface; $prefix):
+    any(route_list($iface)[]?; (.dst // "") == ($prefix.prefix // ""));
+  def source_prefixes:
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | select((.value.runtimeOriginEgress.enabled // false) == true)
+      | (.value.runtimeOriginEgress.sourcePrefixes // [])[]
+    ];
+  def has_source_rule($rules; $from; $to; $prefix):
+    any($rules[]?;
+      (.action // "") == "accept"
+      and (.relationId // "") == "runtime-origin-egress"
+      and (.fromInterface // "") == $from
+      and (.toInterface // "") == $to
+      and any((.sourcePrefixes // [])[]?; (.prefix // "") == ($prefix.prefix // ""))
+    );
+  source_prefixes as $sources
+  | [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | select((.value.role // "") == "access")
+      | .value as $target
+      | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+      | ($target.forwardingIntent.rules // []) as $rules
+      | $sources[] as $source
+      | $ifaces
+      | to_entries[] as $from
+      | select(($from.value.sourceKind // "") == "p2p")
+      | select(routes_runtime_origin($from.value; $source))
+      | $ifaces
+      | to_entries[] as $to
+      | select(($to.value.sourceKind // "") == "p2p")
+      | select($to.value.runtimeIfName != $from.value.runtimeIfName)
+      | select(has_default($to.value))
+      | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
+      | {
+          target: ($target.name // "<unknown>"),
+          from: $from.value.runtimeIfName,
+          to: $to.value.runtimeIfName,
+          missingSourcePrefix: $source.prefix
+        }
+    ] as $missing
+  | if ($missing | length) == 0 then true else $missing end
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: access ingress hops must carry runtime-origin source prefixes from the runtime-origin p2p toward a default-bearing transit p2p" >&2
+  jq '
+    def route_list($iface):
+      (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
+    def has_default($iface):
+      any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
+    def routes_runtime_origin($iface; $prefix):
+      any(route_list($iface)[]?; (.dst // "") == ($prefix.prefix // ""));
+    def source_prefixes:
+      [
+        .control_plane_model.data
+        | to_entries[].value
+        | to_entries[].value
+        | (.runtimeTargets // {})
+        | to_entries[]
+        | select((.value.runtimeOriginEgress.enabled // false) == true)
+        | (.value.runtimeOriginEgress.sourcePrefixes // [])[]
+      ];
+    def has_source_rule($rules; $from; $to; $prefix):
+      any($rules[]?;
+        (.action // "") == "accept"
+        and (.relationId // "") == "runtime-origin-egress"
+        and (.fromInterface // "") == $from
+        and (.toInterface // "") == $to
+        and any((.sourcePrefixes // [])[]?; (.prefix // "") == ($prefix.prefix // ""))
+      );
+    source_prefixes as $sources
+    | [
+        .control_plane_model.data
+        | to_entries[].value
+        | to_entries[].value
+        | (.runtimeTargets // {})
+        | to_entries[]
+        | select((.value.role // "") == "access")
+        | .value as $target
+        | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+        | ($target.forwardingIntent.rules // []) as $rules
+        | $sources[] as $source
+        | $ifaces
+        | to_entries[] as $from
+        | select(($from.value.sourceKind // "") == "p2p")
+        | select(routes_runtime_origin($from.value; $source))
+        | $ifaces
+        | to_entries[] as $to
+        | select(($to.value.sourceKind // "") == "p2p")
+        | select($to.value.runtimeIfName != $from.value.runtimeIfName)
+        | select(has_default($to.value))
+        | select(has_source_rule($rules; $from.value.runtimeIfName; $to.value.runtimeIfName; $source) | not)
+        | {
+            target: ($target.name // "<unknown>"),
+            from: $from.value.runtimeIfName,
+            to: $to.value.runtimeIfName,
+            missingSourcePrefix: $source.prefix
+          }
+      ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
 echo "PASS runtime-origin-loopback-egress"
