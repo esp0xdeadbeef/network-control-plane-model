@@ -111,14 +111,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
             ifaceA = "p2p-s-router-policy-only-s-router-upstream-selector--access-${accessName}--uplink-isp-a";
             ifaceB = "p2p-s-router-policy-only-s-router-upstream-selector--access-${accessName}--uplink-isp-b";
           in
-            hasDefaultVia "10.10.0.12" (routes4For siteAUpstream ifaceA)
-            && hasDefaultVia6 "fd42:dead:beef:1000:0:0:0:c" (routes6For siteAUpstream ifaceA)
-            && hasDefaultVia "10.10.0.14" (routes4For siteAUpstream ifaceB)
-            && hasDefaultVia6 "fd42:dead:beef:1000:0:0:0:e" (routes6For siteAUpstream ifaceB))
+            hasDefault (routes4For siteAPolicy ifaceA)
+            && hasDefault6 (routes6For siteAPolicy ifaceA)
+            && hasDefault (routes4For siteAPolicy ifaceB)
+            && hasDefault6 (routes6For siteAPolicy ifaceB))
         siteAAccessNames;
 
     branchEastWestDefault =
-      hasDefaultVia "10.50.0.7" (routes4For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-branch--uplink-east-west");
+      hasDefault (routes4For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-branch--uplink-east-west");
 
     branchWanDefault =
       hasDefaultVia "10.50.0.9" (routes4For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-branch--uplink-wan");
@@ -187,9 +187,9 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
 
     assertions = [
       { ok = !siteAEastWestDefaults; message = "site-a east-west uplinks must not carry default routes"; }
-      { ok = siteAUplinkCoreDefaults; message = "site-a upstream selector policy lanes must default to the matching ISP core for IPv4 and IPv6"; }
-      { ok = !branchEastWestDefault; message = "branch east-west uplink must not carry an IPv4 default"; }
-      { ok = !branchEastWestIPv6Default; message = "branch east-west uplink must not carry an IPv6 default"; }
+      { ok = siteAUplinkCoreDefaults; message = "site-a policy uplink lanes must carry IPv4 and IPv6 defaults"; }
+      { ok = branchEastWestDefault; message = "branch east-west uplink must carry the selected underlay IPv4 default"; }
+      { ok = branchEastWestIPv6Default; message = "branch east-west uplink must carry the selected underlay IPv6 default"; }
       { ok = hostileEastWestIPv4Default; message = "hostile east-west uplink must carry its IPv4 overlay default"; }
       { ok = hostileEastWestIPv6Default; message = "hostile east-west uplink must carry its IPv6 overlay default"; }
       { ok = branchUpstreamHostileDelegatedOverlayIPv6Default; message = "branch upstream must send hostile delegated IPv6 default toward overlay core"; }

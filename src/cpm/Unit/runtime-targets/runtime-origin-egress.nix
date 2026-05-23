@@ -87,19 +87,17 @@ let
       (listOrEmpty routes) ++ [ (runtimeDefaultRoute preferredSources family via) ];
 
   addPreferredSource =
-    preferredSources: route:
+    family: preferredSources: route:
     if !(builtins.isAttrs route) || !(isDefaultRoute route) then
       route
     else
       route
-      // lib.optionalAttrs ((route.family or 4) == 4 && isNonEmptyString (preferredSources.ipv4 or "")) {
+      // lib.optionalAttrs (family == 4 && isNonEmptyString (preferredSources.ipv4 or "")) {
         preferredSource = preferredSources.ipv4;
       }
-      //
-        lib.optionalAttrs ((route.family or null) == 6 && isNonEmptyString (preferredSources.ipv6 or ""))
-          {
-            preferredSource = preferredSources.ipv6;
-          };
+      // lib.optionalAttrs (family == 6 && isNonEmptyString (preferredSources.ipv6 or "")) {
+        preferredSource = preferredSources.ipv6;
+      };
 
   addToRoutes =
     preferredSources: routes:
@@ -108,10 +106,10 @@ let
     else
       routes
       // lib.optionalAttrs (builtins.isList (routes.ipv4 or null)) {
-        ipv4 = map (addPreferredSource preferredSources) (addRuntimeDefault preferredSources 4 routes.ipv4);
+        ipv4 = map (addPreferredSource 4 preferredSources) (addRuntimeDefault preferredSources 4 routes.ipv4);
       }
       // lib.optionalAttrs (builtins.isList (routes.ipv6 or null)) {
-        ipv6 = map (addPreferredSource preferredSources) (addRuntimeDefault preferredSources 6 routes.ipv6);
+        ipv6 = map (addPreferredSource 6 preferredSources) (addRuntimeDefault preferredSources 6 routes.ipv6);
       };
 in
 {
