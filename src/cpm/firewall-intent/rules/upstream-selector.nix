@@ -120,7 +120,7 @@ let
             fromInterface = policyIface.runtimeIfName;
             toInterface = coreIface.runtimeIfName;
             applyTcpMssClamp = true;
-          } siteRuntimeOriginSourcePrefixes)
+          } (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface))
           (common.withSourcePrefixes {
             action = "accept";
             fromInterface = coreIface.runtimeIfName;

@@ -14,6 +14,24 @@ rec {
 
   laneUplink = iface: (lane iface).uplink or null;
 
+  prefixOrigin = prefix: attrsOrEmpty (prefix.origin or null);
+
+  prefixOriginAccesses = prefix:
+    if builtins.isList ((prefixOrigin prefix).accesses or null) then (prefixOrigin prefix).accesses else [ ];
+
+  prefixMatchesInterfaceLane =
+    prefix: iface:
+    let
+      accesses = prefixOriginAccesses prefix;
+      ifaceAccess = laneAccess iface;
+      accessOk = accesses == [ ] || (ifaceAccess != null && builtins.elem ifaceAccess accesses);
+    in
+    accessOk;
+
+  sourcePrefixesForInterface =
+    runtimeOriginSourcePrefixes: iface:
+    builtins.filter (prefix: prefixMatchesInterfaceLane prefix iface) runtimeOriginSourcePrefixes;
+
   routeList =
     iface:
     let
@@ -40,7 +58,7 @@ rec {
           value = prefix;
         }) (
           builtins.filter
-            (prefix: builtins.any (routeMatchesPrefix prefix) routes)
+            (prefix: prefixMatchesInterfaceLane prefix iface && builtins.any (routeMatchesPrefix prefix) routes)
             runtimeOriginSourcePrefixes
         )
       )
@@ -64,9 +82,10 @@ rec {
       sourceScopeFor =
         iface:
         let
-          localScope = sourcePrefixesReachableVia runtimeOriginSourcePrefixes iface;
+          laneScope = sourcePrefixesForInterface runtimeOriginSourcePrefixes iface;
+          localScope = sourcePrefixesReachableVia laneScope iface;
         in
-        if localScope != [ ] then localScope else runtimeOriginSourcePrefixes;
+        if localScope != [ ] then localScope else laneScope;
     in
     builtins.concatLists (
       map (
