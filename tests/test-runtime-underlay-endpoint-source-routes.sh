@@ -21,69 +21,99 @@ labs_path="$(
 )"
 
 nix run "${repo_root}#compile-and-build-control-plane-model" -- \
-  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
-  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/inventory.nix" \
+  "${labs_path}/examples/tri-site-s-router-overlay-egress/intent.nix" \
+  "${labs_path}/examples/tri-site-s-router-overlay-egress/inventory.nix" \
   "${output_json}" >/dev/null
 
 jq -e '
-  .control_plane_model.data.esp.hetz as $site
-  | $site.overlays."east-west".underlayEndpoints as $endpoints
-  | $site.runtimeTargets."esp-hetz-router-upstream"
-    .effectiveRuntimeRealization.interfaces
-    ."p2p-hetz-router-core-hetz-router-upstream".routes as $routes
-  | def hasRoute($endpoint):
-      if $endpoint.family == 4 then
-        any($routes.ipv4[]?;
-          .sourceFile == $endpoint.sourceFile
-          and .family == 4
-          and .via4 == "10.80.0.6"
-          and .proto == "underlay"
-          and .intent.kind == "overlay-underlay-reachability")
-      elif $endpoint.family == 6 then
-        any($routes.ipv6[]?;
-          .sourceFile == $endpoint.sourceFile
-          and .family == 6
-          and .via6 == "fd42:dead:cafe:1000:0:0:0:6"
-          and .proto == "underlay"
-          and .intent.kind == "overlay-underlay-reachability")
-      else
-        false
-      end;
-    ($endpoints | length) > 0
-    and all($endpoints[]; hasRoute(.))
+  def routes_for($iface; $family):
+    if $family == 4 then (($iface.value.routes // {}).ipv4 // []) else (($iface.value.routes // {}).ipv6 // []) end;
+  def default_dst($family):
+    if $family == 4 then "0.0.0.0/0" else "::/0" end;
+  def iface_has_family_default($iface; $family):
+    any(routes_for($iface; $family)[]?; (.dst // null) == default_dst($family));
+  def endpoint_routes($target; $endpoint):
+    (($target.effectiveRuntimeRealization // {}).interfaces // {})
+    | to_entries
+    | [
+        .[] as $iface
+        | routes_for($iface; $endpoint.family)[]
+        | select(
+            (.sourceFile // null) == $endpoint.sourceFile
+            and (.family // null) == $endpoint.family
+            and (.proto // null) == "underlay"
+            and (.intent.kind // null) == "overlay-underlay-reachability"
+          )
+        | { iface: $iface.key, onDefaultBearingInterface: iface_has_family_default($iface; $endpoint.family) }
+      ];
+  [
+    .control_plane_model.data
+    | to_entries[] as $enterprise
+    | $enterprise.value
+    | to_entries[] as $site
+    | (($site.value.overlays // {}) | to_entries[] | .value.underlayEndpoints[]?)
+  ] as $allEndpoints
+  | [
+      .control_plane_model.data
+      | to_entries[] as $enterprise
+      | $enterprise.value
+      | to_entries[] as $site
+      | (($site.value.overlays // {}) | to_entries[] | .value.underlayEndpoints[]?) as $endpoint
+      | [
+          ($site.value.runtimeTargets // {})
+          | to_entries[]
+          | {
+              target: .key,
+              routes: endpoint_routes(.value; $endpoint)
+            }
+          | select((.routes | length) > 0)
+        ] as $hits
+      | {
+          sourceFile: $endpoint.sourceFile,
+          family: $endpoint.family,
+          hasHit: ($hits | length > 0),
+          valid: all($hits[]; all(.routes[]; .onDefaultBearingInterface))
+        }
+    ] as $checks
+  | ($allEndpoints | length) > 0
+  and all($checks[]; .hasHit and .valid)
 ' "${output_json}" >/dev/null || {
-  echo "FAIL runtime-underlay-endpoint-source-routes: upstream selector must route explicit runtime underlay endpoint secrets toward the WAN core" >&2
+  echo "FAIL runtime-underlay-endpoint-source-routes: each modeled overlay underlay endpoint sourceFile route must appear and stay on default-bearing underlay interfaces" >&2
   exit 1
 }
 
 jq -e '
-  .control_plane_model.data.esp.nixos as $site
-  | $site.overlays."east-west".underlayEndpoints as $endpoints
-  | $site.runtimeTargets."esp-nixos-router-core-nebula"
-    .effectiveRuntimeRealization.interfaces
-    ."p2p-nixos-router-access-client-nixos-router-core-nebula".routes as $routes
-  | def hasRoute($endpoint):
-      if $endpoint.family == 4 then
-        any($routes.ipv4[]?;
-          .sourceFile == $endpoint.sourceFile
-          and .family == 4
-          and .via4 == "10.10.0.2"
-          and .proto == "underlay"
-          and .intent.kind == "overlay-underlay-reachability")
-      elif $endpoint.family == 6 then
-        any($routes.ipv6[]?;
-          .sourceFile == $endpoint.sourceFile
-          and .family == 6
-          and .via6 == "fd42:dead:beef:1000:0:0:0:2"
-          and .proto == "underlay"
-          and .intent.kind == "overlay-underlay-reachability")
-      else
-        false
-      end;
-    ($endpoints | length) > 0
-    and all($endpoints[]; hasRoute(.))
+  def routes_for($iface; $family):
+    if $family == 4 then (($iface.value.routes // {}).ipv4 // []) else (($iface.value.routes // {}).ipv6 // []) end;
+  def default_dst($family):
+    if $family == 4 then "0.0.0.0/0" else "::/0" end;
+  def iface_has_family_default($iface; $family):
+    any(routes_for($iface; $family)[]?; (.dst // null) == default_dst($family));
+  def endpoint_routes($target; $endpoint):
+    (($target.effectiveRuntimeRealization // {}).interfaces // {})
+    | to_entries[]
+    | . as $iface
+    | routes_for($iface; $endpoint.family)[]
+    | select(
+        (.sourceFile // null) == $endpoint.sourceFile
+        and (.family // null) == $endpoint.family
+        and (.proto // null) == "underlay"
+        and (.intent.kind // null) == "overlay-underlay-reachability"
+      )
+    | { iface: $iface.key, onDefaultBearingInterface: iface_has_family_default($iface; $endpoint.family) };
+  [
+    .control_plane_model.data
+    | to_entries[] as $enterprise
+    | $enterprise.value
+    | to_entries[] as $site
+    | (($site.value.overlays // {}) | to_entries[] | .value.underlayEndpoints[]?) as $endpoint
+    | ($site.value.runtimeTargets // {})
+    | to_entries[]
+    | endpoint_routes(.value; $endpoint)
+  ]
+  | all(.[]; .onDefaultBearingInterface)
 ' "${output_json}" >/dev/null || {
-  echo "FAIL runtime-underlay-endpoint-source-routes: overlay core must route explicit runtime underlay endpoint secrets toward its modeled underlay access peer, not toward the overlay/upstream lane" >&2
+  echo "FAIL runtime-underlay-endpoint-source-routes: an overlay underlay endpoint sourceFile route landed on an interface without a modeled default" >&2
   exit 1
 }
 
