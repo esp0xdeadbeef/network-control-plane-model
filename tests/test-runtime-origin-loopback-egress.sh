@@ -63,10 +63,7 @@ nix eval --impure --raw --expr "
         sourceKind = \"p2p\";
         backingRef = {
           kind = \"link\";
-          lane = {
-            kind = \"runtime-origin-underlay\";
-            access = \"client\";
-          };
+          lane = \"default\";
         };
         routes.ipv4 = [
           { dst = \"10.19.0.8/32\"; via = \"10.10.0.4\"; }
