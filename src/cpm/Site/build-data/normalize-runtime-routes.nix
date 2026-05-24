@@ -33,6 +33,103 @@ let
     ;
   runtimeExitNodes = runtimePrefixExitNodes { inherit attachments routedPrefixesByTenant; };
 
+  viaFieldFor = family: if family == 4 then "via4" else "via6";
+
+  routeVia =
+    family: route:
+    route.${viaFieldFor family} or null;
+
+  laneAccess =
+    iface:
+    (attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null)).access or null;
+
+  laneKind =
+    iface:
+    (attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null)).kind or null;
+
+  routeCanSupplyReturnVia =
+    family: route:
+    builtins.isAttrs route
+    && (route.policyOnly or false) != true
+    && (route.dst or null) != null
+    && (route.dst or null) != defaultDst family
+    && routeVia family route != null;
+
+  firstReturnViaRoute =
+    family: routes:
+    let
+      candidates = builtins.filter (routeCanSupplyReturnVia family) routes;
+    in
+    if candidates == [ ] then null else builtins.head candidates;
+
+  hasNonPolicyRouteToPrefix =
+    family: prefix: routes:
+    builtins.any (
+      route:
+      builtins.isAttrs route
+      && (route.dst or null) == prefix
+      && (route.policyOnly or false) != true
+      && routeVia family route != null
+    ) routes;
+
+  prefixMatchesAccess =
+    accessName: prefix:
+    accessName != null
+    && builtins.any (originAccess: originAccess == accessName) (
+      listOrEmpty ((attrsOrEmpty (prefix.origin or null)).accesses or null)
+    );
+
+  runtimeOriginReturnPrefixesForInterface =
+    target: iface:
+    let
+      ifaceName = iface.runtimeIfName or null;
+      accessName = laneAccess iface;
+      forwardingIntent = attrsOrEmpty (target.forwardingIntent or null);
+      rules = listOrEmpty (forwardingIntent.rules or null);
+    in
+    if ifaceName == null || accessName == null || laneKind iface != "access" then
+      [ ]
+    else
+      lib.concatMap (
+        rule:
+        if
+          (rule.relationId or null) == "runtime-origin-egress"
+          && (rule.fromInterface or null) == ifaceName
+        then
+          builtins.filter (prefixMatchesAccess accessName) (listOrEmpty (rule.sourcePrefixes or null))
+        else
+          [ ]
+      ) rules;
+
+  runtimeOriginReturnRoutes =
+    family: target: iface: routes:
+    let
+      viaRoute = firstReturnViaRoute family routes;
+      prefixes = builtins.filter (
+        prefix:
+        (prefix.family or null) == family
+        && builtins.isString (prefix.prefix or null)
+        && !hasNonPolicyRouteToPrefix family prefix.prefix routes
+      ) (runtimeOriginReturnPrefixesForInterface target iface);
+    in
+    if viaRoute == null then
+      [ ]
+    else
+      builtins.map (
+        prefix:
+        {
+          dst = prefix.prefix;
+          intent = {
+            kind = "internal-reachability";
+            source = "runtime-origin-return";
+          };
+          reason = "runtime-origin-return";
+        }
+        // {
+          ${viaFieldFor family} = routeVia family viaRoute;
+        }
+      ) prefixes;
+
   normalizeRuntimeTargetRoutes =
     target:
     let
@@ -86,8 +183,10 @@ let
           routes = attrsOrEmpty (iface.routes or null);
           ipv4 = listOrEmpty (routes.ipv4 or null);
           ipv6 = listOrEmpty (routes.ipv6 or null);
-          augmented4 = ipv4 ++ policyTableComplements 4 policyDefaults4 ipv4;
-          augmented6 = ipv6 ++ policyTableComplements 6 policyDefaults6 ipv6;
+          base4 = ipv4 ++ runtimeOriginReturnRoutes 4 target iface ipv4;
+          base6 = ipv6 ++ runtimeOriginReturnRoutes 6 target iface ipv6;
+          augmented4 = base4 ++ policyTableComplements 4 policyDefaults4 base4;
+          augmented6 = base6 ++ policyTableComplements 6 policyDefaults6 base6;
         in
         iface
         // {

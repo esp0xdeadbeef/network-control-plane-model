@@ -87,11 +87,13 @@ let
       ;
   };
 
-  runtimeTargets =
+  runtimeTargetsWithIntent =
     finalizeRuntimeTargets {
       inherit accessAdvertisements firewallIntent;
       normalizedRuntimeTargets = routeAugmentedRuntimeTargets;
     };
+
+  runtimeTargets = builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetsWithIntent;
 
 in
 {
