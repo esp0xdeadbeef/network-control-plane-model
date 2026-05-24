@@ -35,6 +35,17 @@ rec {
     runtimeOriginSourcePrefixes: iface:
     builtins.filter (prefix: prefixMatchesInterfaceLane prefix iface) runtimeOriginSourcePrefixes;
 
+  uniqueSourcePrefixes =
+    prefixes:
+    builtins.attrValues (
+      builtins.listToAttrs (
+        map (prefix: {
+          name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
+          value = prefix;
+        }) prefixes
+      )
+    );
+
   sourcePrefixAllowedToInterface =
     prefix: iface:
     let
@@ -70,17 +81,19 @@ rec {
     let
       routes = routeList iface;
     in
-    builtins.attrValues (
-      builtins.listToAttrs (
-        map (prefix: {
-          name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
-          value = prefix;
-        }) (
-          builtins.filter
-            (prefix: prefixMatchesInterfaceLane prefix iface && builtins.any (routeMatchesPrefix prefix) routes)
-            runtimeOriginSourcePrefixes
-        )
-      )
+    uniqueSourcePrefixes (
+      builtins.filter
+        (prefix: prefixMatchesInterfaceLane prefix iface && builtins.any (routeMatchesPrefix prefix) routes)
+        runtimeOriginSourcePrefixes
+    );
+
+  sourcePrefixesWithRouteVia =
+    runtimeOriginSourcePrefixes: iface:
+    let
+      routes = routeList iface;
+    in
+    uniqueSourcePrefixes (
+      builtins.filter (prefix: builtins.any (routeMatchesPrefix prefix) routes) runtimeOriginSourcePrefixes
     );
 
   hasDefaultRoute =
@@ -98,13 +111,21 @@ rec {
     runtimeOriginSourcePrefixes: interfaces:
     let
       defaultIfaces = builtins.filter hasDefaultRoute interfaces;
+      ingressIfaces = builtins.filter (
+        iface:
+        hasDefaultRoute iface
+        || sourcePrefixesForInterface runtimeOriginSourcePrefixes iface != [ ]
+        || hasAnyRuntimeOriginRoute runtimeOriginSourcePrefixes iface
+      ) interfaces;
       sourceScopeFor =
         iface:
         let
           laneScope = sourcePrefixesForInterface runtimeOriginSourcePrefixes iface;
           localScope = sourcePrefixesReachableVia laneScope iface;
+          routedPeerScope = sourcePrefixesWithRouteVia runtimeOriginSourcePrefixes iface;
+          combinedScope = uniqueSourcePrefixes (laneScope ++ routedPeerScope);
         in
-        if localScope != [ ] then localScope else laneScope;
+        if localScope != [ ] then localScope else combinedScope;
     in
     builtins.concatLists (
       map (
@@ -146,7 +167,7 @@ rec {
                 } egressPrefixes)
               ]
           ) (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) defaultIfacesForIngress)
-      ) interfaces
+      ) ingressIfaces
     );
 
   withSourcePrefixes =

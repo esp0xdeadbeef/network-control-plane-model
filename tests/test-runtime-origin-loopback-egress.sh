@@ -46,6 +46,58 @@ require_gron_regex 'runtimeOriginEgress\.enabled = true;'
 require_gron_regex '\.runtimeOriginEgress\.sourcePrefixes\[[0-9]+\]\.prefix = "([^"]+/32|[^"]+/128)";'
 require_gron_regex '\.routes\.ipv[46]\[[0-9]+\]\.preferredSource = "[^"]+";'
 
+nix eval --impure --raw --expr "
+  let
+    common = import ${repo_root}/src/cpm/firewall-intent/rules/common.nix {};
+    prefixes = [
+      {
+        family = 4;
+        prefix = \"10.19.0.8/32\";
+        origin.accesses = [ \"client\" ];
+        origin.uplinks = [ \"east-west\" ];
+      }
+    ];
+    rules = common.runtimeOriginDefaultForwardRules prefixes [
+      {
+        runtimeIfName = \"core-nebula\";
+        sourceKind = \"p2p\";
+        backingRef = {
+          kind = \"link\";
+          lane = {
+            kind = \"runtime-origin-underlay\";
+            access = \"client\";
+          };
+        };
+        routes.ipv4 = [
+          { dst = \"10.19.0.8/32\"; via = \"10.10.0.4\"; }
+        ];
+      }
+      {
+        runtimeIfName = \"transit\";
+        sourceKind = \"p2p\";
+        backingRef = {
+          kind = \"link\";
+          lane = {
+            kind = \"access-transit\";
+            access = \"client\";
+          };
+        };
+        routes.ipv4 = [
+          { dst = \"0.0.0.0/0\"; via = \"10.10.0.5\"; }
+        ];
+      }
+    ];
+    hasRule = builtins.any (
+      rule:
+      (rule.relationId or null) == \"runtime-origin-egress\"
+      && (rule.fromInterface or null) == \"core-nebula\"
+      && (rule.toInterface or null) == \"transit\"
+      && builtins.any (prefix: (prefix.prefix or null) == \"10.19.0.8/32\") (rule.sourcePrefixes or [ ])
+    ) rules;
+  in
+  if hasRule then \"PASS\" else throw \"runtime-origin-loopback-egress: an access ingress p2p that routes a runtime-origin source must forward that source to the default-bearing transit p2p\"
+" >/dev/null
+
 jq -e '
   def prefix_addr:
     split("/")[0];
