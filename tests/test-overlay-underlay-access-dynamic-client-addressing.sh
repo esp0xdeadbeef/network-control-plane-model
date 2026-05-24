@@ -7,8 +7,6 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 archive_json="${tmp_dir}/archive.json"
-inventory_nixos="${tmp_dir}/resolved-inventory-nixos.nix"
-inventory_clab="${tmp_dir}/resolved-inventory-clab.nix"
 output_json="${tmp_dir}/output.json"
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
@@ -24,40 +22,24 @@ labs_path="$(
   '
 )"
 
-cat >"${inventory_nixos}" <<EOF
-import ${labs_path}/labs/lab-s-sigma/s-router-test-three-site/getResolvedInventory.nix { renderer = "nixos"; }
-EOF
-
-cat >"${inventory_clab}" <<EOF
-import ${labs_path}/labs/lab-s-sigma/s-router-test-three-site/getResolvedInventory.nix { renderer = "clab"; }
-EOF
-
 assert_dynamic_client_addressing() {
-  local inventory_path="$1"
+  local site_name="$1"
   local target_name="$2"
 
   nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
-    "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
-    "${inventory_path}" \
+    "${labs_path}/examples/tri-site-s-router-overlay-egress/intent.nix" \
+    "${labs_path}/examples/tri-site-s-router-overlay-egress/inventory.nix" \
     "${output_json}" >/dev/null
 
-  jq -e --arg target_name "${target_name}" '
-    .control_plane_model.data.esp
-    | [
-        to_entries[]
-        | (.value.runtimeTargets[$target_name] // null)
-        | select(. != null)
-        | .effectiveRuntimeRealization.interfaces."tenant-client".dynamicAddressing
-      ] as $matches
-    | ($matches | length) == 1
-      and all($matches[];
-        .ipv4.enable == true
-        and .ipv4.method == "dhcp"
-        and .ipv4.dhcp == true
-        and .ipv6.enable == true
-        and .ipv6.method == "slaac"
-        and .ipv6.acceptRA == true
-      )
+  jq -e --arg site_name "${site_name}" --arg target_name "${target_name}" '
+    .control_plane_model.data.esp[$site_name].runtimeTargets[$target_name]
+    .effectiveRuntimeRealization.interfaces."tenant-client".dynamicAddressing
+    | .ipv4.enable == true
+      and .ipv4.method == "dhcp"
+      and .ipv4.dhcp == true
+      and .ipv6.enable == true
+      and .ipv6.method == "slaac"
+      and .ipv6.acceptRA == true
   ' "${output_json}" >/dev/null || {
     cat >&2 <<EOF
 FAIL overlay-underlay-access-dynamic-client-addressing: ${target_name} tenant-client must carry explicit DHCP/SLAAC dynamicAddressing in CPM.
@@ -70,7 +52,7 @@ EOF
   }
 }
 
-assert_dynamic_client_addressing "${inventory_nixos}" "esp-nixos-router-core-nebula"
-assert_dynamic_client_addressing "${inventory_clab}" "esp-clab-router-core-nebula"
+assert_dynamic_client_addressing "home" "esp-home-example-router-core-nebula"
+assert_dynamic_client_addressing "lab" "esp-lab-example-router-core-nebula"
 
 echo "PASS overlay-underlay-access-dynamic-client-addressing"
