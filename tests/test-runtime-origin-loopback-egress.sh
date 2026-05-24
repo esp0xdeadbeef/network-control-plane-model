@@ -921,4 +921,91 @@ jq -e '
   exit 1
 }
 
+jq -e '
+  def route_list($iface):
+    (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
+  def lane_kind($iface):
+    $iface.backingRef.lane.kind // null;
+  [
+    .control_plane_model.data
+    | to_entries[].value
+    | to_entries[].value
+    | (.runtimeTargets // {})
+    | to_entries[]
+    | select((.value.role // "") == "policy")
+    | .value as $target
+    | [
+        ($target.effectiveRuntimeRealization.interfaces // {})
+        | to_entries[]
+        | select(lane_kind(.value) == "access")
+        | route_list(.value)[]
+        | select(type == "object")
+        | select((.reason // "") == "runtime-origin-return")
+        | .dst
+      ] as $returnDsts
+    | ($target.effectiveRuntimeRealization.interfaces // {})
+    | to_entries[]
+    | select(lane_kind(.value) == "access-uplink")
+    | .value as $iface
+    | route_list($iface)[]
+    | select(type == "object")
+    | . as $route
+    | select(any($returnDsts[]?; . == ($route.dst // "")))
+    | {
+        target: ($target.name // "<unknown>"),
+        interface: ($iface.runtimeIfName // ""),
+        forbiddenCopiedRuntimeOriginReturn: ($route.dst // ""),
+        policyOnly: ($route.policyOnly // false),
+        reason: ($route.reason // null),
+        via4: ($route.via4 // null),
+        via6: ($route.via6 // null)
+      }
+  ] as $wrong
+  | ($wrong | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: runtime-origin return routes must not be copied into policy access-uplink tables as internal-reachability complements" >&2
+  jq '
+    def route_list($iface):
+      (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
+    def lane_kind($iface):
+      $iface.backingRef.lane.kind // null;
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | select((.value.role // "") == "policy")
+      | .value as $target
+      | [
+          ($target.effectiveRuntimeRealization.interfaces // {})
+          | to_entries[]
+          | select(lane_kind(.value) == "access")
+          | route_list(.value)[]
+          | select(type == "object")
+          | select((.reason // "") == "runtime-origin-return")
+          | .dst
+        ] as $returnDsts
+      | ($target.effectiveRuntimeRealization.interfaces // {})
+      | to_entries[]
+      | select(lane_kind(.value) == "access-uplink")
+      | .value as $iface
+      | route_list($iface)[]
+      | select(type == "object")
+      | . as $route
+      | select(any($returnDsts[]?; . == ($route.dst // "")))
+      | {
+          target: ($target.name // "<unknown>"),
+          interface: ($iface.runtimeIfName // ""),
+          forbiddenCopiedRuntimeOriginReturn: ($route.dst // ""),
+          policyOnly: ($route.policyOnly // false),
+          reason: ($route.reason // null),
+          via4: ($route.via4 // null),
+          via6: ($route.via6 // null)
+        }
+    ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
 echo "PASS runtime-origin-loopback-egress"

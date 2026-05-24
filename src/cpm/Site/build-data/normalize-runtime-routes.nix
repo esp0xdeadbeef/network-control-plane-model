@@ -162,6 +162,11 @@ let
         }
       ) prefixes;
 
+  canGeneratePolicyTableComplement =
+    route:
+    (route.reason or null) != "runtime-origin-return"
+    && ((attrsOrEmpty (route.intent or null)).source or null) != "runtime-origin-return";
+
   normalizeRuntimeTargetRoutes =
     target:
     let
@@ -225,11 +230,13 @@ let
           base6 = ipv6 ++ runtimeOriginReturnRoutes 6 target iface ipv6;
           dropWrongRuntimeOriginComplement =
             isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
+          complementBase4 = builtins.filter canGeneratePolicyTableComplement base4;
+          complementBase6 = builtins.filter canGeneratePolicyTableComplement base6;
           augmented4 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
-            base4 ++ policyTableComplements 4 policyDefaults4 base4
+            base4 ++ policyTableComplements 4 policyDefaults4 complementBase4
           );
           augmented6 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
-            base6 ++ policyTableComplements 6 policyDefaults6 base6
+            base6 ++ policyTableComplements 6 policyDefaults6 complementBase6
           );
         in
         iface
