@@ -838,4 +838,85 @@ jq -e '
   exit 1
 }
 
+jq -e '
+  def route_list($iface; $family):
+    if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
+  def lane_kind($iface):
+    $iface.backingRef.lane.kind // null;
+  [
+    .control_plane_model.data
+    | to_entries[].value
+    | to_entries[].value
+    | (.runtimeTargets // {})
+    | to_entries[]
+    | select((.value.role // "") == "policy")
+    | .value as $target
+    | [
+        ($target.forwardingIntent.rules // [])[]
+        | select((.relationId // "") == "runtime-origin-egress")
+        | (.sourcePrefixes // [])[]
+        | .prefix
+      ] as $runtimePrefixes
+    | ($target.effectiveRuntimeRealization.interfaces // {})
+    | to_entries[]
+    | select(lane_kind(.value) == "access-uplink")
+    | .value as $iface
+    | [4, 6][] as $family
+    | route_list($iface; $family)[]
+    | select(type == "object")
+    | . as $route
+    | select(($route.policyOnly // false) != true)
+    | select(any($runtimePrefixes[]?; . == ($route.dst // "")))
+    | {
+        target: ($target.name // "<unknown>"),
+        interface: ($iface.runtimeIfName // ""),
+        forbiddenRuntimeOriginMainRoute: ($route.dst // ""),
+        via4: ($route.via4 // null),
+        via6: ($route.via6 // null)
+      }
+  ] as $wrong
+  | ($wrong | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: policy access-uplink lanes must not carry non-policy main return routes for runtime-origin source prefixes" >&2
+  jq '
+    def route_list($iface; $family):
+      if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
+    def lane_kind($iface):
+      $iface.backingRef.lane.kind // null;
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | select((.value.role // "") == "policy")
+      | .value as $target
+      | [
+          ($target.forwardingIntent.rules // [])[]
+          | select((.relationId // "") == "runtime-origin-egress")
+          | (.sourcePrefixes // [])[]
+          | .prefix
+        ] as $runtimePrefixes
+      | ($target.effectiveRuntimeRealization.interfaces // {})
+      | to_entries[]
+      | select(lane_kind(.value) == "access-uplink")
+      | .value as $iface
+      | [4, 6][] as $family
+      | route_list($iface; $family)[]
+      | select(type == "object")
+      | . as $route
+      | select(($route.policyOnly // false) != true)
+      | select(any($runtimePrefixes[]?; . == ($route.dst // "")))
+      | {
+          target: ($target.name // "<unknown>"),
+          interface: ($iface.runtimeIfName // ""),
+          forbiddenRuntimeOriginMainRoute: ($route.dst // ""),
+          via4: ($route.via4 // null),
+          via6: ($route.via6 // null)
+        }
+    ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
 echo "PASS runtime-origin-loopback-egress"
