@@ -76,27 +76,18 @@ nix eval --impure "${nix_args[@]}" --json --expr '
 
     out = builder { inherit input inventory; };
 
-    target = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector";
-    interfaces = target.effectiveRuntimeRealization.interfaces;
-    rules = target.forwardingIntent.rules or [ ];
+    upstreamTarget = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-upstream-selector";
+    downstreamTarget = out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-downstream-selector";
+    upstreamInterfaces = upstreamTarget.effectiveRuntimeRealization.interfaces;
+    upstreamRules = upstreamTarget.forwardingIntent.rules or [ ];
+    downstreamInterfaces = downstreamTarget.effectiveRuntimeRealization.interfaces;
+    downstreamRules = downstreamTarget.forwardingIntent.rules or [ ];
 
     attrsOrEmpty = value: if builtins.isAttrs value then value else { };
     laneFor = iface: attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
     uplinksFor = iface: (attrsOrEmpty (iface.backingRef or null)).uplinks or [ ];
 
-    coreInterfaces =
-      builtins.filter
-        (iface: (iface.sourceKind or null) == "p2p" && (uplinksFor iface) != [ ])
-        (builtins.attrValues interfaces);
-
-    policyInterfaces =
-      builtins.filter
-        (iface:
-          let lane = laneFor iface;
-          in (iface.sourceKind or null) == "p2p" && (lane.access or null) != null && (lane.uplink or null) != null)
-        (builtins.attrValues interfaces);
-
-    unscopedRuleExists = from: to:
+    unscopedRuleExists = rules: from: to:
       builtins.any
         (rule:
           (rule.fromInterface or null) == from
@@ -105,26 +96,70 @@ nix eval --impure "${nix_args[@]}" --json --expr '
           && ((rule.sourceFiles or [ ]) == [ ]))
         rules;
 
+    upstreamCoreInterfaces =
+      builtins.filter
+        (iface: (iface.sourceKind or null) == "p2p" && (uplinksFor iface) != [ ])
+        (builtins.attrValues upstreamInterfaces);
+
+    upstreamPolicyInterfaces =
+      builtins.filter
+        (iface:
+          let lane = laneFor iface;
+          in (iface.sourceKind or null) == "p2p" && (lane.access or null) != null && (lane.uplink or null) != null)
+        (builtins.attrValues upstreamInterfaces);
+
     matchingCoreForPolicy = policyIface:
       let
         policyLane = laneFor policyIface;
-        matching = builtins.filter (coreIface: builtins.elem policyLane.uplink (uplinksFor coreIface)) coreInterfaces;
+        matching = builtins.filter (coreIface: builtins.elem policyLane.uplink (uplinksFor coreIface)) upstreamCoreInterfaces;
       in
       if matching == [ ] then null else builtins.head matching;
 
-    policyPairOk = policyIface:
+    upstreamPolicyPairOk = policyIface:
       let coreIface = matchingCoreForPolicy policyIface;
       in
       coreIface != null
-      && unscopedRuleExists policyIface.runtimeIfName coreIface.runtimeIfName
-      && unscopedRuleExists coreIface.runtimeIfName policyIface.runtimeIfName;
+      && unscopedRuleExists upstreamRules policyIface.runtimeIfName coreIface.runtimeIfName
+      && unscopedRuleExists upstreamRules coreIface.runtimeIfName policyIface.runtimeIfName;
 
-    ok = policyInterfaces != [ ] && builtins.all policyPairOk policyInterfaces;
+    downstreamAccessInterfaces =
+      builtins.filter
+        (iface:
+          let lane = laneFor iface;
+          in (iface.sourceKind or null) == "p2p" && (lane.kind or null) == "access-edge" && (lane.access or null) != null)
+        (builtins.attrValues downstreamInterfaces);
+
+    downstreamPolicyInterfaces =
+      builtins.filter
+        (iface:
+          let lane = laneFor iface;
+          in (iface.sourceKind or null) == "p2p" && (lane.kind or null) == "access" && (lane.access or null) != null)
+        (builtins.attrValues downstreamInterfaces);
+
+    matchingPolicyForAccess = accessIface:
+      let
+        accessLane = laneFor accessIface;
+        matching = builtins.filter (policyIface: (laneFor policyIface).access or null == accessLane.access) downstreamPolicyInterfaces;
+      in
+      if matching == [ ] then null else builtins.head matching;
+
+    downstreamAccessPairOk = accessIface:
+      let policyIface = matchingPolicyForAccess accessIface;
+      in
+      policyIface != null
+      && unscopedRuleExists downstreamRules accessIface.runtimeIfName policyIface.runtimeIfName
+      && unscopedRuleExists downstreamRules policyIface.runtimeIfName accessIface.runtimeIfName;
+
+    ok =
+      upstreamPolicyInterfaces != [ ]
+      && builtins.all upstreamPolicyPairOk upstreamPolicyInterfaces
+      && downstreamAccessInterfaces != [ ]
+      && builtins.all downstreamAccessPairOk downstreamAccessInterfaces;
   in
     if ok then
       true
     else
-      throw "selector-forwarding-opaque-runtime-names failed: upstream-selector forwarding rules must pair policy-side access/uplink lanes to core-side uplink lanes with unscoped forwarding rules after runtime interface names are made opaque. Source-scoped runtime-origin rules are not enough for normal tenant egress. Fix CPM to consume backingRef.lane/backingRef.uplinks, not runtimeIfName/sourceInterfaceName fragments."
+      throw "selector-forwarding-opaque-runtime-names failed: selector forwarding rules must pair downstream access lanes to policy lanes and upstream policy-side access/uplink lanes to core-side uplink lanes with unscoped forwarding rules after runtime interface names are made opaque. Source-scoped runtime-origin rules are not enough for normal tenant egress. Fix CPM to consume backingRef.lane/backingRef.uplinks, not runtimeIfName/sourceInterfaceName fragments."
 ' >"${output_json}"
 
 echo "PASS selector-forwarding-opaque-runtime-names"
