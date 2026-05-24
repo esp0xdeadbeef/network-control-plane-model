@@ -79,6 +79,31 @@ let
       listOrEmpty ((attrsOrEmpty (prefix.origin or null)).accesses or null)
     );
 
+  runtimeOriginPrefixesFromTarget =
+    target:
+    lib.unique (
+      lib.concatMap
+        (
+          rule:
+          if (rule.relationId or null) == "runtime-origin-egress" then
+            builtins.map (prefix: prefix.prefix) (
+              builtins.filter (prefix: builtins.isString (prefix.prefix or null)) (
+                listOrEmpty (rule.sourcePrefixes or null)
+              )
+            )
+          else
+            [ ]
+        )
+        (listOrEmpty ((attrsOrEmpty (target.forwardingIntent or null)).rules or null))
+    );
+
+  isRuntimeOriginSourceRouteOnPolicyUplink =
+    targetRole: runtimeOriginPrefixes: iface: route:
+    targetRole == "policy"
+    && laneKind iface == "access-uplink"
+    && builtins.elem (route.dst or null) runtimeOriginPrefixes
+    && (route.policyOnly or false) != true;
+
   runtimeOriginReturnPrefixesForInterface =
     target: iface:
     let
@@ -136,22 +161,28 @@ let
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
       targetRole = target.role or "";
+      runtimeOriginPrefixes = runtimeOriginPrefixesFromTarget target;
       classifyTargetRoute = classifyRoute { inherit overlayNames runtimeExitNodes targetRole; };
       classifiedInterfaces = builtins.mapAttrs (
         _ifName: iface:
         let
           routes = attrsOrEmpty (iface.routes or null);
+          dropWrongRuntimeOriginRoute = isRuntimeOriginSourceRouteOnPolicyUplink targetRole runtimeOriginPrefixes iface;
           ipv4 = uniqueKernelDefaults 4 (
             dropDuplicateUnlanedDefaults 4 (
               builtins.filter (route: route != null) (
-                builtins.map (classifyTargetRoute 4) (listOrEmpty (routes.ipv4 or null))
+                builtins.map (classifyTargetRoute 4) (
+                  builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv4 or null))
+                )
               )
             )
           );
           ipv6 = uniqueKernelDefaults 6 (
             dropDuplicateUnlanedDefaults 6 (
               builtins.filter (route: route != null) (
-                builtins.map (classifyTargetRoute 6) (listOrEmpty (routes.ipv6 or null))
+                builtins.map (classifyTargetRoute 6) (
+                  builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv6 or null))
+                )
               )
             )
           );
