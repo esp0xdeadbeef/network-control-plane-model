@@ -934,6 +934,63 @@ jq -e '
     | to_entries[]
     | select((.value.role // "") == "policy")
     | .value as $target
+    | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+    | ($target.forwardingIntent.rules // [])[]
+    | select((.relationId // "") == "runtime-origin-egress")
+    | . as $rule
+    | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
+    | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.toInterface // "")) | .value) as $toIface
+    | select(lane_kind($fromIface) == "access-uplink" and lane_kind($toIface) == "access-uplink")
+    | {
+        target: ($target.name // "<unknown>"),
+        forbiddenRuntimeOriginCrossconnect: (($rule.fromInterface // "") + " -> " + ($rule.toInterface // "")),
+        prefixes: [ ($rule.sourcePrefixes // [])[]? | .prefix ]
+      }
+  ] as $wrong
+  | ($wrong | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: runtime-origin egress must not create policy/access-uplink to access-uplink crossconnect rules" >&2
+  jq '
+    def lane_kind($iface):
+      $iface.backingRef.lane.kind // null;
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | select((.value.role // "") == "policy")
+      | .value as $target
+      | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+      | ($target.forwardingIntent.rules // [])[]
+      | select((.relationId // "") == "runtime-origin-egress")
+      | . as $rule
+      | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
+      | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.toInterface // "")) | .value) as $toIface
+      | select(lane_kind($fromIface) == "access-uplink" and lane_kind($toIface) == "access-uplink")
+      | {
+          target: ($target.name // "<unknown>"),
+          forbiddenRuntimeOriginCrossconnect: (($rule.fromInterface // "") + " -> " + ($rule.toInterface // "")),
+          prefixes: [ ($rule.sourcePrefixes // [])[]? | .prefix ]
+        }
+    ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
+jq -e '
+  def route_list($iface):
+    (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
+  def lane_kind($iface):
+    $iface.backingRef.lane.kind // null;
+  [
+    .control_plane_model.data
+    | to_entries[].value
+    | to_entries[].value
+    | (.runtimeTargets // {})
+    | to_entries[]
+    | select((.value.role // "") == "policy")
+    | .value as $target
     | [
         ($target.effectiveRuntimeRealization.interfaces // {})
         | to_entries[]
