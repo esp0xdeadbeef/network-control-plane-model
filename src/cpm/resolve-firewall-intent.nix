@@ -1,11 +1,11 @@
 { helpers }:
 
-{
-  sitePath,
-  siteAttrs,
-  runtimeTargets,
-  policyEndpointBindings ? { },
-  services ? [ ],
+{ sitePath
+, siteAttrs
+, runtimeTargets
+, policyEndpointBindings ? { }
+, services ? [ ]
+,
 }:
 
 let
@@ -16,10 +16,12 @@ let
     values:
     sortedNames (
       builtins.listToAttrs (
-        map (value: {
-          name = value;
-          value = true;
-        }) (builtins.filter isNonEmptyString values)
+        map
+          (value: {
+            name = value;
+            value = true;
+          })
+          (builtins.filter isNonEmptyString values)
       )
     );
 
@@ -41,36 +43,19 @@ let
   buildNat = import ./firewall-intent/nat.nix { inherit helpers; };
   buildForwarding = import ./firewall-intent/forwarding.nix { inherit helpers; };
 
-  targetEntries = map (
-    targetName:
-    let
-      targetPath = "${sitePath}.runtimeTargets.${targetName}";
-      target = requireAttrs targetPath runtimeTargets.${targetName};
-      interfaceRecords = runtimeInterfaceRecords targetPath target;
-    in
-    {
-      inherit targetName target interfaceRecords;
-    }
-  ) (sortedNames runtimeTargets);
-
-  natEntries = builtins.filter (entry: entry != null) (
-    map (
-      entry:
-      if (entry.target.role or null) == "core" then
-        {
-          name = entry.targetName;
-          value = buildNat {
-            inherit
-              siteAttrs
-              overlayNames
-              ;
-            inherit (entry) interfaceRecords target;
-          };
-        }
-      else
-        null
-    ) targetEntries
-  );
+  targetEntries = map
+    (
+      targetName:
+      let
+        targetPath = "${sitePath}.runtimeTargets.${targetName}";
+        target = requireAttrs targetPath runtimeTargets.${targetName};
+        interfaceRecords = runtimeInterfaceRecords targetPath target;
+      in
+      {
+        inherit targetName target interfaceRecords;
+      }
+    )
+    (sortedNames runtimeTargets);
 
   runtimeOriginSourcePrefixes = runtimeOriginSourcePrefixesForSite {
     inherit
@@ -80,29 +65,53 @@ let
       ;
   };
 
+  natEntries = builtins.filter (entry: entry != null) (
+    map
+      (
+        entry:
+        if (entry.target.role or null) == "core" then
+          {
+            name = entry.targetName;
+            value = buildNat {
+              inherit
+                siteAttrs
+                overlayNames
+                ;
+              inherit (entry) interfaceRecords target;
+              inherit runtimeOriginSourcePrefixes;
+            };
+          }
+        else
+          null
+      )
+      targetEntries
+  );
+
   forwardingEntries = builtins.filter (entry: entry != null) (
-    map (
-      entry:
-      let
-        value = buildForwarding {
-          inherit
-            overlayNames
-            policyEndpointBindings
-            services
-            siteRelations
-            runtimeOriginSourcePrefixes
-            ;
-          inherit (entry) target interfaceRecords;
-        };
-      in
-      if value == null then
-        null
-      else
-        {
-          name = entry.targetName;
-          inherit value;
-        }
-    ) targetEntries
+    map
+      (
+        entry:
+        let
+          value = buildForwarding {
+            inherit
+              overlayNames
+              policyEndpointBindings
+              services
+              siteRelations
+              runtimeOriginSourcePrefixes
+              ;
+            inherit (entry) target interfaceRecords;
+          };
+        in
+        if value == null then
+          null
+        else
+          {
+            name = entry.targetName;
+            inherit value;
+          }
+      )
+      targetEntries
   );
 
   precedence = import ./firewall-intent/precedence.nix { };

@@ -46,6 +46,140 @@ require_gron_regex 'runtimeOriginEgress\.enabled = true;'
 require_gron_regex '\.runtimeOriginEgress\.sourcePrefixes\[[0-9]+\]\.prefix = "([^"]+/32|[^"]+/128)";'
 require_gron_regex '\.routes\.ipv[46]\[[0-9]+\]\.preferredSource = "[^"]+";'
 
+jq -e '
+  def prio($rule): $rule.priority // 1000;
+  [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | .value.forwardingIntent.rules // [] as $rules
+      | $rules[] as $runtimeRule
+      | select(($runtimeRule.relationId // "") == "runtime-origin-egress")
+      | $rules[] as $dnsDeny
+      | select(($dnsDeny.action // "") == "deny")
+      | select(($dnsDeny.trafficType // "") == "dns")
+      | select(($dnsDeny.fromInterface // "") == ($runtimeRule.fromInterface // ""))
+      | select(($dnsDeny.toInterface // "") == ($runtimeRule.toInterface // ""))
+      | select(prio($runtimeRule) >= prio($dnsDeny))
+      | {
+          from: $runtimeRule.fromInterface,
+          to: $runtimeRule.toInterface,
+          runtimePriority: prio($runtimeRule),
+          dnsDenyPriority: prio($dnsDeny),
+          deny: $dnsDeny.relationId
+        }
+    ] as $bad
+  | ($bad | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: runtime-origin source-scoped egress must sort before tenant DNS deny rules on the same lane pair" >&2
+  jq '
+    def prio($rule): $rule.priority // 1000;
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | .value.forwardingIntent.rules // [] as $rules
+      | $rules[] as $runtimeRule
+      | select(($runtimeRule.relationId // "") == "runtime-origin-egress")
+      | $rules[] as $dnsDeny
+      | select(($dnsDeny.action // "") == "deny")
+      | select(($dnsDeny.trafficType // "") == "dns")
+      | select(($dnsDeny.fromInterface // "") == ($runtimeRule.fromInterface // ""))
+      | select(($dnsDeny.toInterface // "") == ($runtimeRule.toInterface // ""))
+      | select(prio($runtimeRule) >= prio($dnsDeny))
+      | {
+          from: $runtimeRule.fromInterface,
+          to: $runtimeRule.toInterface,
+          runtimePriority: prio($runtimeRule),
+          dnsDenyPriority: prio($dnsDeny),
+          deny: $dnsDeny.relationId
+        }
+    ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
+jq -e '
+  . as $root
+  |
+  def prefix_value: .prefix // .;
+  def is_ula6:
+    (prefix_value | type) == "string"
+    and ((prefix_value | test("^[fF][cCdD]")));
+  [
+    $root.control_plane_model.data
+    | to_entries[].value
+    | to_entries[].value
+    | (.runtimeTargets // {})
+    | to_entries[]
+    | .value.runtimeOriginEgress.sourcePrefixes[]?
+    | select((.family // null) == 6)
+    | select(is_ula6)
+    | prefix_value
+  ] | unique as $runtimeUla
+  | [
+      $root.control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | . as $target
+      | select((.value.natIntent.families.ipv6 // false) == true)
+      | select(
+          any($runtimeUla[]; . as $prefix | (($target.value.natIntent.masqueradeSourcePrefixes6 // []) | index($prefix)) == null)
+        )
+      | {
+          target: .key,
+          missing: ($runtimeUla - (.value.natIntent.masqueradeSourcePrefixes6 // [])),
+          actual: (.value.natIntent.masqueradeSourcePrefixes6 // [])
+        }
+    ] as $bad
+  | ($bad | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: explicit NAT66 exits must include runtime-origin ULA /128 sources, while routed GUA prefixes remain routed" >&2
+  jq '
+    . as $root
+    |
+    def prefix_value: .prefix // .;
+    def is_ula6:
+      (prefix_value | type) == "string"
+      and ((prefix_value | test("^[fF][cCdD]")));
+    [
+      $root.control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | .value.runtimeOriginEgress.sourcePrefixes[]?
+      | select((.family // null) == 6)
+      | select(is_ula6)
+      | prefix_value
+    ] | unique as $runtimeUla
+    | [
+        $root.control_plane_model.data
+        | to_entries[].value
+        | to_entries[].value
+        | (.runtimeTargets // {})
+        | to_entries[]
+        | . as $target
+        | select((.value.natIntent.families.ipv6 // false) == true)
+        | select(
+            any($runtimeUla[]; . as $prefix | (($target.value.natIntent.masqueradeSourcePrefixes6 // []) | index($prefix)) == null)
+          )
+        | {
+            target: .key,
+            missing: ($runtimeUla - (.value.natIntent.masqueradeSourcePrefixes6 // [])),
+            actual: (.value.natIntent.masqueradeSourcePrefixes6 // [])
+          }
+      ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
 nix eval --impure --raw --expr "
   let
     common = import ${repo_root}/src/cpm/firewall-intent/rules/common.nix {};
