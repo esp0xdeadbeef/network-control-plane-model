@@ -116,6 +116,7 @@ rec {
         hasDefaultRoute iface
         || sourcePrefixesForInterface runtimeOriginSourcePrefixes iface != [ ]
         || hasAnyRuntimeOriginRoute runtimeOriginSourcePrefixes iface
+        || sourcePrefixesWithRouteVia runtimeOriginSourcePrefixes iface != [ ]
       ) interfaces;
       sourceScopeFor =
         iface:
