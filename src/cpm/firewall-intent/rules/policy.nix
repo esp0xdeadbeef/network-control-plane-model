@@ -48,4 +48,9 @@ let
     );
 in
 builtins.concatLists (map relationRules (listOrEmpty relations))
-++ common.runtimeOriginDefaultForwardRules runtimeOriginSourcePrefixes transitInterfaces
+++ common.runtimeOriginDefaultForwardRulesWith {
+  inherit runtimeOriginSourcePrefixes;
+  interfaces = transitInterfaces;
+  isIngressIface = iface: common.laneKind iface == "access";
+  isDefaultIface = iface: common.laneKind iface == "access-uplink";
+}

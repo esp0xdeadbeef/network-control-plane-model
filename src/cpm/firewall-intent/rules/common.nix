@@ -107,16 +107,24 @@ rec {
     runtimeOriginSourcePrefixes: iface:
     sourcePrefixesReachableVia runtimeOriginSourcePrefixes iface != [ ];
 
-  runtimeOriginDefaultForwardRules =
-    runtimeOriginSourcePrefixes: interfaces:
+  runtimeOriginDefaultForwardRulesWith =
+    {
+      runtimeOriginSourcePrefixes,
+      interfaces,
+      isIngressIface ? (_: true),
+      isDefaultIface ? (_: true),
+    }:
     let
-      defaultIfaces = builtins.filter hasDefaultRoute interfaces;
+      defaultIfaces = builtins.filter (iface: isDefaultIface iface && hasDefaultRoute iface) interfaces;
       ingressIfaces = builtins.filter (
         iface:
+        isIngressIface iface
+        && (
         hasDefaultRoute iface
         || sourcePrefixesForInterface runtimeOriginSourcePrefixes iface != [ ]
         || hasAnyRuntimeOriginRoute runtimeOriginSourcePrefixes iface
         || sourcePrefixesWithRouteVia runtimeOriginSourcePrefixes iface != [ ]
+        )
       ) interfaces;
       sourceScopeFor =
         iface:
@@ -170,6 +178,10 @@ rec {
           ) (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) defaultIfacesForIngress)
       ) ingressIfaces
     );
+
+  runtimeOriginDefaultForwardRules =
+    runtimeOriginSourcePrefixes: interfaces:
+    runtimeOriginDefaultForwardRulesWith { inherit runtimeOriginSourcePrefixes interfaces; };
 
   withSourcePrefixes =
     rule: sourcePrefixes:
