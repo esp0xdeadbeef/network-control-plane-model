@@ -104,6 +104,13 @@ let
     && builtins.elem (route.dst or null) runtimeOriginPrefixes
     && (route.policyOnly or false) != true;
 
+  isRuntimeOriginSourcePolicyComplementOnPolicyUplink =
+    targetRole: runtimeOriginPrefixes: iface: route:
+    targetRole == "policy"
+    && laneKind iface == "access-uplink"
+    && builtins.elem (route.dst or null) runtimeOriginPrefixes
+    && (route.reason or null) == "policy-table-internal-reachability";
+
   runtimeOriginReturnPrefixesForInterface =
     target: iface:
     let
@@ -216,8 +223,14 @@ let
           ipv6 = listOrEmpty (routes.ipv6 or null);
           base4 = ipv4 ++ runtimeOriginReturnRoutes 4 target iface ipv4;
           base6 = ipv6 ++ runtimeOriginReturnRoutes 6 target iface ipv6;
-          augmented4 = base4 ++ policyTableComplements 4 policyDefaults4 base4;
-          augmented6 = base6 ++ policyTableComplements 6 policyDefaults6 base6;
+          dropWrongRuntimeOriginComplement =
+            isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
+          augmented4 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
+            base4 ++ policyTableComplements 4 policyDefaults4 base4
+          );
+          augmented6 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
+            base6 ++ policyTableComplements 6 policyDefaults6 base6
+          );
         in
         iface
         // {
