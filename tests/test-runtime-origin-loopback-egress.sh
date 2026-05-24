@@ -753,4 +753,89 @@ jq -e '
   exit 1
 }
 
+jq -e '
+  def route_list($iface; $family):
+    if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
+  def lane_access($iface):
+    $iface.backingRef.lane.access // null;
+  def has_return_route($iface; $prefix):
+    any(route_list($iface; $prefix.family)[]?;
+      (.dst // "") == ($prefix.prefix // "")
+      and (.policyOnly // false) != true
+      and (.reason // "") != "policy-table-internal-reachability"
+      and (.["via" + (if $prefix.family == 4 then "4" else "6" end)] // null) != null
+    );
+  [
+    .control_plane_model.data
+    | to_entries[].value
+    | to_entries[].value
+    | (.runtimeTargets // {})
+    | to_entries[]
+    | select((.value.role // "") == "policy")
+    | .value as $target
+    | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+    | ($target.forwardingIntent.rules // [])[]
+    | select((.relationId // "") == "runtime-origin-egress")
+    | . as $rule
+    | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
+    | select(($fromIface.backingRef.lane.kind // "") == "access")
+    | ($rule.sourcePrefixes // [])[] as $prefix
+    | select(
+        (lane_access($fromIface) != null)
+        and any(($prefix.origin.accesses // [])[]?; . == lane_access($fromIface))
+      )
+    | select(has_return_route($fromIface; $prefix) | not)
+    | {
+        target: ($target.name // "<unknown>"),
+        from: ($rule.fromInterface // ""),
+        missingReturnRoute: ($prefix.prefix // ""),
+        originAccesses: ($prefix.origin.accesses // [])
+      }
+  ] as $missing
+  | ($missing | length) == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL runtime-origin-loopback-egress: policy access ingress lanes that forward runtime-origin sources must also carry a non-policy return route to those source prefixes" >&2
+  jq '
+    def route_list($iface; $family):
+      if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
+    def lane_access($iface):
+      $iface.backingRef.lane.access // null;
+    def has_return_route($iface; $prefix):
+      any(route_list($iface; $prefix.family)[]?;
+        (.dst // "") == ($prefix.prefix // "")
+        and (.policyOnly // false) != true
+        and (.reason // "") != "policy-table-internal-reachability"
+        and (.["via" + (if $prefix.family == 4 then "4" else "6" end)] // null) != null
+      );
+    [
+      .control_plane_model.data
+      | to_entries[].value
+      | to_entries[].value
+      | (.runtimeTargets // {})
+      | to_entries[]
+      | select((.value.role // "") == "policy")
+      | .value as $target
+      | ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces
+      | ($target.forwardingIntent.rules // [])[]
+      | select((.relationId // "") == "runtime-origin-egress")
+      | . as $rule
+      | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
+      | select(($fromIface.backingRef.lane.kind // "") == "access")
+      | ($rule.sourcePrefixes // [])[] as $prefix
+      | select(
+          (lane_access($fromIface) != null)
+          and any(($prefix.origin.accesses // [])[]?; . == lane_access($fromIface))
+        )
+      | select(has_return_route($fromIface; $prefix) | not)
+      | {
+          target: ($target.name // "<unknown>"),
+          from: ($rule.fromInterface // ""),
+          missingReturnRoute: ($prefix.prefix // ""),
+          originAccesses: ($prefix.origin.accesses // [])
+        }
+    ]
+  ' "${output_json}" >&2
+  exit 1
+}
+
 echo "PASS runtime-origin-loopback-egress"
