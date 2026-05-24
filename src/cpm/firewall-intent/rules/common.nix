@@ -39,10 +39,12 @@ rec {
     prefixes:
     builtins.attrValues (
       builtins.listToAttrs (
-        map (prefix: {
-          name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
-          value = prefix;
-        }) prefixes
+        map
+          (prefix: {
+            name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
+            value = prefix;
+          })
+          prefixes
       )
     );
 
@@ -98,86 +100,30 @@ rec {
 
   hasDefaultRoute =
     iface:
-    builtins.any (
-      route:
-      builtins.isAttrs route && ((route.dst or null) == "0.0.0.0/0" || (route.dst or null) == "::/0")
-    ) (routeList iface);
+    builtins.any
+      (
+        route:
+        builtins.isAttrs route && ((route.dst or null) == "0.0.0.0/0" || (route.dst or null) == "::/0")
+      )
+      (routeList iface);
 
   hasAnyRuntimeOriginRoute =
     runtimeOriginSourcePrefixes: iface:
     sourcePrefixesReachableVia runtimeOriginSourcePrefixes iface != [ ];
 
-  runtimeOriginDefaultForwardRulesWith =
-    {
-      runtimeOriginSourcePrefixes,
-      interfaces,
-      isIngressIface ? (_: true),
-      isDefaultIface ? (_: true),
-    }:
-    let
-      defaultIfaces = builtins.filter (iface: isDefaultIface iface && hasDefaultRoute iface) interfaces;
-      ingressIfaces = builtins.filter (
-        iface:
-        isIngressIface iface
-        && (
-        hasDefaultRoute iface
-        || sourcePrefixesForInterface runtimeOriginSourcePrefixes iface != [ ]
-        || hasAnyRuntimeOriginRoute runtimeOriginSourcePrefixes iface
-        || sourcePrefixesWithRouteVia runtimeOriginSourcePrefixes iface != [ ]
-        )
-      ) interfaces;
-      sourceScopeFor =
-        iface:
-        let
-          laneScope = sourcePrefixesForInterface runtimeOriginSourcePrefixes iface;
-          localScope = sourcePrefixesReachableVia laneScope iface;
-          routedPeerScope = sourcePrefixesWithRouteVia runtimeOriginSourcePrefixes iface;
-          combinedScope = uniqueSourcePrefixes (laneScope ++ routedPeerScope);
-        in
-        if localScope != [ ] then localScope else combinedScope;
-    in
-    builtins.concatLists (
-      map (
-        fromIface:
-        let
-          sourcePrefixes = sourceScopeFor fromIface;
-          fromAccess = laneAccess fromIface;
-          defaultIfacesForIngress =
-            let
-              sameAccessDefaults = builtins.filter (
-                toIface: fromAccess != null && laneAccess toIface == fromAccess
-              ) defaultIfaces;
-            in
-            if sameAccessDefaults != [ ] then sameAccessDefaults else defaultIfaces;
-        in
-        if sourcePrefixes == [ ] then
-          [ ]
-        else
-          builtins.concatMap (
-            toIface:
-            let
-              egressPrefixes = sourcePrefixesAllowedToInterface sourcePrefixes toIface;
-            in
-            if egressPrefixes == [ ] then
-              [ ]
-            else
-              [
-                (withSourcePrefixes {
-                  action = "accept";
-                  relationId = "runtime-origin-egress";
-                  intent = {
-                    kind = "runtime-origin-egress";
-                    source = "loopback-runtime-identity";
-                    stage = "selector-default-egress";
-                  };
-                  fromInterface = fromIface.runtimeIfName;
-                  toInterface = toIface.runtimeIfName;
-                  applyTcpMssClamp = false;
-                } egressPrefixes)
-              ]
-          ) (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) defaultIfacesForIngress)
-      ) ingressIfaces
-    );
+  runtimeOriginDefaultForwardRulesWith = import ./runtime-origin-default.nix {
+    inherit
+      laneAccess
+      sourcePrefixesForInterface
+      sourcePrefixesReachableVia
+      sourcePrefixesWithRouteVia
+      hasDefaultRoute
+      hasAnyRuntimeOriginRoute
+      sourcePrefixesAllowedToInterface
+      uniqueSourcePrefixes
+      withSourcePrefixes
+      ;
+  };
 
   runtimeOriginDefaultForwardRules =
     runtimeOriginSourcePrefixes: interfaces:
@@ -214,17 +160,21 @@ rec {
   ];
 
   selectorPairRuleWithRuntimeOriginScope = runtimeOriginSourcePrefixes: fromIface: toIface: [
-    (withSourcePrefixes {
-      action = "accept";
-      fromInterface = fromIface.runtimeIfName;
-      toInterface = toIface.runtimeIfName;
-      applyTcpMssClamp = true;
-    } (sourcePrefixesReachableVia runtimeOriginSourcePrefixes fromIface))
-    (withSourcePrefixes {
-      action = "accept";
-      fromInterface = toIface.runtimeIfName;
-      toInterface = fromIface.runtimeIfName;
-      applyTcpMssClamp = false;
-    } (sourcePrefixesReachableVia runtimeOriginSourcePrefixes toIface))
+    (withSourcePrefixes
+      {
+        action = "accept";
+        fromInterface = fromIface.runtimeIfName;
+        toInterface = toIface.runtimeIfName;
+        applyTcpMssClamp = true;
+      }
+      (sourcePrefixesReachableVia runtimeOriginSourcePrefixes fromIface))
+    (withSourcePrefixes
+      {
+        action = "accept";
+        fromInterface = toIface.runtimeIfName;
+        toInterface = fromIface.runtimeIfName;
+        applyTcpMssClamp = false;
+      }
+      (sourcePrefixesReachableVia runtimeOriginSourcePrefixes toIface))
   ];
 }

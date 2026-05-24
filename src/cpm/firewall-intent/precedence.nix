@@ -59,7 +59,10 @@ let
           trafficType = rule.trafficType or "any";
           relationId = rule.relationId or "<unnamed>";
           priorBroadAccept = state.broadAcceptByPair.${key} or null;
-          isBroadAccept = action == "accept" && trafficType == "any";
+          isBroadAccept =
+            action == "accept"
+            && trafficType == "any"
+            && listOrEmpty (rule.sourcePrefixes or null) == [ ];
           isDeny = action == "deny";
           nextBroadAcceptByPair =
             if isBroadAccept && priorBroadAccept == null then
