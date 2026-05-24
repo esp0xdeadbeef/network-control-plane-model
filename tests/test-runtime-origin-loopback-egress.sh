@@ -865,19 +865,20 @@ jq -e '
     | route_list($iface; $family)[]
     | select(type == "object")
     | . as $route
-    | select(($route.policyOnly // false) != true)
     | select(any($runtimePrefixes[]?; . == ($route.dst // "")))
     | {
         target: ($target.name // "<unknown>"),
         interface: ($iface.runtimeIfName // ""),
-        forbiddenRuntimeOriginMainRoute: ($route.dst // ""),
+        forbiddenRuntimeOriginRoute: ($route.dst // ""),
+        policyOnly: ($route.policyOnly // false),
+        reason: ($route.reason // null),
         via4: ($route.via4 // null),
         via6: ($route.via6 // null)
       }
   ] as $wrong
   | ($wrong | length) == 0
 ' "${output_json}" >/dev/null || {
-  echo "FAIL runtime-origin-loopback-egress: policy access-uplink lanes must not carry non-policy main return routes for runtime-origin source prefixes" >&2
+  echo "FAIL runtime-origin-loopback-egress: policy access-uplink lanes must not carry return routes for runtime-origin source prefixes" >&2
   jq '
     def route_list($iface; $family):
       if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
@@ -905,12 +906,13 @@ jq -e '
       | route_list($iface; $family)[]
       | select(type == "object")
       | . as $route
-      | select(($route.policyOnly // false) != true)
       | select(any($runtimePrefixes[]?; . == ($route.dst // "")))
       | {
           target: ($target.name // "<unknown>"),
           interface: ($iface.runtimeIfName // ""),
-          forbiddenRuntimeOriginMainRoute: ($route.dst // ""),
+          forbiddenRuntimeOriginRoute: ($route.dst // ""),
+          policyOnly: ($route.policyOnly // false),
+          reason: ($route.reason // null),
           via4: ($route.via4 // null),
           via6: ($route.via6 // null)
         }
