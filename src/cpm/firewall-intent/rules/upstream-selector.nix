@@ -109,27 +109,28 @@ let
         [ ]
       else
         let
-          policySourcePrefixes = common.sourcePrefixesAllowedToInterface
-            (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface)
-            coreIface;
+          policySourcePrefixes = common.sourcePrefixesAllowedToInterface (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface) coreIface;
         in
-        (if policySourcePrefixes == [ ] then
-          [ ]
-        else
-          [
-            (common.withSourcePrefixes {
-              action = "accept";
-              relationId = "runtime-origin-egress";
-              intent = {
-                kind = "runtime-origin-egress";
-                source = "loopback-runtime-identity";
-                stage = "upstream-selector-policy-core-egress";
-              };
-              fromInterface = policyIface.runtimeIfName;
-              toInterface = coreIface.runtimeIfName;
-              applyTcpMssClamp = true;
-            } policySourcePrefixes)
-          ])
+        common.selectorPairRule policyIface coreIface
+        ++ (
+          if policySourcePrefixes == [ ] then
+            [ ]
+          else
+            [
+              (common.withSourcePrefixes {
+                action = "accept";
+                relationId = "runtime-origin-egress";
+                intent = {
+                  kind = "runtime-origin-egress";
+                  source = "loopback-runtime-identity";
+                  stage = "upstream-selector-policy-core-egress";
+                };
+                fromInterface = policyIface.runtimeIfName;
+                toInterface = coreIface.runtimeIfName;
+                applyTcpMssClamp = true;
+              } policySourcePrefixes)
+            ]
+        )
         ++ [
           (common.withSourcePrefixes {
             action = "accept";

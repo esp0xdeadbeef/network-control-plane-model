@@ -96,9 +96,13 @@ nix eval --impure "${nix_args[@]}" --json --expr '
           in (iface.sourceKind or null) == "p2p" && (lane.access or null) != null && (lane.uplink or null) != null)
         (builtins.attrValues interfaces);
 
-    ruleExists = from: to:
+    unscopedRuleExists = from: to:
       builtins.any
-        (rule: (rule.fromInterface or null) == from && (rule.toInterface or null) == to)
+        (rule:
+          (rule.fromInterface or null) == from
+          && (rule.toInterface or null) == to
+          && ((rule.sourcePrefixes or [ ]) == [ ])
+          && ((rule.sourceFiles or [ ]) == [ ]))
         rules;
 
     matchingCoreForPolicy = policyIface:
@@ -112,15 +116,15 @@ nix eval --impure "${nix_args[@]}" --json --expr '
       let coreIface = matchingCoreForPolicy policyIface;
       in
       coreIface != null
-      && ruleExists policyIface.runtimeIfName coreIface.runtimeIfName
-      && ruleExists coreIface.runtimeIfName policyIface.runtimeIfName;
+      && unscopedRuleExists policyIface.runtimeIfName coreIface.runtimeIfName
+      && unscopedRuleExists coreIface.runtimeIfName policyIface.runtimeIfName;
 
     ok = policyInterfaces != [ ] && builtins.all policyPairOk policyInterfaces;
   in
     if ok then
       true
     else
-      throw "selector-forwarding-opaque-runtime-names failed: upstream-selector forwarding rules must pair policy-side access/uplink lanes to core-side uplink lanes after runtime interface names are made opaque. Fix CPM to consume backingRef.lane/backingRef.uplinks, not runtimeIfName/sourceInterfaceName fragments."
+      throw "selector-forwarding-opaque-runtime-names failed: upstream-selector forwarding rules must pair policy-side access/uplink lanes to core-side uplink lanes with unscoped forwarding rules after runtime interface names are made opaque. Source-scoped runtime-origin rules are not enough for normal tenant egress. Fix CPM to consume backingRef.lane/backingRef.uplinks, not runtimeIfName/sourceInterfaceName fragments."
 ' >"${output_json}"
 
 echo "PASS selector-forwarding-opaque-runtime-names"
