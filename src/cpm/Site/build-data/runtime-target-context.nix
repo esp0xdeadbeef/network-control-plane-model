@@ -15,6 +15,7 @@
 , uplinkRouting
 , overlayProvisioning
 , overlayNames
+, siteIpv6Cfg
 , siteTenantsCfg
 , routedPrefixesByTenant
 , policyDerivedDnsAllowFromForListeners
@@ -40,7 +41,7 @@ let
   };
 
   buildExplicitInterfaceEntry = import ../../Unit/runtime-targets/interfaces/explicit.nix {
-    inherit helpers common sitePath overlayProvisioning uplinkRouting;
+    inherit helpers common sitePath overlayProvisioning uplinkRouting siteIpv6Cfg siteTenantsCfg;
     inherit (backingRefResolver) resolveBackingRef;
     inherit (hostUplinkValidator) requireExplicitHostUplinkAddressing;
   };

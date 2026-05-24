@@ -3,6 +3,8 @@
 , sitePath
 , overlayProvisioning
 , uplinkRouting
+, siteIpv6Cfg
+, siteTenantsCfg
 , resolveBackingRef
 , requireExplicitHostUplinkAddressing
 ,
@@ -66,6 +68,44 @@ let
     if sourceKind == "overlay" && isNonEmptyString overlayAddr6 then overlayAddr6
     else if portBinding != null && isNonEmptyString (portBinding.interfaceAddr6 or null) then portBinding.interfaceAddr6
     else ifaceAttrs.addr6 or null;
+  tenantName = if sourceKind == "tenant" then requireString "${ifacePath}.tenant" (ifaceAttrs.tenant or null) else null;
+  tenantCfg = if tenantName != null then attrsOrEmpty (siteTenantsCfg.${tenantName} or null) else { };
+  modelTenantIpv6Cfg =
+    if tenantName != null then
+      attrsOrEmpty ((attrsOrEmpty (siteIpv6Cfg.tenants or null)).${tenantName} or null)
+    else
+      { };
+  tenantIpv6Cfg = modelTenantIpv6Cfg // attrsOrEmpty (tenantCfg.ipv6 or null);
+  tenantIpv6Mode =
+    if builtins.isString (tenantIpv6Cfg.mode or null) && (tenantIpv6Cfg.mode or "") != "" then
+      tenantIpv6Cfg.mode
+    else if (siteIpv6Cfg.pd or null) == null then
+      "slaac"
+    else
+      "none";
+  dynamicAddressing =
+    if
+      sourceKind == "tenant"
+      && ((ifaceAttrs.logical or false) == true)
+      && !isNonEmptyString effectiveAddr4
+      && !isNonEmptyString effectiveAddr6
+    then
+      {
+        ipv4 = {
+          enable = true;
+          method = "dhcp";
+          dhcp = true;
+        };
+        ipv6 = {
+          enable = tenantIpv6Mode == "slaac";
+          method = if tenantIpv6Mode == "slaac" then "slaac" else "none";
+          acceptRA = tenantIpv6Mode == "slaac";
+          dhcp = false;
+          dhcpv6PD = false;
+        };
+      }
+    else
+      null;
 
   resolvedHostUplink = if portBinding != null && builtins.isAttrs (portBinding.hostUplink or null) then portBinding.hostUplink else null;
   validatedHostUplink =
@@ -110,8 +150,9 @@ let
     // (if portBinding != null && builtins.isAttrs (portBinding.attach or null) then { attach = portBinding.attach; } else { })
     // (if sourceKind == "wan" then { upstream = requireString "${ifacePath}.upstream" (ifaceAttrs.upstream or null); } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (ifaceAttrs.wan or null) then { wan = ifaceAttrs.wan; } else { })
-    // (if sourceKind == "tenant" then { tenant = requireString "${ifacePath}.tenant" (ifaceAttrs.tenant or null); } else { })
+    // (if sourceKind == "tenant" then { tenant = tenantName; } else { })
     // (if sourceKind == "tenant" && ((ifaceAttrs.logical or false) == true) then { logical = true; } else { })
+    // (if dynamicAddressing != null then { inherit dynamicAddressing; } else { })
     // (if sourceKind == "wan" && validatedHostUplink != null then { hostUplink = validatedHostUplink; } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (validatedHostUplink.ipv4 or null) then { ipv4 = validatedHostUplink.ipv4; } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (validatedHostUplink.ipv6 or null) then { ipv6 = validatedHostUplink.ipv6; } else { });
