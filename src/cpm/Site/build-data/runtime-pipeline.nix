@@ -62,6 +62,7 @@ let
       uplinkRouting
       overlayProvisioning
       overlayNames
+      siteIpv6Cfg
       siteTenantsCfg
       routedPrefixesByTenant
       policyDerivedDnsAllowFromForListeners
