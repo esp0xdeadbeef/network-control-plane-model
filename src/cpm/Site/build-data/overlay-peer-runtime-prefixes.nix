@@ -61,11 +61,43 @@ let
           [ ])
         routedPrefixes)
       peerTenants;
+
+  tenantPrefixesForPeerSite =
+    peerSite:
+    let
+      peerEntry = resolvePeerSiteEntry peerSite;
+      peerDomains = if peerEntry == null then { } else attrsOrEmpty (peerEntry.site.domains or null);
+      peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
+      prefixFor =
+        family: tenantName: value:
+        if isNonEmptyString value then
+          [
+            {
+              inherit family tenantName;
+              dst = value;
+            }
+          ]
+        else
+          [ ];
+    in
+    lib.concatMap
+      (tenant:
+      let
+        tenantAttrs = attrsOrEmpty tenant;
+        tenantName = tenantAttrs.name or null;
+      in
+      prefixFor 4 tenantName (tenantAttrs.ipv4 or null)
+      ++ prefixFor 6 tenantName (tenantAttrs.ipv6 or null))
+      peerTenants;
 in
 {
   overlayPeerRuntimeRoutedPrefixes =
     peerSites:
     lib.unique (lib.concatMap runtimeRoutedPrefixesForPeerSite peerSites);
+
+  overlayPeerTenantPrefixes =
+    peerSites:
+    lib.unique (lib.concatMap tenantPrefixesForPeerSite peerSites);
 
   overlayNodePrefixesFor =
     overlayName:

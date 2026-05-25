@@ -8,6 +8,7 @@
   p2pPeerAddress,
   defaultViaRoutes,
   overlayNodeRoutesVia,
+  overlayPeerTenantRoutes,
   overlayRuntimeRoutedPrefixRoutes,
   overlayRuntimeRoutedPrefixRoutesVia,
   delegatedOverlayDefaultRoutes,
@@ -147,15 +148,20 @@ let
           overlayName = ((iface.backingRef or { }).name or null);
           routes = attrsOrEmpty (iface.routes or null);
           extraRoutes = {
-            ipv4 = [ ];
+            ipv4 =
+              if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
+                builtins.filter (route: (route.family or null) == 4) (overlayPeerTenantRoutes overlayName)
+              else
+                [ ];
             ipv6 =
               if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
-                overlayRuntimeRoutedPrefixRoutes overlayName
+                (builtins.filter (route: (route.family or null) == 6) (overlayPeerTenantRoutes overlayName))
+                ++ overlayRuntimeRoutedPrefixRoutes overlayName
               else
                 [ ];
           };
         in
-        if (iface.sourceKind or null) != "overlay" || extraRoutes.ipv6 == [ ] then
+        if (iface.sourceKind or null) != "overlay" || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then
           iface
         else
           iface // { routes = mergeRoutes routes extraRoutes; }

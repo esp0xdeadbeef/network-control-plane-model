@@ -10,6 +10,21 @@ let
   inherit (common) listOrEmpty;
 in
 {
+  overlayPeerTenantRoutes =
+    overlayName:
+    builtins.map
+      (prefix: {
+        family = prefix.family;
+        dst = prefix.dst;
+        proto = "overlay";
+        tenant = prefix.tenantName or null;
+        intent = {
+          kind = "overlay-reachability";
+          source = "peer-tenant-prefix";
+        };
+      })
+      (listOrEmpty (overlayProvisioning.${overlayName}.peerTenantPrefixes or null));
+
   overlayRuntimeRoutedPrefixRoutesVia =
     overlayNamesForInterface: via:
     let

@@ -51,6 +51,7 @@ let
     defaultReachabilityVia
     overlayEndpointRoutesVia
     overlayNodeRoutesVia
+    overlayPeerTenantRoutes
     overlayRuntimeRoutedPrefixRoutes
     overlayRuntimeRoutedPrefixRoutesVia
     underlayEndpointRoutes
@@ -83,6 +84,7 @@ let
       p2pPeerAddress
       defaultViaRoutes
       overlayNodeRoutesVia
+      overlayPeerTenantRoutes
       overlayRuntimeRoutedPrefixRoutes
       overlayRuntimeRoutedPrefixRoutesVia
       delegatedOverlayDefaultRoutes
