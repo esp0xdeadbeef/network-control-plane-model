@@ -12,6 +12,7 @@ let
   inherit (helpers) isNonEmptyString;
   common = import ../lib/common.nix { inherit helpers; };
   inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
+  overlayNodeCidrs = import ./overlay-node-cidrs.nix { inherit lib helpers cpmData; };
 
   targetTenantNames =
     target:
@@ -148,13 +149,15 @@ let
       allowedTenants = tenantsAllowedToOverlay consumerEntry.enterpriseName consumerEntry.siteName overlayName;
       consumerTenants = targetTenantNames consumerEntry.target;
       consumerDns = attrsOrEmpty ((attrsOrEmpty (consumerEntry.target.services or null)).dns or null);
+      consumerUnderlayCidrs =
+        if builtins.isList (consumerDns.allowFrom or null) then consumerDns.allowFrom else interfaceCidrsForTarget consumerEntry.target;
     in
     if
       consumerEntry.enterpriseName == providerEntry.enterpriseName
       && entryKey consumerEntry != entryKey providerEntry
       && lib.any (tenantName: builtins.elem tenantName allowedTenants) consumerTenants
     then
-      if builtins.isList (consumerDns.allowFrom or null) then consumerDns.allowFrom else interfaceCidrsForTarget consumerEntry.target
+      uniqueStrings (consumerUnderlayCidrs ++ overlayNodeCidrs.forTarget overlayName consumerEntry)
     else
       [ ];
 in
@@ -163,7 +166,8 @@ uniqueStrings (
   builtins.concatLists (
     builtins.map
       (overlayService:
-      builtins.concatLists (
+      overlayNodeCidrs.forEnterprise providerEntry.enterpriseName overlayService.overlayName
+      ++ builtins.concatLists (
         builtins.map (allowFromForConsumer providerEntry overlayService.overlayName) runtimeTargetEntries
       ))
       (overlayIngressServicesForProvider providerEntry providerListeners)
