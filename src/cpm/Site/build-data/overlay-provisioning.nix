@@ -31,7 +31,7 @@ let
   publicExitPeer = import ./overlay-public-exit-peer.nix {
     inherit lib helpers common allSiteEntries;
   };
-  inherit (peerRuntimePrefixes) overlayNodePrefixesFor overlayPeerRuntimeRoutedPrefixes;
+  inherit (peerRuntimePrefixes) overlayNodePrefixesFor overlayPeerRuntimeRoutedPrefixes overlayPeerTenantPrefixes;
 
   overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
   forwardingOverlayPools = attrsOrEmpty (siteAttrs.overlayAddressPools or null);
@@ -113,6 +113,7 @@ let
                 terminateOn = terminateOn;
                 nodes = overlayNodeAddrs;
                 nodeRoutePrefixes = overlayNodePrefixes;
+                peerTenantPrefixes = overlayPeerTenantPrefixes peerSites;
                 peerRuntimeRoutedPrefixes = overlayPeerRuntimeRoutedPrefixes peerSites;
               }
               // (

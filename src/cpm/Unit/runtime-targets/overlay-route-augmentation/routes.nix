@@ -146,6 +146,7 @@ in
   inherit (prefixRoutes)
     delegatedOverlayDefaultsVia
     delegatedOverlayExitDefaultsVia
+    overlayPeerTenantRoutes
     overlayRuntimeRoutedPrefixRoutes
     overlayRuntimeRoutedPrefixRoutesVia
     ;

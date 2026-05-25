@@ -56,10 +56,16 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       (((upstreamInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
     siteCUpstreamRoutes6For = ifName:
       (((siteCUpstreamInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
+    siteCUpstreamRoutes4For = ifName:
+      (((siteCUpstreamInterfaces.${ifName} or { }).routes or { }).ipv4 or [ ]);
     siteCCoreRoutes6For = ifName:
       (((siteCCoreInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
+    siteCCoreRoutes4For = ifName:
+      (((siteCCoreInterfaces.${ifName} or { }).routes or { }).ipv4 or [ ]);
     siteCCoreNebulaRoutes6For = ifName:
       (((siteCCoreNebulaInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
+    siteCCoreNebulaRoutes4For = ifName:
+      (((siteCCoreNebulaInterfaces.${ifName} or { }).routes or { }).ipv4 or [ ]);
     policyRoutes6For = ifName:
       (((policyInterfaces.${ifName} or { }).routes or { }).ipv6 or [ ]);
 
@@ -153,6 +159,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return")
         (siteCUpstreamRoutes6For "p2p-c-router-nebula-core-c-router-upstream-selector");
 
+    siteCUpstreamReturnsHostileTenantV4ToCoreNebula =
+      builtins.any
+        (route:
+          (route.dst or null) == "10.70.10.0/24"
+          && (route.via4 or null) == "10.80.0.10"
+          && ((route.intent or { }).kind or null) == "overlay-reachability")
+        (siteCUpstreamRoutes4For "p2p-c-router-nebula-core-c-router-upstream-selector");
+
     siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy =
       !(builtins.any
         (route:
@@ -177,6 +191,15 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return")
         (siteCCoreNebulaRoutes6For "overlay-east-west");
 
+    siteCCoreNebulaReturnsHostileTenantV4OverOverlay =
+      builtins.any
+        (route:
+          (route.dst or null) == "10.70.10.0/24"
+          && (route.proto or null) == "overlay"
+          && !(route ? via4)
+          && ((route.intent or { }).kind or null) == "overlay-reachability")
+        (siteCCoreNebulaRoutes4For "overlay-east-west");
+
     siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream =
       !(builtins.any
         (route:
@@ -191,6 +214,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && (route.via6 or null) == "fd42:dead:cafe:1000:0:0:0:5"
           && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return")
         (siteCCoreRoutes6For "p2p-c-router-core-c-router-upstream-selector");
+
+    siteCCoreReturnsHostileTenantV4ToUpstream =
+      builtins.any
+        (route:
+          (route.dst or null) == "10.70.10.0/24"
+          && (route.via4 or null) == "10.80.0.5"
+          && ((route.intent or { }).kind or null) == "overlay-reachability")
+        (siteCCoreRoutes4For "p2p-c-router-core-c-router-upstream-selector");
 
     siteCOverlayIngressFirewallToPolicy =
       builtins.any
@@ -210,6 +241,16 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((rule.intent or { }).kind or null) == "runtime-routed-prefix-public-egress")
         (siteCUpstream.forwardingIntent.rules or [ ]);
 
+    siteCOverlayIngressFirewallScopedToHostileTenantV4 =
+      builtins.any
+        (rule:
+          (rule.fromInterface or null) == "core-nebula"
+          && (rule.toInterface or null) == "pol-client-ew"
+          && (rule.action or null) == "accept"
+          && builtins.any (prefix: (prefix.prefix or null) == "10.70.10.0/24") (rule.sourcePrefixes or [ ])
+          && ((rule.intent or { }).kind or null) == "runtime-routed-prefix-public-egress")
+        (siteCUpstream.forwardingIntent.rules or [ ]);
+
     siteCOverlayIngressFirewallNotScopedToDmz =
       !builtins.any
         (rule:
@@ -219,8 +260,12 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((rule.intent or { }).kind or null) == "runtime-routed-prefix-public-egress")
         (siteCUpstream.forwardingIntent.rules or [ ]);
   in
-    if delegatedOverlayDefault && delegatedOverlayDefault4 && upstreamHostileDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToPolicy && siteCUpstreamReturnsHostilePrefixToCoreNebula && siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCCoreNebulaReturnsHostilePrefixOverOverlay && siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream && siteCCoreReturnsHostilePrefixToUpstream && siteCOverlayIngressFirewallToPolicy && siteCOverlayIngressFirewallScopedToHostilePrefix && siteCOverlayIngressFirewallNotScopedToDmz then
+    if delegatedOverlayDefault && delegatedOverlayDefault4 && upstreamHostileDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToPolicy && siteCUpstreamReturnsHostilePrefixToCoreNebula && siteCUpstreamReturnsHostileTenantV4ToCoreNebula && siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCCoreNebulaReturnsHostilePrefixOverOverlay && siteCCoreNebulaReturnsHostileTenantV4OverOverlay && siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream && siteCCoreReturnsHostilePrefixToUpstream && siteCCoreReturnsHostileTenantV4ToUpstream && siteCOverlayIngressFirewallToPolicy && siteCOverlayIngressFirewallScopedToHostilePrefix && siteCOverlayIngressFirewallScopedToHostileTenantV4 && siteCOverlayIngressFirewallNotScopedToDmz then
       true
+    else if !siteCUpstreamReturnsHostileTenantV4ToCoreNebula || !siteCCoreNebulaReturnsHostileTenantV4OverOverlay || !siteCCoreReturnsHostileTenantV4ToUpstream then
+      throw "delegated-overlay-public-egress failed: site-c must return branch hostile tenant IPv4 10.70.10.0/24 through core-nebula and overlay-east-west. Live symptom: hostile IPv4 public egress replies reached the overlay exit, then died until 10.20.70.0/24 return routes were hotpatched on Hetzner upstream/downstream/Nebula-core and local core-nebula."
+    else if !siteCOverlayIngressFirewallScopedToHostileTenantV4 then
+      throw "delegated-overlay-public-egress failed: site-c upstream selector must source-scope IPv4 hostile tenant public egress from core-nebula to pol-client-ew, not rely on an unscoped overlay cross-connect."
     else if !delegatedOverlayDefault4 then
       throw "delegated-overlay-public-egress failed: b-router-core-nebula overlay-east-west must carry a policyOnly delegated-public-egress 0.0.0.0/0 for hostile IPv4 exit. Live symptom: b-router-core-nebula needed manual 0.0.0.0/1 and 128.0.0.0/1 Nebula routes after restart."
     else if !siteCUpstreamReturnsHostilePrefixToCoreNebula || !siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy then
