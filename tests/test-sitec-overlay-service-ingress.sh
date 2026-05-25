@@ -33,6 +33,8 @@ let
 in
   builtins.elem "10.90.10.0/24" (dns.allowFrom or [ ])
   && builtins.elem "fd42:dead:cafe:10::/64" (dns.allowFrom or [ ])
+  && builtins.elem "100.96.10.1/32" (dns.allowFrom or [ ])
+  && builtins.elem "fd42:dead:beef:ee::1/128" (dns.allowFrom or [ ])
   && hasRoute6 (upstreamIfs."p2p-c-router-nebula-core-c-router-upstream-selector".routes.ipv6 or [ ]) "::/0" "fd42:dead:cafe:1000:0:0:0:a"
   && hasRoute6 (upstreamIfs."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-east-west".routes.ipv6 or [ ]) "::/0" "fd42:dead:cafe:1000:0:0:0:a"
   && hasRule upstreamRules "allow-east-west-to-sitec-dmz-dns" "core-nebula" "pol-dmz-ew"
