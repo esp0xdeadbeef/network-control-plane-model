@@ -67,6 +67,39 @@ let
       )
     );
 
+  runtimeOriginSourceCidrsForTarget =
+    target:
+    uniqueStrings (
+      builtins.map
+        (source: source.prefix)
+        (
+          builtins.filter
+            (source: isNonEmptyString (source.prefix or null))
+            (listOrEmpty ((attrsOrEmpty (target.runtimeOriginEgress or null)).sourcePrefixes or null))
+        )
+    );
+
+  dnsEgressSourceCidrsForTarget =
+    target:
+    let
+      dns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
+      roles = attrsOrEmpty (dns.roles or null);
+      recursion = attrsOrEmpty (roles.recursion or null);
+      sources =
+        if listOrEmpty (recursion.outgoingInterfaces or null) != [ ] then
+          listOrEmpty (recursion.outgoingInterfaces or null)
+        else
+          listOrEmpty (dns.outgoingInterfaces or null);
+      sourceToCidr = source:
+        if !isNonEmptyString source then
+          null
+        else if builtins.match ".*:.*" source != null then
+          "${source}/128"
+        else
+          "${source}/32";
+    in
+    uniqueStrings (builtins.filter isNonEmptyString (builtins.map sourceToCidr sources));
+
   overlayServiceDnsAllowFrom =
     import ./cross-site-dns/overlay-service-allow-from.nix {
       inherit
@@ -102,7 +135,9 @@ let
                           entryKey consumerEntry != entryKey providerEntry
                           && lib.any (forwarder: builtins.elem forwarder providerListeners) consumerForwarders
                         then
-                          interfaceCidrsForTarget consumerEntry.target
+                          (interfaceCidrsForTarget consumerEntry.target)
+                          ++ (runtimeOriginSourceCidrsForTarget consumerEntry.target)
+                          ++ (dnsEgressSourceCidrsForTarget consumerEntry.target)
                         else
                           [ ])
                       runtimeTargetEntries
