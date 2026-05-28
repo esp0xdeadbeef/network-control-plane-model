@@ -41,7 +41,7 @@ let
   };
 
   buildExplicitInterfaceEntry = import ../../Unit/runtime-targets/interfaces/explicit.nix {
-    inherit helpers common sitePath overlayProvisioning uplinkRouting siteIpv6Cfg siteTenantsCfg;
+    inherit helpers common sitePath overlayProvisioning uplinkRouting siteIpv6Cfg siteTenantsCfg routedPrefixesByTenant;
     inherit (backingRefResolver) resolveBackingRef;
     inherit (hostUplinkValidator) requireExplicitHostUplinkAddressing;
   };
