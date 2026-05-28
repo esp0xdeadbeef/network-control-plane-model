@@ -4,7 +4,6 @@ let
   inherit (endpointContext)
     attrsOrEmpty
     listOrEmpty
-    uniqueStrings
     coreInterfaces
     policyInterfaces
     serviceAccessNodes
@@ -67,16 +66,6 @@ let
       iface: builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wantedUplinks
     ) candidates;
 
-  hasOverlayUnderlayEndpointRoute =
-    overlayName: iface:
-    builtins.any (
-      route:
-      builtins.isAttrs route
-      && (route.overlay or null) == overlayName
-      && (route.proto or null) == "underlay"
-      && ((routeIntent route).kind or null) == "overlay-underlay-reachability"
-    ) (familyRoutes (attrsOrEmpty (iface.routes or null)));
-
   pairRules =
     relation: fromIfaces: toIfaces: extra:
     let
@@ -127,36 +116,16 @@ in
         relation.to or null
       )) { };
 
-  overlayUnderlayTransitRule =
-    relationRaw:
-    let
-      relation = attrsOrEmpty relationRaw;
-      fromExternal = attrsOrEmpty (relation.from or null);
-      toExternal = attrsOrEmpty (relation.to or null);
-      overlayName = fromExternal.name or null;
-      fromIsNamedOverlay =
-        (fromExternal.kind or null) == "external" && fromExternal ? name && !(fromExternal ? uplinks);
-      toIsWanUplink =
-        (toExternal.kind or null) == "external" && builtins.isList (toExternal.uplinks or null);
-      toCores = builtins.filter (
-        iface: overlayName != null && hasOverlayUnderlayEndpointRoute overlayName iface
-      ) (coreInterfacesFor toExternal);
-    in
-    if
-      (relation.action or "allow") != "allow"
-      || (relation.trafficType or "any") == "any"
-      || !fromIsNamedOverlay
-      || !toIsWanUplink
-    then
-      [ ]
-    else
-      pairRules relation (coreInterfacesFor fromExternal) toCores {
-        intent = {
-          kind = "overlay-underlay-reachability";
-          source = "overlay-underlay-endpoint";
-          overlay = overlayName;
-        };
-      };
+  overlayUnderlayTransitRule = import ./upstream-selector-overlay-underlay.nix {
+    inherit
+      common
+      endpointContext
+      familyRoutes
+      routeIntent
+      coreInterfacesFor
+      pairRules
+      ;
+  };
 
   externalServiceTransitRule =
     relationRaw:
