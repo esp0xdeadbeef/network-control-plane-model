@@ -3,6 +3,7 @@
 { tenantPrefixOwners ? { }
 , transitInterfaces
 , uplinkInterfaces
+, dnsServicePublicEgressRules ? [ ]
 ,
 }:
 let
@@ -52,4 +53,4 @@ let
         transitInterfaces
     );
 in
-meshRules ++ exitRules
+meshRules ++ dnsServicePublicEgressRules ++ exitRules
