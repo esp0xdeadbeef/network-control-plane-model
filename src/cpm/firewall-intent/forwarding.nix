@@ -19,22 +19,27 @@ in
   siteRelations,
   target,
   interfaceRecords,
+  tenantPrefixOwners ? { },
   runtimeOriginSourcePrefixes ? [ ],
 }:
 let
   role = target.role or null;
   egressIntent = attrsOrEmpty (target.egressIntent or null);
+  selectedUplinks =
+    listOrEmpty (egressIntent.uplinks or null) ++ listOrEmpty (egressIntent.wanInterfaces or null);
+  backingRefName = iface: ((attrsOrEmpty (iface.backingRef or null)).name or null);
+  selectedUplinkFor =
+    iface:
+    selectedUplinks == [ ]
+    || builtins.elem (iface.upstream or "") selectedUplinks
+    || builtins.elem iface.sourceInterfaceName selectedUplinks
+    || builtins.elem (backingRefName iface) selectedUplinks;
   localInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
   transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p") interfaceRecords;
   uplinkInterfaces = builtins.filter (
     iface:
-    iface.sourceKind == "wan"
-    && (
-      !builtins.isList (egressIntent.uplinks or null)
-      || egressIntent.uplinks == [ ]
-      || builtins.elem (iface.upstream or "") (listOrEmpty (egressIntent.uplinks or null))
-      || builtins.elem iface.sourceInterfaceName (listOrEmpty (egressIntent.wanInterfaces or null))
-    )
+    (iface.sourceKind == "wan" && selectedUplinkFor iface)
+    || (iface.sourceKind == "overlay" && selectedUplinks != [ ] && selectedUplinkFor iface)
   ) interfaceRecords;
 in
 if role == "access" then
@@ -80,7 +85,9 @@ else if role == "core" then
     mode = "explicit-core-forwarding";
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     uplinkInterfaces = map (iface: iface.runtimeIfName) uplinkInterfaces;
-    rules = buildCoreRules transitInterfaces uplinkInterfaces;
+    rules = buildCoreRules {
+      inherit tenantPrefixOwners transitInterfaces uplinkInterfaces;
+    };
   }
 else
   null
