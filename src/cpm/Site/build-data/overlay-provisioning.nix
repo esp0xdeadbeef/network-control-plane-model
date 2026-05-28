@@ -155,6 +155,7 @@ let
                 in
                 if endpoints != [ ] then { underlayEndpoints = endpoints; } else { }
               )
+              // (if builtins.isAttrs (cfg.runtimeNodes or null) then { runtimeNodes = cfg.runtimeNodes; } else { })
               // (if providerName != null && builtins.isAttrs (cfg.${providerName} or null) then { ${providerName} = cfg.${providerName}; } else { });
           })
         overlayNames

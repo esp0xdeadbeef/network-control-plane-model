@@ -24,6 +24,7 @@ tests=(
   test-resolved-inventory-secret-facts-contract.sh
   test-dns-killswitch-policy-matrix.sh
   test-policy-deny-precedence.sh
+  test-provider-overlay-runtime-interface-name.sh
   test-delegated-overlay-public-egress.sh
   test-upstream-selector-nebula-underlay-core-transit.sh
   test-runtime-underlay-endpoint-source-routes.sh
