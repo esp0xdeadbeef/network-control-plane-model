@@ -6,8 +6,9 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 archive_json="$(mktemp)"
 output_json="$(mktemp)"
 violations_json="$(mktemp)"
-lab_inventory=""
-trap 'rm -f "${archive_json}" "${output_json}" "${violations_json}" "${lab_inventory}"' EXIT
+overlay_policy_case="$(mktemp --suffix=.nix)"
+overlay_policy_json="$(mktemp)"
+trap 'rm -f "${archive_json}" "${output_json}" "${violations_json}" "${overlay_policy_case}" "${overlay_policy_json}"' EXIT
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
@@ -93,18 +94,84 @@ EOF
 	  exit 1
 	}
 
-lab_inventory="$(mktemp --suffix=.nix)"
-cat >"${lab_inventory}" <<EOF
-import ${labs_path}/labs/lab-s-sigma/s-router-test-three-site/getResolvedInventory.nix { renderer = "nixos"; }
+cat >"${overlay_policy_case}" <<EOF
+let
+  common = {
+    laneKind = iface: iface.laneKind or null;
+    laneAccess = iface: iface.laneAccess or null;
+    laneUplink = iface: iface.laneUplink or null;
+    uplinks = iface: iface.uplinks or [ ];
+  };
+  endpointContext = import ${repo_root}/src/cpm/firewall-intent/rules/endpoint-context.nix {
+    inherit common;
+  } {
+    services = [ ];
+    endpointBindings = {
+      tenants.client.runtimeBindings = [
+        { logicalNode = "core-nebula"; }
+      ];
+      externals.east-west = {
+        overlays = [ "east-west" ];
+        runtimeBindings = [
+          { logicalNode = "core-nebula"; }
+        ];
+      };
+    };
+    transitInterfaces = [
+      {
+        runtimeIfName = "pol-client-b";
+        laneKind = "access-uplink";
+        laneAccess = "core-nebula";
+        laneUplink = "isp-a";
+        uplinks = [ "isp-a" ];
+      }
+      {
+        runtimeIfName = "core-a";
+        laneKind = "uplink";
+        uplinks = [ "isp-a" ];
+        routes = {
+          ipv4 = [
+            {
+              overlay = "east-west";
+              proto = "underlay";
+              intent.kind = "overlay-underlay-reachability";
+            }
+          ];
+          ipv6 = [ ];
+        };
+      }
+      {
+        runtimeIfName = "core-b";
+        laneKind = "uplink";
+        uplinks = [ "isp-b" ];
+        routes = { ipv4 = [ ]; ipv6 = [ ]; };
+      }
+    ];
+  };
+  relations = import ${repo_root}/src/cpm/firewall-intent/rules/upstream-selector-relations.nix {
+    inherit common endpointContext;
+  };
+in
+relations.overlayUnderlayTransitRule {
+  action = "allow";
+  id = "allow-nebula-underlay-policy-lane";
+  priority = 100;
+  trafficType = "nebula";
+  from = {
+    kind = "external";
+    name = "east-west";
+  };
+  to = {
+    kind = "external";
+    uplinks = [ "isp-a" ];
+  };
+}
 EOF
 
-nix run "${repo_root}#compile-and-build-control-plane-model" -- \
-  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
-  "${lab_inventory}" \
-  "${output_json}" >/dev/null
+nix eval --impure --json --file "${overlay_policy_case}" >"${overlay_policy_json}"
 
 jq -e '
-  .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-upstream".forwardingIntent.rules
+  .
   | [
       .[]
       | select(
@@ -117,8 +184,8 @@ jq -e '
           and (.intent.overlay == "east-west")
         )
     ]
-  | length >= 1
-' "${output_json}" >/dev/null || {
+  | length == 1
+' "${overlay_policy_json}" >/dev/null || {
   cat >&2 <<'EOF'
 FAIL upstream-selector nebula underlay policy-lane transit.
 
@@ -132,7 +199,7 @@ EOF
 }
 
 jq -e '
-  .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-upstream".forwardingIntent.rules
+  .
   | [
       .[]
       | select(
