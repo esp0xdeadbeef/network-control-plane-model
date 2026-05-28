@@ -5,6 +5,7 @@
 , uplinkRouting
 , siteIpv6Cfg
 , siteTenantsCfg
+, routedPrefixesByTenant
 , resolveBackingRef
 , requireExplicitHostUplinkAddressing
 ,
@@ -14,6 +15,7 @@ let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireRoutes requireString;
   inherit (common) attrsOrEmpty failInventory mergeRoutes;
   staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
+  runtimeRoutedPrefixRoutesFor = import ./runtime-routed-prefix-routes.nix { inherit helpers common; };
 
   portBindingForInterface =
     { sourceKind, backingRef, ifName, portBindings }:
@@ -127,6 +129,10 @@ let
     else
       null;
 
+  runtimeRoutedPrefixRoutes = runtimeRoutedPrefixRoutesFor {
+    inherit nodeName tenantName routedPrefixesByTenant;
+  };
+
   resolvedHostUplink = if portBinding != null && builtins.isAttrs (portBinding.hostUplink or null) then portBinding.hostUplink else null;
   validatedHostUplink =
     if realizedTarget && sourceKind == "wan" then
@@ -149,9 +155,9 @@ let
       { ipv4 = [ ]; ipv6 = [ ]; };
   effectiveRoutes =
     if portBinding != null && builtins.isAttrs (portBinding.interfaceRoutes or null) then
-      mergeRoutes (mergeRoutes interfaceRoutes portBinding.interfaceRoutes) uplinkStaticRoutes
+      mergeRoutes (mergeRoutes (mergeRoutes interfaceRoutes portBinding.interfaceRoutes) uplinkStaticRoutes) runtimeRoutedPrefixRoutes
     else
-      mergeRoutes interfaceRoutes uplinkStaticRoutes;
+      mergeRoutes (mergeRoutes interfaceRoutes uplinkStaticRoutes) runtimeRoutedPrefixRoutes;
 
   value =
     {

@@ -53,7 +53,15 @@ let
           else
             failForwarding ifacePath "tenant interface requires explicit site.attachments entry; add { kind = \"tenant\"; name = \"${tenantName}\"; unit = \"${nodeName}\"; } to ${sitePath}.attachments";
       in
-      { kind = "attachment"; id = attachment.id; name = attachment.name; }
+      {
+        kind = "attachment";
+        id = attachment.id;
+        name = attachment.name;
+        lane = {
+          kind = "tenant";
+          access = attachment.unit;
+        };
+      }
     else if kind == "overlay" then
       let
         overlayName = requireString "${ifacePath}.overlay" (iface.overlay or null);
