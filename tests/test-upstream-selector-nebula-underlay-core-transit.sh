@@ -6,7 +6,8 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 archive_json="$(mktemp)"
 output_json="$(mktemp)"
 violations_json="$(mktemp)"
-trap 'rm -f "${archive_json}" "${output_json}" "${violations_json}"' EXIT
+lab_inventory=""
+trap 'rm -f "${archive_json}" "${output_json}" "${violations_json}" "${lab_inventory}"' EXIT
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
@@ -46,7 +47,7 @@ jq -e '
         )
     ]
   | length == 0
-' "${output_json}" >/dev/null || {
+	' "${output_json}" >/dev/null || {
   cat >&2 <<'EOF'
 FAIL upstream-selector nebula underlay core transit.
 
@@ -89,6 +90,60 @@ Nebula underlay endpoint reachability. The rule must carry the Nebula traffic
 type and overlay-underlay endpoint intent so it cannot become a generic WAN
 bypass.
 EOF
+	  exit 1
+	}
+
+lab_inventory="$(mktemp --suffix=.nix)"
+cat >"${lab_inventory}" <<EOF
+import ${labs_path}/labs/lab-s-sigma/s-router-test-three-site/getResolvedInventory.nix { renderer = "nixos"; }
+EOF
+
+nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
+  "${lab_inventory}" \
+  "${output_json}" >/dev/null
+
+jq -e '
+  .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-upstream".forwardingIntent.rules
+  | [
+      .[]
+      | select(
+          (.action == "accept")
+          and (.fromInterface == "pol-client-b")
+          and (.toInterface == "core-a")
+          and ((.trafficType == "nebula") or (.trafficType == "nebula-runtime"))
+          and (.intent.kind == "overlay-underlay-reachability")
+          and (.intent.source == "overlay-underlay-endpoint")
+          and (.intent.overlay == "east-west")
+        )
+    ]
+  | length >= 1
+' "${output_json}" >/dev/null || {
+  cat >&2 <<'EOF'
+FAIL upstream-selector nebula underlay policy-lane transit.
+
+When the overlay core is also a tenant client with DHCP/SLAAC underlay, its
+public Nebula endpoint traffic reaches the upstream selector on that tenant's
+policy lane. CPM must emit a narrow policy-lane -> selected-core Nebula
+underlay rule; the renderer must not infer this firewall allowance from route
+tables.
+EOF
+  exit 1
+}
+
+jq -e '
+  .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-upstream".forwardingIntent.rules
+  | [
+      .[]
+      | select(
+          (.fromInterface == "pol-client-b")
+          and (.toInterface == "core-a")
+          and ((.trafficType // "any") == "any")
+        )
+    ]
+  | length == 0
+' "${output_json}" >/dev/null || {
+  echo "FAIL upstream-selector nebula underlay policy-lane transit: policy lane gained broad core-a egress" >&2
   exit 1
 }
 
