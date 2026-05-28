@@ -27,7 +27,7 @@ tests=(
   test-provider-overlay-runtime-interface-name.sh
   test-delegated-overlay-public-egress.sh
   test-core-overlay-delegated-egress-source-scope.sh
-  test-three-site-hetz-core-dns-service-public-egress-forwarding.sh
+  test-tri-site-edge-core-dns-service-public-egress-forwarding.sh
   test-upstream-selector-nebula-underlay-core-transit.sh
   test-runtime-underlay-endpoint-source-routes.sh
   test-transit-default-routes-are-classified.sh

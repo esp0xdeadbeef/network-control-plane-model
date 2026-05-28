@@ -11,12 +11,10 @@ let
   system = builtins.currentSystem;
   labs = flake.inputs.network-labs.outPath;
   built = flake.lib.${system}.compileAndBuild {
-    input = import (labs + "/labs/lab-s-sigma/s-router-test-three-site/intent.nix");
-    inventory = import (labs + "/labs/lab-s-sigma/s-router-test-three-site/getResolvedInventory.nix") {
-      renderer = "nixos";
-    };
+    input = import (labs + "/examples/tri-site-s-router-overlay-egress/intent.nix");
+    inventory = import (labs + "/examples/tri-site-s-router-overlay-egress/inventory.nix");
   };
-  core = built.control_plane_model.data.esp.hetz.runtimeTargets."esp-hetz-router-core";
+  core = built.control_plane_model.data.esp.edge.runtimeTargets."esp-edge-example-router-core";
   rules = core.forwardingIntent.rules or [ ];
   hasSource = source: rule:
     builtins.any
@@ -40,8 +38,8 @@ in
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
-  echo "PASS three-site-hetz-core-dns-service-public-egress-forwarding"
+  echo "PASS tri-site-edge-core-dns-service-public-egress-forwarding"
 else
-  echo "FAIL three-site-hetz-core-dns-service-public-egress-forwarding" >&2
+  echo "FAIL tri-site-edge-core-dns-service-public-egress-forwarding" >&2
   exit 1
 fi
