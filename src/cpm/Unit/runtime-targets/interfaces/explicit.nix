@@ -37,6 +37,19 @@ let
       nodeOverlay = attrsOrEmpty (overlayNodes.${nodeName} or null);
     in
     if family == 4 then nodeOverlay.addr4 or null else nodeOverlay.addr6 or null;
+
+  overlayRuntimeInterfaceName =
+    { sourceKind, backingRef, nodeName }:
+    let
+      overlay =
+        if sourceKind == "overlay" && hasAttr (backingRef.name or "") overlayProvisioning then
+          attrsOrEmpty (overlayProvisioning.${backingRef.name} or null)
+        else
+          { };
+      runtimeNode = attrsOrEmpty ((attrsOrEmpty (overlay.runtimeNodes or null)).${nodeName} or null);
+      service = attrsOrEmpty (runtimeNode.service or null);
+    in
+    if isNonEmptyString (service.interface or null) then service.interface else null;
 in
 { nodeName, ifName, iface, portBindings, targetHostName, targetId, realizedTarget }:
 let
@@ -57,7 +70,14 @@ let
     else
       true;
 
-  runtimeIfName = if portBinding != null then portBinding.runtimeIfName else sourceIfName;
+  overlayRuntimeIfName = overlayRuntimeInterfaceName { inherit sourceKind backingRef nodeName; };
+  runtimeIfName =
+    if overlayRuntimeIfName != null then
+      overlayRuntimeIfName
+    else if portBinding != null then
+      portBinding.runtimeIfName
+    else
+      sourceIfName;
   overlayAddr4 = overlayAddress { inherit sourceKind backingRef nodeName; family = 4; };
   overlayAddr6 = overlayAddress { inherit sourceKind backingRef nodeName; family = 6; };
   effectiveAddr4 =
