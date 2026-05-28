@@ -57,11 +57,34 @@ let
       ;
   };
 
+  finalizeRuntimeTargets = import ../../ControlModule/runtime-targets/finalize.nix {
+    inherit
+      lib
+      helpers
+      common
+      ipam
+      policyDerivedDnsAllowedClassesForListeners
+      policyDerivedDnsForwardersForListeners
+      ;
+  };
+
+  runtimeTargetsForFirewall =
+    builtins.mapAttrs
+      (_targetName: normalizeRuntimeTargetRoutes)
+      (finalizeRuntimeTargets {
+        inherit accessAdvertisements;
+        firewallIntent = {
+          natByTarget = { };
+          forwardingByTarget = { };
+        };
+        inherit normalizedRuntimeTargets;
+      });
+
   firewallIntent =
     resolveFirewallIntent {
       services = resolvedServices;
       inherit sitePath siteAttrs policyEndpointBindings;
-      runtimeTargets = normalizedRuntimeTargets;
+      runtimeTargets = runtimeTargetsForFirewall;
     };
 
   routeDnsServiceReachability = import ../../ControlModule/runtime-targets/dns-service-routes.nix {
@@ -75,17 +98,6 @@ let
         inherit firewallIntent normalizedRuntimeTargets;
         services = resolvedServices;
       });
-
-  finalizeRuntimeTargets = import ../../ControlModule/runtime-targets/finalize.nix {
-    inherit
-      lib
-      helpers
-      common
-      ipam
-      policyDerivedDnsAllowedClassesForListeners
-      policyDerivedDnsForwardersForListeners
-      ;
-  };
 
   runtimeTargetsWithIntent =
     finalizeRuntimeTargets {
