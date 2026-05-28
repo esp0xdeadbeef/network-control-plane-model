@@ -8,7 +8,6 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 archive_json="${tmp_dir}/archive.json"
-inventory_nix="${tmp_dir}/inventory-nixos.nix"
 output_json="${tmp_dir}/output.json"
 
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
@@ -23,46 +22,44 @@ labs_path="$(
   '
 )"
 
-printf 'import %s/labs/lab-s-sigma/s-router-test-three-site/getResolvedInventory.nix { renderer = "nixos"; }\n' "${labs_path}" > "${inventory_nix}"
-
 (
   cd "${repo_root}"
   nix run .#compile-and-build-control-plane-model -- \
-    "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
-    "${inventory_nix}" \
+    "${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" \
+    "${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
     "${output_json}" >/dev/null
 )
 
 jq -e '
-  .control_plane_model.data.esp.nixos.runtimeTargets["esp-nixos-router-core-nebula"] as $target
+  .control_plane_model.data.espbranch["site-b"].runtimeTargets["espbranch-site-b-b-router-core-nebula"] as $target
   | ($target.forwardingIntent.rules // []) as $rules
   | {
       has_hostile_v4_source_rule: any($rules[];
         (.action // "") == "accept"
         and (.fromInterface // "") == "upstream"
-        and (.toInterface // "") == "overlay-west"
+        and (.toInterface // "") == "nebula1"
         and ((.intent.kind // "") == "delegated-public-egress")
-        and any((.sourcePrefixes // [])[]?; (.family // 4) == 4 and (.prefix // "") == "10.20.70.0/24")
+        and any((.sourcePrefixes // [])[]?; (.family // 4) == 4 and (.prefix // "") == "10.70.10.0/24")
       ),
       has_hostile_ula_source_rule: any($rules[];
         (.action // "") == "accept"
         and (.fromInterface // "") == "upstream"
-        and (.toInterface // "") == "overlay-west"
+        and (.toInterface // "") == "nebula1"
         and ((.intent.kind // "") == "delegated-public-egress")
-        and any((.sourcePrefixes // [])[]?; (.family // 4) == 6 and ((.prefix // "") | test("^fd42:dead:beef:(0070|70):|^fd42:dead:beef:(0070|70)::/64$")))
+        and any((.sourcePrefixes // [])[]?; (.family // 4) == 6 and ((.prefix // "") | test("^fd42:dead:feed:(0070|70):|^fd42:dead:feed:(0070|70)::/64$")))
       ),
       has_hostile_runtime_source_file_rule: any($rules[];
         (.action // "") == "accept"
         and (.fromInterface // "") == "upstream"
-        and (.toInterface // "") == "overlay-west"
+        and (.toInterface // "") == "nebula1"
         and ((.intent.kind // "") == "delegated-public-egress")
         and (.family // null) == 6
-        and any((.sourceFiles // [])[]?; . == "/run/secrets/access-node-ipv6-prefix-esp-nixos-router-access-hostile")
+        and any((.sourceFiles // [])[]?; . == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile")
       ),
       has_unscoped_underlay_to_overlay_accept: any($rules[];
         (.action // "") == "accept"
         and (.fromInterface // "") == "upstream"
-        and (.toInterface // "") == "overlay-west"
+        and (.toInterface // "") == "nebula1"
         and ((.sourcePrefixes // []) == [])
         and ((.sourceFiles // []) == [])
       )
@@ -75,10 +72,10 @@ jq -e '
     )
 ' "${output_json}" >/dev/null || {
   jq '
-    .control_plane_model.data.esp.nixos.runtimeTargets["esp-nixos-router-core-nebula"].forwardingIntent.rules // []
-    | map(select((.fromInterface // "") == "upstream" or (.toInterface // "") == "overlay-west"))
+    .control_plane_model.data.espbranch["site-b"].runtimeTargets["espbranch-site-b-b-router-core-nebula"].forwardingIntent.rules // []
+    | map(select((.fromInterface // "") == "upstream" or (.toInterface // "") == "nebula1"))
   ' "${output_json}" >&2
-  echo "FAIL core-overlay-delegated-egress-source-scope: core-nebula must emit source-scoped upstream -> overlay-west forwarding for hostile delegated public egress, without an unscoped underlay-to-overlay accept" >&2
+  echo "FAIL core-overlay-delegated-egress-source-scope: core-nebula must emit source-scoped upstream -> provider overlay forwarding for hostile delegated public egress, without an unscoped underlay-to-overlay accept" >&2
   exit 1
 }
 
