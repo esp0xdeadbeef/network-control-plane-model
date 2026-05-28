@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# GAMP-ID: SMT-CPM-UPSTREAM-NO-CROSSCONNECT-001
+# GAMP-SCOPE: software-module-test
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

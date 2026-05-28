@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
+# GAMP-ID: SMT-CPM-UNDERLAY-DYNAMIC-CLIENT-001
+# GAMP-SCOPE: software-module-test
 set -euo pipefail
+# LAB-SMT-ID: LAB-SMT-010
+# LAB-SMT-SCOPE: examples-only; see network-labs/tests/SMT.md
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"

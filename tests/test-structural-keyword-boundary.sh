@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# GAMP-ID: RTM-GUARD-CPM-STRUCTURE-001
+# GAMP-SCOPE: guard-only; not SMT acceptance evidence
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
