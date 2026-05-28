@@ -24,8 +24,8 @@ labs_path="$(
 )"
 
 nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
-  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/intent.nix" \
-  "${labs_path}/labs/lab-s-sigma/s-router-test-three-site/inventory.nix" \
+  "${labs_path}/examples/tri-site-s-router-overlay-egress/intent.nix" \
+  "${labs_path}/examples/tri-site-s-router-overlay-egress/inventory.nix" \
   "${output_json}" >/dev/null
 
 jq -e '
@@ -33,8 +33,8 @@ jq -e '
     . == "fd42:dead:beef:70::/64"
     or . == "fd42:dead:beef:0070:0000:0000:0000:0000/64";
 
-  .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-core-nebula"
-    .effectiveRuntimeRealization.interfaces."p2p-nixos-router-core-nebula-nixos-router-upstream"
+  .control_plane_model.data.esp.home.runtimeTargets."esp-home-example-router-core-nebula"
+    .effectiveRuntimeRealization.interfaces."p2p-home-example-router-core-nebula-home-example-router-upstream"
     .routes as $routes
   | any($routes.ipv4[]?;
       .dst == "10.20.70.0/24"
@@ -47,7 +47,7 @@ jq -e '
       and .proto == "internal"
       and .intent.kind == "internal-reachability")
     and any($routes.ipv6[]?;
-      .sourceFile == "/run/secrets/access-node-ipv6-prefix-esp-nixos-router-access-hostile"
+      .sourceFile == "/run/secrets/access-node-ipv6-prefix-esp-home-example-router-access-hostile"
       and .via6 == "fd42:dead:beef:1000:0:0:0:11"
       and .proto == "internal"
       and .intent.kind == "runtime-routed-prefix-return")
@@ -60,8 +60,8 @@ hostile ULA, and runtime delegated hostile GUA on the real core-nebula upstream
 leg. Renderers must not recover these routes from names or local runtime hacks.
 EOF
   jq '
-    .control_plane_model.data.esp.nixos.runtimeTargets."esp-nixos-router-core-nebula"
-      .effectiveRuntimeRealization.interfaces."p2p-nixos-router-core-nebula-nixos-router-upstream"
+    .control_plane_model.data.esp.home.runtimeTargets."esp-home-example-router-core-nebula"
+      .effectiveRuntimeRealization.interfaces."p2p-home-example-router-core-nebula-home-example-router-upstream"
       .routes
   ' "${output_json}" >&2
   exit 1
