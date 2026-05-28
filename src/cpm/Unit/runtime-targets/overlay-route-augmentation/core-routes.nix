@@ -18,8 +18,24 @@
 }:
 
 let
-  inherit (helpers) hasAttr isNonEmptyString sortedNames;
+  inherit (helpers) hasAttr isNonEmptyString;
   inherit (common) attrsOrEmpty mergeRoutes;
+
+  overlayNodeRouteAugmenters = import ./overlay-node-routes.nix {
+    inherit
+      lib
+      helpers
+      common
+      overlayProvisioning
+      p2pPeerAddress
+      overlayNodeRoutesVia
+      overlayRuntimeRoutedPrefixRoutesVia
+      ;
+  };
+  inherit (overlayNodeRouteAugmenters)
+    addOverlayNodeRoutesToSelector
+    addOverlayNodeRoutesToCoreOverlay
+    ;
 
   underlayEndpointRoutesFor =
     family: overlayNames: routes:
@@ -51,35 +67,6 @@ let
           })
           endpoints)
       (defaultViaRoutes family routes);
-
-  addOverlayNodeRoutesToSelector =
-    nodeRole: interfaces:
-    if !(nodeRole == "policy" || nodeRole == "upstream-selector") then
-      interfaces
-    else
-      lib.mapAttrs (
-        _: iface:
-        let
-          laneOverlayNames = builtins.filter (name: builtins.elem name (sortedNames overlayProvisioning)) (
-            interfaceOverlayLaneNames iface
-          );
-          routes = attrsOrEmpty (iface.routes or null);
-          extraRoutes = {
-            ipv4 = overlayNodeRoutesVia 4 laneOverlayNames (p2pPeerAddress 4 (iface.addr4 or null));
-            ipv6 =
-              (overlayNodeRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)))
-              ++ (overlayRuntimeRoutedPrefixRoutesVia laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)));
-          };
-        in
-        if
-          (iface.sourceKind or null) != "p2p"
-          || laneOverlayNames == [ ]
-          || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ])
-        then
-          iface
-        else
-          iface // { routes = mergeRoutes routes extraRoutes; }
-      ) interfaces;
 
   addOverlayUnderlayEndpointRoutesToCore =
     nodeRole: interfaces:
@@ -172,6 +159,7 @@ in
 {
   inherit
     addOverlayNodeRoutesToSelector
+    addOverlayNodeRoutesToCoreOverlay
     addOverlayUnderlayEndpointRoutesToCore
     addDelegatedOverlayDefaultRoutesToCore
     addRuntimePrefixReturnsToCoreOverlay

@@ -8,6 +8,7 @@
   interfaceOverlayLaneNames,
   p2pPeerAddress,
   addOverlayNodeRoutesToSelector,
+  addOverlayNodeRoutesToCoreOverlay,
   addOverlayUnderlayEndpointRoutesToCore,
   addDelegatedOverlayDefaultRoutesToCore,
   addRuntimePrefixReturnsToCoreOverlay,
@@ -65,7 +66,9 @@ let
   coreInterfaces = addRuntimePrefixReturnsToWanCore nodeRole (
     addRuntimePrefixReturnsToCoreOverlay nodeRole (
       addDelegatedOverlayDefaultRoutesToCore nodeRole (
-        addOverlayUnderlayEndpointRoutesToCore nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
+        addOverlayUnderlayEndpointRoutesToCore nodeRole (
+          addOverlayNodeRoutesToCoreOverlay nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
+        )
       )
     )
   );
@@ -135,4 +138,3 @@ else
     else
       iface // { routes = cleanedRoutes; }
   ) coreInterfaces
-

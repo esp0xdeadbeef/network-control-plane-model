@@ -95,6 +95,7 @@ let
   };
   inherit (coreRouteAugmenters)
     addOverlayNodeRoutesToSelector
+    addOverlayNodeRoutesToCoreOverlay
     addOverlayUnderlayEndpointRoutesToCore
     addDelegatedOverlayDefaultRoutesToCore
     addRuntimePrefixReturnsToCoreOverlay
@@ -121,6 +122,7 @@ let
       interfaceOverlayLaneNames
       p2pPeerAddress
       addOverlayNodeRoutesToSelector
+      addOverlayNodeRoutesToCoreOverlay
       addOverlayUnderlayEndpointRoutesToCore
       addDelegatedOverlayDefaultRoutesToCore
       addRuntimePrefixReturnsToCoreOverlay
