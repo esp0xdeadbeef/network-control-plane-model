@@ -21,6 +21,7 @@ in
   interfaceRecords,
   tenantPrefixOwners ? { },
   runtimeOriginSourcePrefixes ? [ ],
+  runtimeTargets ? { },
 }:
 let
   role = target.role or null;
@@ -41,6 +42,86 @@ let
     (iface.sourceKind == "wan" && selectedUplinkFor iface)
     || (iface.sourceKind == "overlay" && selectedUplinks != [ ] && selectedUplinkFor iface)
   ) interfaceRecords;
+
+  isPublicResolver = forwarder:
+    builtins.elem forwarder [
+      "1.1.1.1"
+      "1.0.0.1"
+      "8.8.8.8"
+      "8.8.4.4"
+      "9.9.9.9"
+      "2606:4700:4700::1111"
+      "2606:4700:4700::1001"
+      "2001:4860:4860::8888"
+      "2001:4860:4860::8844"
+      "2620:fe::fe"
+    ];
+
+  addressFamily = value:
+    if builtins.isString value && builtins.match ".*:.*" value != null then 6 else 4;
+
+  cleanAddress = value:
+    if !(builtins.isString value) || value == "" || value == "127.0.0.1" || value == "::1" then
+      null
+    else
+      value;
+
+  publicDnsServiceSources =
+    builtins.concatLists (
+      map
+        (targetName:
+          let
+            runtimeTarget = runtimeTargets.${targetName};
+            dns = attrsOrEmpty ((attrsOrEmpty (runtimeTarget.services or null)).dns or null);
+            forwarders =
+              if builtins.isList (dns.forwarders or null) then
+                dns.forwarders
+              else
+                listOrEmpty (dns.upstreams or null);
+            publicForwarders = builtins.filter isPublicResolver forwarders;
+            outgoing = listOrEmpty (dns.outgoingInterfaces or null);
+            listeners = listOrEmpty (dns.listen or null);
+            candidates = if outgoing != [ ] then outgoing else listeners;
+          in
+          if dns == { } || publicForwarders == [ ] then
+            [ ]
+          else
+            map
+              (address: {
+                family = addressFamily address;
+                prefix = address;
+              })
+              (builtins.filter (value: value != null) (map cleanAddress candidates)))
+        (builtins.attrNames runtimeTargets)
+    );
+
+  dnsServicePublicEgressRules =
+    builtins.concatLists (
+      map
+        (source:
+          builtins.concatLists (
+            map
+              (transitIface:
+                map
+                  (uplinkIface: {
+                    action = "accept";
+                    intent = {
+                      kind = "dns-service-public-egress";
+                      source = "dns-service";
+                    };
+                    trafficType = "dns";
+                    fromInterface = transitIface.runtimeIfName;
+                    toInterface = uplinkIface.runtimeIfName;
+                    sourcePrefixes = [ source ];
+                    family = source.family;
+                    comment = "allow-dns-service-egress";
+                    applyTcpMssClamp = false;
+                  })
+                  uplinkInterfaces)
+              transitInterfaces
+          ))
+        publicDnsServiceSources
+    );
 in
 if role == "access" then
   {
@@ -86,7 +167,7 @@ else if role == "core" then
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     uplinkInterfaces = map (iface: iface.runtimeIfName) uplinkInterfaces;
     rules = buildCoreRules {
-      inherit tenantPrefixOwners transitInterfaces uplinkInterfaces;
+      inherit tenantPrefixOwners transitInterfaces uplinkInterfaces dnsServicePublicEgressRules;
     };
   }
 else
