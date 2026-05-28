@@ -100,6 +100,7 @@ let
               siteRelations
               runtimeOriginSourcePrefixes
               ;
+            tenantPrefixOwners = attrsOrEmpty (siteAttrs.tenantPrefixOwners or null);
             inherit (entry) target interfaceRecords;
           };
         in

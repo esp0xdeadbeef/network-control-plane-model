@@ -1,7 +1,27 @@
 { common }:
 
-transitInterfaces: uplinkInterfaces:
+{ tenantPrefixOwners ? { }
+, transitInterfaces
+, uplinkInterfaces
+,
+}:
 let
+  delegatedOverlayEgress = import ./core-delegated-overlay-egress.nix { inherit tenantPrefixOwners; };
+
+  reverseRule = transitIface: uplinkIface: {
+    action = "accept";
+    fromInterface = uplinkIface.runtimeIfName;
+    toInterface = transitIface.runtimeIfName;
+    applyTcpMssClamp = false;
+  };
+
+  uplinkPairRules =
+    transitIface: uplinkIface:
+    if uplinkIface.sourceKind == "overlay" && delegatedOverlayEgress.exitNodesFor uplinkIface != [ ] then
+      delegatedOverlayEgress.rulesFor transitIface uplinkIface ++ [ (reverseRule transitIface uplinkIface) ]
+    else
+      common.selectorPairRule transitIface uplinkIface;
+
   meshRules =
     builtins.concatLists (
       builtins.map
@@ -26,7 +46,7 @@ let
         (transitIface:
           builtins.concatLists (
             builtins.map
-              (uplinkIface: common.selectorPairRule transitIface uplinkIface)
+              (uplinkIface: uplinkPairRules transitIface uplinkIface)
               uplinkInterfaces
           ))
         transitInterfaces
