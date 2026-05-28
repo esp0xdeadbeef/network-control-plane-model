@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# GAMP-ID: SMT-CPM-COMM-RELATIONS-001
+# GAMP-SCOPE: software-module-test
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

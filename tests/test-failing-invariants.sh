@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# GAMP-ID: RTM-RUNNER-CPM-NEGATIVE-001
+# GAMP-SCOPE: runner-only; not SMT acceptance evidence
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# GAMP-ID: SMT-CPM-NO-GUESS-FORWARDING-001
+# GAMP-SCOPE: software-module-test
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
