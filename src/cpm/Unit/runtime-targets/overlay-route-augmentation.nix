@@ -111,6 +111,15 @@ let
       ;
   };
 
+  policyUplinkReturnRoutesVia = import ./overlay-route-augmentation/policy-uplink-returns.nix {
+    inherit
+      lib
+      helpers
+      common
+      overlayProvisioning
+      ;
+  };
+
   finalAugmentation = import ./overlay-route-augmentation/upstream-selector-final.nix {
     inherit
       lib
@@ -130,6 +139,7 @@ let
       underlayEndpointRoutes
       delegatedOverlayDefaultsVia
       delegatedOverlayExitDefaultsVia
+      policyUplinkReturnRoutesVia
       accessOverlayDefaults
       overlayIngressPolicyDefaults
       ;
