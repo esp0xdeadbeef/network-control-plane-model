@@ -3,6 +3,7 @@
 let
   inherit (helpers)
     ensureUniqueEntries
+    forceAll
     hasAttr
     optionalAttrs
     requireAttrs
@@ -76,7 +77,7 @@ let
         builtins.listToAttrs (
           builtins.map
             (portName:
-              normalizePortBinding targetPath targetHostName portName ports.${portName})
+              normalizePortBinding targetPath targetHostName platform portName ports.${portName})
             (sortedNames ports)
         );
 
@@ -159,6 +160,33 @@ let
         )
       );
 
+  _validateUniqueRuntimeIfNamesPerTarget =
+    forceAll (builtins.map
+      (targetName:
+        let
+          targetDef = targetDefs.${targetName};
+          targetPath = targetDef.nodePath;
+        in
+        ensureUniqueEntries
+          "${targetPath}.ports.*.interface.name (must be unique per realized target)"
+          (
+            builtins.map
+              (portName:
+                let
+                  portDef = targetDef.portBindings.portDefs.${portName};
+                in
+                {
+                  name = portDef.runtimeIfName;
+                  value = {
+                    target = targetName;
+                    port = portName;
+                    path = "${targetPath}.ports.${portName}.interface.name";
+                  };
+                })
+              (sortedNames targetDef.portBindings.portDefs)
+          ))
+      (sortedNames targetDefs));
+
   byLogical =
     ensureUniqueEntries
       "inventory.realization.nodes.*.logicalNode"
@@ -175,6 +203,7 @@ let
           (sortedNames targetDefs)
       );
 in
-builtins.seq _validateUniqueLinkAdapterNamesPerHost {
-  inherit targetDefs byLogical;
-}
+builtins.seq _validateUniqueLinkAdapterNamesPerHost
+  (builtins.seq _validateUniqueRuntimeIfNamesPerTarget {
+    inherit targetDefs byLogical;
+  })

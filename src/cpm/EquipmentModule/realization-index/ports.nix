@@ -18,6 +18,18 @@ let
   validAdapterName = value:
     builtins.isString value && builtins.match "^[a-z][a-z0-9-]*$" value != null;
 
+  linuxLikePlatforms = {
+    home-container = true;
+    linux = true;
+    nixos-container = true;
+  };
+
+  isLinuxLikePlatform = platform:
+    builtins.isString platform && hasAttr platform linuxLikePlatforms;
+
+  validLinuxRuntimeIfName = value:
+    builtins.isString value && builtins.match "^[A-Za-z0-9_.-]{1,15}$" value != null;
+
   hostDefFor = hostName:
     if hasAttr hostName hostIndex then
       hostIndex.${hostName}
@@ -134,12 +146,17 @@ let
     else
       null;
 
-  normalizePortBinding = targetPath: targetHostName: portName: port:
+  normalizePortBinding = targetPath: targetHostName: platform: portName: port:
     let
       portPath = "${targetPath}.ports.${portName}";
       portAttrs = requireAttrs portPath port;
       interfaceAttrs = requireAttrs "${portPath}.interface" (portAttrs.interface or null);
-      runtimeIfName = requireString "${portPath}.interface.name" (interfaceAttrs.name or null);
+      runtimeIfNameValue = requireString "${portPath}.interface.name" (interfaceAttrs.name or null);
+      runtimeIfName =
+        if isLinuxLikePlatform platform && !validLinuxRuntimeIfName runtimeIfNameValue then
+          failInventory "${portPath}.interface.name" "linux target platform '${platform}' requires a runtime interface name matching ^[A-Za-z0-9_.-]{1,15}$"
+        else
+          runtimeIfNameValue;
       attach =
         if builtins.isAttrs (portAttrs.attach or null) then
           normalizeAttach targetHostName "${portPath}.attach" portAttrs.attach
