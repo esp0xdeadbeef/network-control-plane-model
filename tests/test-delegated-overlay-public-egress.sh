@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-OVERLAY-DELEGATED-EGRESS-001
+# GAMP-ID: SMT-CPM-OVERLAY-REMOTE-RETURN-001
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 # LAB-SMT-ID: LAB-SMT-006
