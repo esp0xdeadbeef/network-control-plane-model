@@ -197,6 +197,30 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((route.intent or { }).kind or null) == "overlay-reachability")
         (siteCUpstreamRoutes4For "p2p-c-router-nebula-core-c-router-upstream-selector");
 
+    siteCPolicyWanReturnsHostileTenantV4ToPolicy =
+      builtins.any
+        (route:
+          (route.dst or null) == "10.70.10.0/24"
+          && (route.via4 or null) == "10.80.0.14"
+          && (route.policyOnly or false) == true
+          && ((route.lane or { }).access or null) == "c-router-access-client"
+          && ((route.lane or { }).uplink or null) == "wan"
+          && ((route.intent or { }).kind or null) == "overlay-reachability"
+          && ((route.intent or { }).policyTableComplement or false) == true)
+        (siteCUpstreamRoutes4For "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-wan");
+
+    siteCPolicyWanReturnsHostilePrefixToPolicy =
+      builtins.any
+        (route:
+          (route.sourceFile or null) == "/run/secrets/access-node-ipv6-prefix-espbranch-site-b-b-router-access-hostile"
+          && (route.via6 or null) == "fd42:dead:cafe:1000:0:0:0:e"
+          && (route.policyOnly or false) == true
+          && ((route.lane or { }).access or null) == "c-router-access-client"
+          && ((route.lane or { }).uplink or null) == "wan"
+          && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return"
+          && ((route.intent or { }).policyTableComplement or false) == true)
+        (siteCUpstreamRoutes6For "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-client--uplink-wan");
+
     siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy =
       !(builtins.any
         (route:
@@ -290,8 +314,10 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && ((rule.intent or { }).kind or null) == "runtime-routed-prefix-public-egress")
         (siteCUpstream.forwardingIntent.rules or [ ]);
   in
-    if delegatedOverlayDefault && delegatedOverlayDefault4 && upstreamHostileDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && hostileRuntimeReturnOnAccessTenant && hostileTenantAttachmentHasAccessOwner && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToPolicy && siteCUpstreamReturnsHostilePrefixToCoreNebula && siteCUpstreamReturnsHostileTenantV4ToCoreNebula && siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCCoreNebulaReturnsHostilePrefixOverOverlay && siteCCoreNebulaReturnsHostileTenantV4OverOverlay && siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream && siteCCoreReturnsHostilePrefixToUpstream && siteCCoreReturnsHostileTenantV4ToUpstream && siteCOverlayIngressFirewallToPolicy && siteCOverlayIngressFirewallScopedToHostilePrefix && siteCOverlayIngressFirewallScopedToHostileTenantV4 && siteCOverlayIngressFirewallNotScopedToDmz then
+    if delegatedOverlayDefault && delegatedOverlayDefault4 && upstreamHostileDefaultToOverlay && hostilePolicyIngressDelegatedDefaultToOverlay && hostileRuntimeReturnOnHostileIngress && hostileRuntimeReturnNotOnBranchIngress && hostileRuntimeReturnOnAccessTenant && hostileTenantAttachmentHasAccessOwner && underlayDefaultPreserved && !badGenericOverlayDefault && siteCOverlayIngressDefaultToPolicy && siteCUpstreamReturnsHostilePrefixToCoreNebula && siteCUpstreamReturnsHostileTenantV4ToCoreNebula && siteCPolicyWanReturnsHostileTenantV4ToPolicy && siteCPolicyWanReturnsHostilePrefixToPolicy && siteCUpstreamDoesNotReturnHostilePrefixToClientPolicy && siteCCoreNebulaDoesNotCarrySiteCClientOverlayDefault && siteCCoreNebulaReturnsHostilePrefixOverOverlay && siteCCoreNebulaReturnsHostileTenantV4OverOverlay && siteCCoreNebulaDoesNotReturnHostilePrefixToUpstream && siteCCoreReturnsHostilePrefixToUpstream && siteCCoreReturnsHostileTenantV4ToUpstream && siteCOverlayIngressFirewallToPolicy && siteCOverlayIngressFirewallScopedToHostilePrefix && siteCOverlayIngressFirewallScopedToHostileTenantV4 && siteCOverlayIngressFirewallNotScopedToDmz then
       true
+    else if !siteCPolicyWanReturnsHostileTenantV4ToPolicy || !siteCPolicyWanReturnsHostilePrefixToPolicy then
+      throw "delegated-overlay-public-egress failed: site-c policy WAN return table must carry the remote hostile IPv4 tenant prefix and delegated IPv6 source-file route back to policy. Live symptom: public replies entered the remote upstream selector from core/WAN, then selected a core/WAN default until a table route via the policy WAN peer was hotpatched."
     else if !siteCUpstreamReturnsHostileTenantV4ToCoreNebula || !siteCCoreNebulaReturnsHostileTenantV4OverOverlay || !siteCCoreReturnsHostileTenantV4ToUpstream then
       throw "delegated-overlay-public-egress failed: site-c must return branch hostile tenant IPv4 10.70.10.0/24 through core-nebula and overlay-east-west. Live symptom: hostile IPv4 public egress replies reached the overlay exit, then died until 10.20.70.0/24 return routes were hotpatched on Hetzner upstream/downstream/Nebula-core and local core-nebula."
     else if !siteCOverlayIngressFirewallScopedToHostileTenantV4 then
