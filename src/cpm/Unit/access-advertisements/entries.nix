@@ -133,6 +133,10 @@ let
           prefixes
           "must match tenant IPv6 advertisement prefixes derived from the forwarding model";
       rdnss = if enabled then resolveAdvertisedIPv6Targets entryPath "rdnss" routerAddress (attrs.rdnss or null) else [ ];
+      managed = boolOr false (attrs.managed or null);
+      otherConfig = boolOr false (attrs.otherConfig or null);
+      onLink = boolOr true (attrs.onLink or null);
+      autonomous = boolOr true (attrs.autonomous or null);
       bindInterface =
         requireString
           "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
@@ -163,6 +167,7 @@ let
       prefixes = prefixes;
       rdnss = rdnss;
       dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
+      inherit managed otherConfig onLink autonomous;
     } else { })
     // (if routedIpv6Prefixes != [ ] then {
       routedPrefixes = routedIpv6Prefixes;
