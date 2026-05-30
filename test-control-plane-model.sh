@@ -25,6 +25,26 @@ tests=(
   test-dns-killswitch-policy-matrix.sh
   test-policy-deny-precedence.sh
   test-provider-overlay-runtime-interface-name.sh
+  test-interface-mtu-contract.sh
+  test-state-contract-dhcp4-explicit-input-only.sh
+  test-state-contract-dhcp4-persistence.sh
+  test-state-contract-dhcp4-required-root-fails.sh
+  test-state-contract-dhcpv6-explicit-input-only.sh
+  test-state-contract-dhcpv6-persistence.sh
+  test-state-contract-dhcpv6-required-root-fails.sh
+  test-state-contract-dns-explicit-input-only.sh
+  test-state-contract-dns-resolver-persistence.sh
+  test-state-contract-dns-service-persistence.sh
+  test-state-contract-ephemeral-explicit.sh
+  test-state-contract-ephemeral-summary.sh
+  test-state-contract-operational-exclusions.sh
+  test-state-contract-operational-fields.sh
+  test-state-contract-record-dhcp4.sh
+  test-state-contract-record-dhcpv6.sh
+  test-state-contract-record-dns-resolver.sh
+  test-state-contract-record-dns-service.sh
+  test-state-contract-record-required-root-fails.sh
+  test-state-contract-related-service-persistence.sh
   test-delegated-overlay-public-egress.sh
   test-core-overlay-delegated-egress-source-scope.sh
   test-tri-site-edge-core-dns-service-public-egress-forwarding.sh

@@ -42,6 +42,7 @@ let
     builtins.map prefixValue (builtins.filter isUla6Prefix (listOrEmpty runtimeOriginSourcePrefixes));
   egressIntent = attrsOrEmpty (target.egressIntent or null);
   exitEnabled = (egressIntent.exit or false) == true;
+  coreOriginUplinkDefaultAllowed = (egressIntent.coreOriginUplinkDefaultAllowed or false) == true;
   selectedUplinks = uniqueStrings (
     listOrEmpty (egressIntent.uplinks or null) ++ listOrEmpty (egressIntent.wanInterfaces or null)
   );
@@ -96,6 +97,27 @@ let
     && nat66SourcePrefixes != [ ]
     && builtins.any hasHostIPv6 wanInterfaces;
   natEnabled = nat4Enabled || nat6Enabled;
+  coreUplinkRouteSafety =
+    let
+      applies = (target.role or null) == "core" && exitEnabled && selectedUplinks != [ ];
+    in
+    if !applies then
+      { applies = false; }
+    else
+      {
+        applies = true;
+        mode = if coreOriginUplinkDefaultAllowed then "explicitly-allowed" else "blackholed";
+        blackholed = !coreOriginUplinkDefaultAllowed;
+        broadCoreOriginUplinkRoutingAllowed = coreOriginUplinkDefaultAllowed;
+        selectedUplinks = selectedUplinks;
+        sourceScopedTranslationExceptions = {
+          nat44 = nat4Enabled;
+          nat66 = nat6Enabled;
+          snat = natEnabled;
+          nat66SourcePrefixes = nat66SourcePrefixes;
+          outputInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
+        };
+      };
 in
 {
   enabled = natEnabled;
@@ -130,5 +152,8 @@ in
   uplinkFamilies = {
     ipv4 = map (iface: iface.runtimeIfName) (builtins.filter hasHostIPv4 wanInterfaces);
     ipv6 = map (iface: iface.runtimeIfName) (builtins.filter hasHostIPv6 wanInterfaces);
+  };
+  routeSafety = {
+    coreOriginUplinkDefault = coreUplinkRouteSafety;
   };
 }

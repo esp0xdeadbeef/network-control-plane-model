@@ -18,6 +18,9 @@ let
       policyDerivedDnsForwardersForListeners
       ;
   };
+  addStateContracts = import ./state-contracts.nix {
+    inherit common;
+  };
 in
 { accessAdvertisements
 , firewallIntent
@@ -40,7 +43,7 @@ builtins.listToAttrs (
     in
     {
       name = targetName;
-      value = addDnsContracts (normalizedRuntimeTargets.${targetName} // intentAttrs // advertisementAttrs);
+      value = addStateContracts targetName (addDnsContracts (normalizedRuntimeTargets.${targetName} // intentAttrs // advertisementAttrs));
     })
     (sortedNames normalizedRuntimeTargets)
 )

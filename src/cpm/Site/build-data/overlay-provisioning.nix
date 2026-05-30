@@ -28,6 +28,9 @@ let
   peerRuntimePrefixes = import ./overlay-peer-runtime-prefixes.nix {
     inherit lib helpers common allSiteEntries inventoryAttrs enterpriseName;
   };
+  providerBootstrapDns = import ./provider-bootstrap-dns.nix {
+    inherit common helpers;
+  };
   publicExitPeer = import ./overlay-public-exit-peer.nix {
     inherit lib helpers common allSiteEntries;
   };
@@ -143,6 +146,7 @@ let
                   { }
               )
               // (if isNonEmptyString (cfg.provider or null) then { provider = cfg.provider; } else { })
+              // (providerBootstrapDns.normalize overlayPath cfg)
               // (
                 let
                   endpointSourceFiles = attrsOrEmpty (cfg.underlayEndpointSourceFiles or null);

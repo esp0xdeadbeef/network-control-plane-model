@@ -22,6 +22,9 @@ Backward compatibility is **not guaranteed**.
 
 Pull requests are welcome, but changes that conflict with the architectural model are unlikely to be merged.
 
+Migration, deviation, exception, transition, or temporary compatibility behavior
+must be explicit in the README, tests, and owning layer before it is accepted.
+
 This repository is not trying to be a universal control-plane synthesizer for every possible input style.
 It is an **architecture-first, contract-first control-plane composition layer**.
 
@@ -238,7 +241,9 @@ That means CPM output must be the canonical place for:
 * runtime target identity
 * dedicated transit lane identity and lane metadata
 * routing mode selection
+* route-safety contracts for blackholed core-origin uplink defaults and explicit source-scoped translation exceptions
 * overlay termination and overlay node addressing
+* provider-bootstrap DNS contracts that stay separate from customer resolver services
 * service realization structure
 * WAN-facing realized grouping that downstream renderers need for attachment
 
@@ -373,6 +378,13 @@ Inventory contract (technique-specific data belongs here, not in compiler/forwar
 
 - `inventory.controlPlane.sites.<enterprise>.<site>.overlays.<overlayName>.provider` (optional)
 - `inventory.controlPlane.sites.<enterprise>.<site>.overlays.<overlayName>.nebula = { ... }` (optional; opaque)
+- `inventory.controlPlane.sites.<enterprise>.<site>.overlays.<overlayName>.providerBootstrapDns.forwarders = [ "<ip>" ... ]` (optional)
+
+Provider-bootstrap DNS is for provider bootstrap only, for example resolving a
+provider endpoint before the provider tunnel or overlay is online. CPM emits it
+under `overlays.<overlayName>.providerBootstrapDns`; it is not copied into
+`runtimeTargets.*.services.dns.forwarders` and must not become a customer,
+tenant, hostile, or Unbound fallback resolver path.
 
 Overlay address planning options:
 
@@ -390,6 +402,7 @@ CPM output:
 
 - `control_plane_model.data.<enterprise>.<site>.overlays.<overlayName>.terminateOn`
 - `control_plane_model.data.<enterprise>.<site>.overlays.<overlayName>.nodes.<nodeName>.addr4/addr6`
+- `control_plane_model.data.<enterprise>.<site>.overlays.<overlayName>.providerBootstrapDns`
 
 `nodes.<nodeName>` can include explicit non-terminating runtime consumers in addition to
 the overlay termination nodes listed in `terminateOn`.
