@@ -4,6 +4,7 @@
 , transitInterfaces
 , relations ? [ ]
 , services ? [ ]
+, trafficTypeMatches ? { }
 , runtimeOriginSourcePrefixes ? [ ]
 ,
 }:
@@ -59,6 +60,14 @@ let
     else
       null;
 
+  relationMatches = relation:
+    if builtins.isList (relation.matches or null) then
+      relation.matches
+    else if builtins.isList (relation.match or null) then
+      relation.match
+    else
+      trafficTypeMatches.${relation.trafficType or "any"} or [ ];
+
   localRelationRules = relationRaw:
     let
       relation = attrsOrEmpty relationRaw;
@@ -76,6 +85,7 @@ let
               relationId = id;
               priority = relation.priority or null;
               trafficType = relation.trafficType or "any";
+              matches = relationMatches relation;
               from = attrsOrEmpty (relation.from or null);
               to = attrsOrEmpty (relation.to or null);
               fromInterface = fromIface.runtimeIfName;

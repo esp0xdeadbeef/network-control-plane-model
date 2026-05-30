@@ -5,6 +5,7 @@
   transitInterfaces,
   relations ? [ ],
   services ? [ ],
+  trafficTypeMatches ? { },
   overlayNames ? [ ],
   siteRuntimeOriginSourcePrefixes ? [ ],
 }:
@@ -13,7 +14,9 @@ let
   endpointContext = import ./endpoint-context.nix { inherit common; } {
     inherit endpointBindings services transitInterfaces;
   };
-  relationRules = import ./upstream-selector-relations.nix { inherit common endpointContext; };
+  relationRules = import ./upstream-selector-relations.nix {
+    inherit common endpointContext trafficTypeMatches;
+  };
   inherit (endpointContext) coreInterfaces policyInterfaces listOrEmpty;
 
   routeList =
