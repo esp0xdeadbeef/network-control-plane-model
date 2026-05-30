@@ -19,6 +19,7 @@
   runtimeContainers,
   runtimeOriginEgressContract,
   runtimeServices,
+  runtimeStatePolicy,
 }:
 {
         logicalNode = logical;
@@ -99,3 +100,4 @@
         if builtins.isAttrs (nodeAttrs.networks or null) then { networks = nodeAttrs.networks; } else { }
       )
       // (if runtimeServices != null then { services = runtimeServices; } else { })
+      // (if runtimeStatePolicy != { } then { statePolicy = runtimeStatePolicy; } else { })

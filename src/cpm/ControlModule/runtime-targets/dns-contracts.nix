@@ -172,13 +172,17 @@ let
         routeContracts = listOrEmpty (dns.routeContracts or null) ++ builtins.map routeContractForForwarder forwarders;
         policyMatrix = listOrEmpty (dns.policyMatrix or null) ++ builtins.map routeContractForForwarder forwarders;
       };
+  targetWithDnsContracts =
+    targetWithDns
+    // {
+      services = (attrsOrEmpty (targetWithDns.services or null)) // { dns = dnsContracts; };
+    };
 in
-if (targetWithDns.role or null) != "access" || forwarders == [ ] || dns == { } then
+if forwarders == [ ] || dns == { } then
   targetWithDns
+else if (targetWithDns.role or null) != "access" then
+  targetWithDnsContracts
 else
   addForwarderRoutes
-    (targetWithDns
-      // {
-      services = (attrsOrEmpty (target.services or null)) // { dns = dnsContracts; };
-    })
+    targetWithDnsContracts
     forwarders

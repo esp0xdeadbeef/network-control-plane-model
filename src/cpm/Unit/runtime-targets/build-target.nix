@@ -158,6 +158,13 @@ let
           loopback
           ;
       };
+      runtimeStatePolicy =
+        if realizedTarget && builtins.isAttrs (targetDef.node.statePolicy or null) then
+          targetDef.node.statePolicy
+        else if realizedTarget && builtins.isAttrs (targetDef.node.state or null) then
+          targetDef.node.state
+        else
+          { };
       value = buildValue {
         inherit
           nodePath
@@ -172,6 +179,7 @@ let
           runtimeContainers
           runtimeOriginEgressContract
           runtimeServices
+          runtimeStatePolicy
           ;
       };
     in

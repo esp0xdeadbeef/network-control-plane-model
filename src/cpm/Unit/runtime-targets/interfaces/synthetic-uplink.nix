@@ -62,6 +62,13 @@ let
       portBinding.interfaceAddr6
     else
       uplinkAttrs.addr6 or null;
+  effectiveMtu =
+    if portBinding != null && builtins.isInt (portBinding.mtu or null) then
+      portBinding.mtu
+    else if builtins.isInt (uplinkAttrs.mtu or null) then
+      uplinkAttrs.mtu
+    else
+      null;
   resolvedHostUplink =
     if portBinding != null && builtins.isAttrs (portBinding.hostUplink or null) then
       portBinding.hostUplink
@@ -133,6 +140,7 @@ let
       { }
   )
   // (if validatedHostUplink != null then { hostUplink = validatedHostUplink; } else { })
+  // (if effectiveMtu != null then { mtu = effectiveMtu; } else { })
   // (
     if builtins.isAttrs (validatedHostUplink.ipv4 or null) then
       { ipv4 = validatedHostUplink.ipv4; }

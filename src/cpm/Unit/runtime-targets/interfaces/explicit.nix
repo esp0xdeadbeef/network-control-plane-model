@@ -90,6 +90,13 @@ let
     if sourceKind == "overlay" && isNonEmptyString overlayAddr6 then overlayAddr6
     else if portBinding != null && isNonEmptyString (portBinding.interfaceAddr6 or null) then portBinding.interfaceAddr6
     else ifaceAttrs.addr6 or null;
+  effectiveMtu =
+    if portBinding != null && builtins.isInt (portBinding.mtu or null) then
+      portBinding.mtu
+    else if builtins.isInt (ifaceAttrs.mtu or null) then
+      ifaceAttrs.mtu
+    else
+      null;
   tenantName = if sourceKind == "tenant" then requireString "${ifacePath}.tenant" (ifaceAttrs.tenant or null) else null;
   tenantCfg = if tenantName != null then attrsOrEmpty (siteTenantsCfg.${tenantName} or null) else { };
   modelTenantIpv6Cfg =
@@ -174,6 +181,7 @@ let
     }
     // (if portBinding != null && isNonEmptyString (portBinding.adapterName or null) then { adapterName = portBinding.adapterName; } else { })
     // (if portBinding != null && builtins.isAttrs (portBinding.attach or null) then { attach = portBinding.attach; } else { })
+    // (if effectiveMtu != null then { mtu = effectiveMtu; } else { })
     // (if sourceKind == "wan" then { upstream = requireString "${ifacePath}.upstream" (ifaceAttrs.upstream or null); } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (ifaceAttrs.wan or null) then { wan = ifaceAttrs.wan; } else { })
     // (if sourceKind == "tenant" then { tenant = tenantName; } else { })

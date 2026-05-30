@@ -118,6 +118,14 @@ let
           null;
       interfaceAddr4 = if isNonEmptyString (interfaceAttrs.addr4 or null) then interfaceAttrs.addr4 else null;
       interfaceAddr6 = if isNonEmptyString (interfaceAttrs.addr6 or null) then interfaceAttrs.addr6 else null;
+      interfaceMtu =
+        if interfaceAttrs ? mtu then
+          if builtins.isInt interfaceAttrs.mtu && interfaceAttrs.mtu > 0 then
+            interfaceAttrs.mtu
+          else
+            failInventory "${portPath}.interface.mtu" "interface.mtu must be a positive integer when present"
+        else
+          null;
       interfaceRoutes =
         if builtins.isAttrs (interfaceAttrs.routes or null) then
           requireRoutes "${portPath}.interface.routes" interfaceAttrs.routes
@@ -136,6 +144,7 @@ let
         // (if attach != null then { inherit attach; } else { })
         // (if interfaceAddr4 != null then { inherit interfaceAddr4; } else { })
         // (if interfaceAddr6 != null then { inherit interfaceAddr6; } else { })
+        // (if interfaceMtu != null then { mtu = interfaceMtu; } else { })
         // (if interfaceRoutes != null then { inherit interfaceRoutes; } else { })
         // (if hostUplink != null then { inherit hostUplink; } else { })
         // (if adapterName != null then { inherit adapterName; } else { });
