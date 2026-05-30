@@ -27,7 +27,13 @@ let
     (rule.action or null) == "accept"
     && (rule.trafficType or null) == "nebula"
     && (rule.fromInterface or null) == fromInterface
-    && (rule.toInterface or null) == "downstream-dmz";
+    && (rule.toInterface or null) == "downstream-dmz"
+    && builtins.any
+      (match: (match.proto or null) == "udp" && builtins.elem 4242 (match.dports or [ ]))
+      (rule.matches or [ ])
+    && builtins.any
+      (match: (match.proto or null) == "tcp" && builtins.elem 4242 (match.dports or [ ]))
+      (rule.matches or [ ]);
 in
   builtins.length serviceRules == 2
   && builtins.any (expectedRuleFor "up-client-wan") serviceRules

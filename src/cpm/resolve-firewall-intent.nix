@@ -31,6 +31,21 @@ let
       communicationContract.relations
     else
       listOrEmpty (communicationContract.allowedRelations or null);
+  trafficTypeMatches =
+    builtins.listToAttrs (
+      map
+        (trafficType:
+          let
+            name = trafficType.name or null;
+          in
+          {
+            inherit name;
+            value = listOrEmpty (trafficType.match or null);
+          })
+        (builtins.filter
+          (trafficType: isNonEmptyString (trafficType.name or null))
+          (listOrEmpty (communicationContract.trafficTypes or null)))
+    );
   overlayNames = uniqueStrings (
     sortedNames (attrsOrEmpty (siteAttrs.overlays or null))
     ++ sortedNames (attrsOrEmpty (siteAttrs.overlayReachability or null))
@@ -98,6 +113,7 @@ let
               policyEndpointBindings
               services
               siteRelations
+              trafficTypeMatches
               runtimeOriginSourcePrefixes
               runtimeTargets
               ;

@@ -1,6 +1,12 @@
 { common }:
 
-{ endpointBindings, relations, services ? [ ], transitInterfaces, runtimeOriginSourcePrefixes ? [ ] }:
+{ endpointBindings
+, relations
+, services ? [ ]
+, trafficTypeMatches ? { }
+, transitInterfaces
+, runtimeOriginSourcePrefixes ? [ ]
+}:
 let
   endpointContext = import ./endpoint-context.nix { inherit common; } {
     inherit endpointBindings services transitInterfaces;
@@ -16,6 +22,14 @@ let
       relation.name
     else
       null;
+
+  relationMatches = relation:
+    if builtins.isList (relation.matches or null) then
+      relation.matches
+    else if builtins.isList (relation.match or null) then
+      relation.match
+    else
+      trafficTypeMatches.${relation.trafficType or "any"} or [ ];
 
   relationRules = relationRaw:
     let
@@ -37,6 +51,7 @@ let
               relationId = id;
               priority = relation.priority or null;
               trafficType = relation.trafficType or "any";
+              matches = relationMatches relation;
               from = attrsOrEmpty (relation.from or null);
               to = attrsOrEmpty (relation.to or null);
               fromInterface = fromIface.runtimeIfName;

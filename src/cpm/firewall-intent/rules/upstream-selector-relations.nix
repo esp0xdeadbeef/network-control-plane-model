@@ -1,4 +1,4 @@
-{ common, endpointContext }:
+{ common, endpointContext, trafficTypeMatches ? { } }:
 
 let
   inherit (endpointContext)
@@ -12,6 +12,14 @@ let
   familyRoutes = routes: listOrEmpty (routes.ipv4 or null) ++ listOrEmpty (routes.ipv6 or null);
 
   routeIntent = route: attrsOrEmpty (route.intent or null);
+
+  relationMatches = relation:
+    if builtins.isList (relation.matches or null) then
+      relation.matches
+    else if builtins.isList (relation.match or null) then
+      relation.match
+    else
+      trafficTypeMatches.${relation.trafficType or "any"} or [ ];
 
   externalUplinks =
     endpoint:
@@ -81,6 +89,7 @@ let
             relationId = relation.id or null;
             priority = relation.priority or null;
             inherit trafficType;
+            matches = relationMatches relation;
             from = attrsOrEmpty (relation.from or null);
             to = attrsOrEmpty (relation.to or null);
             fromInterface = fromIface.runtimeIfName;

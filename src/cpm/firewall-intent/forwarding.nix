@@ -17,6 +17,7 @@ in
   policyEndpointBindings,
   services,
   siteRelations,
+  trafficTypeMatches ? { },
   target,
   interfaceRecords,
   tenantPrefixOwners ? { },
@@ -96,6 +97,9 @@ let
     );
 
   dnsServicePublicEgressRules =
+    let
+      dnsMatches = trafficTypeMatches.dns or [ ];
+    in
     builtins.concatLists (
       map
         (source:
@@ -110,6 +114,7 @@ let
                       source = "dns-service";
                     };
                     trafficType = "dns";
+                    matches = dnsMatches;
                     fromInterface = transitIface.runtimeIfName;
                     toInterface = uplinkIface.runtimeIfName;
                     sourcePrefixes = [ source ];
@@ -141,13 +146,13 @@ else if role == "downstream-selector" || role == "upstream-selector" then
         buildDownstreamSelectorRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;
           relations = siteRelations;
-          inherit services transitInterfaces runtimeOriginSourcePrefixes;
+          inherit services trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
         }
       else
         buildUpstreamSelectorRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;
           relations = siteRelations;
-          inherit overlayNames services transitInterfaces;
+          inherit overlayNames services trafficTypeMatches transitInterfaces;
           siteRuntimeOriginSourcePrefixes = runtimeOriginSourcePrefixes;
         };
   }
@@ -158,7 +163,7 @@ else if role == "policy" then
     rules = buildPolicyRules {
       endpointBindings = attrsOrEmpty policyEndpointBindings;
       relations = siteRelations;
-      inherit services transitInterfaces runtimeOriginSourcePrefixes;
+      inherit services trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
     };
   }
 else if role == "core" then
