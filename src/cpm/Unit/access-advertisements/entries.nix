@@ -20,6 +20,10 @@ let
     ;
   inherit (advertisementContext) resolveTenantAdvertisementContext;
 
+  dhcpv6 = import ./dhcpv6.nix {
+    inherit helpers sitePath advertisementHelpers advertisementContext;
+  };
+
   buildExplicitDHCP4Entry = targetDef: targetPath: target: interfaceName: entry:
     let
       entryPath = "${targetDef.nodePath}.advertisements.dhcp4.${interfaceName}";
@@ -171,4 +175,5 @@ in
     buildExplicitDHCP4Entry
     buildExplicitIPv6RaEntry
     ;
+  inherit (dhcpv6) buildExplicitDHCPv6Entry;
 }

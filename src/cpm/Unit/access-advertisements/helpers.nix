@@ -58,6 +58,16 @@ let
       in
       if resolved == expected then true else failInventory "${entryPath}.${fieldName}" message;
 
+  validateOptionalResolvedIPv6Match = entryPath: fieldName: value: expected: message:
+    if value == null then
+      true
+    else
+      let
+        rendered = requireString "${entryPath}.${fieldName}" value;
+        resolved = if rendered == "router-self" then expected else rendered;
+      in
+      if resolved == expected then true else failInventory "${entryPath}.${fieldName}" message;
+
   validateOptionalStringListMatch = entryPath: fieldName: value: expected: message:
     if value == null then
       true
@@ -165,6 +175,7 @@ in
     resolveAdvertisedIPv6Targets
     stripMask
     validateOptionalResolvedIPv4Match
+    validateOptionalResolvedIPv6Match
     validateOptionalStringListMatch
     validateOptionalStringMatch
     ;

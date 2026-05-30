@@ -29,6 +29,7 @@ let
     ;
   inherit (advertisementEntries)
     buildExplicitDHCP4Entry
+    buildExplicitDHCPv6Entry
     buildExplicitIPv6RaEntry
     ;
 
@@ -68,6 +69,11 @@ let
                 "access runtime target '${targetId}' requires explicit advertisements realization";
 
           dhcp4Entries = requireAttrs "${targetDef.nodePath}.advertisements.dhcp4" (inventoryAdvertisements.dhcp4 or null);
+          dhcpv6Entries =
+            if builtins.isAttrs (inventoryAdvertisements.dhcpv6 or null) then
+              requireAttrs "${targetDef.nodePath}.advertisements.dhcpv6" inventoryAdvertisements.dhcpv6
+            else
+              { };
           ipv6RaEntries = requireAttrs "${targetDef.nodePath}.advertisements.ipv6Ra" (inventoryAdvertisements.ipv6Ra or null);
           interfaces = getRuntimeTargetInterfaces targetPath target;
           tenantInterfaceNames =
@@ -86,6 +92,8 @@ let
           _ipv6RaCoverage = requireCoverage "${targetDef.nodePath}.advertisements.ipv6Ra" tenantInterfaceNames ipv6RaEntries;
           _dhcp4NoUnexpected =
             validateNoUnexpectedInterfaces "${targetDef.nodePath}.advertisements.dhcp4" tenantInterfaceNames dhcp4Entries;
+          _dhcpv6NoUnexpected =
+            validateNoUnexpectedInterfaces "${targetDef.nodePath}.advertisements.dhcpv6" tenantInterfaceNames dhcpv6Entries;
           _ipv6RaNoUnexpected =
             validateNoUnexpectedInterfaces "${targetDef.nodePath}.advertisements.ipv6Ra" tenantInterfaceNames ipv6RaEntries;
 
@@ -95,6 +103,11 @@ let
                 (interfaceName:
                   buildExplicitDHCP4Entry targetDef targetPath target interfaceName dhcp4Entries.${interfaceName})
                 tenantInterfaceNames;
+            dhcpv6 =
+              builtins.map
+                (interfaceName:
+                  buildExplicitDHCPv6Entry targetDef targetPath target interfaceName dhcpv6Entries.${interfaceName})
+                (sortedNames dhcpv6Entries);
             ipv6Ra =
               builtins.map
                 (interfaceName:
@@ -110,10 +123,12 @@ let
         builtins.seq _dhcp4Coverage (
           builtins.seq _ipv6RaCoverage (
             builtins.seq _dhcp4NoUnexpected (
-              builtins.seq _ipv6RaNoUnexpected {
-                name = targetName;
-                inherit value;
-              }
+              builtins.seq _dhcpv6NoUnexpected (
+                builtins.seq _ipv6RaNoUnexpected {
+                  name = targetName;
+                  inherit value;
+                }
+              )
             )
           )
         );
