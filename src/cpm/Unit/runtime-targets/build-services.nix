@@ -7,6 +7,7 @@
   realizedTarget,
   targetDef,
   loopback,
+  runtimeOriginEgressContract ? null,
 }:
 let
   logicalServices = if builtins.isAttrs (nodeAttrs.services or null) then nodeAttrs.services else { };
@@ -31,6 +32,7 @@ let
       resolveRuntimeServices {
     inherit nodePath nodeName nodeAttrs;
     inherit loopback;
+    runtimeOriginEgress = runtimeOriginEgressContract;
     targetDef = targetDefWithServices;
       }
     else

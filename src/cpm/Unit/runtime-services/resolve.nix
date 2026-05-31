@@ -22,6 +22,7 @@
     , nodeAttrs
     , targetDef
     , loopback ? { }
+    , runtimeOriginEgress ? null
     ,
     }:
     let
@@ -46,7 +47,10 @@
         else
           [ ];
       derivedOutgoingInterfaces =
-        builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listenAddresses;
+        if (nodeAttrs.role or null) == "core" then
+          [ ]
+        else
+          builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listenAddresses;
       tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
       derivedForwarders = orderedUniqueStrings (
         (policyDerivedDnsForwardersForTenants tenantNames)
@@ -89,13 +93,16 @@
         (stripPrefixLength (loopback.ipv4 or loopback.addr4 or ""))
         (stripPrefixLength (loopback.ipv6 or loopback.addr6 or ""))
       ];
+      runtimeOriginEnabled = (attrsOrEmpty runtimeOriginEgress).enabled or false;
       recursionOutgoingInterfaces =
         if explicitRecursionOutgoingInterfaces != [ ] then
           explicitRecursionOutgoingInterfaces
         else if explicitOutgoingInterfaces != [ ] then
           explicitOutgoingInterfaces
-        else if (nodeAttrs.role or null) == "core" then
+        else if (nodeAttrs.role or null) == "core" && runtimeOriginEnabled then
           loopbackRecursionSources
+        else if (nodeAttrs.role or null) == "core" then
+          [ ]
         else
           mergedOutgoingInterfaces;
       mergedRoles =

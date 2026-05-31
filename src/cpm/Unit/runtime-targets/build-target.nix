@@ -111,12 +111,13 @@ let
             ) (sortedNames uplinkAttrs)
           );
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
-      runtimeOriginEgressContract = runtimeOriginEgress.contractFor {
-        inherit nodeRole uplinkAttrs loopback;
-      };
       runtimeInterfacesBase = addOverlayUnderlayEndpointRoutes nodeRole (
         builtins.listToAttrs (explicitEntries ++ syntheticEntries)
       );
+      runtimeOriginEgressContract = runtimeOriginEgress.contractFor {
+        inherit nodeRole uplinkAttrs loopback;
+        interfaces = runtimeInterfacesBase;
+      };
       runtimeInterfaces = runtimeOriginEgress.applyToInterfaces runtimeOriginEgressContract runtimeInterfacesBase;
       effectiveRuntimeInterfaces =
         if isBgpRouter then
@@ -156,6 +157,7 @@ let
           realizedTarget
           targetDef
           loopback
+          runtimeOriginEgressContract
           ;
       };
       runtimeStatePolicy =

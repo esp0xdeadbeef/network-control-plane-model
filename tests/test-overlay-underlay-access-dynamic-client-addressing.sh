@@ -6,6 +6,10 @@
 # GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-CMC-001-003
 # GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-004
 # GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-CMC-001-004
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-007
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-CMC-001-007
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-008-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-008-SMS-001-CMC-001-004
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 # LAB-SMT-ID: LAB-SMT-010
@@ -59,12 +63,16 @@ assert_dynamic_client_addressing() {
       and (($iface.trunk // null) == null)
       and (($iface.trunkVlans // []) == [])
       and (($iface.vlans // []) == [])
+      and ((.control_plane_model.data.esp[$site_name].runtimeTargets[$target_name].runtimeOriginEgress // null) == null)
+      and ((.control_plane_model.data.esp[$site_name].runtimeTargets[$target_name].services.dns.outgoingInterfaces // []) == [])
+      and ((.control_plane_model.data.esp[$site_name].runtimeTargets[$target_name].services.dns.roles.recursion.outgoingInterfaces // []) == [])
   ' "${output_json}" >/dev/null || {
     cat >&2 <<EOF
 FAIL overlay-underlay-access-dynamic-client-addressing: ${target_name} tenant-client must carry explicit DHCP/SLAAC dynamicAddressing in CPM.
 
 The overlay underlay core is realized as a host-like tenant client. It must not
-emit delegated-prefix, bridge, or trunk authority from the simple LAN attachment.
+emit delegated-prefix, bridge, trunk, or loopback-sourced runtime-origin
+authority from the simple LAN attachment.
 EOF
     return 1
   }

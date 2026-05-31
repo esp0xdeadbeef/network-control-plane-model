@@ -38,6 +38,19 @@ let
     in
     builtins.any (route: (route.dst or null) == dst) (listOrEmpty routes);
 
+  hasModeledRuntimeOriginUnderlay =
+    interfaces:
+    builtins.any
+      (
+        iface:
+        (iface.sourceKind or null) == "p2p"
+        && (
+          hasDefault 4 ((attrsOrEmpty (iface.routes or null)).ipv4 or [ ])
+          || hasDefault 6 ((attrsOrEmpty (iface.routes or null)).ipv6 or [ ])
+        )
+      )
+      (builtins.attrValues (attrsOrEmpty interfaces));
+
   addPreferredSource =
     family: preferredSources: route:
     if !(builtins.isAttrs route) || !(isDefaultRoute route) then
@@ -70,6 +83,7 @@ in
       nodeRole,
       uplinkAttrs,
       loopback,
+      interfaces ? null,
     }:
     let
       overlayUplinks = builtins.filter (uplinkName: builtins.elem uplinkName overlayNames) (
@@ -81,8 +95,10 @@ in
         (hostPrefixFor 4 (loopback.ipv4 or ""))
         (hostPrefixFor 6 (loopback.ipv6 or ""))
       ];
+      sourceHasModeledUnderlay =
+        if interfaces == null then true else hasModeledRuntimeOriginUnderlay interfaces;
     in
-    if nodeRole == "core" && overlayUplinks != [ ] && sourcePrefixes != [ ] then
+    if nodeRole == "core" && overlayUplinks != [ ] && sourcePrefixes != [ ] && sourceHasModeledUnderlay then
       {
         enabled = true;
         uplinks = overlayUplinks;
