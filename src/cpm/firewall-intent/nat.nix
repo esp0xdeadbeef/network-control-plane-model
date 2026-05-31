@@ -1,25 +1,21 @@
 { helpers }:
 
 let
-  inherit (helpers) isNonEmptyString sortedNames;
-  attrsOrEmpty = value: if builtins.isAttrs value then value else { };
-  listOrEmpty = value: if builtins.isList value then value else [ ];
-  uniqueStrings =
-    values:
-    sortedNames (
-      builtins.listToAttrs (
-        map
-          (value: {
-            name = value;
-            value = true;
-          })
-          (builtins.filter isNonEmptyString values)
-      )
-    );
-
-  hasHostIPv4 = iface: builtins.isAttrs ((attrsOrEmpty (iface.hostUplink or null)).ipv4 or null);
-  hasHostIPv6 = iface: builtins.isAttrs ((attrsOrEmpty (iface.hostUplink or null)).ipv6 or null);
-
+  inherit (helpers) isNonEmptyString;
+  natHelpers = import ./nat-helpers.nix { inherit helpers; };
+  inherit (natHelpers)
+    attrsOrEmpty
+    hasHostIPv4
+    hasHostIPv6
+    interfaceDeclined
+    interfaceMatchesIdentity
+    isIpv4Prefix
+    isPrivate4Prefix
+    isUla6Prefix
+    listOrEmpty
+    prefixValue
+    uniqueStrings
+    ;
 in
 { siteAttrs
 , overlayNames
@@ -29,15 +25,17 @@ in
 ,
 }:
 let
-  prefixValue = prefix:
-    if builtins.isAttrs prefix then prefix.prefix or "" else if builtins.isString prefix then prefix else "";
-  prefixFamily = prefix:
-    if builtins.isAttrs prefix then prefix.family or null else if builtins.match ".*:.*" prefix != null then 6 else 4;
-  isUla6Prefix = prefix:
-    let
-      value = prefixValue prefix;
-    in
-    prefixFamily prefix == 6 && builtins.match "[fF][cCdD].*" value != null;
+  siteTenantPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.domains or null)).tenants or null);
+  siteOwnershipPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null);
+  siteNat44SourcePrefixes =
+    builtins.map prefixValue (
+      builtins.filter isPrivate4Prefix (
+        (builtins.map (tenant: if builtins.isAttrs tenant then tenant.ipv4 or "" else tenant) siteTenantPrefixes)
+        ++ (builtins.map (prefix: if builtins.isAttrs prefix then prefix.ipv4 or prefix.prefix or "" else prefix) siteOwnershipPrefixes)
+      )
+    );
+  runtimeOriginNat44SourcePrefixes =
+    builtins.map prefixValue (builtins.filter isIpv4Prefix (listOrEmpty runtimeOriginSourcePrefixes));
   runtimeOriginNat66SourcePrefixes =
     builtins.map prefixValue (builtins.filter isUla6Prefix (listOrEmpty runtimeOriginSourcePrefixes));
   egressIntent = attrsOrEmpty (target.egressIntent or null);
@@ -45,6 +43,19 @@ let
   coreOriginUplinkDefaultAllowed = (egressIntent.coreOriginUplinkDefaultAllowed or false) == true;
   selectedUplinks = uniqueStrings (
     listOrEmpty (egressIntent.uplinks or null) ++ listOrEmpty (egressIntent.wanInterfaces or null)
+  );
+  declinedInterfaceIdentities = uniqueStrings (
+    listOrEmpty (egressIntent.declinedInterfaces or null)
+    ++ listOrEmpty (egressIntent.interfaceDeclineList or null)
+    ++ listOrEmpty (egressIntent.declineInterfaces or null)
+  );
+  declined = interfaceDeclined declinedInterfaceIdentities;
+  nat44ByUplink = attrsOrEmpty (egressIntent.nat44 or null);
+  nat44SelectedIntents = map (uplink: attrsOrEmpty (nat44ByUplink.${uplink} or null)) selectedUplinks;
+  nat44SourcePrefixes = uniqueStrings (
+    builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
+    ++ siteNat44SourcePrefixes
+    ++ runtimeOriginNat44SourcePrefixes
   );
   nat66ByUplink = attrsOrEmpty (egressIntent.nat66 or null);
   nat66SelectedIntents = map (uplink: attrsOrEmpty (nat66ByUplink.${uplink} or null)) selectedUplinks;
@@ -78,18 +89,43 @@ let
     in
     warnings;
   transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p") interfaceRecords;
-  wanInterfaces = builtins.filter
+  physicalWanInterfaces = builtins.filter
     (
       iface:
       iface.sourceKind == "wan"
       && !(builtins.elem (iface.upstream or "") overlayNames)
-      && (
-        selectedUplinks == [ ]
-        || builtins.elem (iface.upstream or "") selectedUplinks
-        || builtins.elem iface.sourceInterfaceName selectedUplinks
-      )
     )
     interfaceRecords;
+  selectedPhysicalUplinks =
+    builtins.filter (uplink: !(builtins.elem uplink overlayNames)) selectedUplinks;
+  selectedWanInterfaces =
+    builtins.filter
+      (
+        iface:
+        selectedUplinks == [ ]
+        || builtins.any (uplink: interfaceMatchesIdentity uplink iface) selectedUplinks
+      )
+      physicalWanInterfaces;
+  missingSelectedUplinks =
+    builtins.filter
+      (uplink: !(builtins.any (iface: interfaceMatchesIdentity uplink iface) physicalWanInterfaces))
+      selectedPhysicalUplinks;
+  declinedSelectedUplinks =
+    builtins.filter
+      (
+        uplink:
+	        builtins.any (iface: interfaceMatchesIdentity uplink iface && declined iface) physicalWanInterfaces
+	        && !(builtins.any (iface: interfaceMatchesIdentity uplink iface && !(declined iface)) physicalWanInterfaces)
+      )
+      selectedPhysicalUplinks;
+  selectedWanInterfacesChecked =
+    if exitEnabled && missingSelectedUplinks != [ ] then
+      throw "egressIntent selected uplink(s) not realized as WAN interface before renderer projection: ${builtins.concatStringsSep ", " missingSelectedUplinks}"
+    else if exitEnabled && declinedSelectedUplinks != [ ] then
+      throw "egressIntent selected uplink(s) resolve only to declined interface identities before renderer projection: ${builtins.concatStringsSep ", " declinedSelectedUplinks}; declined identities: ${builtins.concatStringsSep ", " declinedInterfaceIdentities}"
+    else
+      selectedWanInterfaces;
+  wanInterfaces = builtins.filter (iface: !(declined iface)) selectedWanInterfacesChecked;
   nat4Enabled = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
   nat6Enabled =
     exitEnabled
@@ -97,27 +133,35 @@ let
     && nat66SourcePrefixes != [ ]
     && builtins.any hasHostIPv6 wanInterfaces;
   natEnabled = nat4Enabled || nat6Enabled;
-  coreUplinkRouteSafety =
-    let
-      applies = (target.role or null) == "core" && exitEnabled && selectedUplinks != [ ];
-    in
-    if !applies then
-      { applies = false; }
-    else
-      {
-        applies = true;
-        mode = if coreOriginUplinkDefaultAllowed then "explicitly-allowed" else "blackholed";
-        blackholed = !coreOriginUplinkDefaultAllowed;
-        broadCoreOriginUplinkRoutingAllowed = coreOriginUplinkDefaultAllowed;
-        selectedUplinks = selectedUplinks;
-        sourceScopedTranslationExceptions = {
-          nat44 = nat4Enabled;
-          nat66 = nat6Enabled;
-          snat = natEnabled;
-          nat66SourcePrefixes = nat66SourcePrefixes;
-          outputInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
-        };
-      };
+  wanRuntimeNames = map (iface: iface.runtimeIfName) wanInterfaces;
+  nat44RuntimeNames =
+    map (iface: iface.runtimeIfName) (builtins.filter hasHostIPv4 wanInterfaces);
+  nat66RuntimeNames =
+    map (iface: iface.runtimeIfName)
+      (
+        builtins.filter
+          (
+            iface: hasHostIPv6 iface && builtins.elem iface.runtimeIfName explicitNat66RuntimeNames
+          )
+          wanInterfaces
+      );
+  coreUplinkRouteSafety = natHelpers.routeSafety {
+    inherit
+      coreOriginUplinkDefaultAllowed
+      declinedInterfaceIdentities
+      exitEnabled
+      nat44RuntimeNames
+      nat44SourcePrefixes
+      nat4Enabled
+      nat66RuntimeNames
+      nat66SourcePrefixes
+      nat6Enabled
+      natEnabled
+      selectedUplinks
+      target
+      wanRuntimeNames
+      ;
+  };
 in
 {
   enabled = natEnabled;
@@ -127,26 +171,20 @@ in
   };
   warnings = nat66Warning;
   uplinks = selectedUplinks;
-  wanInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
+  wanInterfaces = wanRuntimeNames;
   transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
   masqueradeInterfaces = if natEnabled then map (iface: iface.runtimeIfName) wanInterfaces else [ ];
   masqueradeInterfaces4 =
     if nat4Enabled then
-      map (iface: iface.runtimeIfName) (builtins.filter hasHostIPv4 wanInterfaces)
+      nat44RuntimeNames
     else
       [ ];
   masqueradeInterfaces6 =
     if nat6Enabled then
-      map (iface: iface.runtimeIfName)
-        (
-          builtins.filter
-            (
-              iface: hasHostIPv6 iface && builtins.elem iface.runtimeIfName explicitNat66RuntimeNames
-            )
-            wanInterfaces
-        )
+      nat66RuntimeNames
     else
       [ ];
+  masqueradeSourcePrefixes4 = if nat4Enabled then nat44SourcePrefixes else [ ];
   masqueradeSourcePrefixes6 = if nat6Enabled then nat66SourcePrefixes else [ ];
   tcpMssClampInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
   uplinkFamilies = {

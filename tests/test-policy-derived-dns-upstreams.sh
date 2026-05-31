@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-DNS-POLICY-UPSTREAMS-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-001-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-020-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-020-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-020-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-001-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-020-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-020-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-020-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-CMC-001-004
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -155,6 +167,40 @@ base
     };
 }
 EOF
+
+cat > "${tmp_dir}/inventory-missing-resolver-chain.nix" <<EOF
+let
+  base = import ${tmp_dir}/inventory.nix;
+in
+base
+// {
+  endpoints = builtins.removeAttrs (base.endpoints or { }) [ "dns-mgmt" ];
+}
+EOF
+
+missing_stderr="${tmp_dir}/missing-resolver-chain.stderr"
+
+if nix eval \
+  --impure \
+  --json \
+  --expr "
+    let
+      flake = builtins.getFlake (toString ${repo_root});
+      builder = flake.lib.${system}.build;
+      input = import ${tmp_dir}/input.nix;
+      inventory = import ${tmp_dir}/inventory-missing-resolver-chain.nix;
+    in
+      builder { inherit input inventory; }
+  " >/dev/null 2>"${missing_stderr}"; then
+  echo "FAIL policy-derived-dns-upstreams: missing customer resolver chain unexpectedly evaluated" >&2
+  exit 1
+fi
+
+if ! grep -Fq "inventory.endpoints.dns-mgmt" "${missing_stderr}"; then
+  echo "FAIL policy-derived-dns-upstreams: missing resolver-chain diagnostic did not name inventory.endpoints.dns-mgmt" >&2
+  cat "${missing_stderr}" >&2
+  exit 1
+fi
 
 output_json="${tmp_dir}/output.json"
 

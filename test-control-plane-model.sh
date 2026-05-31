@@ -26,6 +26,7 @@ tests=(
   test-policy-deny-precedence.sh
   test-provider-overlay-runtime-interface-name.sh
   test-interface-mtu-contract.sh
+  test-vxlan-contract-required-fields.sh
   test-access-dhcpv6-advertisement-contract.sh
   test-access-ipv6-ra-slaac-flags-contract.sh
   test-state-contract-dhcp4-explicit-input-only.sh

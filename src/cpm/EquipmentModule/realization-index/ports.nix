@@ -94,6 +94,7 @@ let
   selectorLib = import ./selectors.nix {
     inherit helpers failInventory hostDefFor resolveHostUplinkFromBridge;
   };
+  vxlanLib = import ./vxlan.nix { inherit helpers failInventory hostDefFor; };
   inherit (selectorLib)
     adapterNameFor
     hostUplinkFor
@@ -131,6 +132,7 @@ let
           requireRoutes "${portPath}.interface.routes" interfaceAttrs.routes
         else
           null;
+      vxlan = vxlanLib.normalizeVxlanContract targetHostName portPath portAttrs;
       selector = portSelector portPath portAttrs;
       adapterName = adapterNameFor portPath portAttrs selector;
       hostUplink = hostUplinkFor targetHostName portPath selector attach;
@@ -146,6 +148,7 @@ let
         // (if interfaceAddr6 != null then { inherit interfaceAddr6; } else { })
         // (if interfaceMtu != null then { mtu = interfaceMtu; } else { })
         // (if interfaceRoutes != null then { inherit interfaceRoutes; } else { })
+        // (if vxlan != null then { inherit vxlan; } else { })
         // (if hostUplink != null then { inherit hostUplink; } else { })
         // (if adapterName != null then { inherit adapterName; } else { });
     };

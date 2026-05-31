@@ -1,5 +1,87 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-PROVIDER-BOOTSTRAP-DNS-CONTRACT-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-005
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-006
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-017-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-017-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-017-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-018-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-018-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-018-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-005
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-006
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-007
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-CMC-001-005
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-006-SMS-001-CMC-001-006
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-015-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-016-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-017-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-017-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-017-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-018-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-018-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-018-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-019-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-CMC-001-005
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-CMC-001-006
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-004-SMS-001-CMC-001-007
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-005-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-006-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-002-SDS-001-007-SMS-001-CMC-001-004
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -91,12 +173,35 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     site = data.control_plane_model.data.esp0xdeadbeef."site-a";
     bootstrap = site.overlays.east-west.providerBootstrapDns;
-    targetDnsValues =
+    allSites =
       builtins.concatMap
-        (targetName:
-          let target = site.runtimeTargets.${targetName} or { };
-          in (target.services.dns.forwarders or [ ]))
-        (builtins.attrNames site.runtimeTargets);
+        (enterprise: builtins.attrValues enterprise)
+        (builtins.attrValues data.control_plane_model.data);
+    targetEntriesForSite = siteValue:
+      builtins.map
+        (targetName: {
+          name = targetName;
+          target = siteValue.runtimeTargets.${targetName};
+        })
+        (builtins.attrNames (siteValue.runtimeTargets or { }));
+    allTargetEntries = builtins.concatMap targetEntriesForSite allSites;
+    allTargets = builtins.map (entry: entry.target) allTargetEntries;
+    tenantTargets = builtins.filter (target: (target.role or "") == "access") allTargets;
+    hostileTargets =
+      builtins.map
+        (entry: entry.target)
+        (builtins.filter
+          (entry:
+            builtins.match ".*hostile.*" entry.name != null
+            || builtins.match ".*hostile.*" (entry.target.logicalNode.name or "") != null)
+          allTargetEntries);
+    forwardersForTargets = targets:
+      builtins.concatMap
+        (target: target.services.dns.forwarders or [ ])
+        targets;
+    targetDnsValues = forwardersForTargets allTargets;
+    tenantDnsValues = forwardersForTargets tenantTargets;
+    hostileDnsValues = forwardersForTargets hostileTargets;
   in
     bootstrap.source == "provider-bootstrap-dns"
     && bootstrap.scope == "bootstrap-only"
@@ -108,8 +213,14 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && bootstrap.allowedUpstreamClasses == [ "provider-bootstrap" ]
     && builtins.elem { dst = "192.0.2.53"; source = "provider-bootstrap-dns"; scope = "bootstrap-only"; } bootstrap.routeContracts
     && builtins.elem { dst = "2001:db8::53"; source = "provider-bootstrap-dns"; scope = "bootstrap-only"; } bootstrap.policyMatrix
+    && (builtins.length tenantTargets) > 0
+    && (builtins.length hostileTargets) > 0
     && !(builtins.elem "192.0.2.53" targetDnsValues)
     && !(builtins.elem "2001:db8::53" targetDnsValues)
+    && !(builtins.elem "192.0.2.53" tenantDnsValues)
+    && !(builtins.elem "2001:db8::53" tenantDnsValues)
+    && !(builtins.elem "192.0.2.53" hostileDnsValues)
+    && !(builtins.elem "2001:db8::53" hostileDnsValues)
 ' >/dev/null || {
   echo "FAIL provider-bootstrap-dns-contract" >&2
   exit 1

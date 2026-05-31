@@ -16,6 +16,7 @@ let
   inherit (common) attrsOrEmpty failInventory mergeRoutes;
   staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
   runtimeRoutedPrefixRoutesFor = import ./runtime-routed-prefix-routes.nix { inherit helpers common; };
+  routeFilter = import ./default-route-filter.nix { inherit helpers common uplinkRouting; };
 
   portBindingForInterface =
     { sourceKind, backingRef, ifName, portBindings }:
@@ -160,11 +161,15 @@ let
       staticUplinkRoutes uplinkRouting.${backingRef.upstreamAlias}
     else
       { ipv4 = [ ]; ipv6 = [ ]; };
-  effectiveRoutes =
+  effectiveRoutesRaw =
     if portBinding != null && builtins.isAttrs (portBinding.interfaceRoutes or null) then
       mergeRoutes (mergeRoutes (mergeRoutes interfaceRoutes portBinding.interfaceRoutes) uplinkStaticRoutes) runtimeRoutedPrefixRoutes
     else
       mergeRoutes (mergeRoutes interfaceRoutes uplinkStaticRoutes) runtimeRoutedPrefixRoutes;
+  effectiveRoutes = {
+    ipv4 = routeFilter.filterUnavailableDefaultRoutes 4 (effectiveRoutesRaw.ipv4 or null);
+    ipv6 = routeFilter.filterUnavailableDefaultRoutes 6 (effectiveRoutesRaw.ipv6 or null);
+  };
 
   value =
     {
@@ -182,6 +187,7 @@ let
     // (if portBinding != null && isNonEmptyString (portBinding.adapterName or null) then { adapterName = portBinding.adapterName; } else { })
     // (if portBinding != null && builtins.isAttrs (portBinding.attach or null) then { attach = portBinding.attach; } else { })
     // (if effectiveMtu != null then { mtu = effectiveMtu; } else { })
+    // (if portBinding != null && builtins.isAttrs (portBinding.vxlan or null) then { vxlan = portBinding.vxlan; } else { })
     // (if sourceKind == "wan" then { upstream = requireString "${ifacePath}.upstream" (ifaceAttrs.upstream or null); } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (ifaceAttrs.wan or null) then { wan = ifaceAttrs.wan; } else { })
     // (if sourceKind == "tenant" then { tenant = tenantName; } else { })
