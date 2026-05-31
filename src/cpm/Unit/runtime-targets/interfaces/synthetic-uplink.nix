@@ -18,6 +18,7 @@ let
     ;
   inherit (common) failInventory mergeRoutes;
   staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
+  routeFilter = import ./default-route-filter.nix { inherit helpers common uplinkRouting; };
 
   explicitUplinkRoute = family: dst: {
     inherit dst;
@@ -104,11 +105,15 @@ let
         ipv4 = [ ];
         ipv6 = [ ];
       };
-  routes =
+  routesRaw =
     if portBinding != null && builtins.isAttrs (portBinding.interfaceRoutes or null) then
       mergeRoutes (mergeRoutes baseRoutes portBinding.interfaceRoutes) uplinkStaticRoutes
     else
       mergeRoutes baseRoutes uplinkStaticRoutes;
+  routes = {
+    ipv4 = routeFilter.filterUnavailableDefaultRoutes 4 (routesRaw.ipv4 or null);
+    ipv6 = routeFilter.filterUnavailableDefaultRoutes 6 (routesRaw.ipv6 or null);
+  };
   value = {
     runtimeTarget = targetId;
     logicalNode = nodeName;

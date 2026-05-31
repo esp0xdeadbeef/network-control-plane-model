@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-UNDERLAY-DYNAMIC-CLIENT-001
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-002
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-CMC-001-002
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-003
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-CMC-001-003
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-004
+# GAMP-ID: USR-OVERLAY-001-FS-001-HDS-002-SDS-001-001-SMS-001-CMC-001-004
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 # LAB-SMT-ID: LAB-SMT-010
@@ -37,20 +43,28 @@ assert_dynamic_client_addressing() {
 
   jq -e --arg site_name "${site_name}" --arg target_name "${target_name}" '
     .control_plane_model.data.esp[$site_name].runtimeTargets[$target_name]
-    .effectiveRuntimeRealization.interfaces."tenant-client".dynamicAddressing
-    | .ipv4.enable == true
-      and .ipv4.method == "dhcp"
-      and .ipv4.dhcp == true
-      and .ipv6.enable == true
-      and .ipv6.method == "slaac"
-      and .ipv6.acceptRA == true
+    .effectiveRuntimeRealization.interfaces."tenant-client" as $iface
+    | ($iface.dynamicAddressing
+      | .ipv4.enable == true
+        and .ipv4.method == "dhcp"
+        and .ipv4.dhcp == true
+        and .ipv6.enable == true
+        and .ipv6.method == "slaac"
+        and .ipv6.acceptRA == true)
+      and (($iface.delegatedPrefixes // []) == [])
+      and (($iface.delegatedPrefixAuthority // null) == null)
+      and (($iface.bridge // null) == null)
+      and (($iface.bridgeName // null) == null)
+      and (($iface.bridgeOwner // false) == false)
+      and (($iface.trunk // null) == null)
+      and (($iface.trunkVlans // []) == [])
+      and (($iface.vlans // []) == [])
   ' "${output_json}" >/dev/null || {
     cat >&2 <<EOF
 FAIL overlay-underlay-access-dynamic-client-addressing: ${target_name} tenant-client must carry explicit DHCP/SLAAC dynamicAddressing in CPM.
 
-The overlay underlay core is realized as a host-like tenant client, not as a
-static p2p link. Renderers need this explicit contract from CPM so they do not
-infer DHCP/RA behavior from missing addr4/addr6 fields or node names.
+The overlay underlay core is realized as a host-like tenant client. It must not
+emit delegated-prefix, bridge, or trunk authority from the simple LAN attachment.
 EOF
     return 1
   }

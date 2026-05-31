@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-DNS-SEMANTIC-CARRY-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-005
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-002
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-004
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-005
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-008-SMS-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-008-SMS-001-003
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-008-SMS-001-CMC-001-001
+# GAMP-ID: USR-DNS-001-FS-001-HDS-001-SDS-001-008-SMS-001-CMC-001-003
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -42,6 +56,7 @@ cat >"${input_file}" <<'EOF'
         { name = "wan-b"; }
       ];
     };
+    overlays.east-west = { };
 
     tenantPrefixOwners."4|10.20.20.0/24" = {
       family = 4;
@@ -118,18 +133,33 @@ cat >"${input_file}" <<'EOF'
         services.dns = { };
         loopback = { ipv4 = "10.19.0.5/32"; ipv6 = "fd00:19::5/128"; };
         egressIntent = { exit = true; uplinks = [ "wan-a" ]; wanInterfaces = [ "wan-a" ]; };
-        interfaces = { };
+        interfaces.wan-a = {
+          interface = "wan-a";
+          kind = "wan";
+          link = "wan-a";
+          upstream = "wan-a";
+          routes = { ipv4 = [ ]; ipv6 = [ ]; };
+        };
       };
       core-wan-b = {
         role = "core";
         services.dns = { };
         loopback = { ipv4 = "10.19.0.6/32"; ipv6 = "fd00:19::6/128"; };
         egressIntent = { exit = true; uplinks = [ "wan-b" ]; wanInterfaces = [ "wan-b" ]; };
-        interfaces = { };
+        interfaces.wan-b = {
+          interface = "wan-b";
+          kind = "wan";
+          link = "wan-b";
+          upstream = "wan-b";
+          routes = { ipv4 = [ ]; ipv6 = [ ]; };
+        };
       };
     };
 
-    links = { };
+    links = {
+      wan-a = { id = "wan-a"; kind = "wan"; members = [ "core-wan-a" ]; };
+      wan-b = { id = "wan-b"; kind = "wan"; members = [ "core-wan-b" ]; };
+    };
     transit = { adjacencies = [ ]; ordering = [ ]; };
   };
 }
@@ -177,14 +207,24 @@ cat >"${inventory_file}" <<'EOF'
       host = "lab";
       platform = "linux";
       logicalNode = { enterprise = "acme"; site = "ams"; name = "core-wan-a"; };
-      ports = { };
+      ports.wan-a = {
+        attach = { kind = "bridge"; bridge = "br-wan-a"; };
+        external = true;
+        uplink = "wan-a";
+        interface.name = "wan-a";
+      };
       services.dns = { listen = [ "1.1.1.1" "2606:4700:4700::1111" ]; };
     };
     core-wan-b-runtime = {
       host = "lab";
       platform = "linux";
       logicalNode = { enterprise = "acme"; site = "ams"; name = "core-wan-b"; };
-      ports = { };
+      ports.wan-b = {
+        attach = { kind = "bridge"; bridge = "br-wan-b"; };
+        external = true;
+        uplink = "wan-b";
+        interface.name = "wan-b";
+      };
       services.dns = { listen = [ "9.9.9.9" "2620:fe::fe" ]; };
     };
     policy-runtime = {
@@ -200,7 +240,10 @@ cat >"${inventory_file}" <<'EOF'
       ports = { };
     };
   };
-  deployment.hosts.lab = { };
+  deployment.hosts.lab.uplinks = {
+    wan-a = { parent = "wan-a-parent"; bridge = "br-wan-a"; ipv4.method = "dhcp"; ipv6.method = "slaac"; };
+    wan-b = { parent = "wan-b-parent"; bridge = "br-wan-b"; ipv4.method = "dhcp"; ipv6.method = "slaac"; };
+  };
 }
 EOF
 
