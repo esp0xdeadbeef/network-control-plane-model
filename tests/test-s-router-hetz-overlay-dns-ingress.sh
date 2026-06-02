@@ -29,10 +29,21 @@ let
         && (rule.toInterface or null) == toIf
         && (rule.action or null) == "accept")
       upstreamRules;
+  hasDnsReturnRule = relation: fromIf: toIf:
+    builtins.any
+      (rule:
+        (rule.relationId or null) == relation
+        && (rule.fromInterface or null) == fromIf
+        && (rule.toInterface or null) == toIf
+        && (rule.action or null) == "accept"
+        && (rule.trafficType or null) == "dns"
+        && builtins.elem { family = 4; prefix = "10.90.10.0/24"; } (rule.sourcePrefixes or [ ]))
+      upstreamRules;
   hasRoute4 = routes: dst: via:
     builtins.any (route: (route.dst or null) == dst && (route.via4 or null) == via) (routes.ipv4 or [ ]);
 in
   hasRule "allow-east-west-to-sitec-dmz-dns" "core-nebula" "pol-dmz-ew"
+  && hasDnsReturnRule "allow-east-west-to-sitec-dmz-dns" "pol-dmz-ew" "core-nebula"
   && hasRoute4
     (upstreamIfs."p2p-c-router-nebula-core-c-router-upstream-selector".routes or { })
     "10.90.10.0/24"
