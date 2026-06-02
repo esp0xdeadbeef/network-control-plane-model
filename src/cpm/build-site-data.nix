@@ -5,11 +5,11 @@
 let
   inherit (helpers) isNonEmptyString;
 
-  resolveAccessAdvertisements = import ./resolve-access-advertisements.nix { inherit helpers; };
+  ipam = import ./ipam.nix { inherit lib; };
+  resolveAccessAdvertisements = import ./resolve-access-advertisements.nix { inherit helpers ipam; };
   resolveFirewallIntent = import ./resolve-firewall-intent.nix { inherit helpers; };
   resolvePolicyEndpointBindings = import ./resolve-policy-endpoint-bindings.nix { inherit helpers; };
   resolveRoutedPrefixes = import ./routed-prefixes.nix { inherit helpers; };
-  ipam = import ./ipam.nix { inherit lib; };
 
   common = import ./Site/build-data/common.nix {
     inherit helpers ipam enterpriseRoot;
