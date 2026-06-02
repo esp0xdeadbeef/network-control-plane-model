@@ -29,10 +29,12 @@ let
 
   endpointIfaces = relation: endpoint: peerEndpoint:
     let
+      relationValue = attrsOrEmpty relation;
       endpointValue = attrsOrEmpty endpoint;
       peerAccessNodes = accessNodesForEndpoint peerEndpoint;
       accessNodes = accessNodesForEndpoint endpoint;
       uplinks = uplinksForEndpoint endpoint;
+      isDeny = (relationValue.action or "allow") == "deny";
     in
     if (endpointValue.kind or null) == "tenant" || (endpointValue.kind or null) == "tenant-set" then
       accessIfacesForNodes accessNodes
@@ -44,8 +46,14 @@ let
             uplinkIfacesFor [ ] uplinks
           else
             uplinkIfacesFor peerAccessNodes uplinks;
+        denyFallback = if isDeny then uplinkIfacesFor [ ] uplinks else [ ];
       in
-      if exact != [ ] || !peerIsService then exact else uplinkIfacesFor peerAccessNodes [ ]
+      if exact != [ ] then
+        exact
+      else if peerIsService then
+        uplinkIfacesFor peerAccessNodes [ ]
+      else
+        denyFallback
     else if (endpointValue.kind or null) == "service" && serviceKnown endpoint then
       serviceIfacesFor accessNodes peerAccessNodes
     else if endpointValue == "any" || endpoint == "any" then
@@ -57,14 +65,18 @@ in
 {
   endpointIfacesForPeerAccess = relation: endpoint: peerEndpoint: peerAccess:
     let
+      relationValue = attrsOrEmpty relation;
       endpointValue = attrsOrEmpty endpoint;
       base = endpointIfaces relation endpoint peerEndpoint;
       sameAccess = iface: common.laneAccess iface == peerAccess;
+      sameAccessBase = builtins.filter sameAccess base;
     in
     if peerAccess == null then
       base
-    else if (endpointValue.kind or null) == "external" || endpointValue == "any" || endpoint == "any" then
-      builtins.filter sameAccess base
+    else if (endpointValue.kind or null) == "external" then
+      if sameAccessBase != [ ] || (relationValue.action or "allow") != "deny" then sameAccessBase else base
+    else if endpointValue == "any" || endpoint == "any" then
+      sameAccessBase
     else
       base;
   inherit endpointIfaces;

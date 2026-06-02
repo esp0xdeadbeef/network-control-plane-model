@@ -24,6 +24,7 @@ tests=(
   test-resolved-inventory-secret-facts-contract.sh
   test-dns-killswitch-policy-matrix.sh
   test-policy-deny-precedence.sh
+  test-tri-site-external-deny-policy-materialization.sh
   test-provider-overlay-runtime-interface-name.sh
   test-interface-mtu-contract.sh
   test-vxlan-contract-required-fields.sh
