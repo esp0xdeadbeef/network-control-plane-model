@@ -56,6 +56,7 @@ tests=(
   test-upstream-selector-no-core-crossconnect.sh
   test-upstream-selector-nebula-underlay-core-transit.sh
   test-runtime-underlay-endpoint-source-routes.sh
+  test-overlay-peer-site-preservation.sh
   test-transit-default-routes-are-classified.sh
   test-small-prefix-dhcp-pools.sh
   test-network-labs-inventory-sweep.sh

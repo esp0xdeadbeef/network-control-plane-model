@@ -58,6 +58,8 @@ else
       }
       // (if isNonEmptyString (prefix.dst or null) then { inherit (prefix) dst; } else { })
       // (if isNonEmptyString (prefix.sourceFile or null) then { inherit (prefix) sourceFile; } else { })
+      // (if isNonEmptyString (prefix.overlay or null) then { inherit (prefix) overlay; } else { })
+      // (if isNonEmptyString (prefix.peerSite or null) then { inherit (prefix) peerSite; } else { })
       // (if isNonEmptyString (prefix.tenantName or prefix.tenant or null) then {
         tenant = prefix.tenantName or prefix.tenant;
       } else { })

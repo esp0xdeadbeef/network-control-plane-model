@@ -12,6 +12,7 @@
   overlayRuntimeRoutedPrefixRoutes,
   overlayRuntimeRoutedPrefixRoutesVia,
   delegatedOverlayDefaultRoutes,
+  delegatedOverlayAuthorityDefaults,
   withoutGenericOverlayDefaults,
   runtimePrefixExitNodes,
   overlayUnderlayEndpoints,
@@ -105,10 +106,22 @@ let
       lib.mapAttrs (
         _: iface:
         let
+          overlayName = ((iface.backingRef or { }).name or null);
+          runtimeNode = iface.logicalNode or null;
           routes = attrsOrEmpty (iface.routes or null);
+          delegatedDefaultsFromRoutes4 = delegatedOverlayDefaultRoutes 4 routes;
+          delegatedDefaultsFromRoutes6 = delegatedOverlayDefaultRoutes 6 routes;
           delegatedDefaults = {
-            ipv4 = delegatedOverlayDefaultRoutes 4 routes;
-            ipv6 = delegatedOverlayDefaultRoutes 6 routes;
+            ipv4 =
+              if delegatedDefaultsFromRoutes4 != [ ] then
+                delegatedDefaultsFromRoutes4
+              else
+                delegatedOverlayAuthorityDefaults 4 overlayName runtimeNode;
+            ipv6 =
+              if delegatedDefaultsFromRoutes6 != [ ] then
+                delegatedDefaultsFromRoutes6
+              else
+                delegatedOverlayAuthorityDefaults 6 overlayName runtimeNode;
           };
           cleanedRoutes = routes // {
             ipv4 = withoutGenericOverlayDefaults 4 routes;

@@ -144,6 +144,7 @@ in
   inherit delegatedOverlayDefaultRoutes defaultReachabilityVia defaultViaRoutes;
   inherit overlayEndpointRoutesVia overlayNodeRoutesVia;
   inherit (prefixRoutes)
+    delegatedOverlayAuthorityDefaults
     delegatedOverlayDefaultsVia
     delegatedOverlayExitDefaultsVia
     overlayPeerTenantRoutes
