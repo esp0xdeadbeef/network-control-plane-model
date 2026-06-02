@@ -1,0 +1,32 @@
+{
+  "enterprise": "acme",
+  "site": "ams",
+  "accessMatrix": [
+    {
+      "target": "access-runtime",
+      "name": "local-only",
+      "allowedUpstreamClasses": ["local-access"]
+    },
+    {
+      "target": "access-runtime",
+      "name": "overlay-allowed",
+      "allowedUpstreamClasses": ["local-access", "overlay-core"]
+    },
+    {
+      "target": "access-runtime",
+      "name": "service-dns-allowed",
+      "allowedUpstreamClasses": ["local-access", "service-dns"]
+    },
+    {
+      "target": "access-runtime",
+      "name": "explicit-egress-dns",
+      "allowedUpstreamClasses": ["local-access", "explicit-egress-default"]
+    },
+    {
+      "target": "access-runtime",
+      "name": "denied",
+      "allowedUpstreamClasses": ["local-access"]
+    }
+  ],
+  "wanCoreDnsTargets": ["core-runtime"]
+}
