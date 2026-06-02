@@ -13,11 +13,11 @@ let
   system = builtins.currentSystem;
   labs = flake.inputs.network-labs.outPath;
   built = flake.lib.${system}.compileAndBuildFromPaths {
-    inputPath = labs + "/sat/intent.nix";
-    inventoryPath = labs + "/sat/inventory.nix";
+    inputPath = labs + "/examples/s-router-overlay-dns-lane-policy/intent.nix";
+    inventoryPath = labs + "/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix";
   };
-  site = built.control_plane_model.data.esp.hetz;
-  upstream = site.runtimeTargets."esp-hetz-router-upstream";
+  site = built.control_plane_model.data.esp0xdeadbeef."site-c";
+  upstream = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
   upstreamIfs = upstream.effectiveRuntimeRealization.interfaces;
   upstreamRules = upstream.forwardingIntent.rules or [ ];
 
@@ -32,11 +32,11 @@ let
   hasRoute4 = routes: dst: via:
     builtins.any (route: (route.dst or null) == dst && (route.via4 or null) == via) (routes.ipv4 or [ ]);
 in
-  hasRule "allow-overlay-to-hostile-public-dns" "nebula-core" "pol-dmz-ew"
+  hasRule "allow-east-west-to-sitec-dmz-dns" "core-nebula" "pol-dmz-ew"
   && hasRoute4
-    (upstreamIfs."p2p-hetz-router-nebula-core-hetz-router-upstream".routes or { })
+    (upstreamIfs."p2p-c-router-nebula-core-c-router-upstream-selector".routes or { })
     "10.90.10.0/24"
-    "10.80.0.14"
+    "10.80.0.16"
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
