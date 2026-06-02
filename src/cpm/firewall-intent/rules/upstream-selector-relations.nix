@@ -4,6 +4,7 @@ let
   inherit (endpointContext)
     attrsOrEmpty
     listOrEmpty
+    transitInterfaces
     coreInterfaces
     policyInterfaces
     serviceAccessNodes
@@ -44,10 +45,22 @@ let
     endpoint:
     let
       wanted = externalUplinks endpoint;
+      endpointValue = attrsOrEmpty endpoint;
+      namedExternalOverlayIngress = builtins.filter (
+        iface:
+        (endpointValue.kind or null) == "external"
+        && endpointValue ? name
+        && !(endpointValue ? uplinks)
+        && common.laneKind iface != "access-uplink"
+        && builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wanted
+      ) transitInterfaces;
       matches = builtins.filter (
         iface: builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wanted
       ) (coreInterfaces ++ policyInterfaces);
     in
+    if namedExternalOverlayIngress != [ ] then
+      namedExternalOverlayIngress
+    else
     builtins.attrValues (
       builtins.listToAttrs (
         map (iface: {
