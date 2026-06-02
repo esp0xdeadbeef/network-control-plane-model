@@ -49,6 +49,7 @@ tests=(
   test-state-contract-record-required-root-fails.sh
   test-state-contract-related-service-persistence.sh
   test-delegated-overlay-public-egress.sh
+  test-sat-hetz-overlay-dns-return-table.sh
   test-core-overlay-delegated-egress-source-scope.sh
   test-tri-site-edge-core-dns-service-public-egress-forwarding.sh
   test-upstream-selector-no-core-crossconnect.sh

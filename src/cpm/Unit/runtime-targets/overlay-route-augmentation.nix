@@ -71,6 +71,7 @@ let
   inherit (selectorRoutes)
     accessOverlayDefaults
     overlayIngressPolicyDefaults
+    overlayPolicyLaneDefaults
     ;
 
   coreRouteAugmenters = import ./overlay-route-augmentation/core-routes.nix {
@@ -142,6 +143,7 @@ let
       policyUplinkReturnRoutesVia
       accessOverlayDefaults
       overlayIngressPolicyDefaults
+      overlayPolicyLaneDefaults
       ;
   };
 

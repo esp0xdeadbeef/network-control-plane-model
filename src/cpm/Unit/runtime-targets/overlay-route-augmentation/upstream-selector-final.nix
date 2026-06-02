@@ -19,6 +19,7 @@
   policyUplinkReturnRoutesVia,
   accessOverlayDefaults,
   overlayIngressPolicyDefaults,
+  overlayPolicyLaneDefaults,
 }:
 
 let
@@ -94,6 +95,7 @@ else
       peer6 = p2pPeerAddress 6 (iface.addr6 or null);
       accessDefaults = accessOverlayDefaults iface coreInterfaces;
       overlayIngressDefaults = overlayIngressPolicyDefaults iface coreInterfaces;
+      overlayPolicyDefaults = overlayPolicyLaneDefaults iface;
       policyUplinkReturns =
         if
           (iface.sourceKind or null) == "p2p"
@@ -138,12 +140,14 @@ else
           ++ delegatedDefaults.ipv4
           ++ accessDefaults.ipv4
           ++ overlayIngressDefaults.ipv4
+          ++ overlayPolicyDefaults.ipv4
           ++ policyUplinkReturns.ipv4;
         ipv6 =
           (underlayEndpointRoutes 6 routes)
           ++ delegatedDefaults.ipv6
           ++ accessDefaults.ipv6
           ++ overlayIngressDefaults.ipv6
+          ++ overlayPolicyDefaults.ipv6
           ++ policyUplinkReturns.ipv6;
       };
       finalRoutes = mergeRoutes routes extraRoutes;
