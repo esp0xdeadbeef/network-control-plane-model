@@ -39,11 +39,19 @@ nix eval \
         runtimeIfName = "eth0";
         hostUplink = {
           ipv4 = { method = "dhcp"; };
-          ipv6 = { method = "slaac"; };
+          ipv6 = {
+            method = "slaac";
+            egressAuthority = true;
+          };
         };
       };
       nat66Wan = baseWan // {
         wan.egress.ipv6.translation.mode = "nat66";
+      };
+      noAuthorityWan = nat66Wan // {
+        hostUplink.ipv6 = {
+          method = "slaac";
+        };
       };
       transitInterface = {
         sourceKind = "p2p";
@@ -94,6 +102,7 @@ nix eval \
           inherit target runtimeOriginSourcePrefixes;
         };
       nat66 = natFor nat66Target [ nat66Wan transitInterface ] runtimeOriginPrefixes;
+      noAuthority = natFor nat66Target [ noAuthorityWan transitInterface ] runtimeOriginPrefixes;
       noWanTranslation = natFor nat66Target [ baseWan transitInterface ] runtimeOriginPrefixes;
       noIntent = natFor noIntentTarget [ nat66Wan transitInterface ] runtimeOriginPrefixes;
       noSource = natFor noSourceTarget [ nat66Wan transitInterface ] [ ];
@@ -111,12 +120,14 @@ nix eval \
         nat66RouteSafetyOutputInterface = nat66.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66OutputInterfaces == [ "eth0" ];
         nat66PreservesBlackholedBroadDefault = nat66.routeSafety.coreOriginUplinkDefault.blackholed == true && nat66.routeSafety.coreOriginUplinkDefault.broadCoreOriginUplinkRoutingAllowed == false;
         nat66WarningPreserved = nat66.warnings == [ "lab-nat66-required" ];
+        noEgressAuthorityDisablesNat66 = noAuthority.families.ipv6 == false && noAuthority.masqueradeSourcePrefixes6 == [ ] && noAuthority.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66 == false && noAuthority.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66OutputInterfaces == [ ];
         noWanTranslationDisablesNat66 = noWanTranslation.families.ipv6 == false && noWanTranslation.masqueradeSourcePrefixes6 == [ ] && noWanTranslation.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66 == false && noWanTranslation.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66SourcePrefixes == [ ];
         noNat66IntentDisablesNat66 = noIntent.families.ipv6 == false && noIntent.masqueradeSourcePrefixes6 == [ ] && noIntent.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66 == false && noIntent.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66SourcePrefixes == [ ];
         noSourceScopeDisablesNat66 = noSource.families.ipv6 == false && noSource.masqueradeSourcePrefixes6 == [ ] && noSource.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66 == false && noSource.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66SourcePrefixes == [ ];
       };
       context = {
         nat66 = nat66;
+        noAuthority = noAuthority;
         noWanTranslation = noWanTranslation;
         noIntent = noIntent;
         noSource = noSource;
