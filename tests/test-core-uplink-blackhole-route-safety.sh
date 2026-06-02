@@ -74,7 +74,10 @@ expr='
         runtimeIfName = "eth0";
         hostUplink = {
           ipv4 = { method = "dhcp"; };
-          ipv6 = { method = "slaac"; };
+          ipv6 = {
+            method = "slaac";
+            egressAuthority = true;
+          };
         };
         wan.egress.ipv6.translation.mode = "nat66";
       };

@@ -77,6 +77,25 @@ let
     )
     interfaceRecords;
   explicitNat66RuntimeNames = map (iface: iface.runtimeIfName) explicitNat66Interfaces;
+  hasNat66EgressAuthority = iface:
+    let
+      hostUplink = attrsOrEmpty (iface.hostUplink or null);
+      hostIpv6 = attrsOrEmpty (hostUplink.ipv6 or null);
+      ifaceIpv6 = attrsOrEmpty (iface.ipv6 or null);
+      wan = attrsOrEmpty (iface.wan or null);
+      egress = attrsOrEmpty (wan.egress or null);
+      wanIpv6 = attrsOrEmpty (egress.ipv6 or null);
+      translation = attrsOrEmpty (wanIpv6.translation or null);
+    in
+    hasHostIPv6 iface
+    && builtins.any (value: value == true) [
+      (hostIpv6.egressAuthority or false)
+      (hostIpv6.providerEgress or false)
+      (hostIpv6.routeAuthority or false)
+      (ifaceIpv6.egressAuthority or false)
+      (wanIpv6.egressAuthority or false)
+      (translation.egressAuthority or false)
+    ];
   nat66Warning =
     let
       warnings = uniqueStrings (
@@ -131,7 +150,7 @@ let
     exitEnabled
     && explicitNat66Interfaces != [ ]
     && nat66SourcePrefixes != [ ]
-    && builtins.any hasHostIPv6 wanInterfaces;
+    && builtins.any hasNat66EgressAuthority wanInterfaces;
   natEnabled = nat4Enabled || nat6Enabled;
   wanRuntimeNames = map (iface: iface.runtimeIfName) wanInterfaces;
   nat44RuntimeNames =
@@ -141,7 +160,7 @@ let
       (
         builtins.filter
           (
-            iface: hasHostIPv6 iface && builtins.elem iface.runtimeIfName explicitNat66RuntimeNames
+            iface: hasNat66EgressAuthority iface && builtins.elem iface.runtimeIfName explicitNat66RuntimeNames
           )
           wanInterfaces
       );
