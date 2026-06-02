@@ -54,6 +54,17 @@ let
         && (rule.toInterface or null) == toIf
         && (rule.action or null) == "accept")
       rules;
+  hasDnsReturnRule = rules: relation: fromIf: toIf:
+    builtins.any
+      (rule:
+        (rule.relationId or null) == relation
+        && (rule.fromInterface or null) == fromIf
+        && (rule.toInterface or null) == toIf
+        && (rule.action or null) == "accept"
+        && (rule.trafficType or null) == "dns"
+        && builtins.elem { family = 4; prefix = "10.90.10.0/24"; } (rule.sourcePrefixes or [ ])
+        && builtins.elem { family = 6; prefix = "fd42:dead:cafe:10::/64"; } (rule.sourcePrefixes or [ ]))
+      rules;
 in
   builtins.elem "10.90.10.0/24" (dns.allowFrom or [ ])
   && builtins.elem "fd42:dead:cafe:10::/64" (dns.allowFrom or [ ])
@@ -66,6 +77,7 @@ in
   && hasOverlayLinkRoute4 (nebulaIfs."overlay-east-west".routes.ipv4 or [ ]) "100.96.10.1/32"
   && hasOverlayLinkRoute6 (nebulaIfs."overlay-east-west".routes.ipv6 or [ ]) "fd42:dead:beef:ee::1/128"
   && hasRule upstreamRules "allow-east-west-to-sitec-dmz-dns" "core-nebula" "pol-dmz-ew"
+  && hasDnsReturnRule upstreamRules "allow-east-west-to-sitec-dmz-dns" "pol-dmz-ew" "core-nebula"
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then

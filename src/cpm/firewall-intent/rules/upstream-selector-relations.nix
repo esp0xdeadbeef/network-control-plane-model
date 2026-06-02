@@ -8,6 +8,9 @@ let
     coreInterfaces
     policyInterfaces
     serviceAccessNodes
+    serviceNamesForEndpoint
+    serviceRecords
+    uniqueStrings
     ;
 
   familyRoutes = routes: listOrEmpty (routes.ipv4 or null) ++ listOrEmpty (routes.ipv6 or null);
@@ -87,6 +90,15 @@ let
       iface: builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wantedUplinks
     ) candidates;
 
+  serviceResponseSourcePrefixes = import ./service-response-prefixes.nix {
+    inherit
+      listOrEmpty
+      serviceNamesForEndpoint
+      serviceRecords
+      uniqueStrings
+      ;
+  };
+
   pairRules =
     relation: fromIfaces: toIfaces: extra:
     let
@@ -163,9 +175,19 @@ in
     then
       [ ]
     else
-      pairRules relation (externalIngressInterfacesFor fromEndpoint)
-        (servicePolicyInterfacesForExternal fromEndpoint toEndpoint)
-        { };
+      let
+        ingressIfaces = externalIngressInterfacesFor fromEndpoint;
+        serviceIfaces = servicePolicyInterfacesForExternal fromEndpoint toEndpoint;
+        responseSourcePrefixes = serviceResponseSourcePrefixes toEndpoint;
+        responseRules =
+          if (relation.trafficType or null) != "dns" || responseSourcePrefixes == [ ] then
+            [ ]
+          else
+            pairRules relation serviceIfaces ingressIfaces {
+              sourcePrefixes = responseSourcePrefixes;
+            };
+      in
+      (pairRules relation ingressIfaces serviceIfaces { }) ++ responseRules;
 
   runtimeRoutedPrefixPublicEgressRules = import ./upstream-selector-runtime-prefix-egress.nix {
     inherit
