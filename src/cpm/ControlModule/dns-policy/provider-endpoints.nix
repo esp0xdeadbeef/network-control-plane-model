@@ -60,10 +60,13 @@ let
     let
       resolved = endpointAddresses providerName;
     in
-    {
-      name = providerName;
-      inherit (resolved) ipv4 ipv6;
-    };
+    if resolved.endpoint == { } || resolved.addresses == [ ] then
+      null
+    else
+      {
+        name = providerName;
+        inherit (resolved) ipv4 ipv6;
+      };
 in
 {
   inherit optionalProviderAddressesForDnsService providerAddressesForDnsService providerEndpointForServiceProvider;

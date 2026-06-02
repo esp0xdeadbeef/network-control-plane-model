@@ -27,7 +27,9 @@ builtins.map
     resolvedService
       // {
       name = serviceName;
-      providerEndpoints = builtins.map providerEndpointForServiceProvider providerNames;
+      providerEndpoints = builtins.filter (endpoint: endpoint != null) (
+        builtins.map providerEndpointForServiceProvider providerNames
+      );
       providerTenants = uniqueStrings (
         lib.concatMap providerTenantsForServiceProvider providerNames
       );

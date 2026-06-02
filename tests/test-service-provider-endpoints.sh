@@ -8,7 +8,9 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 
 archive_json="$(mktemp)"
 output_json="$(mktemp)"
-trap 'rm -f "$archive_json" "$output_json"' EXIT
+bad_inventory="$(mktemp)"
+bad_output_json="$(mktemp)"
+trap 'rm -f "$archive_json" "$output_json" "$bad_inventory" "$bad_output_json"' EXIT
 
 nix flake archive --json "path:${repo_root}" > "$archive_json"
 
@@ -66,6 +68,49 @@ ok="$(jq -r '.ok' "$output_json")"
 if [[ "$ok" != "true" ]]; then
   echo "FAIL service-provider-endpoints" >&2
   jq '.' "$output_json" >&2
+  exit 1
+fi
+
+cat > "$bad_inventory" <<EOF
+let
+  base = import ${labs_path}/examples/s-router-public-overlay-service/inventory-nixos.nix;
+in
+base // {
+  endpoints = builtins.removeAttrs (base.endpoints or { }) [ "c-router-lighthouse" ];
+}
+EOF
+
+REPO_ROOT="$repo_root" \
+INTENT_PATH="${labs_path}/examples/s-router-public-overlay-service/intent.nix" \
+INVENTORY_PATH="$bad_inventory" \
+  nix eval \
+    --extra-experimental-features 'nix-command flakes' \
+    --impure --json --expr '
+      let
+        flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
+        out = flake.lib.x86_64-linux.compileAndBuildFromPaths {
+          inputPath = builtins.getEnv "INTENT_PATH";
+          inventoryPath = builtins.getEnv "INVENTORY_PATH";
+        };
+        services = out.control_plane_model.data.esp0xdeadbeef."site-c".services;
+        service =
+          builtins.head (builtins.filter (item: (item.name or null) == "dmz-nebula") services);
+      in
+        {
+          serviceProviderNamesPreserved = service.providers == [ "c-router-lighthouse" ];
+          missingEndpointNotMaterialized = service.providerEndpoints == [ ];
+        }
+    ' > "$bad_output_json"
+
+bad_ok="$(
+  jq -r '
+    .serviceProviderNamesPreserved == true
+    and .missingEndpointNotMaterialized == true
+  ' "$bad_output_json"
+)"
+if [[ "$bad_ok" != "true" ]]; then
+  echo "FAIL service-provider-endpoints: missing provider endpoint addresses were materialized" >&2
+  jq '.' "$bad_output_json" >&2
   exit 1
 fi
 
