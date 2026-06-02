@@ -84,6 +84,18 @@ INVENTORY_PATH="${inventory_path}" \
                 || (route.via6 or null) == gateway
               ))
             routes;
+        hasScopedRoute = routes: destination: gateway: access: uplink:
+          builtins.any
+            (route:
+              (route.dst or null) == destination
+              && (
+                (route.via4 or null) == gateway
+                || (route.via6 or null) == gateway
+              )
+              && (((route.lane or { }).access or null) == access)
+              && (((route.lane or { }).uplink or null) == uplink)
+              && (((route.intent or { }).kind or null) == "internal-reachability"))
+            routes;
         hasAll = expected: actual:
           builtins.all (value: builtins.elem value actual) expected;
         siteaUpstreamClient =
@@ -115,9 +127,19 @@ INVENTORY_PATH="${inventory_path}" \
       in {
         checks = {
           clientLaneLearnsAllowedMgmtDnsV4 =
-            hasRoute (siteaUpstreamClient.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
+            hasScopedRoute
+              (siteaUpstreamClient.ipv4 or [ ])
+              "10.20.10.0/24"
+              "10.10.0.36"
+              "s-router-access-client"
+              "east-west";
           clientLaneLearnsAllowedMgmtDnsV6 =
-            hasRoute (siteaUpstreamClient.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
+            hasScopedRoute
+              (siteaUpstreamClient.ipv6 or [ ])
+              "fd42:dead:beef:0010:0000:0000:0000:0000/64"
+              "fd42:dead:beef:1000:0:0:0:24"
+              "s-router-access-client"
+              "east-west";
           mgmtLaneLearnsMgmtDnsV4 =
             hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
           mgmtLaneLearnsMgmtDnsV6 =
