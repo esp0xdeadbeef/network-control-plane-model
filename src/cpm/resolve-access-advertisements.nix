@@ -1,4 +1,4 @@
-{ helpers }:
+{ helpers, ipam }:
 
 { sitePath
 , siteAttrs
@@ -19,7 +19,7 @@ let
     inherit helpers sitePath siteAttrs routedPrefixesByTenant advertisementHelpers;
   };
   advertisementEntries = import ./Unit/access-advertisements/entries.nix {
-    inherit helpers sitePath advertisementHelpers advertisementContext;
+    inherit helpers sitePath ipam advertisementHelpers advertisementContext;
   };
   inherit (advertisementHelpers) failInventory;
   inherit (advertisementContext)

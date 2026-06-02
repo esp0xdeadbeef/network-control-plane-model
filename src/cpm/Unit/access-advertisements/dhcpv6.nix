@@ -1,7 +1,9 @@
 { helpers
 , sitePath
+, ipam
 , advertisementHelpers
 , advertisementContext
+, resolveReservations
 ,
 }:
 
@@ -62,6 +64,11 @@ let
       pool = if enabled then poolStringFrom entryPath (attrs.pool or null) else "";
       dnsServers =
         if enabled then resolveAdvertisedIPv6Targets entryPath "dnsServers" serverAddress (attrs.dnsServers or null) else [ ];
+      reservations =
+        if enabled then
+          resolveReservations 6 "ipv6" 128 entryPath interfaceName subnet (attrs.reservations or null)
+        else
+          [ ];
       bindInterface =
         requireString
           "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
@@ -91,6 +98,7 @@ let
       id = tenantContext.tenantName;
       subnet = subnet;
       pool = pool;
+      inherit reservations;
       dnsServers = dnsServers;
       domain = requireString "${entryPath}.domain" (attrs.domain or null);
     } else { }))));
