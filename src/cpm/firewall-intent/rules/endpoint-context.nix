@@ -126,6 +126,7 @@ in
     listOrEmpty
     uniqueStrings
     serviceRecords
+    transitInterfaces
     ;
   accessInterfaces = builtins.filter (
     iface: common.laneKind iface == "access" && common.laneAccess iface != null
