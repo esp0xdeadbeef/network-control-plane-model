@@ -21,6 +21,7 @@ fi
 
 tests=(
   test-nix-file-loc.sh
+  test-emitter-provenance-repo-boundary.sh
   test-resolved-inventory-secret-facts-contract.sh
   test-dns-killswitch-policy-matrix.sh
   test-policy-deny-precedence.sh
