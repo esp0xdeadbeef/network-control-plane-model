@@ -15,8 +15,9 @@ let
   laneOverlayNamesFor =
     nodeRole: iface:
     let
-      lane = ((iface.backingRef or { }).lane or { });
-      uplinks = listOrEmpty (lane.uplinks or null);
+      backingRef = iface.backingRef or { };
+      lane = backingRef.lane or { };
+      uplinks = (listOrEmpty (backingRef.uplinks or null)) ++ (listOrEmpty (lane.uplinks or null));
       single = lane.uplink or null;
       laneNames = uplinks ++ (if isNonEmptyString single then [ single ] else [ ]);
       overlayLaneNames = builtins.filter (name: builtins.elem name (sortedNames overlayProvisioning)) laneNames;

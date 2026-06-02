@@ -83,11 +83,15 @@ let
   interfaceOverlayLaneNames =
     iface:
     let
-      lane = ((iface.backingRef or { }).lane or { });
-      uplinks = listOrEmpty (lane.uplinks or null);
+      backingRef = iface.backingRef or { };
+      lane = backingRef.lane or { };
+      uplinks = (listOrEmpty (backingRef.uplinks or null)) ++ (listOrEmpty (lane.uplinks or null));
       single = lane.uplink or null;
     in
-    if (lane.kind or null) != "uplink" then [ ] else uplinks ++ (if isNonEmptyString single then [ single ] else [ ]);
+    if (lane.kind or null) != "uplink" then
+      [ ]
+    else
+      uplinks ++ (if isNonEmptyString single then [ single ] else [ ]);
 
   interfaceOverlayNames =
     interfaces:
