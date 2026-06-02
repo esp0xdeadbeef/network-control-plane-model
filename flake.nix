@@ -227,23 +227,35 @@
                 INPUT="$INPUT" INVENTORY="$INVENTORY" nix eval --impure --no-write-lock-file --json --expr "$expr"
               )"
 
-              gitRev="$(${pkgs.git}/bin/git rev-parse HEAD 2>/dev/null || echo "unknown")"
-              gitDirty=false
-              if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-                if ${pkgs.git}/bin/git diff --quiet >/dev/null 2>&1 && ${pkgs.git}/bin/git diff --cached --quiet >/dev/null 2>&1; then
+              gitRev="unknown"
+              gitDirty=true
+              repoRoot="$(${pkgs.git}/bin/git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
+              if [[ -n "$repoRoot" && "''${repoRoot##*/}" == "network-control-plane-model" ]]; then
+                gitRev="$(${pkgs.git}/bin/git -C "$repoRoot" rev-parse HEAD 2>/dev/null || echo "unknown")"
+                if ${pkgs.git}/bin/git -C "$repoRoot" diff --quiet >/dev/null 2>&1 && ${pkgs.git}/bin/git -C "$repoRoot" diff --cached --quiet >/dev/null 2>&1; then
                   gitDirty=false
                 else
                   gitDirty=true
                 fi
               fi
+              sourceNarHash="${self.sourceInfo.narHash or ""}"
+              sourceLastModified="${toString (self.sourceInfo.lastModified or self.lastModified or 0)}"
 
               echo "$json" | ${pkgs.jq}/bin/jq -S -c \
                 --arg rev "$gitRev" \
                 --argjson dirty "$gitDirty" \
+                --arg sourceNarHash "$sourceNarHash" \
+                --arg sourceLastModified "$sourceLastModified" \
                 '.control_plane_model.meta = (.control_plane_model.meta // {})
                  | .control_plane_model.meta.networkControlPlaneModel =
                      ((.control_plane_model.meta.networkControlPlaneModel // {})
-                      + { name: "network-control-plane-model", gitRev: $rev, gitDirty: $dirty })' \
+                      + {
+                        name: "network-control-plane-model",
+                        gitRev: $rev,
+                        gitDirty: $dirty,
+                        sourceNarHash: $sourceNarHash,
+                        sourceLastModified: $sourceLastModified
+                      })' \
                 | tee "$OUTPUT" \
                 | ${pkgs.jq}/bin/jq -S
             '';
