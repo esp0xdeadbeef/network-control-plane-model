@@ -45,6 +45,7 @@ let
   };
   inherit (routeBuilders)
     delegatedOverlayDefaultRoutes
+    delegatedOverlayAuthorityDefaults
     delegatedOverlayDefaultsVia
     delegatedOverlayExitDefaultsVia
     defaultViaRoutes
@@ -89,6 +90,7 @@ let
       overlayRuntimeRoutedPrefixRoutes
       overlayRuntimeRoutedPrefixRoutesVia
       delegatedOverlayDefaultRoutes
+      delegatedOverlayAuthorityDefaults
       withoutGenericOverlayDefaults
       runtimePrefixExitNodes
       overlayUnderlayEndpoints

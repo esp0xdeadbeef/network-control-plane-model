@@ -104,6 +104,7 @@ let
                 ;
             };
             overlayNodePrefixes = overlayNodePrefixesFor overlayName;
+            addOverlayMetadata = prefix: prefix // { overlay = overlayName; };
           in
           {
             name = overlayName;
@@ -116,8 +117,8 @@ let
                 terminateOn = terminateOn;
                 nodes = overlayNodeAddrs;
                 nodeRoutePrefixes = overlayNodePrefixes;
-                peerTenantPrefixes = overlayPeerTenantPrefixes peerSites;
-                peerRuntimeRoutedPrefixes = overlayPeerRuntimeRoutedPrefixes peerSites;
+                peerTenantPrefixes = builtins.map addOverlayMetadata (overlayPeerTenantPrefixes peerSites);
+                peerRuntimeRoutedPrefixes = builtins.map addOverlayMetadata (overlayPeerRuntimeRoutedPrefixes peerSites);
               }
               // (
                 if ipamV4Prefix != null || ipamV6Prefix != null then

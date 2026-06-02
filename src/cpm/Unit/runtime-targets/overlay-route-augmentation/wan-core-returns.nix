@@ -44,7 +44,9 @@ let
           ${viaField} = via;
         }
         // (if isNonEmptyString (prefix.dst or null) then { inherit (prefix) dst; } else { })
-        // (if isNonEmptyString (prefix.sourceFile or null) then { inherit (prefix) sourceFile; } else { }))
+        // (if isNonEmptyString (prefix.sourceFile or null) then { inherit (prefix) sourceFile; } else { })
+        // (if isNonEmptyString (prefix.overlay or null) then { inherit (prefix) overlay; } else { })
+        // (if isNonEmptyString (prefix.peerSite or null) then { inherit (prefix) peerSite; } else { }))
         (
           builtins.filter
             (prefix: (prefix.family or null) == family && isNonEmptyString (prefix.dst or prefix.sourceFile or null))

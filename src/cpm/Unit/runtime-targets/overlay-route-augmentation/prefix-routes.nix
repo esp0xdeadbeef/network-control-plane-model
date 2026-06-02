@@ -22,7 +22,9 @@ in
           kind = "overlay-reachability";
           source = "peer-tenant-prefix";
         };
-      })
+      }
+      // (if isNonEmptyString (prefix.overlay or null) then { overlay = prefix.overlay; } else { })
+      // (if isNonEmptyString (prefix.peerSite or null) then { peerSite = prefix.peerSite; } else { }))
       (listOrEmpty (overlayProvisioning.${overlayName}.peerTenantPrefixes or null));
 
   overlayRuntimeRoutedPrefixRoutesVia =
@@ -64,6 +66,43 @@ in
       // (if isNonEmptyString (prefix.sourceFile or null) then { sourceFile = prefix.sourceFile; } else { })
       // (if isNonEmptyString (prefix.tenant or null) then { tenant = prefix.tenant; } else { }))
       prefixes;
+
+  delegatedOverlayAuthorityDefaults =
+    family: overlayName: runtimeNode:
+    let
+      dst = if family == 4 then "0.0.0.0/0" else "::/0";
+      overlay = if isNonEmptyString overlayName then overlayProvisioning.${overlayName} or { } else { };
+      runtimeNodeCfg =
+        if isNonEmptyString runtimeNode then
+          ((overlay.nebula or { }).runtimeNodes or { }).${runtimeNode} or { }
+        else
+          { };
+      unsafeRoutes = listOrEmpty (runtimeNodeCfg.unsafeRoutes or null);
+      routeInstalled = route: (route.install or true) != false;
+      hasRoute = routeDst:
+        builtins.any
+          (route: routeInstalled route && (route.route or null) == routeDst)
+          unsafeRoutes;
+      hasAuthority =
+        if family == 4 then
+          hasRoute "0.0.0.0/0" || (hasRoute "0.0.0.0/1" && hasRoute "128.0.0.0/1")
+        else
+          hasRoute "::/0" || (hasRoute "::/1" && hasRoute "8000::/1");
+    in
+    if !isNonEmptyString overlayName || !isNonEmptyString runtimeNode || !hasAuthority then [ ] else
+    builtins.map
+      (exitNode: {
+        inherit dst family;
+        overlay = overlayName;
+        policyOnly = true;
+        proto = "overlay";
+        scope = "link";
+        intent = {
+          kind = "delegated-public-egress";
+          inherit exitNode;
+        };
+      })
+      runtimePrefixExitNodes;
 
   delegatedOverlayExitDefaultsVia =
     family: via:

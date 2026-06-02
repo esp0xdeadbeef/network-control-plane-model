@@ -49,6 +49,7 @@ let
           [
             {
               family = 6;
+              inherit peerSite;
               inherit sourceFile;
               tenant = tenantName;
               prefixName = prefixAttrs.name or null;
@@ -73,7 +74,7 @@ let
         if isNonEmptyString value then
           [
             {
-              inherit family tenantName;
+              inherit family peerSite tenantName;
               dst = value;
             }
           ]
