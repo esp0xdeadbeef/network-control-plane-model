@@ -37,7 +37,13 @@ if nix run \
   exit 1
 fi
 
-if grep -qF "inventory.nix must explicitly realize every control_plane_model runtime target" "${stderr_file}" \
+if grep -qF "E_INVENTORY_RUNTIME_TARGET_UNREALIZED" "${stderr_file}" \
+  && grep -qF "inventory.nix must explicitly realize every control_plane_model runtime target" "${stderr_file}" \
+  && grep -qF "Owning layer: network-labs inventory" "${stderr_file}" \
+  && grep -qF "Source class: public-inventory" "${stderr_file}" \
+  && grep -qF "Missing input: inventory.realization.nodes.<enterprise>-<site>-<logical-node>" "${stderr_file}" \
+  && grep -qF "Required correction: add the listed missingInventoryKey entries" "${stderr_file}" \
+  && grep -qF "acme-ams-policy-1" "${stderr_file}" \
   && grep -qF "policy-1" "${stderr_file}"; then
   echo "PASS missing-runtime-target-realization"
 else
