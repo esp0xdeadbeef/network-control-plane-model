@@ -33,12 +33,21 @@ nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${output_json}" >/dev/null
 
 jq '
+  def intent_kind($route):
+    if (($route.intent // null) | type) == "object" then
+      ($route.intent.kind // "")
+    elif (($route.intent // null) | type) == "string" then
+      $route.intent
+    else
+      ""
+    end;
+
   [
     paths as $p
     | getpath($p) as $route
     | select(
         ($route | type) == "object"
-        and (($route.intent.kind? // "") == "overlay-reachability")
+        and ((intent_kind($route) == "overlay-reachability") or (intent_kind($route) == "overlay-node-reachability"))
         and ((($route.overlay? // "") == "") or (($route.peerSite? // "") == ""))
       )
     | {
@@ -51,7 +60,7 @@ jq '
 if jq -e 'length == 0' "${violations_json}" >/dev/null; then
   echo "PASS overlay-peer-site-preservation"
 else
-  echo "FAIL overlay-peer-site-preservation: CPM emitted overlay-reachability without overlay or peerSite" >&2
+  echo "FAIL overlay-peer-site-preservation: CPM emitted overlay route without overlay or peerSite" >&2
   jq '.[0:20]' "${violations_json}" >&2
   exit 1
 fi

@@ -8,15 +8,17 @@
 }:
 
 let
-  inherit (helpers) isNonEmptyString sortedNames;
+  inherit (helpers) isNonEmptyString;
   inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
 
-  enterpriseControlPlaneSites =
+  controlPlaneSites =
     let
       cp = attrsOrEmpty (inventoryAttrs.controlPlane or null);
-      sites = attrsOrEmpty (cp.sites or null);
     in
-    attrsOrEmpty (sites.${enterpriseName} or null);
+    attrsOrEmpty (cp.sites or null);
+
+  currentEnterpriseSiteEntries =
+    builtins.filter (entry: entry.enterpriseKey == enterpriseName) allSiteEntries;
 
   resolvePeerSiteEntry =
     peerSite:
@@ -91,7 +93,7 @@ let
       ++ prefixFor 6 tenantName (tenantAttrs.ipv6 or null))
       peerTenants;
 in
-{
+rec {
   overlayPeerRuntimeRoutedPrefixes =
     peerSites:
     lib.unique (lib.concatMap runtimeRoutedPrefixesForPeerSite peerSites);
@@ -100,26 +102,53 @@ in
     peerSites:
     lib.unique (lib.concatMap tenantPrefixesForPeerSite peerSites);
 
+  overlayNodePrefixRecordsFor =
+    overlayName:
+    let
+      siteOverlayNodeRecords =
+        lib.concatMap
+          (entry:
+            let
+              enterpriseSites = attrsOrEmpty (controlPlaneSites.${entry.enterpriseKey} or null);
+              siteCfg = attrsOrEmpty (enterpriseSites.${entry.siteKey} or null);
+              overlays = attrsOrEmpty (siteCfg.overlays or null);
+              overlayCfg = attrsOrEmpty (overlays.${overlayName} or null);
+              peerSite = "${entry.enterpriseKey}.${entry.siteKey}";
+              recordFor =
+                family: node:
+                let
+                  field = if family == 4 then "addr4" else "addr6";
+                  value = node.${field} or null;
+                in
+                if builtins.isString value && value != "" then
+                  [
+                    {
+                      inherit family overlayName peerSite;
+                      overlay = overlayName;
+                      dst = value;
+                    }
+                  ]
+                else
+                  [ ];
+            in
+            lib.concatMap
+              (node: recordFor 4 node ++ recordFor 6 node)
+              (builtins.attrValues (attrsOrEmpty (overlayCfg.nodes or null))))
+          currentEnterpriseSiteEntries;
+      familyRecords = family: builtins.filter (record: (record.family or null) == family) siteOverlayNodeRecords;
+    in
+    {
+      ipv4 = lib.unique (familyRecords 4);
+      ipv6 = lib.unique (familyRecords 6);
+    };
+
   overlayNodePrefixesFor =
     overlayName:
     let
-      siteOverlayNodes =
-        lib.concatMap
-          (siteKey:
-            let
-              siteCfg = attrsOrEmpty (enterpriseControlPlaneSites.${siteKey} or null);
-              overlays = attrsOrEmpty (siteCfg.overlays or null);
-              overlayCfg = attrsOrEmpty (overlays.${overlayName} or null);
-            in
-            builtins.attrValues (attrsOrEmpty (overlayCfg.nodes or null)))
-          (sortedNames enterpriseControlPlaneSites);
-      nodeAddr = family: node:
-        let field = if family == 4 then "addr4" else "addr6";
-        in node.${field} or null;
-      valid = value: builtins.isString value && value != "";
+      records = overlayNodePrefixRecordsFor overlayName;
     in
     {
-      ipv4 = uniqueStrings (builtins.filter valid (map (nodeAddr 4) siteOverlayNodes));
-      ipv6 = uniqueStrings (builtins.filter valid (map (nodeAddr 6) siteOverlayNodes));
+      ipv4 = uniqueStrings (map (record: record.dst) records.ipv4);
+      ipv6 = uniqueStrings (map (record: record.dst) records.ipv6);
     };
 }

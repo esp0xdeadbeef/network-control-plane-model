@@ -116,16 +116,33 @@ let
     let
       viaField = if family == 4 then "via4" else "via6";
       prefixField = if family == 4 then "ipv4" else "ipv6";
-      prefixes = lib.unique (lib.concatMap (overlayName: listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixes.${prefixField} or null)) overlayNamesForInterface);
+      prefixes =
+        lib.unique (lib.concatMap
+          (overlayName:
+            let
+              structuredPrefixes = listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixRecords.${prefixField} or null);
+              legacyPrefixes = map
+                (dst: {
+                  inherit dst;
+                  overlay = overlayName;
+                })
+                (listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixes.${prefixField} or null));
+            in
+            if structuredPrefixes != [ ] then structuredPrefixes else legacyPrefixes)
+          overlayNamesForInterface);
     in
     if !isNonEmptyString via then [ ] else
     builtins.map
-      (dst: {
-        inherit dst family;
-        proto = "internal";
-        intent = { kind = "overlay-node-reachability"; };
-        ${viaField} = via;
-      })
+      (prefix:
+        {
+          inherit family;
+          dst = prefix.dst;
+          proto = "internal";
+          intent = { kind = "overlay-node-reachability"; };
+          ${viaField} = via;
+        }
+        // lib.optionalAttrs (isNonEmptyString (prefix.overlay or null)) { overlay = prefix.overlay; }
+        // lib.optionalAttrs (isNonEmptyString (prefix.peerSite or null)) { peerSite = prefix.peerSite; })
       prefixes;
   defaultReachabilityVia =
     family: via:

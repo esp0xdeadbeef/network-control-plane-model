@@ -25,6 +25,26 @@ let
       (rule.action or "")
     ];
 
+  ruleIdentity = rule:
+    builtins.toJSON rule;
+
+  uniqueRules =
+    rules:
+    let
+      step = state: rule:
+        let
+          key = ruleIdentity rule;
+        in
+        if state.seen.${key} or false then
+          state
+        else
+          {
+            seen = state.seen // { ${key} = true; };
+            rules = state.rules ++ [ rule ];
+          };
+    in
+    (builtins.foldl' step { seen = { }; rules = [ ]; } rules).rules;
+
   ruleLess = left: right:
     let
       leftPriority = rulePriority left;
@@ -38,7 +58,7 @@ let
   sortForwardingRules = forwarding:
     forwarding
     // {
-      rules = builtins.sort ruleLess (listOrEmpty (forwarding.rules or null));
+      rules = uniqueRules (builtins.sort ruleLess (listOrEmpty (forwarding.rules or null)));
     };
 
   sortEntry = entry:
