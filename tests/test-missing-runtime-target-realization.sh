@@ -42,9 +42,12 @@ if grep -qF "E_INVENTORY_RUNTIME_TARGET_UNREALIZED" "${stderr_file}" \
   && grep -qF "Owning layer: network-labs inventory" "${stderr_file}" \
   && grep -qF "Source class: public-inventory" "${stderr_file}" \
   && grep -qF "Missing input: inventory.realization.nodes.<enterprise>-<site>-<logical-node>" "${stderr_file}" \
-  && grep -qF "Required correction: add the listed missingInventoryKey entries" "${stderr_file}" \
+  && grep -qF "Missing count: 1." "${stderr_file}" \
+  && grep -qF "Required correction: add the listed keys to the renderer inventory" "${stderr_file}" \
+  && grep -qF "Missing inventory.realization.nodes keys:" "${stderr_file}" \
   && grep -qF "acme-ams-policy-1" "${stderr_file}" \
-  && grep -qF "policy-1" "${stderr_file}"; then
+  && grep -qF "acme.ams.policy-1" "${stderr_file}" \
+  && ! grep -qF "actualPlacementKind" "${stderr_file}"; then
   echo "PASS missing-runtime-target-realization"
 else
   echo "FAIL missing-runtime-target-realization: missing expected error substring" >&2

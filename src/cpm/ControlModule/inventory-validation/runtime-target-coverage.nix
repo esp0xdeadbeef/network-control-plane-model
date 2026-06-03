@@ -37,7 +37,15 @@ let
                 in
                   !hasAttr logicalKey realizationIndex.byLogical)
               (sortedNames siteContract.nodeContracts)))
-        (sortedNames sitesByKey)
+      (sortedNames sitesByKey)
+    );
+
+  missingRuntimeTargetLines =
+    builtins.concatStringsSep "\n" (
+      builtins.map
+        (target:
+          "    - ${target.missingInventoryKey} (${target.logicalNode.enterprise}.${target.logicalNode.site}.${target.logicalNode.name})")
+        unrealizedRuntimeTargets
     );
 in
 if unrealizedRuntimeTargets != [ ] then
@@ -46,9 +54,10 @@ if unrealizedRuntimeTargets != [ ] then
     Owning layer: network-labs inventory.
     Source class: public-inventory.
     Missing input: inventory.realization.nodes.<enterprise>-<site>-<logical-node>.
-    Required correction: add the listed missingInventoryKey entries to the renderer inventory with logicalNode, deployment host, platform, and explicit port/uplink realization facts. Do not repair this in CPM, renderers, scripts, or host defaults.
-    Missing runtime target realizations:
-    ${builtins.toJSON unrealizedRuntimeTargets}
+    Missing count: ${toString (builtins.length unrealizedRuntimeTargets)}.
+    Required correction: add the listed keys to the renderer inventory with logicalNode, deployment host, platform, and explicit port/uplink realization facts. Do not repair this in CPM, renderers, scripts, or host defaults.
+    Missing inventory.realization.nodes keys:
+    ${missingRuntimeTargetLines}
   ''
 else
   true
