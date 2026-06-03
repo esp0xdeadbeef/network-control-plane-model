@@ -164,8 +164,11 @@ let
     ;
 
   emitOutput = import ./Site/build-data/output.nix;
+  upstreamEmulationOutput = import ./ControlModule/upstream-emulation.nix {
+    inherit helpers common sitePath siteAttrs inventoryAttrs siteName;
+  };
 in
 emitOutput {
   inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayProvisioning policyAttrs policyEndpointBindings policyNodeName routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
   services = resolvedServices;
-}
+} // upstreamEmulationOutput
