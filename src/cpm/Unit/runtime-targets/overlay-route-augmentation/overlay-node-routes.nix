@@ -31,19 +31,30 @@ let
     family: overlayName: ownCidr:
     let
       prefixField = if family == 4 then "ipv4" else "ipv6";
-      prefixes = listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixes.${prefixField} or null);
+      structuredPrefixes = listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixRecords.${prefixField} or null);
+      legacyPrefixes = map
+        (dst: {
+          inherit dst;
+          overlay = overlayName;
+        })
+        (listOrEmpty (overlayProvisioning.${overlayName}.nodeRoutePrefixes.${prefixField} or null));
+      prefixes = if structuredPrefixes != [ ] then structuredPrefixes else legacyPrefixes;
     in
     builtins.map
-      (dst: {
-        inherit dst family;
-        proto = "overlay";
-        scope = "link";
-        intent = {
-          kind = "overlay-node-reachability";
-          source = "overlay-node-prefix";
-        };
-      })
-      (builtins.filter (dst: dst != ownCidr) prefixes);
+      (prefix:
+        {
+          inherit family;
+          dst = prefix.dst;
+          proto = "overlay";
+          scope = "link";
+          intent = {
+            kind = "overlay-node-reachability";
+            source = "overlay-node-prefix";
+          };
+        }
+        // lib.optionalAttrs (isNonEmptyString (prefix.overlay or null)) { overlay = prefix.overlay; }
+        // lib.optionalAttrs (isNonEmptyString (prefix.peerSite or null)) { peerSite = prefix.peerSite; })
+      (builtins.filter (prefix: (prefix.dst or null) != ownCidr) prefixes);
 
   addOverlayNodeRoutesToSelector =
     nodeRole: interfaces:
