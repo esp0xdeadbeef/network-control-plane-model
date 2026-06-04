@@ -29,7 +29,7 @@ tests=(
   test-tri-site-external-deny-policy-materialization.sh
   test-provider-overlay-runtime-interface-name.sh
   test-interface-mtu-contract.sh
-  test-upstream-emulation-pppoe-handoff.sh
+  test-provider-access-no-side-channel.sh
   test-vxlan-contract-required-fields.sh
   test-access-dhcpv6-advertisement-contract.sh
   test-access-ipv6-ra-slaac-flags-contract.sh
