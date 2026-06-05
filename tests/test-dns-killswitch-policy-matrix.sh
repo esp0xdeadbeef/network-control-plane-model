@@ -35,6 +35,7 @@ fixture_dir="${repo_root}/fixtures/passing/dns-killswitch-policy-matrix"
 input_path="${fixture_dir}/input.nix"
 inventory_path="${fixture_dir}/inventory.nix"
 malformed_inventory_path="${fixture_dir}/malformed-inventory.nix"
+missing_denied_inventory_path="${fixture_dir}/missing-denied-resolver-cidrs-inventory.nix"
 expected_path="${fixture_dir}/expected-dns-policy.json"
 
 if [[ ! -f "${input_path}" || ! -f "${inventory_path}" || ! -f "${expected_path}" ]]; then
@@ -45,6 +46,7 @@ missing fixture:
   - ${input_path}
   - ${inventory_path}
   - ${malformed_inventory_path}
+  - ${missing_denied_inventory_path}
   - ${expected_path}
 
 The fixture is part of the CPM contract. Restore it instead of weakening this
@@ -81,10 +83,14 @@ Required CPM output per access runtime target:
     "explicit-egress-default"
   ]
   services.dns.allowedUpstreamClasses = <from ${expected_path}>
-  services.dns.deniedResolverCidrs contains common public DNS resolver /32 and /128 targets
+  services.dns.deniedResolverCidrs = <from ${expected_path}>
   services.dns.routeContracts contains no implicit 0.0.0.0/0 or ::/0 DNS escape
 
 Required negative proof:
+
+  The same fixture directory must include a missing-deniedResolverCidrs case
+  that fails in CPM with a path-specific DNS error before any renderer can
+  materialize local nftables/routes.
 
   The same fixture directory must include a malformed policy case that fails in
   CPM with a path-specific DNS error before any renderer can materialize local
@@ -99,9 +105,34 @@ if [[ ! -f "${malformed_inventory_path}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${missing_denied_inventory_path}" ]]; then
+  echo "FATAL dns-killswitch-policy-matrix missing negative deniedResolverCidrs inventory: ${missing_denied_inventory_path}" >&2
+  exit 1
+fi
+
 output_json="$(mktemp)"
 malformed_stderr="$(mktemp)"
-trap 'rm -f "${output_json}" "${malformed_stderr}"' EXIT
+missing_denied_stderr="$(mktemp)"
+trap 'rm -f "${output_json}" "${malformed_stderr}" "${missing_denied_stderr}"' EXIT
+
+if nix eval --impure --json --expr "
+  let
+    flake = builtins.getFlake (toString ${repo_root});
+    builder = flake.lib.${system}.build;
+    input = import ${input_path};
+    inventory = import ${missing_denied_inventory_path};
+  in
+    builder { inherit input inventory; }
+" >/dev/null 2>"${missing_denied_stderr}"; then
+  echo "FAIL dns-killswitch-policy-matrix: missing deniedResolverCidrs unexpectedly evaluated" >&2
+  exit 1
+fi
+
+if ! grep -Fq "services.dns.deniedResolverCidrs" "${missing_denied_stderr}"; then
+  echo "FAIL dns-killswitch-policy-matrix: missing deniedResolverCidrs failed without path-specific error" >&2
+  cat "${missing_denied_stderr}" >&2
+  exit 1
+fi
 
 if nix eval --impure --json --expr "
   let
@@ -146,18 +177,7 @@ OUTPUT_JSON="${output_json}" EXPECTED_JSON="${expected_path}" nix eval --impure 
       "explicit-egress-default"
     ];
 
-    publicResolverCidrs = [
-      "1.1.1.1/32"
-      "1.0.0.1/32"
-      "8.8.8.8/32"
-      "8.8.4.4/32"
-      "9.9.9.9/32"
-      "2606:4700:4700::1111/128"
-      "2606:4700:4700::1001/128"
-      "2001:4860:4860::8888/128"
-      "2001:4860:4860::8844/128"
-      "2620:fe::fe/128"
-    ];
+    publicResolverCidrs = expected.publicResolverCidrs;
 
     dnsFor = targetName: (runtimeTargets.${targetName}.services or { }).dns or null;
 
@@ -180,7 +200,7 @@ OUTPUT_JSON="${output_json}" EXPECTED_JSON="${expected_path}" nix eval --impure 
         && !(killSwitch.allowPublicResolverFallback or true)
         && (dns.routePreference or [ ]) == routePreference
         && (dns.allowedUpstreamClasses or [ ]) == expectedClasses
-        && builtins.all (cidr: builtins.elem cidr (dns.deniedResolverCidrs or [ ])) publicResolverCidrs
+        && (dns.deniedResolverCidrs or [ ]) == publicResolverCidrs
         && hasNoImplicitDefaultDns dns;
 
     policyMatrixOk = entry:
