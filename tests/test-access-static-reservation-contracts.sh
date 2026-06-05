@@ -95,7 +95,7 @@ write_inventory "${valid_inventory}" '[
       sourceClass = "public-synthetic-lab";
     };
     ipv4.hostOffset = 10;
-    ipv6.hostOffset = 16;
+    ipv6.hostOffset = 10;
   }
   {
     name = "client-fixed-11";
@@ -108,7 +108,7 @@ write_inventory "${valid_inventory}" '[
       sourceClass = "public-synthetic-lab";
     };
     ipv4.hostOffset = 11;
-    ipv6.hostOffset = 17;
+    ipv6.hostOffset = 11;
   }
 ]' '[
   {
@@ -122,7 +122,7 @@ write_inventory "${valid_inventory}" '[
       sourceClass = "public-synthetic-lab";
     };
     ipv4.hostOffset = 10;
-    ipv6.hostOffset = 16;
+    ipv6.hostOffset = 10;
   }
   {
     name = "client-fixed-11";
@@ -135,7 +135,7 @@ write_inventory "${valid_inventory}" '[
       sourceClass = "public-synthetic-lab";
     };
     ipv4.hostOffset = 11;
-    ipv6.hostOffset = 17;
+    ipv6.hostOffset = 11;
   }
 ]'
 
@@ -185,11 +185,11 @@ fi
 
 duplicate_mac_inventory="${tmp_dir}/inventory-duplicate-mac.nix"
 write_inventory "${duplicate_mac_inventory}" '[
-  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 16; }
-  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 11; ipv6.hostOffset = 17; }
+  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 11; ipv6.hostOffset = 11; }
 ]' '[
-  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 16; }
-  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 11; ipv6.hostOffset = 17; }
+  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 11; ipv6.hostOffset = 11; }
 ]'
 
 if nix eval --impure --expr '
@@ -213,11 +213,11 @@ grep -F "duplicate MAC address in the same network" "${tmp_dir}/duplicate-mac.er
 
 duplicate_offset_inventory="${tmp_dir}/inventory-duplicate-offset.nix"
 write_inventory "${duplicate_offset_inventory}" '[
-  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 16; }
-  { mac = "02:10:20:00:00:11"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 17; }
+  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+  { mac = "02:10:20:00:00:11"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 11; }
 ]' '[
-  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 16; }
-  { mac = "02:10:20:00:00:11"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 17; }
+  { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+  { mac = "02:10:20:00:00:11"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 11; }
 ]'
 
 if nix eval --impure --expr '
