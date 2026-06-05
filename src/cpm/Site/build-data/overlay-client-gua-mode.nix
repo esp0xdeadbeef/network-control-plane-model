@@ -106,22 +106,13 @@ let
       || isNonEmptyString (candidate.tenant or null)
       || isNonEmptyString ((attrsOrEmpty (candidate.intent or null)).exitNode or null)
     )
-    && candidate._returnRoutes != [ ];
-
-  candidatesWithReturnRoutes =
-    builtins.map
-      (candidate:
-        candidate
-        // {
-          _returnRoutes = returnRoutesFor candidate;
-        })
-      delegatedOverlayDefaults;
+    && returnRoutesFor candidate != [ ];
 
   records =
     builtins.map
       (candidate:
         let
-          returnRoutes = candidate._returnRoutes;
+          returnRoutes = returnRoutesFor candidate;
           sourceFiles = uniqueStrings (
             builtins.map
               (route: route.sourceFile)
@@ -160,10 +151,11 @@ let
         // (if isNonEmptyString tenant then { tenant = tenant; } else { })
         // (if isNonEmptyString ((attrsOrEmpty (candidate.intent or null)).exitNode or null) then { exitNode = candidate.intent.exitNode; } else { })
         // (if isNonEmptyString (candidate.peerSite or null) then { peerSite = candidate.peerSite; } else { }))
-      (builtins.filter candidateIsComplete candidatesWithReturnRoutes);
+      (builtins.filter candidateIsComplete delegatedOverlayDefaults);
 
   diagnosticFor = candidate:
     let
+      returnRoutes = returnRoutesFor candidate;
       missing = builtins.filter (value: value != null) [
         (if isNonEmptyString (candidate._overlay or null) then null else "overlay-path")
         (
@@ -176,7 +168,7 @@ let
           else
             "source-scope"
         )
-        (if candidate._returnRoutes != [ ] then null else "return-behavior")
+        (if returnRoutes != [ ] then null else "return-behavior")
       ];
     in
     if missing == [ ] then
@@ -198,7 +190,7 @@ let
       ];
 
   diagnostics =
-    builtins.concatLists (builtins.map diagnosticFor candidatesWithReturnRoutes);
+    builtins.concatLists (builtins.map diagnosticFor delegatedOverlayDefaults);
 
   keyedRecords = builtins.listToAttrs (
     builtins.map (record: { name = keyForRecord record; value = record; }) records
