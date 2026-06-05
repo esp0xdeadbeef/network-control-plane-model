@@ -103,6 +103,7 @@ let
     overlayReachability
     routedPrefixesByTenant
     routingMode
+    siteControlPlaneCfg
     siteIpv6Cfg
     siteRouting
     siteTenantsCfg
@@ -279,11 +280,35 @@ let
     inherit runtimeTargets;
   };
 
+  rendererContracts = import ./Site/build-data/renderer-contracts.nix {
+    inherit
+      lib
+      helpers
+      common
+      communicationContract
+      enterpriseName
+      forwardingSemantics
+      overlayProvisioning
+      policyAttrs
+      policyEndpointBindings
+      routedPrefixesByTenant
+      routingMode
+      runtimeTargets
+      siteControlPlaneCfg
+      siteDisplayName
+      siteId
+      siteName
+      tenantPrefixOwners
+      trafficPaths
+      ;
+    services = resolvedServices;
+  };
+
   emitOutput = import ./Site/build-data/output.nix;
 in
 if validatePPPoEContracts then
 emitOutput {
-  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
+  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
   services = resolvedServices;
 }
 else
