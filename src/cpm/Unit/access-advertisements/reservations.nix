@@ -1,6 +1,7 @@
 { helpers
 , ipam
 , advertisementHelpers
+, binderSourceAudit
 ,
 }:
 
@@ -156,6 +157,18 @@ let
                   mac;
               inherit mac hostOffset address cidr identitySource;
               source = "inventory-realization";
+            }
+            // binderSourceAudit.make {
+              path = reservationPath;
+              field =
+                "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservations";
+              binderSourceClass =
+                if (identitySource.sourceClass or "") == "protected" then
+                  "protected-inventory"
+                else
+                  "public-inventory";
+              binderSourcePath = reservationPath;
+              upstreamBehaviorRef = entryPath;
             }
             // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
             // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { }))

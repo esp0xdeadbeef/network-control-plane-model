@@ -7,8 +7,9 @@
 }:
 
 let
+  binderSourceAudit = import ../../binder-source-audit.nix { inherit helpers; };
   reservationModule = import ./reservations.nix {
-    inherit helpers ipam advertisementHelpers;
+    inherit helpers ipam advertisementHelpers binderSourceAudit;
   };
   inherit (reservationModule) resolveReservations;
 
