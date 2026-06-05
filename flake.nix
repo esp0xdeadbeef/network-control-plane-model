@@ -69,8 +69,10 @@
         let
           pkgs = mkPkgs system;
           lib = pkgs.lib;
+          localLib = import ./lib/utils.nix;
+          effectiveLib = lib // localLib;
 
-          buildCPM = import ./src/build-cpm.nix { inherit lib; };
+          buildCPM = import ./src/build-cpm.nix { lib = effectiveLib; };
 
           forwardingLib =
             if network-forwarding-model ? libBySystem then
@@ -86,8 +88,19 @@
             , validateRuntimeModel ? false
             ,
             }:
-            import ./src/main.nix {
-              inherit input inventory lib validateForwardingModel validateRuntimeModel;
+            let
+              cpm =
+                builtins.addErrorContext
+                  "while building network-control-plane-model from the explicit network-forwarding-model input"
+                  (
+                    buildCPM {
+                      forwardingModel = input;
+                      inherit inventory validateForwardingModel validateRuntimeModel;
+                    }
+                  );
+            in
+            builtins.seq cpm {
+              control_plane_model = cpm;
             };
 
           get_CPM =

@@ -49,7 +49,7 @@ line="$(cat "${bench_out}")"
   || fail "FS-940 benchmark boundary proof did not report the locked source-example revision"
 [[ "${line}" == *"cache_state=warm-required"* ]] \
   || fail "FS-940 benchmark boundary proof did not classify warm-cache expectations"
-[[ "${line}" == *"command=nix-eval-libBySystem.build"* ]] \
+[[ "${line}" == *"command=nix-eval-libBySystem.get_CPM"* ]] \
   || fail "FS-940 benchmark boundary proof did not identify the semantic-eval command surface"
 [[ "${line}" == *"excluded_runtime_stages=nix-build,container-image-build,vm-deployment,containerlab-deployment,boot,live-packet-validation,provider-calls,cache-misses"* ]] \
   || fail "FS-940 benchmark boundary proof did not keep runtime stages outside the semantic compile boundary"
