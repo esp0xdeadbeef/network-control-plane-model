@@ -97,6 +97,7 @@ let
                 addressSourcePolicy
                 ipamV4Prefix
                 ipamV6Prefix
+                overlayName
                 overlayNodeIpamCfg
                 overlayNodesCfg
                 overlayPath

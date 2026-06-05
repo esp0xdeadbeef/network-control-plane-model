@@ -10,6 +10,7 @@
 , ipamV6Prefix
 , overlayNodeIpamCfg
 , overlayNodesCfg
+, overlayName
 , overlayPath
 , terminateOn
 ,
@@ -20,6 +21,33 @@ let
   inherit (common) attrsOrEmpty failInventory uniqueStrings;
 
   overlayNodeNames = lib.sort (a: b: a < b) (uniqueStrings (terminateOn ++ sortedNames overlayNodesCfg));
+
+  realizationRecord =
+    { addr4, addr6, nodeName }:
+    {
+      kind = "overlay-participant-address-realization";
+      rowId = "FS-350-HDS-010-SDS-010-SMS-050";
+      stage = "control-plane-model";
+      source = "inventory-realization";
+      node = nodeName;
+      selectedOverlayIdentity = overlayName;
+      participantLedger = {
+        source = "nfm-overlay-participant-ledger";
+        overlayIdentity = overlayName;
+        path = overlayPath;
+      };
+      classification = {
+        kind = "overlay-participant-address";
+        delegatedEndpointAuthority = false;
+        tenantPrefixAuthority = false;
+        providerPrefixAuthority = false;
+        forwardingAuthority = false;
+      };
+      addresses = {
+        ipv4 = addr4;
+        ipv6 = addr6;
+      };
+    };
 
   requireOverlayAddr =
     { field, nodeCfg, nodeIpamCfg, nodeName }:
@@ -44,12 +72,14 @@ let
             _addr4InPool = addressPolicy.validateAddress {
               address = addr4;
               family = 4;
+              inherit overlayName;
               inherit nodeName overlayPath;
               prefix = ipamV4Prefix;
             };
             _addr6InPool = addressPolicy.validateAddress {
               address = addr6;
               family = 6;
+              inherit overlayName;
               inherit nodeName overlayPath;
               prefix = ipamV6Prefix;
             };
@@ -59,6 +89,7 @@ let
             value =
               {
                 inherit addr4 addr6;
+                inventoryRealization = realizationRecord { inherit addr4 addr6 nodeName; };
               }
               // addressPolicy.sourceMetadata {
                 address = addr4;

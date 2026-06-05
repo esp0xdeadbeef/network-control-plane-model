@@ -92,6 +92,7 @@ in
     { address
     , family
     , nodeName
+    , overlayName ? null
     , overlayPath
     , prefix
     ,
@@ -101,7 +102,9 @@ in
     else if cidrContains family prefix (stripMask address) then
       true
     else
-      failInventory "${overlayPath}.ipam.nodes.${nodeName}.addr${toString family}" "address '${address}' is outside overlay pool '${prefix}'";
+      failInventory
+        "${overlayPath}.nodes.${nodeName}.addr${toString family}"
+        "E_OVERLAY_PARTICIPANT_CROSS_LEDGER_REALIZATION: inventory-realization address '${address}' is outside selected overlay participant ledger '${if overlayName == null then overlayPath else overlayName}' pool '${prefix}'";
 
   sourceMetadata =
     { address
