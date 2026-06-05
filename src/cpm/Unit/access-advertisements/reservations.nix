@@ -87,15 +87,34 @@ let
       else
         stringValue;
 
-  normalizeMac = path: value:
+  reservationRequirement = reservationPath: attrs:
+    if isNonEmptyString (attrs.id or null) then
+      attrs.id
+    else if isNonEmptyString (attrs.name or null) then
+      attrs.name
+    else if isNonEmptyString (attrs.hostname or null) then
+      attrs.hostname
+    else if isNonEmptyString (attrs.mac or null) then
+      attrs.mac
+    else
+      reservationPath;
+
+  requirementLabelFor = reservationPath: attrs:
+    "reservation requirement '${reservationRequirement reservationPath attrs}'";
+
+  normalizeMac = path: label: value:
     let
-      mac = requireString path value;
+      mac =
+        if isNonEmptyString value then
+          value
+        else
+          failInventory path "${label} requires complete MAC address";
       normalized = builtins.replaceStrings [ "-" ] [ ":" ] mac;
     in
     if builtins.match "([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}" normalized != null then
       normalized
     else
-      failInventory path "must be a MAC address";
+      failInventory path "${label} requires complete MAC address";
 
   duplicate = values:
     let
@@ -123,18 +142,7 @@ let
 
   requireMacSourceClassification = reservationPath: attrs: familyName:
     let
-      reservationRequirement =
-        if isNonEmptyString (attrs.id or null) then
-          attrs.id
-        else if isNonEmptyString (attrs.name or null) then
-          attrs.name
-        else if isNonEmptyString (attrs.hostname or null) then
-          attrs.hostname
-        else if isNonEmptyString (attrs.mac or null) then
-          attrs.mac
-        else
-          reservationPath;
-      requirementLabel = "reservation requirement '${reservationRequirement}'";
+      requirementLabel = requirementLabelFor reservationPath attrs;
       classificationPath = "${reservationPath}.macSource";
       classification =
         if builtins.isAttrs (attrs.macSource or null) then
@@ -192,7 +200,8 @@ let
             let
               reservationPath = "${entryPath}.reservations[${toString idx}]";
               attrs = requireAttrs reservationPath (builtins.elemAt reservations idx);
-              mac = normalizeMac "${reservationPath}.mac" (attrs.mac or null);
+              requirementLabel = requirementLabelFor reservationPath attrs;
+              mac = normalizeMac "${reservationPath}.mac" requirementLabel (attrs.mac or null);
               hostOffset = reservationHostOffset reservationPath attrs familyName;
               identitySource = requireMacSourceClassification reservationPath attrs familyName;
               cidr = ipam.allocOne {
