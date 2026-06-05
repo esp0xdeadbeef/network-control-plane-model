@@ -9,6 +9,7 @@
 , forwardingSemantics
 , ipv6Plan
 , isNonEmptyString
+, overlayClientGuaMode
 , overlayProvisioning
 , policyAttrs
 , policyEndpointBindings
@@ -45,9 +46,22 @@ let
         };
       };
 
+  overlayClientGuaPayload =
+    if overlayClientGuaMode.records == [ ] && overlayClientGuaMode.diagnostics == [ ] then
+      { }
+    else
+      {
+        internetModes = {
+          overlayClientGua = overlayClientGuaMode.records;
+        };
+        diagnostics = {
+          overlayClientGua = overlayClientGuaMode.diagnostics;
+        };
+      };
+
   ipv6Output =
     (if ipv6Plan != null then ipv6Plan else { })
-    // routedClientGuaPayload;
+    // lib.recursiveUpdate routedClientGuaPayload overlayClientGuaPayload;
 in
 {
   siteId = siteId;

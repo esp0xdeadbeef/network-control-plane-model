@@ -169,9 +169,15 @@ let
     inherit tenantPrefixOwners runtimeTargets;
   };
 
+  overlayClientGuaMode = import ./Site/build-data/overlay-client-gua-mode.nix {
+    inherit helpers common;
+  } {
+    inherit runtimeTargets;
+  };
+
   emitOutput = import ./Site/build-data/output.nix;
 in
 emitOutput {
-  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayProvisioning policyAttrs policyEndpointBindings policyNodeName routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
+  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
   services = resolvedServices;
 }
