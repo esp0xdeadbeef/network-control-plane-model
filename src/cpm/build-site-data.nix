@@ -274,6 +274,12 @@ let
     inherit tenantPrefixOwners runtimeTargets;
   };
 
+  ipv4InternetMode = import ./Site/build-data/ipv4-internet-mode.nix {
+    inherit helpers common;
+  } {
+    inherit tenantPrefixOwners runtimeTargets;
+  };
+
   overlayClientGuaMode = import ./Site/build-data/overlay-client-gua-mode.nix {
     inherit helpers common;
   } {
@@ -308,7 +314,7 @@ let
 in
 if validatePPPoEContracts then
 emitOutput {
-  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
+  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
   services = resolvedServices;
 }
 else

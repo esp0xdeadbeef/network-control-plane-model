@@ -7,6 +7,7 @@
 , coreNodeNames
 , domainsValue
 , forwardingSemantics
+, ipv4InternetMode
 , ipv6Plan
 , isNonEmptyString
 , overlayClientGuaMode
@@ -34,6 +35,26 @@
 }:
 
 let
+  ipv4ModeRecords =
+    lib.filterAttrs (_name: records: records != [ ]) (ipv4InternetMode.records or { });
+
+  ipv4ModeDiagnostics =
+    lib.filterAttrs (_name: diagnostics: diagnostics != [ ]) (ipv4InternetMode.diagnostics or { });
+
+  ipv4Output =
+    (
+      if ipv4ModeRecords == { } then
+        { }
+      else
+        { internetModes = ipv4ModeRecords; }
+    )
+    // (
+      if ipv4ModeDiagnostics == { } then
+        { }
+      else
+        { diagnostics = ipv4ModeDiagnostics; }
+    );
+
   routedClientGuaPayload =
     if routedClientGuaMode.records == [ ] && routedClientGuaMode.diagnostics == [ ] then
       { }
@@ -108,6 +129,7 @@ in
         builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
     };
 }
+// (lib.optionalAttrs (ipv4Output != { }) { ipv4 = ipv4Output; })
 // (lib.optionalAttrs (ipv6Output != { }) { ipv6 = ipv6Output; })
 // (
   if builtins.isAttrs (siteAttrs.egressIntent or null) then
