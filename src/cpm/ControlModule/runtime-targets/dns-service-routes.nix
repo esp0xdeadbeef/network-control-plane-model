@@ -52,7 +52,7 @@ let
   interfaceByRuntimeName =
     interfaces:
     builtins.listToAttrs (
-      lib.concatMap
+      builtins.concatLists (builtins.map
         (ifName:
         let
           iface = interfaces.${ifName};
@@ -62,7 +62,7 @@ let
           [{ name = runtimeIfName; value = { inherit ifName iface; }; }]
         else
           [ ])
-        (builtins.attrNames interfaces)
+        (builtins.attrNames interfaces))
     );
 
   dnsRules =

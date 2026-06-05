@@ -8,10 +8,11 @@
 }:
 
 let
-  inherit (helpers) isNonEmptyString;
+  inherit (helpers) isNonEmptyString sortedNames;
   common = import ../lib/common.nix { inherit helpers; };
   inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
   overlayNodeCidrs = import ./overlay-node-cidrs.nix { inherit lib helpers cpmData; };
+  siteKey = enterpriseName: siteName: "${enterpriseName}|${siteName}";
 
   targetTenantNames =
     target:
@@ -30,6 +31,20 @@ let
     enterpriseName: siteName:
     attrsOrEmpty ((attrsOrEmpty cpmData.${enterpriseName}).${siteName} or null);
 
+  siteEntries =
+    builtins.concatLists (
+      builtins.map
+        (enterpriseName:
+          builtins.map
+            (siteName: {
+              inherit enterpriseName siteName;
+              key = siteKey enterpriseName siteName;
+            })
+            (sortedNames (attrsOrEmpty cpmData.${enterpriseName}))
+        )
+        (sortedNames cpmData)
+    );
+
   allowedRelationsForSite =
     enterpriseName: siteName:
     let contract = attrsOrEmpty ((siteDataFor enterpriseName siteName).communicationContract or null);
@@ -38,6 +53,36 @@ let
       contract.relations
     else
       listOrEmpty (contract.allowedRelations or null);
+
+  relationsBySiteKey =
+    builtins.listToAttrs (
+      builtins.map
+        (entry: {
+          name = entry.key;
+          value = allowedRelationsForSite entry.enterpriseName entry.siteName;
+        })
+        siteEntries
+    );
+
+  servicesBySiteKey =
+    builtins.listToAttrs (
+      builtins.map
+        (entry: {
+          name = entry.key;
+          value = listOrEmpty ((siteDataFor entry.enterpriseName entry.siteName).services or null);
+        })
+        siteEntries
+    );
+
+  overlayNamesBySiteKey =
+    builtins.listToAttrs (
+      builtins.map
+        (entry: {
+          name = entry.key;
+          value = sortedNames (attrsOrEmpty ((siteDataFor entry.enterpriseName entry.siteName).overlays or null));
+        })
+        siteEntries
+    );
 
   tenantNamesForEndpoint =
     endpoint:
@@ -80,11 +125,47 @@ let
       )
     );
 
+  tenantsAllowedByOverlayBySiteKey =
+    builtins.listToAttrs (
+      builtins.map
+        (entry:
+          let
+            keyedTenants =
+              builtins.foldl'
+                (acc: relationRaw:
+                  let
+                    relation = attrsOrEmpty relationRaw;
+                    overlayNames = externalNamesForEndpoint (relation.to or null);
+                    tenantNames =
+                      if (relation.action or "allow") == "allow" then
+                        tenantNamesForEndpoint (relation.from or null)
+                      else
+                        [ ];
+                  in
+                  builtins.foldl'
+                    (overlayAcc: overlayName:
+                      overlayAcc
+                      // {
+                        ${overlayName} =
+                          uniqueStrings ((overlayAcc.${overlayName} or [ ]) ++ tenantNames);
+                      })
+                    acc
+                    overlayNames)
+                { }
+                relationsBySiteKey.${entry.key};
+          in
+          {
+            name = entry.key;
+            value = keyedTenants;
+          })
+        siteEntries
+    );
+
   serviceNamesForDnsListeners =
     enterpriseName: siteName: listenAddrs:
     let
       listenSet = uniqueStrings listenAddrs;
-      services = listOrEmpty ((siteDataFor enterpriseName siteName).services or null);
+      services = servicesBySiteKey.${siteKey enterpriseName siteName};
     in
     uniqueStrings (
       builtins.map
@@ -102,7 +183,7 @@ let
     providerEntry: providerListeners:
     let
       serviceNames = serviceNamesForDnsListeners providerEntry.enterpriseName providerEntry.siteName providerListeners;
-      relations = allowedRelationsForSite providerEntry.enterpriseName providerEntry.siteName;
+      relations = relationsBySiteKey.${siteKey providerEntry.enterpriseName providerEntry.siteName};
     in
     builtins.concatLists (
       builtins.map
@@ -126,20 +207,61 @@ let
 
   tenantsAllowedToOverlay =
     enterpriseName: siteName: overlayName:
-    uniqueStrings (
-      builtins.concatLists (
-        builtins.map
-          (relationRaw:
+    (attrsOrEmpty (tenantsAllowedByOverlayBySiteKey.${siteKey enterpriseName siteName})).${overlayName} or [ ];
+
+  overlayNodeCidrsByEntryKey =
+    builtins.listToAttrs (
+      builtins.map
+        (entry:
           let
-            relation = attrsOrEmpty relationRaw;
-            toExternalNames = externalNamesForEndpoint (relation.to or null);
+            entrySiteKey = siteKey entry.enterpriseName entry.siteName;
           in
-          if (relation.action or "allow") == "allow" && builtins.elem overlayName toExternalNames then
-            tenantNamesForEndpoint (relation.from or null)
-          else
-            [ ])
-          (allowedRelationsForSite enterpriseName siteName)
-      )
+          {
+            name = entryKey entry;
+            value =
+              builtins.listToAttrs (
+                builtins.map
+                  (overlayName: {
+                    name = overlayName;
+                    value = overlayNodeCidrs.forTarget overlayName entry;
+                  })
+                  overlayNamesBySiteKey.${entrySiteKey}
+              );
+          })
+        runtimeTargetEntries
+    );
+
+  overlayNodeCidrsByEnterprise =
+    builtins.listToAttrs (
+      builtins.map
+        (enterpriseName:
+          let
+            enterpriseOverlayNames =
+              uniqueStrings (
+                builtins.concatLists (
+                  builtins.map
+                    (entry:
+                      if entry.enterpriseName == enterpriseName then
+                        overlayNamesBySiteKey.${siteKey entry.enterpriseName entry.siteName}
+                      else
+                        [ ])
+                    siteEntries
+                )
+              );
+          in
+          {
+            name = enterpriseName;
+            value =
+              builtins.listToAttrs (
+                builtins.map
+                  (overlayName: {
+                    name = overlayName;
+                    value = overlayNodeCidrs.forEnterprise enterpriseName overlayName;
+                  })
+                  enterpriseOverlayNames
+              );
+          })
+        (sortedNames cpmData)
     );
 
   allowFromForConsumer =
@@ -156,7 +278,7 @@ let
       && entryKey consumerEntry != entryKey providerEntry
       && lib.any (tenantName: builtins.elem tenantName allowedTenants) consumerTenants
     then
-      uniqueStrings (consumerUnderlayCidrs ++ overlayNodeCidrs.forTarget overlayName consumerEntry)
+      uniqueStrings (consumerUnderlayCidrs ++ ((overlayNodeCidrsByEntryKey.${entryKey consumerEntry}).${overlayName} or [ ]))
     else
       [ ];
 in
@@ -165,7 +287,7 @@ uniqueStrings (
   builtins.concatLists (
     builtins.map
       (overlayService:
-      overlayNodeCidrs.forEnterprise providerEntry.enterpriseName overlayService.overlayName
+      ((overlayNodeCidrsByEnterprise.${providerEntry.enterpriseName}).${overlayService.overlayName} or [ ])
       ++ builtins.concatLists (
         builtins.map (allowFromForConsumer providerEntry overlayService.overlayName) runtimeTargetEntries
       ))

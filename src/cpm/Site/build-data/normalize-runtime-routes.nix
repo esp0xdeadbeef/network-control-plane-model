@@ -11,7 +11,7 @@ let
 
   defaultDst = family: if family == 4 then "0.0.0.0/0" else "::/0";
   routeIdentity = import ./runtime-route-identity.nix { inherit attrsOrEmpty defaultDst; };
-  inherit (routeIdentity) uniqueRoutes isPolicyDefault;
+  inherit (routeIdentity) routeKey uniqueRoutes isPolicyDefault;
   routePolicy = import ./runtime-route-policy.nix {
     inherit
       lib
@@ -67,6 +67,115 @@ let
         canGeneratePolicyTableComplement route
         && (!postInitialOnly || isPostInitialRoute route))
       routes;
+
+  reverseList =
+    values:
+    builtins.foldl' (acc: value: [ value ] ++ acc) [ ] values;
+
+  routeKeySet =
+    family: routes:
+    builtins.foldl'
+      (seen: route:
+        let key = routeKey family route;
+        in
+        if key == null then seen else seen // { ${key} = true; })
+      { }
+      routes;
+
+  appendUniqueRoutes =
+    family: baseRoutes: extraRoutes:
+    if extraRoutes == [ ] then
+      baseRoutes
+    else
+      let
+        result =
+          builtins.foldl'
+            (acc: route:
+              let key = routeKey family route;
+              in
+              if key == null || builtins.hasAttr key acc.seen then
+                acc
+              else
+                {
+                  seen = acc.seen // { ${key} = true; };
+                  values = [ route ] ++ acc.values;
+                })
+            {
+              seen = routeKeySet family baseRoutes;
+              values = [ ];
+            }
+            extraRoutes;
+      in
+      baseRoutes ++ reverseList result.values;
+
+  appendPostInitialComplements =
+    target: interfaces:
+    let
+      targetRole = target.role or "";
+      runtimeOriginPrefixes = runtimeOriginPrefixesFromTarget target;
+      policyDefaults4 =
+        if builtins.hasAttr targetRole rolesWithPolicyDefaults then
+          policyDefaultRoutes { inherit isPolicyDefault; } 4 interfaces
+        else
+          [ ];
+      policyDefaults6 =
+        if builtins.hasAttr targetRole rolesWithPolicyDefaults then
+          policyDefaultRoutes { inherit isPolicyDefault; } 6 interfaces
+        else
+          [ ];
+    in
+    builtins.mapAttrs
+      (
+        _ifName: iface:
+          let
+            routes = attrsOrEmpty (iface.routes or null);
+            ipv4 = listOrEmpty (routes.ipv4 or null);
+            ipv6 = listOrEmpty (routes.ipv6 or null);
+            dropWrongRuntimeOriginComplement =
+              isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
+            return4 = runtimeOriginReturnRoutes 4 target iface ipv4;
+            return6 = runtimeOriginReturnRoutes 6 target iface ipv6;
+            baseRaw4 =
+              builtins.filter
+                (route: !dropWrongRuntimeOriginComplement route)
+                (ipv4 ++ return4);
+            baseRaw6 =
+              builtins.filter
+                (route: !dropWrongRuntimeOriginComplement route)
+                (ipv6 ++ return6);
+            base4 = if return4 == [ ] then baseRaw4 else uniqueRoutes 4 baseRaw4;
+            base6 = if return6 == [ ] then baseRaw6 else uniqueRoutes 6 baseRaw6;
+            postInitial4 =
+              builtins.filter
+                (route: !dropWrongRuntimeOriginComplement route)
+                (complementSourceRoutes true base4);
+            postInitial6 =
+              builtins.filter
+                (route: !dropWrongRuntimeOriginComplement route)
+                (complementSourceRoutes true base6);
+            extra4 =
+              builtins.filter
+                (route: !dropWrongRuntimeOriginComplement route)
+                (policyTableComplements 4 policyDefaults4 postInitial4);
+            extra6 =
+              builtins.filter
+                (route: !dropWrongRuntimeOriginComplement route)
+                (policyTableComplements 6 policyDefaults6 postInitial6);
+            final4 = appendUniqueRoutes 4 base4 extra4;
+            final6 = appendUniqueRoutes 6 base6 extra6;
+          in
+          if return4 == [ ] && return6 == [ ] && extra4 == [ ] && extra6 == [ ] then
+            iface
+          else
+            iface
+            // {
+              routes = routes // {
+                ipv4 = final4;
+                ipv6 = final6;
+              };
+            }
+      )
+      interfaces;
 
   normalizeRuntimeTargetRoutesWith =
     { postInitialComplementsOnly ? false }:
@@ -160,6 +269,13 @@ let
     in
     if interfaces == { } then
       target
+    else if postInitialComplementsOnly then
+      target
+      // {
+        effectiveRuntimeRealization = effective // {
+          interfaces = appendPostInitialComplements target interfaces;
+        };
+      }
     else
       target
       // {

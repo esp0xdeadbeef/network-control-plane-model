@@ -18,18 +18,16 @@ let
       routedPrefixesByTenant,
     }:
     lib.unique (
-      lib.concatMap
-        (
-          tenantName:
-          builtins.map (attachment: attachment.unit) (
-            builtins.filter (
-              attachment:
-              (attachment.kind or null) == "tenant"
-              && (attachment.name or null) == tenantName
-              && builtins.isString (attachment.unit or null)
-            ) attachments
-          )
-        )
+      builtins.concatLists (builtins.map
+        (tenantName:
+        builtins.map (attachment: attachment.unit) (
+          builtins.filter (
+            attachment:
+            (attachment.kind or null) == "tenant"
+            && (attachment.name or null) == tenantName
+            && builtins.isString (attachment.unit or null)
+          ) attachments
+        ))
         (
           builtins.filter (
             tenantName:
@@ -38,7 +36,7 @@ let
               (prefix.allocation or null) == "runtime" || (prefix.source or null) == "intent-routed-prefix"
             ) (listOrEmpty (routedPrefixesByTenant.${tenantName} or null))
           ) (builtins.attrNames routedPrefixesByTenant)
-        )
+        ))
     );
 
   classifyRoute =
@@ -64,7 +62,7 @@ let
   policyDefaultRoutes =
     { isPolicyDefault }:
     family: interfaces:
-    lib.concatMap (
+    builtins.concatLists (builtins.map (
       ifName:
       let
         routes = attrsOrEmpty (interfaces.${ifName}.routes or null);
@@ -72,7 +70,7 @@ let
       builtins.filter (isPolicyDefault family) (
         listOrEmpty (routes."ipv${builtins.toString family}" or null)
       )
-    ) (builtins.attrNames interfaces);
+    ) (builtins.attrNames interfaces));
 
   isPolicyTableComplementSource =
     family: route:
@@ -83,7 +81,7 @@ let
 
   policyTableComplements =
     family: defaults: routes:
-    lib.concatMap (
+    builtins.concatLists (builtins.map (
       route:
       builtins.map (
         defaultRoute:
@@ -98,7 +96,7 @@ let
           };
         }
       ) defaults
-    ) (builtins.filter (isPolicyTableComplementSource family) routes);
+    ) (builtins.filter (isPolicyTableComplementSource family) routes));
 in
 {
   inherit
