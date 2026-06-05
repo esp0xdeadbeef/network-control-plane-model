@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # GAMP-ID: FS-190-HDS-010-SDS-010-SMS-010
+# GAMP-ID: FS-190-HDS-010-SDS-010-SMS-020
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -12,7 +13,13 @@ missing_endpoint_inventory="$(mktemp)"
 missing_endpoint_json="$(mktemp)"
 no_exposure_intent="$(mktemp)"
 no_exposure_json="$(mktemp)"
-trap 'rm -f "$archive_json" "$baseline_json" "$missing_endpoint_inventory" "$missing_endpoint_json" "$no_exposure_intent" "$no_exposure_json"' EXIT
+missing_scope_intent="$(mktemp)"
+missing_scope_json="$(mktemp)"
+missing_scope_stderr="$(mktemp)"
+ambiguous_scope_intent="$(mktemp)"
+ambiguous_scope_json="$(mktemp)"
+ambiguous_scope_stderr="$(mktemp)"
+trap 'rm -f "$archive_json" "$baseline_json" "$missing_endpoint_inventory" "$missing_endpoint_json" "$no_exposure_intent" "$no_exposure_json" "$missing_scope_intent" "$missing_scope_json" "$missing_scope_stderr" "$ambiguous_scope_intent" "$ambiguous_scope_json" "$ambiguous_scope_stderr"' EXIT
 
 nix flake archive --json "path:${repo_root}" > "$archive_json"
 
@@ -64,6 +71,63 @@ eval_service() {
       ' > "$output_path"
 }
 
+eval_service_scope_binding_fixture() {
+  local relation_path="$1"
+  local output_path="$2"
+
+  REPO_ROOT="$repo_root" \
+  RELATION_PATH="$relation_path" \
+    nix eval \
+      --extra-experimental-features 'nix-command flakes' \
+      --impure --json --expr '
+        let
+          repoRoot = builtins.getEnv "REPO_ROOT";
+          localLib = import (repoRoot + "/lib/utils.nix");
+          helpers = import (repoRoot + "/lib/contract.nix") { lib = localLib; };
+          relation = import (builtins.getEnv "RELATION_PATH");
+          lib = {
+            concatMap = f: list: builtins.concatLists (map f list);
+          };
+          common = {
+            failForwarding = path: message:
+              throw "forwarding-model update required: ${path}: ${message}";
+          };
+          uniqueStrings = values:
+            helpers.sortedNames (
+              builtins.listToAttrs (
+                map
+                  (value: { name = value; value = true; })
+                  (builtins.filter helpers.isNonEmptyString values)
+              )
+            );
+          services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            inherit lib helpers common uniqueStrings;
+            sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
+            policyEndpointBindings = {
+              externals = {
+                wan = {
+                  uplinks = [ "wan" ];
+                  runtimeBindings = [ ];
+                };
+              };
+              services = {
+                dmz-nebula = {
+                  providers = [ "c-router-lighthouse" ];
+                  trafficType = "nebula";
+                };
+              };
+              relations = [ relation ];
+            };
+            providerEndpointForServiceProvider = providerName: null;
+            providerTenantsForServiceProvider = providerName: [ "dmz" ];
+            preferredDnsUplinksForService = serviceName: [ ];
+            preferredDnsUplinksByRelationForService = serviceName: { };
+          };
+        in
+          builtins.head services
+      ' > "$output_path"
+}
+
 base_intent="${labs_path}/examples/s-router-public-overlay-service/intent.nix"
 base_inventory="${labs_path}/examples/s-router-public-overlay-service/inventory-nixos.nix"
 
@@ -79,7 +143,7 @@ baseline_ok="$(
     and (.service.exposure.notInferredFrom | index("service-existence") != null)
     and (.service.exposure.notInferredFrom | index("route-availability") != null)
     and (.service.exposure.notInferredFrom | index("host-placement") != null)
-    and any(.service.exposure.records[]; .relationId == "allow-sitec-wan-to-dmz-nebula" and .exposureClass == "public-ingress" and .sourceKind == "external" and .sourceNames == ["wan"])
+    and any(.service.exposure.records[]; .relationId == "allow-sitec-wan-to-dmz-nebula" and .exposureClass == "public-ingress" and .ownerScope == {"kind":"service","name":"dmz-nebula"} and .requesterScope.kind == "external" and .requesterScope.names == ["wan"] and .requesterScope.selector == "uplinks" and .requesterScope.public == true and .sourceKind == "external" and .sourceNames == ["wan"])
     and .hasProviderEndpointRoute == true
   ' "$baseline_json"
 )"
@@ -148,6 +212,58 @@ no_exposure_ok="$(
 if [[ "$no_exposure_ok" != "true" ]]; then
   echo "FAIL service-exposure-classification: service existence, provider profile, address ownership, or host placement created exposure without an exposure relation" >&2
   jq '.' "$no_exposure_json" >&2
+  exit 1
+fi
+
+cat > "$missing_scope_intent" <<EOF
+{
+  action = "allow";
+  from = { kind = "external"; };
+  id = "allow-sitec-wan-to-dmz-nebula";
+  to = {
+    kind = "service";
+    name = "dmz-nebula";
+  };
+  trafficType = "nebula";
+}
+EOF
+
+if eval_service_scope_binding_fixture "$missing_scope_intent" "$missing_scope_json" 2> "$missing_scope_stderr"; then
+  echo "FAIL service-exposure-classification: missing exposure requester scope unexpectedly evaluated" >&2
+  jq '.' "$missing_scope_json" >&2
+  exit 1
+fi
+if ! grep -Fq "service exposure scope binding requires requester scope to name an external or uplink" "$missing_scope_stderr"; then
+  echo "FAIL service-exposure-classification: missing requester scope diagnostic did not name scope binding failure" >&2
+  cat "$missing_scope_stderr" >&2
+  exit 1
+fi
+
+cat > "$ambiguous_scope_intent" <<EOF
+{
+  action = "allow";
+  from = {
+    kind = "external";
+    name = "wan";
+    uplinks = [ "wan" ];
+  };
+  id = "allow-sitec-wan-to-dmz-nebula";
+  to = {
+    kind = "service";
+    name = "dmz-nebula";
+  };
+  trafficType = "nebula";
+}
+EOF
+
+if eval_service_scope_binding_fixture "$ambiguous_scope_intent" "$ambiguous_scope_json" 2> "$ambiguous_scope_stderr"; then
+  echo "FAIL service-exposure-classification: ambiguous exposure requester scope unexpectedly evaluated" >&2
+  jq '.' "$ambiguous_scope_json" >&2
+  exit 1
+fi
+if ! grep -Fq "service exposure scope binding requires external requester scope to use exactly one of name or uplinks" "$ambiguous_scope_stderr"; then
+  echo "FAIL service-exposure-classification: ambiguous requester scope diagnostic did not name scope binding failure" >&2
+  cat "$ambiguous_scope_stderr" >&2
   exit 1
 fi
 
