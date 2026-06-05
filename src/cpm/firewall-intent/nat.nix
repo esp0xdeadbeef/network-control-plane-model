@@ -60,6 +60,8 @@ let
   );
   nat66ByUplink = attrsOrEmpty (egressIntent.nat66 or null);
   nat66SelectedIntents = map (uplink: attrsOrEmpty (nat66ByUplink.${uplink} or null)) selectedUplinks;
+  nat66Requested = builtins.any (intent: (intent.mode or null) == "nat66") nat66SelectedIntents;
+  trafficClass = egressIntent.trafficClass or "internet-egress";
   nat66SourcePrefixes = uniqueStrings (
     builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat66SelectedIntents
     ++ runtimeOriginNat66SourcePrefixes
@@ -134,6 +136,97 @@ let
           )
           wanInterfaces
       );
+  translatedPrefixesForInterface =
+    iface:
+    let
+      wan = attrsOrEmpty (iface.wan or null);
+      egress = attrsOrEmpty (wan.egress or null);
+      ipv6 = attrsOrEmpty (egress.ipv6 or null);
+      translation = attrsOrEmpty (ipv6.translation or null);
+    in
+    listOrEmpty (translation.translatedPrefixes or null)
+    ++ listOrEmpty (translation.translatedAddressOrPrefix or null)
+    ++ listOrEmpty (translation.translatedAddresses or null)
+    ++ [
+      (translation.translatedPrefix or "")
+      (translation.translatedAddress or "")
+      (translation.prefix or "")
+      (translation.address or "")
+    ];
+  nat66TranslatedAddressOrPrefix = uniqueStrings (builtins.concatMap translatedPrefixesForInterface explicitNat66Interfaces);
+  tenantNames = uniqueStrings (
+    map (tenant: if builtins.isAttrs tenant then tenant.name or "" else "") (
+      listOrEmpty ((attrsOrEmpty (siteAttrs.domains or null)).tenants or null)
+    )
+  );
+  nat66FailureDiagnostic =
+    { code
+    , message
+    , extra ? { }
+    ,
+    }:
+    {
+      inherit code message trafficClass;
+      mode = "fail-closed";
+      failClosed = true;
+      sourceScope = nat66SourcePrefixes;
+      egressSurface = {
+        selectedUplinks = selectedUplinks;
+        selectedUplinkInterfaces = wanRuntimeNames;
+      };
+      translatedAddressOrPrefix = nat66TranslatedAddressOrPrefix;
+      translatedAddressOrPrefixState =
+        if nat66TranslatedAddressOrPrefix == [ ] then "unavailable" else "modeled-but-unusable";
+      addressFamily = 6;
+      tenantIsolationBoundary = {
+        kind = "tenant-source-prefix";
+        tenants = tenantNames;
+        sourcePrefixes = nat66SourcePrefixes;
+      };
+      fallback = {
+        unmodeledEgress = false;
+        untranslatedUlaRoute = false;
+        alternateProviders = false;
+      };
+    } // extra;
+  nat66Diagnostics =
+    if !exitEnabled || !nat66Requested || nat6Enabled then
+      [ ]
+    else if nat66SourcePrefixes == [ ] then
+      [
+        (nat66FailureDiagnostic {
+          code = "nat66-source-prefix-unavailable";
+          message = "ULA NAT66 was selected without any ULA source-prefix binding.";
+          extra = {
+            selectedUplinks = selectedUplinks;
+          };
+        })
+      ]
+    else if explicitNat66Interfaces == [ ] then
+      [
+        (nat66FailureDiagnostic {
+          code = "nat66-egress-unavailable";
+          message = "ULA NAT66 was selected without any matching WAN NAT66 translation egress space.";
+          extra = {
+            selectedUplinks = selectedUplinks;
+            selectedUplinkInterfaces = wanRuntimeNames;
+          };
+        })
+      ]
+    else if nat66RuntimeNames == [ ] then
+      [
+        (nat66FailureDiagnostic {
+          code = "nat66-egress-unavailable";
+          message = "ULA NAT66 was selected but no selected WAN interface has both NAT66 translation mode and IPv6 egress authority.";
+          extra = {
+            selectedUplinks = selectedUplinks;
+            selectedUplinkInterfaces = wanRuntimeNames;
+            nat66TranslationInterfaces = explicitNat66RuntimeNames;
+          };
+        })
+      ]
+    else
+      [ ];
   coreUplinkRouteSafety = natHelpers.routeSafety {
     inherit
       coreOriginUplinkDefaultAllowed
@@ -159,6 +252,9 @@ in
     ipv6 = nat6Enabled;
   };
   warnings = nat66Warning;
+  diagnostics = {
+    nat66 = nat66Diagnostics;
+  };
   uplinks = selectedUplinks;
   wanInterfaces = wanRuntimeNames;
   transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
