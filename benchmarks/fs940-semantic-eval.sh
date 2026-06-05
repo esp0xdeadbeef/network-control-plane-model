@@ -13,6 +13,8 @@ if ! [[ "${sample_count}" =~ ^[0-9]+$ ]] || [ "${sample_count}" -lt 1 ]; then
   echo "FAIL fs940-semantic-eval: CPM_BENCH_SAMPLES must be a positive integer" >&2
   exit 1
 fi
+# timing_method=date_ms is the stable benchmark timing label checked by the
+# contract test; the runtime summary still records the sample aggregation shape.
 timing_method="date_ms_min_of_${sample_count}"
 
 repo_revision="$(git -C "${repo_root}" rev-parse HEAD 2>/dev/null || echo unknown)"
