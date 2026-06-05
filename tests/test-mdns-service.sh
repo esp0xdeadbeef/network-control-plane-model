@@ -34,9 +34,20 @@ base
             // {
               services.mdns = {
                 reflector = true;
-                allowInterfaces = [
-                  "tenant-a"
-                  "tenant-b"
+                discoveryPolicy.relationships = [
+                  {
+                    requesterScope = "tenant-a";
+                    responderScope = "tenant-b";
+                    advertisedService = "printer-01";
+                    serviceType = "_ipp._tcp";
+                    discoveryProtocol = "mdns";
+                    direction = "requester-to-responder";
+                    boundary = "reflector";
+                    allowedAdvertisementData = {
+                      hostName = "printer-01.local";
+                      addresses = [ "192.0.2.50" ];
+                    };
+                  }
                 ];
                 publish = {
                   enable = false;
@@ -71,6 +82,11 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   in
     mdns.reflector
     && mdns.allowInterfaces == [ "tenant-a" "tenant-b" ]
+    && mdns.discoveryPolicy.defaultDecision == "deny-unmodeled-visibility"
+    && mdns.discoveryPolicy.relationships == mdns.discoveryRelationships
+    && (builtins.head mdns.discoveryRelationships).requesterScope == "tenant-a"
+    && (builtins.head mdns.discoveryRelationships).responderScope == "tenant-b"
+    && (builtins.head mdns.discoveryRelationships).allowedAdvertisementData.hostName == "printer-01.local"
     && !(mdns.publish.enable or true)
     && !(mdns.publish.addresses or true)
 ' >/dev/null || {
