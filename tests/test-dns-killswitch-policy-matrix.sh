@@ -35,6 +35,7 @@ fixture_dir="${repo_root}/fixtures/passing/dns-killswitch-policy-matrix"
 input_path="${fixture_dir}/input.nix"
 inventory_path="${fixture_dir}/inventory.nix"
 malformed_inventory_path="${fixture_dir}/malformed-inventory.nix"
+missing_dns_policy_inventory_path="${fixture_dir}/missing-dns-policy-inventory.nix"
 missing_denied_inventory_path="${fixture_dir}/missing-denied-resolver-cidrs-inventory.nix"
 expected_path="${fixture_dir}/expected-dns-policy.json"
 
@@ -46,6 +47,7 @@ missing fixture:
   - ${input_path}
   - ${inventory_path}
   - ${malformed_inventory_path}
+  - ${missing_dns_policy_inventory_path}
   - ${missing_denied_inventory_path}
   - ${expected_path}
 
@@ -92,6 +94,10 @@ Required negative proof:
   that fails in CPM with a path-specific DNS error before any renderer can
   materialize local nftables/routes.
 
+  The same fixture directory must include a missing-DNS-policy case that fails
+  in CPM with a path-specific DNS error before synthesized resolver
+  advertisements can reach renderer output.
+
   The same fixture directory must include a malformed policy case that fails in
   CPM with a path-specific DNS error before any renderer can materialize local
   nftables/routes. A fix that only edits NixOS modules, CLAB scripts, or
@@ -105,6 +111,11 @@ if [[ ! -f "${malformed_inventory_path}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${missing_dns_policy_inventory_path}" ]]; then
+  echo "FATAL dns-killswitch-policy-matrix missing negative DNS policy inventory: ${missing_dns_policy_inventory_path}" >&2
+  exit 1
+fi
+
 if [[ ! -f "${missing_denied_inventory_path}" ]]; then
   echo "FATAL dns-killswitch-policy-matrix missing negative deniedResolverCidrs inventory: ${missing_denied_inventory_path}" >&2
   exit 1
@@ -112,8 +123,28 @@ fi
 
 output_json="$(mktemp)"
 malformed_stderr="$(mktemp)"
+missing_dns_policy_stderr="$(mktemp)"
 missing_denied_stderr="$(mktemp)"
-trap 'rm -f "${output_json}" "${malformed_stderr}" "${missing_denied_stderr}"' EXIT
+trap 'rm -f "${output_json}" "${malformed_stderr}" "${missing_dns_policy_stderr}" "${missing_denied_stderr}"' EXIT
+
+if nix eval --impure --json --expr "
+  let
+    flake = builtins.getFlake (toString ${repo_root});
+    builder = flake.lib.${system}.build;
+    input = import ${input_path};
+    inventory = import ${missing_dns_policy_inventory_path};
+  in
+    builder { inherit input inventory; }
+" >/dev/null 2>"${missing_dns_policy_stderr}"; then
+  echo "FAIL dns-killswitch-policy-matrix: missing DNS policy unexpectedly evaluated" >&2
+  exit 1
+fi
+
+if ! grep -Fq "runtimeTargets.access-runtime.services.dns" "${missing_dns_policy_stderr}"; then
+  echo "FAIL dns-killswitch-policy-matrix: missing DNS policy failed without path-specific error" >&2
+  cat "${missing_dns_policy_stderr}" >&2
+  exit 1
+fi
 
 if nix eval --impure --json --expr "
   let

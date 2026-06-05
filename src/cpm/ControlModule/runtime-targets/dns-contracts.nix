@@ -7,7 +7,7 @@
 }:
 
 let
-  inherit (common) attrsOrEmpty listOrEmpty;
+  inherit (common) attrsOrEmpty failInventory listOrEmpty;
 
   publicResolvers = {
     "1.1.1.1" = true;
@@ -68,6 +68,9 @@ let
       ++ lib.concatMap (entry: listOrEmpty (entry.prefixes or null)) (listOrEmpty (advertisements.ipv6Ra or null))
     );
 
+  runtimeTargetPath = target:
+    "runtimeTargets.${target.placement.target or target.logicalNode.name or "access"}";
+
   addForwarderRoutes =
     target: forwarders:
     let
@@ -105,7 +108,9 @@ let
       advertisements = attrsOrEmpty (target.advertisements or null);
       listeners = advertisedDnsListeners advertisements;
       sources = advertisedDnsSources advertisements;
-      existingDns = attrsOrEmpty (target.services.dns or null);
+      existingServices = attrsOrEmpty (target.services or null);
+      hasModeledDnsPolicy = existingServices ? dns;
+      existingDns = attrsOrEmpty (existingServices.dns or null);
       existingForwarders = listOrEmpty (existingDns.forwarders or null);
       derivedForwarders = policyDerivedDnsForwardersForListeners listeners;
       forwarders = if existingForwarders != [ ] then existingForwarders else derivedForwarders;
@@ -137,11 +142,15 @@ let
     in
     if (target.role or null) != "access" || listeners == [ ] then
       target
+    else if !hasModeledDnsPolicy then
+      failInventory
+        "${runtimeTargetPath target}.services.dns"
+        "missing modeled DNS policy for resolver advertisement; define services.dns before renderer-facing advertisement output"
     else
       target
       // {
         services = (attrsOrEmpty (target.services or null)) // {
-          dns = (normalizeDnsService "runtimeTargets.${target.logicalNode.name or "access"}.services" mergedDns) // {
+          dns = (normalizeDnsService "${runtimeTargetPath target}.services" mergedDns) // {
             blockDirectEgress = true;
           };
         };
