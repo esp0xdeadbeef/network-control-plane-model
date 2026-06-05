@@ -10,17 +10,7 @@
 
 let
   inherit (helpers) isNonEmptyString requireList requireString sortedNames;
-  inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
-
-  resolvePeerSiteEntry =
-    peerSite:
-    lib.findFirst
-      (entry:
-      entry.siteId == peerSite
-      || entry.siteDisplayName == peerSite
-      || "${entry.enterpriseKey}.${entry.siteKey}" == peerSite)
-      null
-      allSiteEntries;
+  inherit (common) attrsOrEmpty listOrEmpty resolveSiteEntry uniqueStrings;
 
   transitEndpointAddressesByNodeForTransit =
     transitValue:
@@ -64,7 +54,7 @@ let
             peerEntryFor =
               peerSite:
               let
-                peerSiteEntry = resolvePeerSiteEntry peerSite;
+                peerSiteEntry = resolveSiteEntry peerSite;
                 peerTransit = if peerSiteEntry == null then { } else attrsOrEmpty (peerSiteEntry.site.transit or null);
                 peerDomains = if peerSiteEntry == null then { } else attrsOrEmpty (peerSiteEntry.site.domains or null);
                 peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];

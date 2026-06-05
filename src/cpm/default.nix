@@ -36,9 +36,15 @@ let
       inherit helpers;
     };
 
+  ipam = import ./ipam.nix { inherit lib; };
+
+  common = import ./Site/build-data/common.nix {
+    inherit helpers ipam enterpriseRoot;
+  };
+
   buildSiteData =
     import ./build-site-data.nix {
-      inherit lib helpers realizationIndex endpointInventoryIndex inventory enterpriseRoot;
+      inherit lib helpers realizationIndex endpointInventoryIndex inventory enterpriseRoot ipam common;
     };
 
   enterpriseRoot =

@@ -7,14 +7,7 @@
 
 let
   inherit (helpers) isNonEmptyString;
-  inherit (common) attrsOrEmpty listOrEmpty;
-
-  resolvePeerSiteEntry =
-    peerSite:
-    lib.findFirst
-      (entry: entry.siteId == peerSite || entry.siteDisplayName == peerSite || "${entry.enterpriseKey}.${entry.siteKey}" == peerSite)
-      null
-      allSiteEntries;
+  inherit (common) attrsOrEmpty listOrEmpty resolveSiteEntry;
 
   relationAllowsOverlayToWan =
     overlayName: relation:
@@ -33,7 +26,7 @@ let
   peerHasPublicExit =
     overlayName: peerSite:
     let
-      peerEntry = resolvePeerSiteEntry peerSite;
+      peerEntry = resolveSiteEntry peerSite;
       peerSiteAttrs = if peerEntry == null then { } else attrsOrEmpty (peerEntry.site or null);
       contract = attrsOrEmpty (peerSiteAttrs.communicationContract or null);
       relations = listOrEmpty (contract.allowedRelations or contract.relations or null);

@@ -81,9 +81,15 @@ let
                 runtimeTarget = targetName;
                 logicalNode = target.logicalNode or null;
               };
-              payload = target;
+              payloadRef = "control_plane_model.data.${enterpriseName}.${siteName}.runtimeTargets.${targetName}";
+              payload = {
+                logicalNode = target.logicalNode or null;
+                role = target.role or null;
+                routingMode = target.routingMode or null;
+              };
               includedSharedMetadata =
                 sharedMetadata "runtime target identity and portable renderer context" [
+                  "runtimeTargets.${targetName}"
                   "siteId"
                   "siteName"
                   "routing.mode"
