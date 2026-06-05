@@ -24,10 +24,17 @@ trap 'rm -f "${archive_json}" "${forwarding_json}"' EXIT
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 
-examples=(
-  s-router-overlay-dns-lane-policy
-  tri-site-dual-wan-overlay-integration-static
-)
+if [[ -n "${CPM_BENCH_EXAMPLES:-}" ]]; then
+  # Intentionally split on shell whitespace so focused callers can pass one or
+  # more example names without changing the benchmark script.
+  # shellcheck disable=SC2206
+  examples=( ${CPM_BENCH_EXAMPLES} )
+else
+  examples=(
+    s-router-overlay-dns-lane-policy
+    tri-site-dual-wan-overlay-integration-static
+  )
+fi
 
 failed=0
 
