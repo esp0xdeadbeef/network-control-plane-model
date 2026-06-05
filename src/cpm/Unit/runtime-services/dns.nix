@@ -33,6 +33,19 @@ let
     value:
     builtins.match "([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}" value != null;
   defaults = import ./dns-defaults.nix;
+  namespaceContracts = import ./dns-namespace-contracts.nix { inherit lib helpers failInventory; };
+  normalizeNamespaceFallback = import ./dns-namespace-fallback.nix { inherit lib helpers failInventory; };
+  localRecords = import ./dns-local-records.nix { inherit lib helpers failInventory; };
+  inherit (localRecords)
+    normalizeLocalRecords
+    normalizeLocalZones
+    ;
+  inherit (namespaceContracts)
+    normalizeLeaseNameScopes
+    normalizeNamespaceAuthority
+    normalizeNamespaceDiagnostics
+    normalizeRecordPublications
+    ;
 
   normalizeForwarderList = dnsPath: dns: fieldName:
     let
@@ -59,109 +72,6 @@ let
       value
     else
       failInventory path "must be a boolean";
-
-  normalizeNamespaceFallback = dnsPath: dns:
-    let
-      path = "${dnsPath}.namespaceFallback";
-      value = dns.namespaceFallback or null;
-    in
-    if value == null then
-      null
-    else
-      let
-        cfg = requireAttrs path value;
-        decisionsPath = "${path}.decisions";
-        defaultPublicRecursionFallback =
-          boolOrDefault "${path}.defaultPublicRecursionFallback"
-            (cfg.defaultPublicRecursionFallback or null)
-            false;
-        normalizeDecision = decision:
-          let
-            decisionPath = "${decisionsPath}[*]";
-            attrs = requireAttrs decisionPath decision;
-            requesterScope = requireString "${decisionPath}.requesterScope" (attrs.requesterScope or null);
-            namespace = requireString "${decisionPath}.namespace" (attrs.namespace or null);
-            failedAnswerReason = requireString "${decisionPath}.failedAnswerReason" (attrs.failedAnswerReason or null);
-            action = requireString "${decisionPath}.action" (attrs.action or null);
-            leakPrevention = requireString "${decisionPath}.leakPrevention" (attrs.leakPrevention or null);
-            allowedRecordClasses = normalizeStringList decisionPath attrs "allowedRecordClasses";
-            deniedRecordClasses = normalizeStringList decisionPath attrs "deniedRecordClasses";
-            publicRecursionFallback =
-              boolOrDefault "${decisionPath}.publicRecursionFallback"
-                (attrs.publicRecursionFallback or null)
-                false;
-            fallbackTarget =
-              if attrs ? fallbackTarget then
-                requireString "${decisionPath}.fallbackTarget" attrs.fallbackTarget
-              else
-                null;
-            _validAction =
-              if !(builtins.elem action [ "answer" "fallback" "block" "deny" ]) then
-                failInventory "${decisionPath}.action" "must be one of answer, fallback, block, or deny"
-              else
-                true;
-            _fallbackTargetRequired =
-              if action == "fallback" && fallbackTarget == null then
-                failInventory "${decisionPath}.fallbackTarget" "is required when namespace fallback action is 'fallback'"
-              else
-                true;
-            _allowedClassesRequired =
-              if allowedRecordClasses == [ ] then
-                failInventory "${decisionPath}.allowedRecordClasses" "must contain at least one record class"
-              else
-                true;
-            _deniedClassesRequired =
-              if deniedRecordClasses == [ ] then
-                failInventory "${decisionPath}.deniedRecordClasses" "must contain at least one denied record class"
-              else
-                true;
-            _publicFallbackExplicit =
-              if publicRecursionFallback && (action != "fallback" || fallbackTarget == null) then
-                failInventory
-                  "${decisionPath}.publicRecursionFallback"
-                  "requires explicit fallback action and fallbackTarget"
-              else
-                true;
-            _deniedRequesterScopeNoFallback =
-              if failedAnswerReason == "denied-requester-scope" && (publicRecursionFallback || action == "fallback" || fallbackTarget != null) then
-                failInventory
-                  "${decisionPath}.publicRecursionFallback"
-                  "must be false for denied requester scope; cross-tenant DNS denial cannot inherit public recursion fallback"
-              else
-                true;
-          in
-          builtins.seq _validAction (
-            builtins.seq _fallbackTargetRequired (
-              builtins.seq _allowedClassesRequired (
-                builtins.seq _deniedClassesRequired (
-                  builtins.seq _publicFallbackExplicit (
-                    builtins.seq _deniedRequesterScopeNoFallback ({
-                      inherit
-                        action
-                        allowedRecordClasses
-                        deniedRecordClasses
-                        failedAnswerReason
-                        leakPrevention
-                        namespace
-                        publicRecursionFallback
-                        requesterScope
-                        ;
-                    } // lib.optionalAttrs (fallbackTarget != null) { inherit fallbackTarget; })
-                  )
-                )
-              )
-            )
-          );
-        decisions = builtins.map normalizeDecision (requireList decisionsPath (cfg.decisions or null));
-        _hasDecision =
-          if decisions == [ ] then
-            failInventory decisionsPath "must contain at least one namespace miss or fallback decision"
-          else
-            true;
-      in
-      builtins.seq _hasDecision {
-        inherit defaultPublicRecursionFallback decisions;
-      };
 
 in
 {
@@ -245,45 +155,13 @@ in
         if dns ? directEgressBlockedTenants then normalizeStringList dnsPath dns "directEgressBlockedTenants" else null;
       routeContracts = requireList "${dnsPath}.routeContracts" (dns.routeContracts or [ ]);
       policyMatrix = requireList "${dnsPath}.policyMatrix" (dns.policyMatrix or [ ]);
-      localZones =
-        let
-          path = "${dnsPath}.localZones";
-          value = dns.localZones or [ ];
-        in
-        builtins.map
-          (entry:
-            let
-              zone = requireAttrs "${path}[*]" entry;
-              name = requireString "${path}[*].name" (zone.name or null);
-              zoneType = if isNonEmptyString (zone.type or null) then zone.type else "static";
-            in
-            if isNonEmptyString name then { inherit name; type = zoneType; } else failInventory "${path}[*].name" "must not be empty")
-          (requireList path value);
-      localRecords =
-        let
-          path = "${dnsPath}.localRecords";
-          value = dns.localRecords or [ ];
-        in
-        builtins.map
-          (record:
-            let
-              recordPath = "${path}[*]";
-              attrs = requireAttrs recordPath record;
-              name = requireString "${recordPath}.name" (attrs.name or null);
-              normalizeRecordValues =
-                fieldName:
-                builtins.map
-                  (entry:
-                  let rendered = requireString "${recordPath}.${fieldName}[*]" entry;
-                  in if isNonEmptyString rendered then rendered else failInventory "${recordPath}.${fieldName}" "must not contain empty strings")
-                  (requireList "${recordPath}.${fieldName}" (attrs.${fieldName} or [ ]));
-              a = normalizeRecordValues "a";
-              aaaa = normalizeRecordValues "aaaa";
-              _hasData = if a == [ ] && aaaa == [ ] then failInventory recordPath "must define at least one of 'a' or 'aaaa'" else true;
-            in
-            builtins.seq _hasData ({ inherit name; } // lib.optionalAttrs (a != [ ]) { inherit a; } // lib.optionalAttrs (aaaa != [ ]) { inherit aaaa; }))
-          (requireList path value);
+      localZones = normalizeLocalZones dnsPath dns;
+      localRecords = normalizeLocalRecords dnsPath dns;
       namespaceFallback = normalizeNamespaceFallback dnsPath dns;
+      namespaceAuthority = normalizeNamespaceAuthority dnsPath dns;
+      leaseNameScopes = normalizeLeaseNameScopes dnsPath dns;
+      recordPublications = normalizeRecordPublications dnsPath dns;
+      namespaceDiagnostics = normalizeNamespaceDiagnostics dnsPath dns;
     in
     builtins.seq _forwarderConflict (
       builtins.seq _killSwitchNoPublicFallback (
@@ -308,6 +186,10 @@ in
           // lib.optionalAttrs (localZones != [ ]) { inherit localZones; }
           // lib.optionalAttrs (localRecords != [ ]) { inherit localRecords; }
           // lib.optionalAttrs (namespaceFallback != null) { inherit namespaceFallback; }
+          // lib.optionalAttrs (namespaceAuthority != [ ]) { inherit namespaceAuthority; }
+          // lib.optionalAttrs (leaseNameScopes != [ ]) { inherit leaseNameScopes; }
+          // lib.optionalAttrs (recordPublications != [ ]) { inherit recordPublications; }
+          // lib.optionalAttrs (namespaceDiagnostics != [ ]) { inherit namespaceDiagnostics; }
         )
       )
     );
