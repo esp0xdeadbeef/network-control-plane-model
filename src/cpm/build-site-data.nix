@@ -165,30 +165,55 @@ let
 
   validatePPPoEContracts =
     let
-      pppoeEntries =
-        builtins.concatLists (
-          builtins.map
-            (targetName:
-              let
-                target = runtimeTargets.${targetName};
-                pppoe = (target.services or { }).pppoe or { };
-              in
-              (if pppoe ? client then [
-                {
-                  inherit targetName;
-                  role = "client";
-                  interface = pppoe.client.interface;
-                }
-              ] else [ ])
-              ++ (if pppoe ? server then [
-                {
-                  inherit targetName;
-                  role = "server";
-                  interface = pppoe.server.interface;
-                }
-              ] else [ ]))
-            (sortedNames runtimeTargets)
+      siteTargetNames =
+        builtins.filter
+          (targetName:
+            let
+              logical = realizationIndex.targetDefs.${targetName}.logical;
+            in
+            logical.enterprise == enterpriseName && logical.site == siteName)
+          (sortedNames realizationIndex.targetDefs);
+      targetServices = targetName:
+        realizationIndex.targetDefs.${targetName}.node.services or { };
+      targetAdvertisements = targetName:
+        realizationIndex.targetDefs.${targetName}.node.advertisements or { };
+      pppoeService = targetName:
+        (targetServices targetName).pppoe or null;
+      pppoeTargetNames =
+        builtins.filter
+          (targetName: pppoeService targetName != null)
+          siteTargetNames;
+      normalizePPPoEEntry = targetName:
+        let
+          pppoePath = "${realizationIndex.targetDefs.${targetName}.nodePath}.services.pppoe";
+          pppoe = common.attrsOrEmpty (pppoeService targetName);
+          serviceNames = sortedNames pppoe;
+          unexpectedServiceNames =
+            builtins.filter (name: !(builtins.elem name [ "client" "server" ])) serviceNames;
+          roleCount =
+            (if pppoe ? client then 1 else 0)
+            + (if pppoe ? server then 1 else 0);
+          _unexpected =
+            if unexpectedServiceNames != [ ] then
+              common.failInventory pppoePath "must contain only 'client' or 'server' roles"
+            else
+              true;
+          _roleCount =
+            if roleCount == 1 then
+              true
+            else
+              common.failInventory pppoePath "must define exactly one of 'client' or 'server'";
+          role = if pppoe ? client then "client" else "server";
+          service = pppoe.${role};
+        in
+        builtins.seq _unexpected (
+          builtins.seq _roleCount {
+            inherit targetName role;
+            interface = service.interface;
+          }
         );
+      pppoeEntries =
+        builtins.map normalizePPPoEEntry pppoeTargetNames;
       pppoeInterfaces =
         builtins.foldl'
           (acc: entry:
@@ -212,15 +237,21 @@ let
             "PPPoE interface '${interface}' requires exactly one client and one server before renderer handoff";
       pppoeServerTargets =
         builtins.filter
-          (targetName: ((runtimeTargets.${targetName}.services or { }).pppoe or { }) ? server)
-          (sortedNames runtimeTargets);
+          (targetName: (common.attrsOrEmpty (pppoeService targetName)) ? server)
+          pppoeTargetNames;
       advertisementDisabled = entry: (entry.enabled or true) == false;
+      advertisementEntries = value:
+        if builtins.isList value then
+          value
+        else if builtins.isAttrs value then
+          builtins.attrValues value
+        else
+          [ ];
       validateServerFallbackSuppressed = targetName:
         let
-          target = runtimeTargets.${targetName};
-          advertisements = target.advertisements or { };
-          dhcp4 = advertisements.dhcp4 or [ ];
-          ipv6Ra = advertisements.ipv6Ra or [ ];
+          advertisements = targetAdvertisements targetName;
+          dhcp4 = advertisementEntries (advertisements.dhcp4 or [ ]);
+          ipv6Ra = advertisementEntries (advertisements.ipv6Ra or [ ]);
         in
         if dhcp4 != [ ] && ipv6Ra != [ ] && builtins.all advertisementDisabled dhcp4 && builtins.all advertisementDisabled ipv6Ra then
           true

@@ -9,6 +9,26 @@ let
   common = import ./lib/common.nix { inherit helpers; };
   inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
 
+  mergeDnsAllowFrom = target: extraAllowFrom:
+    let
+      mergeTargetDns =
+        let
+          targetServices = attrsOrEmpty (target.services or null);
+          targetDns = attrsOrEmpty (targetServices.dns or null);
+          mergedAllowFrom = uniqueStrings ((listOrEmpty (targetDns.allowFrom or null)) ++ extraAllowFrom);
+        in
+        if targetDns == { } then
+          target
+        else
+          target // {
+            services = targetServices // { dns = targetDns // { allowFrom = mergedAllowFrom; }; };
+          };
+    in
+    if extraAllowFrom == [ ] || !(builtins.hasAttr "services" target) then
+      target
+    else
+      mergeTargetDns;
+
   runtimeTargetEntries =
     builtins.concatLists (
       builtins.map
@@ -166,18 +186,11 @@ builtins.listToAttrs (
                       (targetName:
                         let
                           target = runtimeTargets.${targetName};
-                          targetServices = attrsOrEmpty (target.services or null);
-                          targetDns = attrsOrEmpty (targetServices.dns or null);
                           extraAllowFrom = extraDnsAllowFromByProvider.${"${enterpriseName}|${siteName}|${targetName}"} or [ ];
-                          mergedAllowFrom = uniqueStrings ((listOrEmpty (targetDns.allowFrom or null)) ++ extraAllowFrom);
                         in
                         {
                           name = targetName;
-                          value =
-                            if targetDns == { } || extraAllowFrom == [ ] then
-                              target
-                            else
-                              target // { services = targetServices // { dns = targetDns // { allowFrom = mergedAllowFrom; }; }; };
+                          value = mergeDnsAllowFrom target extraAllowFrom;
                         })
                       (sortedNames runtimeTargets)
                   );

@@ -69,16 +69,14 @@ let
   };
 
   runtimeTargetsForFirewall =
-    builtins.mapAttrs
-      (_targetName: normalizeRuntimeTargetRoutes)
-      (finalizeRuntimeTargets {
-        inherit accessAdvertisements;
-        firewallIntent = {
-          natByTarget = { };
-          forwardingByTarget = { };
-        };
-        inherit normalizedRuntimeTargets;
-      });
+    finalizeRuntimeTargets {
+      inherit accessAdvertisements;
+      firewallIntent = {
+        natByTarget = { };
+        forwardingByTarget = { };
+      };
+      inherit normalizedRuntimeTargets;
+    };
 
   firewallIntent =
     resolveFirewallIntent {
@@ -92,12 +90,10 @@ let
   };
 
   routeAugmentedRuntimeTargets =
-    builtins.mapAttrs
-      (_targetName: normalizeRuntimeTargetRoutes)
-      (routeDnsServiceReachability {
-        inherit firewallIntent normalizedRuntimeTargets;
-        services = resolvedServices;
-      });
+    routeDnsServiceReachability {
+      inherit firewallIntent normalizedRuntimeTargets;
+      services = resolvedServices;
+    };
 
   runtimeTargetsWithIntent =
     finalizeRuntimeTargets {
