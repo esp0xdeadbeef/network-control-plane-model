@@ -45,6 +45,8 @@ let
         prefixLen = cidr.prefixLen;
         prefixHextets = builtins.div prefixLen 16;
         hostHextets = 8 - prefixHextets;
+        hostBits = 128 - prefixLen;
+        cap = if hostBits >= 63 then null else pow2 hostBits;
         offsetHextets = sublist prefixHextets hostHextets (ipv6FromInt offset);
         prefixPart = sublist 0 prefixHextets parsed;
         hostPart = sublist prefixHextets hostHextets parsed;
@@ -62,6 +64,8 @@ let
         throw "ipam: IPv6 prefix '${toString prefix}' must be a network base address"
       else if offset < 0 then
         throw "ipam: IPv6 offset ${toString offset} must be non-negative"
+      else if cap != null && offset >= cap then
+        throw "ipam: IPv6 offset ${toString offset} overflows ${toString prefix} capacity ${toString cap}"
       else
         "${renderIPv6 (prefixPart ++ offsetHextets)}/128"
     else

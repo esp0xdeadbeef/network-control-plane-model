@@ -23,18 +23,21 @@ flake_input_path() {
 }
 
 example_root="$(flake_input_path network-labs)/examples/single-wan-uplink-static-egress"
-intent_path="${example_root}/intent.nix"
+intent_source="${example_root}/intent.nix"
 inventory_source="${example_root}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 cp "${inventory_source}" "${tmp_dir}/base.nix"
+cp "${intent_source}" "${tmp_dir}/intent.nix"
+intent_path="${tmp_dir}/intent.nix"
 
 write_inventory() {
   local path="$1"
   local dhcp4_reservations="$2"
   local dhcpv6_reservations="$3"
+  local dhcpv6_subnet="${4:-fd42:dead:beef:20::/64}"
   cat >"${path}" <<EOF
 let
   base = import ./base.nix;
@@ -63,7 +66,7 @@ base // {
           dhcpv6 = {
             tenant-client = {
               id = "client";
-              subnet = "fd42:dead:beef:20::/64";
+              subnet = "${dhcpv6_subnet}";
               pool = {
                 start = "fd42:dead:beef:20::100";
                 end = "fd42:dead:beef:20::1ff";
@@ -84,11 +87,12 @@ EOF
 
 compile_inventory() {
   local inventory_path="$1"
+  local compile_intent_path="${2:-${intent_path}}"
   nix eval --impure --json --expr '
     let
       flake = builtins.getFlake "'"path:${repo_root}"'";
       out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
-        inputPath = "'"${intent_path}"'";
+        inputPath = "'"${compile_intent_path}"'";
         inventoryPath = "'"${inventory_path}"'";
       };
     in
@@ -114,8 +118,8 @@ valid_dhcp4='[
 
 valid_dhcpv6='[
   {
-    name = "client-fixed-16";
-    hostname = "client-fixed-16";
+    name = "client-fixed-11";
+    hostname = "client-fixed-11";
     mac = "02:10:20:00:00:16";
     macSource = {
       accepted = true;
@@ -124,7 +128,7 @@ valid_dhcpv6='[
       sourceClass = "public-synthetic-lab";
     };
     ipv4.hostOffset = 10;
-    ipv6.hostOffset = 16;
+    ipv6.hostOffset = 11;
   }
 ]'
 
@@ -148,9 +152,9 @@ if ! OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && reservation4.address == "10.20.20.10"
     && reservation4.cidr == "10.20.20.10/32"
     && reservation4.source == "inventory-realization"
-    && reservation6.hostOffset == 16
-    && reservation6.address == "fd42:dead:beef:20:0:0:0:10"
-    && reservation6.cidr == "fd42:dead:beef:20:0:0:0:10/128"
+    && reservation6.hostOffset == 17
+    && reservation6.address == "fd42:dead:beef:20:0:0:0:11"
+    && reservation6.cidr == "fd42:dead:beef:20:0:0:0:11/128"
     && reservation6.source == "inventory-realization"
 ' | grep -qx true; then
   echo "FAIL static-reservation-offset-resolution: CPM did not resolve DHCP/DHCPv6 host offsets into explicit reservation records" >&2
@@ -168,7 +172,7 @@ write_inventory "${overflow_ipv4_inventory}" '[
       sourceClass = "public-synthetic-lab";
     };
     ipv4.hostOffset = 256;
-    ipv6.hostOffset = 16;
+    ipv6.hostOffset = 11;
   }
 ]' "${valid_dhcpv6}"
 
@@ -182,8 +186,8 @@ grep -F "IPv4 offset 256 overflows 10.20.20.0/24 capacity 256" "${tmp_dir}/overf
   exit 1
 }
 
-negative_ipv6_inventory="${tmp_dir}/inventory-negative-ipv6.nix"
-write_inventory "${negative_ipv6_inventory}" "${valid_dhcp4}" '[
+invalid_ipv6_hex_inventory="${tmp_dir}/inventory-invalid-ipv6-hex.nix"
+write_inventory "${invalid_ipv6_hex_inventory}" "${valid_dhcp4}" '[
   {
     mac = "02:10:20:00:00:16";
     macSource = {
@@ -193,17 +197,80 @@ write_inventory "${negative_ipv6_inventory}" "${valid_dhcp4}" '[
       sourceClass = "public-synthetic-lab";
     };
     ipv4.hostOffset = 10;
-    ipv6.hostOffset = -1;
+    ipv6.hostOffset = "gg";
   }
 ]'
 
-if compile_inventory "${negative_ipv6_inventory}" >"${tmp_dir}/negative-ipv6.out" 2>"${tmp_dir}/negative-ipv6.err"; then
-  echo "FAIL static-reservation-offset-resolution: invalid IPv6 offset was accepted" >&2
+if compile_inventory "${invalid_ipv6_hex_inventory}" >"${tmp_dir}/invalid-ipv6-hex.out" 2>"${tmp_dir}/invalid-ipv6-hex.err"; then
+  echo "FAIL static-reservation-offset-resolution: invalid IPv6 hex offset was accepted" >&2
   exit 1
 fi
-grep -F "IPv6 offset -1 must be non-negative" "${tmp_dir}/negative-ipv6.err" >/dev/null || {
-  echo "FAIL static-reservation-offset-resolution: IPv6 offset diagnostic was not concise" >&2
-  cat "${tmp_dir}/negative-ipv6.err" >&2
+grep -F "ipv6.hostOffset: must be a hexadecimal integer offset" "${tmp_dir}/invalid-ipv6-hex.err" >/dev/null || {
+  echo "FAIL static-reservation-offset-resolution: invalid IPv6 hex diagnostic was not concise" >&2
+  cat "${tmp_dir}/invalid-ipv6-hex.err" >&2
+  exit 1
+}
+
+overflow_ipv6_inventory="${tmp_dir}/inventory-overflow-ipv6.nix"
+overflow_ipv6_intent="${tmp_dir}/intent-overflow-ipv6.nix"
+sed 's|fd42:dead:beef:20::/64|fd42:dead:beef:20::/112|' "${intent_path}" >"${overflow_ipv6_intent}"
+write_inventory "${overflow_ipv6_inventory}" "${valid_dhcp4}" '[
+  {
+    mac = "02:10:20:00:00:16";
+    macSource = {
+      accepted = true;
+      disposable = true;
+      purpose = "dhcpv6-reservation";
+      sourceClass = "public-synthetic-lab";
+    };
+    ipv4.hostOffset = 10;
+    ipv6.hostOffset = "10000";
+  }
+]' "fd42:dead:beef:20::/112"
+
+if compile_inventory "${overflow_ipv6_inventory}" "${overflow_ipv6_intent}" >"${tmp_dir}/overflow-ipv6.out" 2>"${tmp_dir}/overflow-ipv6.err"; then
+  echo "FAIL static-reservation-offset-resolution: out-of-prefix IPv6 offset was accepted" >&2
+  exit 1
+fi
+grep -F "IPv6 offset 65536 overflows fd42:dead:beef:20::/112 capacity 65536" "${tmp_dir}/overflow-ipv6.err" >/dev/null || {
+  echo "FAIL static-reservation-offset-resolution: IPv6 overflow diagnostic was not concise" >&2
+  cat "${tmp_dir}/overflow-ipv6.err" >&2
+  exit 1
+}
+
+duplicate_ipv6_offset_inventory="${tmp_dir}/inventory-duplicate-ipv6-offset.nix"
+write_inventory "${duplicate_ipv6_offset_inventory}" "${valid_dhcp4}" '[
+  {
+    mac = "02:10:20:00:00:16";
+    macSource = {
+      accepted = true;
+      disposable = true;
+      purpose = "dhcpv6-reservation";
+      sourceClass = "public-synthetic-lab";
+    };
+    ipv4.hostOffset = 10;
+    ipv6.hostOffset = 11;
+  }
+  {
+    mac = "02:10:20:00:00:17";
+    macSource = {
+      accepted = true;
+      disposable = true;
+      purpose = "dhcpv6-reservation";
+      sourceClass = "public-synthetic-lab";
+    };
+    ipv4.hostOffset = 11;
+    ipv6.hostOffset = "11";
+  }
+]'
+
+if compile_inventory "${duplicate_ipv6_offset_inventory}" >"${tmp_dir}/duplicate-ipv6-offset.out" 2>"${tmp_dir}/duplicate-ipv6-offset.err"; then
+  echo "FAIL static-reservation-offset-resolution: duplicate IPv6 host offset was accepted" >&2
+  exit 1
+fi
+grep -F "duplicate ipv6.hostOffset in the same network" "${tmp_dir}/duplicate-ipv6-offset.err" >/dev/null || {
+  echo "FAIL static-reservation-offset-resolution: duplicate IPv6 offset diagnostic was not concise" >&2
+  cat "${tmp_dir}/duplicate-ipv6-offset.err" >&2
   exit 1
 }
 
@@ -217,7 +284,7 @@ write_inventory "${missing_family_inventory}" '[
       purpose = "static-dhcp-reservation";
       sourceClass = "public-synthetic-lab";
     };
-    ipv6.hostOffset = 16;
+    ipv6.hostOffset = 11;
   }
 ]' "${valid_dhcpv6}"
 

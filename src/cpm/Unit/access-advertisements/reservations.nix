@@ -14,6 +14,58 @@ let
   requireInt = path: value:
     if builtins.isInt value then value else failInventory path "must be an integer";
 
+  hexDigitValues = {
+    "0" = 0;
+    "1" = 1;
+    "2" = 2;
+    "3" = 3;
+    "4" = 4;
+    "5" = 5;
+    "6" = 6;
+    "7" = 7;
+    "8" = 8;
+    "9" = 9;
+    a = 10;
+    A = 10;
+    b = 11;
+    B = 11;
+    c = 12;
+    C = 12;
+    d = 13;
+    D = 13;
+    e = 14;
+    E = 14;
+    f = 15;
+    F = 15;
+  };
+
+  parseHexOffset = path: value:
+    let
+      raw =
+        if builtins.isInt value then
+          toString value
+        else if builtins.isString value then
+          value
+        else
+          failInventory path "must be a hexadecimal integer offset";
+      len = builtins.stringLength raw;
+      step = idx: acc:
+        if idx == len then
+          acc
+        else
+          let
+            digit = builtins.substring idx 1 raw;
+          in
+          if builtins.hasAttr digit hexDigitValues then
+            step (idx + 1) (acc * 16 + hexDigitValues.${digit})
+          else
+            failInventory path "must be a hexadecimal integer offset";
+    in
+    if len == 0 then
+      failInventory path "must be a hexadecimal integer offset"
+    else
+      step 0 0;
+
   requireBool = path: value:
     if builtins.isBool value then value else failInventory path "must be a boolean";
 
@@ -61,7 +113,10 @@ let
     let
       familyAttrs = requireAttrs "${reservationPath}.${familyName}" (attrs.${familyName} or null);
     in
-    requireInt "${reservationPath}.${familyName}.hostOffset" (familyAttrs.hostOffset or null);
+    if familyName == "ipv6" then
+      parseHexOffset "${reservationPath}.${familyName}.hostOffset" (familyAttrs.hostOffset or null)
+    else
+      requireInt "${reservationPath}.${familyName}.hostOffset" (familyAttrs.hostOffset or null);
 
   expectedPurposeFor = familyName:
     if familyName == "ipv6" then "dhcpv6-reservation" else "static-dhcp-reservation";
