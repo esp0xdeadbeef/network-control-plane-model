@@ -3,7 +3,7 @@
 { enterpriseName, siteName, site }:
 
 let
-  inherit (helpers) isNonEmptyString;
+  inherit (helpers) isNonEmptyString sortedNames;
 
   ipam = import ./ipam.nix { inherit lib; };
   resolveAccessAdvertisements = import ./resolve-access-advertisements.nix { inherit helpers ipam; };
@@ -163,6 +163,79 @@ let
     runtimeTargets
     ;
 
+  validatePPPoEContracts =
+    let
+      pppoeEntries =
+        builtins.concatLists (
+          builtins.map
+            (targetName:
+              let
+                target = runtimeTargets.${targetName};
+                pppoe = (target.services or { }).pppoe or { };
+              in
+              (if pppoe ? client then [
+                {
+                  inherit targetName;
+                  role = "client";
+                  interface = pppoe.client.interface;
+                }
+              ] else [ ])
+              ++ (if pppoe ? server then [
+                {
+                  inherit targetName;
+                  role = "server";
+                  interface = pppoe.server.interface;
+                }
+              ] else [ ]))
+            (sortedNames runtimeTargets)
+        );
+      pppoeInterfaces =
+        builtins.foldl'
+          (acc: entry:
+            if builtins.elem entry.interface acc then acc else acc ++ [ entry.interface ])
+          [ ]
+          pppoeEntries;
+      entriesForInterface = interface:
+        builtins.filter (entry: entry.interface == interface) pppoeEntries;
+      roleEntriesForInterface = interface: role:
+        builtins.filter (entry: entry.role == role) (entriesForInterface interface);
+      validateInterfacePair = interface:
+        let
+          clientEntries = roleEntriesForInterface interface "client";
+          serverEntries = roleEntriesForInterface interface "server";
+        in
+        if builtins.length clientEntries == 1 && builtins.length serverEntries == 1 then
+          true
+        else
+          common.failInventory
+            "realization.nodes.*.services.pppoe"
+            "PPPoE interface '${interface}' requires exactly one client and one server before renderer handoff";
+      pppoeServerTargets =
+        builtins.filter
+          (targetName: ((runtimeTargets.${targetName}.services or { }).pppoe or { }) ? server)
+          (sortedNames runtimeTargets);
+      advertisementDisabled = entry: (entry.enabled or true) == false;
+      validateServerFallbackSuppressed = targetName:
+        let
+          target = runtimeTargets.${targetName};
+          advertisements = target.advertisements or { };
+          dhcp4 = advertisements.dhcp4 or [ ];
+          ipv6Ra = advertisements.ipv6Ra or [ ];
+        in
+        if dhcp4 != [ ] && ipv6Ra != [ ] && builtins.all advertisementDisabled dhcp4 && builtins.all advertisementDisabled ipv6Ra then
+          true
+        else
+          common.failInventory
+            "realization.nodes.${targetName}.advertisements"
+            "PPPoE server targets must explicitly disable DHCP4 and IPv6 RA/SLAAC fallback before renderer handoff";
+    in
+    builtins.deepSeq
+      (
+        (builtins.map validateInterfacePair pppoeInterfaces)
+        ++ (builtins.map validateServerFallbackSuppressed pppoeServerTargets)
+      )
+      true;
+
   routedClientGuaMode = import ./Site/build-data/routed-client-gua-mode.nix {
     inherit helpers common;
   } {
@@ -177,7 +250,10 @@ let
 
   emitOutput = import ./Site/build-data/output.nix;
 in
+if validatePPPoEContracts then
 emitOutput {
   inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
   services = resolvedServices;
 }
+else
+  throw "unreachable"
