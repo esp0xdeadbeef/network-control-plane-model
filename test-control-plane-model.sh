@@ -24,6 +24,8 @@ tests=(
   test-emitter-provenance-repo-boundary.sh
   test-resolved-inventory-secret-facts-contract.sh
   test-dns-killswitch-policy-matrix.sh
+  test-dns-namespace-fallback-contract.sh
+  test-dns-public-block-source-authority.sh
   test-policy-deny-precedence.sh
   test-forwarding-intent-rule-deduplication.sh
   test-tri-site-external-deny-policy-materialization.sh
