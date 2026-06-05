@@ -8,8 +8,31 @@ let
   inherit (helpers) requireAttrs requireList requireString;
   inherit (advertisementHelpers) failInventory isNonEmptyString;
 
+  classifierId = "FS-720-HDS-010-SDS-030-SMS-010";
+
   requireInt = path: value:
     if builtins.isInt value then value else failInventory path "must be an integer";
+
+  requireBool = path: value:
+    if builtins.isBool value then value else failInventory path "must be a boolean";
+
+  optionalString = path: value:
+    if value == null then null else requireString path value;
+
+  optionalBool = path: value:
+    if value == null then null else requireBool path value;
+
+  optionalNonEmptyString = path: value:
+    if value == null then
+      null
+    else
+      let
+        stringValue = requireString path value;
+      in
+      if stringValue == "" then
+        failInventory path "must not be empty"
+      else
+        stringValue;
 
   normalizeMac = path: value:
     let
@@ -39,6 +62,70 @@ let
     in
     requireInt "${reservationPath}.${familyName}.hostOffset" (familyAttrs.hostOffset or null);
 
+  expectedPurposeFor = familyName:
+    if familyName == "ipv6" then "dhcpv6-reservation" else "static-dhcp-reservation";
+
+  requireMacSourceClassification = reservationPath: attrs: familyName:
+    let
+      reservationRequirement =
+        if isNonEmptyString (attrs.id or null) then
+          attrs.id
+        else if isNonEmptyString (attrs.name or null) then
+          attrs.name
+        else if isNonEmptyString (attrs.hostname or null) then
+          attrs.hostname
+        else if isNonEmptyString (attrs.mac or null) then
+          attrs.mac
+        else
+          reservationPath;
+      requirementLabel = "reservation requirement '${reservationRequirement}'";
+      classificationPath = "${reservationPath}.macSource";
+      classification =
+        if builtins.isAttrs (attrs.macSource or null) then
+          attrs.macSource
+        else
+          failInventory classificationPath "${requirementLabel} requires accepted MAC source classification from ${classifierId}";
+      accepted = requireBool "${classificationPath}.accepted" (classification.accepted or null);
+      purpose = requireString "${classificationPath}.purpose" (classification.purpose or null);
+      sourceClass = requireString "${classificationPath}.sourceClass" (classification.sourceClass or null);
+      expectedPurpose = expectedPurposeFor familyName;
+      source = optionalNonEmptyString "${classificationPath}.source" (classification.source or null);
+      disposable = optionalBool "${classificationPath}.disposable" (classification.disposable or null);
+      secretRef = optionalNonEmptyString "${classificationPath}.secretRef" (classification.secretRef or null);
+      _accepted =
+        if accepted then
+          true
+        else
+          failInventory classificationPath "${requirementLabel} must be accepted by ${classifierId} before reservation identity consumption";
+      _purpose =
+        if purpose == expectedPurpose then
+          true
+        else
+          failInventory "${classificationPath}.purpose" "${requirementLabel} must use purpose '${expectedPurpose}' for ${familyName} reservation identity consumption";
+      _protectedIdentityBoundary =
+        if sourceClass != "protected" then
+          true
+        else if source == "public-inventory" then
+          failInventory classificationPath "${requirementLabel} must not emit protected reservation identity material as public inventory"
+        else if source == "protected-inventory" || secretRef != null then
+          true
+        else
+          failInventory classificationPath "${requirementLabel} requires protected inventory source='protected-inventory' or secretRef for non-public reservation identity";
+    in
+    builtins.seq _accepted (
+      builtins.seq _purpose (
+        builtins.seq _protectedIdentityBoundary (
+          {
+            classifier = classifierId;
+            inherit accepted purpose sourceClass;
+          }
+          // (if source != null then { inherit source; } else { })
+          // (if disposable != null then { inherit disposable; } else { })
+          // (if secretRef != null then { inherit secretRef; } else { })
+        )
+      )
+    );
+
   resolveReservations =
     family: familyName: perNodePrefixLength: entryPath: interfaceName: subnet: rawReservations:
     let
@@ -51,6 +138,7 @@ let
               attrs = requireAttrs reservationPath (builtins.elemAt reservations idx);
               mac = normalizeMac "${reservationPath}.mac" (attrs.mac or null);
               hostOffset = reservationHostOffset reservationPath attrs familyName;
+              identitySource = requireMacSourceClassification reservationPath attrs familyName;
               cidr = ipam.allocOne {
                 inherit family perNodePrefixLength;
                 prefix = subnet;
@@ -66,7 +154,7 @@ let
                   attrs.name
                 else
                   mac;
-              inherit mac hostOffset address cidr;
+              inherit mac hostOffset address cidr identitySource;
               source = "inventory-realization";
             }
             // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
