@@ -21,22 +21,30 @@ in
 {
   uniqueKernelDefaults =
     family: routes:
-    (builtins.foldl'
-      (acc: route:
-        let
-          key = routeKernelKey family route;
-          isKernelDefault =
-            builtins.isAttrs route
-            && (route.dst or null) == defaultDst family
-            && ((route.intent or { }).kind or null) == "default-reachability";
-        in
-        if isKernelDefault && builtins.hasAttr key acc.seen then
-          acc
-        else
-          {
-            seen = if isKernelDefault then acc.seen // { ${key} = true; } else acc.seen;
-            values = acc.values ++ [ route ];
-          })
-      { seen = { }; values = [ ]; }
-      routes).values;
+    let
+      reverseList =
+        values:
+        builtins.foldl' (acc: value: [ value ] ++ acc) [ ] values;
+
+      result =
+        builtins.foldl'
+          (acc: route:
+            let
+              key = routeKernelKey family route;
+              isKernelDefault =
+                builtins.isAttrs route
+                && (route.dst or null) == defaultDst family
+                && ((route.intent or { }).kind or null) == "default-reachability";
+            in
+            if isKernelDefault && builtins.hasAttr key acc.seen then
+              acc
+            else
+              {
+                seen = if isKernelDefault then acc.seen // { ${key} = true; } else acc.seen;
+                values = [ route ] ++ acc.values;
+              })
+          { seen = { }; values = [ ]; }
+          routes;
+    in
+    reverseList result.values;
 }
