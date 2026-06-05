@@ -105,6 +105,7 @@ let
     bgpTopology
     ipv6Plan
     normalizeRuntimeTargetRoutes
+    normalizeRuntimeTargetRoutesAfterPolicyComplements
     overlayNames
     overlayProvisioning
     overlayReachability
@@ -161,6 +162,7 @@ let
       policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
       normalizeRuntimeTargetRoutes
+      normalizeRuntimeTargetRoutesAfterPolicyComplements
       ;
   };
   inherit (runtimePipeline)

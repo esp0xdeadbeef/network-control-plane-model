@@ -37,6 +37,7 @@
 , policyDerivedDnsForwardersForListeners
 , policyDerivedDnsForwardersForTenants
 , normalizeRuntimeTargetRoutes
+, normalizeRuntimeTargetRoutesAfterPolicyComplements
 , enterpriseName
 , siteName
 ,
@@ -101,6 +102,7 @@ let
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsForwardersForListeners
       normalizeRuntimeTargetRoutes
+      normalizeRuntimeTargetRoutesAfterPolicyComplements
       normalizedRuntimeTargets
       ;
   };

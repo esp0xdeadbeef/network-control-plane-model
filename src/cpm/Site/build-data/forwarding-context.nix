@@ -59,7 +59,7 @@ in
     overlayProvisioning
     overlayReachability
     ;
-  inherit (routeNormalizer) normalizeRuntimeTargetRoutes;
+  inherit (routeNormalizer) normalizeRuntimeTargetRoutes normalizeRuntimeTargetRoutesAfterPolicyComplements;
   inherit (ipv6Data)
     ipv6Plan
     routedPrefixesByTenant
