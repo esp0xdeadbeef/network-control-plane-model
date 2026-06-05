@@ -52,20 +52,18 @@ let
   runtimeOriginPrefixesFromTarget =
     target:
     lib.unique (
-      lib.concatMap
-        (
-          rule:
-          if (rule.relationId or null) == "runtime-origin-egress" then
-            builtins.map (prefix: prefix.prefix)
-              (
-                builtins.filter (prefix: builtins.isString (prefix.prefix or null)) (
-                  listOrEmpty (rule.sourcePrefixes or null)
-                )
+      builtins.concatLists (builtins.map
+        (rule:
+        if (rule.relationId or null) == "runtime-origin-egress" then
+          builtins.map (prefix: prefix.prefix)
+            (
+              builtins.filter (prefix: builtins.isString (prefix.prefix or null)) (
+                listOrEmpty (rule.sourcePrefixes or null)
               )
-          else
-            [ ]
-        )
-        (listOrEmpty ((attrsOrEmpty (target.forwardingIntent or null)).rules or null))
+            )
+        else
+          [ ])
+        (listOrEmpty ((attrsOrEmpty (target.forwardingIntent or null)).rules or null)))
     );
 
   isRuntimeOriginSourceRouteOnPolicyUplink =
@@ -93,18 +91,16 @@ let
     if ifaceName == null || accessName == null || laneKind iface != "access" then
       [ ]
     else
-      lib.concatMap
-        (
-          rule:
-          if
-            (rule.relationId or null) == "runtime-origin-egress"
-            && (rule.fromInterface or null) == ifaceName
-          then
-            builtins.filter (prefixMatchesAccess accessName) (listOrEmpty (rule.sourcePrefixes or null))
-          else
-            [ ]
-        )
-        rules;
+      builtins.concatLists (builtins.map
+        (rule:
+        if
+          (rule.relationId or null) == "runtime-origin-egress"
+          && (rule.fromInterface or null) == ifaceName
+        then
+          builtins.filter (prefixMatchesAccess accessName) (listOrEmpty (rule.sourcePrefixes or null))
+        else
+          [ ])
+        rules);
 
   runtimeOriginReturnRoutes =
     family: target: iface: routes:

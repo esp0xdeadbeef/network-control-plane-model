@@ -8,6 +8,9 @@ let
   attrsOrEmpty = value:
     if builtins.isAttrs value then value else { };
 
+  optional = condition: value:
+    if condition then [ value ] else [ ];
+
   makeStringSet = values:
     builtins.listToAttrs (
       builtins.map
@@ -18,73 +21,56 @@ let
         values
     );
 
-  nodeInterfaceNames = nodePath: node:
+  nodeInterfaceFacts = nodePath: node:
     let
       interfaces = requireAttrs "${nodePath}.interfaces" (node.interfaces or null);
+      names = sortedNames interfaces;
+      collected =
+        builtins.foldl'
+          (acc: ifName:
+            let
+              iface = requireAttrs "${nodePath}.interfaces.${ifName}" interfaces.${ifName};
+              kind = iface.kind or null;
+            in
+            {
+              logicalTenantInterfaces =
+                acc.logicalTenantInterfaces
+                ++ optional (kind == "tenant" && ((iface.logical or false) == true)) ifName;
+              p2pLinks =
+                acc.p2pLinks
+                ++ optional (kind == "p2p" && helpers.isNonEmptyString (iface.link or null)) (iface.link or null);
+              wanUpstreams =
+                acc.wanUpstreams
+                ++ optional (kind == "wan" && helpers.isNonEmptyString (iface.upstream or null)) (iface.upstream or null);
+            })
+          {
+            logicalTenantInterfaces = [ ];
+            p2pLinks = [ ];
+            wanUpstreams = [ ];
+          }
+          names;
     in
     {
       inherit interfaces;
-      names = sortedNames interfaces;
+      logicalTenantInterfaceSet = makeStringSet collected.logicalTenantInterfaces;
+      p2pLinkSet = makeStringSet collected.p2pLinks;
+      wanUpstreams = collected.wanUpstreams;
     };
-
-  nodeInterfaceSet = predicate: interfaceData:
-    makeStringSet (
-      builtins.filter helpers.isNonEmptyString (
-        builtins.map
-          (ifName:
-            let
-              iface = interfaceData.interfaces.${ifName};
-            in
-            if predicate ifName iface then ifName else null)
-          interfaceData.names
-      )
-    );
-
-  p2pLinkSet = nodePath: interfaceData:
-    makeStringSet (
-      builtins.filter helpers.isNonEmptyString (
-        builtins.map
-          (ifName:
-            let
-              iface = requireAttrs "${nodePath}.interfaces.${ifName}" interfaceData.interfaces.${ifName};
-            in
-            if (iface.kind or null) == "p2p" then iface.link or null else null)
-          interfaceData.names
-      )
-    );
-
-  wanUpstreamSet = node: nodePath: interfaceData:
-    let
-      interfaceWanUpstreams =
-        builtins.filter helpers.isNonEmptyString (
-          builtins.map
-            (ifName:
-              let
-                iface = requireAttrs "${nodePath}.interfaces.${ifName}" interfaceData.interfaces.${ifName};
-              in
-              if (iface.kind or null) == "wan" then iface.upstream or null else null)
-            interfaceData.names
-        );
-      nodeUplinks =
-        if builtins.isAttrs (node.uplinks or null) then sortedNames node.uplinks else [ ];
-    in
-    makeStringSet (interfaceWanUpstreams ++ nodeUplinks);
 
   buildNodeContract = sitePath: nodeName: nodeValue:
     let
       nodePath = "${sitePath}.nodes.${nodeName}";
       node = requireAttrs nodePath nodeValue;
-      interfaceData = nodeInterfaceNames nodePath node;
+      interfaceFacts = nodeInterfaceFacts nodePath node;
       egressIntent = attrsOrEmpty (node.egressIntent or null);
       forwardingResponsibility = attrsOrEmpty (node.forwardingResponsibility or null);
+      nodeUplinks =
+        if builtins.isAttrs (node.uplinks or null) then sortedNames node.uplinks else [ ];
     in
     {
-      interfaces = interfaceData.interfaces;
-      p2pLinkSet = p2pLinkSet nodePath interfaceData;
-      logicalTenantInterfaceSet = nodeInterfaceSet
-        (_ifName: iface: (iface.kind or null) == "tenant" && ((iface.logical or false) == true))
-        interfaceData;
-      wanUpstreamSet = wanUpstreamSet node nodePath interfaceData;
+      interfaces = interfaceFacts.interfaces;
+      inherit (interfaceFacts) p2pLinkSet logicalTenantInterfaceSet;
+      wanUpstreamSet = makeStringSet (interfaceFacts.wanUpstreams ++ nodeUplinks);
       mayAnchorExternalUplinks =
         (egressIntent.exit or false) == true
         || (forwardingResponsibility.anchorsExternalUplinks or false) == true;
