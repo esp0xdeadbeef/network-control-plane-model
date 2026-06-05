@@ -43,7 +43,7 @@ let
       bgpNetworksForNode
       ;
   };
-
+  binderSourceAudit = import ../../binder-source-audit.nix { inherit helpers; };
   buildRuntimeTarget =
     nodeName:
     let
@@ -133,6 +133,12 @@ let
             target = targetId;
             host = targetHostName;
             platform = targetPlatform;
+          } // binderSourceAudit.make {
+            path = "${nodePath}.placement";
+            field = "placement";
+            binderSourceClass = "public-inventory";
+            binderSourcePath = targetDef.nodePath;
+            upstreamBehaviorRef = nodePath;
           }
         else
           {
@@ -189,6 +195,5 @@ let
       name = targetId;
       value = value;
     };
-
 in
 buildRuntimeTarget

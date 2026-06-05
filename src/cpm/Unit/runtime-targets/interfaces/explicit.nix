@@ -17,7 +17,7 @@ let
   staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
   runtimeRoutedPrefixRoutesFor = import ./runtime-routed-prefix-routes.nix { inherit helpers common; };
   routeFilter = import ./default-route-filter.nix { inherit helpers common uplinkRouting; };
-
+  binderSourceAudit = import ../../../binder-source-audit.nix { inherit helpers; };
   portBindingForInterface =
     { sourceKind, backingRef, ifName, portBindings }:
     if sourceKind == "p2p" then
@@ -28,7 +28,6 @@ let
       portBindings.byLogicalInterface.${ifName}
     else
       null;
-
   overlayAddress =
     { sourceKind, backingRef, nodeName, family }:
     let
@@ -40,7 +39,6 @@ let
       nodeOverlay = attrsOrEmpty (overlayNodes.${nodeName} or null);
     in
     if family == 4 then nodeOverlay.addr4 or null else nodeOverlay.addr6 or null;
-
   overlayRuntimeInterfaceName =
     { sourceKind, backingRef, nodeName }:
     let
@@ -62,7 +60,6 @@ let
   sourceIfName = requireString "${ifacePath}.interface" (ifaceAttrs.interface or null);
   backingRef = resolveBackingRef nodeName ifName ifaceAttrs;
   portBinding = portBindingForInterface { inherit sourceKind backingRef ifName portBindings; };
-
   requiresExplicitPortRealization = realizedTarget && (sourceKind == "p2p" || sourceKind == "wan");
   _requiredPortBinding =
     if requiresExplicitPortRealization && portBinding == null then
@@ -72,7 +69,6 @@ let
         failInventory "${targetId}.ports" "${ifacePath} on realized target '${targetId}' requires explicit uplink port realization for uplink '${backingRef.upstreamAlias}'"
     else
       true;
-
   overlayRuntimeIfName = overlayRuntimeInterfaceName { inherit sourceKind backingRef nodeName; };
   runtimeIfName =
     if overlayRuntimeIfName != null then
@@ -136,7 +132,6 @@ let
       }
     else
       null;
-
   runtimeRoutedPrefixRoutes = runtimeRoutedPrefixRoutesFor {
     inherit nodeName tenantName routedPrefixesByTenant;
   };
@@ -154,7 +149,6 @@ let
           resolvedHostUplink
     else
       resolvedHostUplink;
-
   interfaceRoutes = requireRoutes ifacePath (ifaceAttrs.routes or null);
   uplinkStaticRoutes =
     if sourceKind == "wan" && hasAttr (backingRef.upstreamAlias or "") uplinkRouting then
@@ -170,7 +164,6 @@ let
     ipv4 = routeFilter.filterUnavailableDefaultRoutes 4 (effectiveRoutesRaw.ipv4 or null);
     ipv6 = routeFilter.filterUnavailableDefaultRoutes 6 (effectiveRoutesRaw.ipv6 or null);
   };
-
   value =
     {
       runtimeTarget = targetId;
@@ -183,6 +176,13 @@ let
       addr6 = effectiveAddr6;
       routes = effectiveRoutes;
       backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
+    }
+    // binderSourceAudit.make {
+      path = ifacePath;
+      field = "effectiveRuntimeRealization.interfaces.${ifName}";
+      binderSourceClass = if portBinding != null then "public-inventory" else "runtime-facts";
+      binderSourcePath = if portBinding != null then "${targetId}.ports" else ifacePath;
+      upstreamBehaviorRef = ifacePath;
     }
     // (if portBinding != null && isNonEmptyString (portBinding.adapterName or null) then { adapterName = portBinding.adapterName; } else { })
     // (if portBinding != null && builtins.isAttrs (portBinding.attach or null) then { attach = portBinding.attach; } else { })
