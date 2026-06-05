@@ -57,12 +57,35 @@ let
           let
             credentialsPath = "${servicePath}.credentials";
             credentials = requireAttrs credentialsPath service.credentials;
+            username = credentials.username or null;
+            password = credentials.password or null;
+            usernameFile = credentials.usernameFile or null;
+            passwordFile = credentials.passwordFile or null;
+            hasInline = username != null || password != null;
+            hasFiles = usernameFile != null || passwordFile != null;
+            _mode =
+              if hasInline && hasFiles then
+                failInventory credentialsPath "must use either inline username/password or usernameFile/passwordFile, not both"
+              else if hasFiles then
+                true
+              else if hasInline then
+                true
+              else
+                failInventory credentialsPath "must define username/password or usernameFile/passwordFile";
           in
-          {
-            credentials = {
-              username = requireString "${credentialsPath}.username" (credentials.username or null);
-              password = requireString "${credentialsPath}.password" (credentials.password or null);
-            } // lib.optionalAttrs (credentials ? labOnly) {
+          builtins.seq _mode {
+            credentials = (
+              if hasFiles then
+                {
+                  usernameFile = requireString "${credentialsPath}.usernameFile" usernameFile;
+                  passwordFile = requireString "${credentialsPath}.passwordFile" passwordFile;
+                }
+              else
+                {
+                  username = requireString "${credentialsPath}.username" username;
+                  password = requireString "${credentialsPath}.password" password;
+                }
+            ) // lib.optionalAttrs (credentials ? labOnly) {
               labOnly = requireBool "${credentialsPath}.labOnly" credentials.labOnly;
             };
           }
