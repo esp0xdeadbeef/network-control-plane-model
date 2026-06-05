@@ -1,6 +1,10 @@
 { attrsOrEmpty, defaultDst }:
 
 let
+  reverseList =
+    values:
+    builtins.foldl' (acc: value: [ value ] ++ acc) [ ] values;
+
   routeKey =
     family: route:
     if !builtins.isAttrs route then
@@ -10,48 +14,47 @@ let
         intent = attrsOrEmpty (route.intent or null);
         lane = attrsOrEmpty (route.lane or null);
       in
-      builtins.toJSON {
-        inherit family;
-        dst = route.dst or null;
-        intent = {
-          kind = intent.kind or null;
-          source = intent.source or null;
-        };
-        lane = {
-          access = lane.access or null;
-          uplink = lane.uplink or null;
-        };
-        policyOnly = route.policyOnly or null;
-        sourceFile = route.sourceFile or null;
-        via4 = route.via4 or null;
-        via6 = route.via6 or null;
-        scope = route.scope or null;
-      };
+      builtins.toJSON [
+        family
+        (route.dst or null)
+        (intent.kind or null)
+        (intent.source or null)
+        (lane.access or null)
+        (lane.uplink or null)
+        (route.policyOnly or null)
+        (route.sourceFile or null)
+        (route.via4 or null)
+        (route.via6 or null)
+        (route.scope or null)
+      ];
 
   uniqueRoutes =
     family: routes:
-    (builtins.foldl'
-      (
-        acc: route:
-        let
-          key = routeKey family route;
-        in
-        if key == null || builtins.hasAttr key acc.seen then
-          acc
-        else
+    let
+      result =
+        builtins.foldl'
+          (
+            acc: route:
+            let
+              key = routeKey family route;
+            in
+            if key == null || builtins.hasAttr key acc.seen then
+              acc
+            else
+              {
+                seen = acc.seen // {
+                  ${key} = true;
+                };
+                values = [ route ] ++ acc.values;
+              }
+          )
           {
-            seen = acc.seen // {
-              ${key} = true;
-            };
-            values = acc.values ++ [ route ];
+            seen = { };
+            values = [ ];
           }
-      )
-      {
-        seen = { };
-        values = [ ];
-      }
-      routes
-    ).values;
+          routes;
+    in
+    reverseList result.values;
 
   isPolicyDefault =
     family: route:
