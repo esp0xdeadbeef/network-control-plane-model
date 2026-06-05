@@ -96,6 +96,19 @@ let
         (builtins.attrNames runtimeTargets)
     );
 
+  policyEndpointDiagnostics = attrsOrEmpty ((attrsOrEmpty policyEndpointBindings).diagnostics or null);
+  unresolvedDenyDiagnostics =
+    listOrEmpty (policyEndpointDiagnostics.unresolvedDenyEndpoints or null);
+  policyDiagnosticAttrs =
+    if unresolvedDenyDiagnostics == [ ] then
+      { }
+    else
+      {
+        diagnostics = {
+          unresolvedDenyEndpoints = unresolvedDenyDiagnostics;
+        };
+      };
+
   dnsServicePublicEgressRules =
     let
       dnsMatches = trafficTypeMatches.dns or [ ];
@@ -138,7 +151,7 @@ if role == "access" then
     };
   }
 else if role == "downstream-selector" || role == "upstream-selector" then
-  {
+  ({
     mode = "explicit-selector-forwarding";
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     rules =
@@ -155,9 +168,9 @@ else if role == "downstream-selector" || role == "upstream-selector" then
           inherit overlayNames services trafficTypeMatches transitInterfaces;
           siteRuntimeOriginSourcePrefixes = runtimeOriginSourcePrefixes;
         };
-  }
+  } // policyDiagnosticAttrs)
 else if role == "policy" then
-  {
+  ({
     mode = "explicit-policy-forwarding";
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     rules = buildPolicyRules {
@@ -165,7 +178,7 @@ else if role == "policy" then
       relations = siteRelations;
       inherit services trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
     };
-  }
+  } // policyDiagnosticAttrs)
 else if role == "core" then
   {
     mode = "explicit-core-forwarding";

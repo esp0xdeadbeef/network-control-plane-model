@@ -66,10 +66,27 @@ let
         (builtins.length relations)
     );
 
+  requiredRelationNames = expectedKind:
+    builtins.concatLists (
+      builtins.genList
+        (idx:
+          let relation = attrsOrEmpty (builtins.elemAt relations idx);
+          in
+          if (relation.action or "allow") == "deny" then
+            [ ]
+          else
+            collectEndpointNames expectedKind (relation.from or null)
+            ++ collectEndpointNames expectedKind (relation.to or null))
+        (builtins.length relations)
+    );
+
   relationTenantNames =
     relationNames "tenant" ++ relationNames "tenant-set";
   relationExternalNames = relationNames "external";
   relationServiceNames = relationNames "service";
+  relationRequiredTenantNames =
+    requiredRelationNames "tenant" ++ requiredRelationNames "tenant-set";
+  relationRequiredExternalNames = requiredRelationNames "external";
 
 in
 {
@@ -77,5 +94,7 @@ in
   inherit relationTenantNames relationExternalNames;
   relationTenantSet = makeStringSet relationTenantNames;
   relationExternalSet = makeStringSet relationExternalNames;
+  relationRequiredTenantSet = makeStringSet relationRequiredTenantNames;
+  relationRequiredExternalSet = makeStringSet relationRequiredExternalNames;
   serviceNamesFromContract = uniqueStrings ((helpers.sortedNames serviceDefinitions) ++ relationServiceNames);
 }
