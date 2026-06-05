@@ -13,6 +13,7 @@
 , policyAttrs
 , policyEndpointBindings
 , policyNodeName
+, routedClientGuaMode
 , routedPrefixesByTenant
 , routingMode
 , runtimeTargets
@@ -30,6 +31,24 @@
 ,
 }:
 
+let
+  routedClientGuaPayload =
+    if routedClientGuaMode.records == [ ] && routedClientGuaMode.diagnostics == [ ] then
+      { }
+    else
+      {
+        internetModes = {
+          routedClientGua = routedClientGuaMode.records;
+        };
+        diagnostics = {
+          routedClientGua = routedClientGuaMode.diagnostics;
+        };
+      };
+
+  ipv6Output =
+    (if ipv6Plan != null then ipv6Plan else { })
+    // routedClientGuaPayload;
+in
 {
   siteId = siteId;
   siteName = siteDisplayName;
@@ -73,7 +92,7 @@
         builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
     };
 }
-// (lib.optionalAttrs (ipv6Plan != null) { ipv6 = ipv6Plan; })
+// (lib.optionalAttrs (ipv6Output != { }) { ipv6 = ipv6Output; })
 // (
   if builtins.isAttrs (siteAttrs.egressIntent or null) then
     {

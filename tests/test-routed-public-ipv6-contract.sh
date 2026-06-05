@@ -5,6 +5,7 @@
 # GAMP-ID: USR-INET-002-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-001
 # GAMP-ID: USR-INET-002-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-002
 # GAMP-ID: USR-INET-002-FS-001-HDS-001-SDS-001-003-SMS-001-CMC-001-003
+# GAMP-ID: FS-400-HDS-010-SDS-010-SMS-030
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -15,6 +16,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     system = builtins.currentSystem;
+    pkgs = import flake.inputs.nixpkgs { inherit system; };
     labs = flake.inputs.network-labs.outPath;
     baseIntent = import (labs + "/examples/single-wan/intent.nix");
     inventory = import (labs + "/examples/single-wan/inventory-clab.nix");
@@ -72,8 +74,111 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
       (core.natIntent.families.ipv6 or false) == false
       && !(builtins.elem canonicalClientPrefix6 (core.natIntent.masqueradeSourcePrefixes6 or [ ]))
       && !(builtins.elem publicClientPrefix6 (core.natIntent.masqueradeSourcePrefixes6 or [ ]));
+
+    routedGuaMode =
+      (siteOut.ipv6 or { }).internetModes.routedClientGua or [ ];
+    routedGuaDiagnostics =
+      (siteOut.ipv6 or { }).diagnostics.routedClientGua or [ ];
+    routedGuaModeRecord =
+      builtins.any
+        (record:
+          (record.mode or null) == "routed-client-gua"
+          && (record.prefix or null) == canonicalClientPrefix6
+          && (record.tenant or null) == "client"
+          && (record.owner or null) == "s-router-access-client"
+          && builtins.any
+            (returnRoute:
+              (returnRoute.runtimeTarget or null) == "esp0xdeadbeef-site-a-s-router-core-wan"
+              && (returnRoute.interface or null) == "p2p-s-router-core-wan-s-router-upstream-selector"
+              && (returnRoute.via6 or null) == "fd42:dead:beef:1000:0:0:0:7")
+            (record.returnRoutes or [ ]))
+        routedGuaMode;
+    routedGuaHasNoDiagnostic = routedGuaDiagnostics == [ ];
+
+    routedGuaContract = import ./src/cpm/Site/build-data/routed-client-gua-mode.nix {
+      helpers = import ./src/cpm/cpm-contract-support.nix { inherit (pkgs) lib; };
+      common = import ./src/cpm/Site/build-data/common.nix {
+        helpers = import ./src/cpm/cpm-contract-support.nix { inherit (pkgs) lib; };
+        ipam = import ./src/cpm/ipam.nix { inherit (pkgs) lib; };
+        enterpriseRoot = { };
+      };
+    };
+    diagnosticRuntimeTargets = {
+      access = {
+        effectiveRuntimeRealization.interfaces.tenant = {
+          logicalNode = "access";
+          sourceKind = "tenant";
+          tenant = "client";
+          routes.ipv6 = [
+            {
+              dst = canonicalClientPrefix6;
+              proto = "connected";
+              intent.kind = "connected-reachability";
+            }
+          ];
+        };
+      };
+      core = {
+        effectiveRuntimeRealization.interfaces.wan.routes.ipv6 = [
+          {
+            dst = canonicalClientPrefix6;
+            proto = "internal";
+            via6 = "fd42:dead:beef:1000:0:0:0:7";
+            intent.kind = "internal-reachability";
+          }
+        ];
+      };
+    };
+    missingAuthority = routedGuaContract {
+      tenantPrefixOwners = { };
+      runtimeTargets = diagnosticRuntimeTargets;
+    };
+    missingReturnRoute = routedGuaContract {
+      tenantPrefixOwners = {
+        "6|${canonicalClientPrefix6}" = {
+          family = 6;
+          dst = canonicalClientPrefix6;
+          netName = "client";
+          owner = "access";
+        };
+      };
+      runtimeTargets = {
+        access = diagnosticRuntimeTargets.access;
+      };
+    };
+    missingAuthorityDiagnostic =
+      missingAuthority.records == [ ]
+      && missingAuthority.diagnostics == [
+        {
+          code = "routed-gua-authority-unavailable";
+          mode = "fail-closed";
+          prefix = canonicalClientPrefix6;
+          accessNodes = [ "access" ];
+          message = "Routed client GUA mode observed a connected GUA prefix without explicit tenant prefix authority.";
+        }
+      ];
+    missingReturnRouteDiagnostic =
+      missingReturnRoute.records == [ ]
+      && missingReturnRoute.diagnostics == [
+        {
+          code = "routed-gua-return-route-unavailable";
+          mode = "fail-closed";
+          prefix = canonicalClientPrefix6;
+          tenant = "client";
+          owner = "access";
+          message = "Routed client GUA mode requires an internal IPv6 return route for the client GUA prefix.";
+        }
+      ];
   in
-    if hasAccessPrefix && hasCoreReturnRoute && nat66ExcludesPublicPrefix then
+    if
+      hasAccessPrefix
+      && hasCoreReturnRoute
+      && nat66ExcludesPublicPrefix
+      && routedGuaModeRecord
+      && routedGuaHasNoDiagnostic
+      && missingAuthorityDiagnostic
+      && missingReturnRouteDiagnostic
+    then
       true
     else
       throw ("routed public IPv6 contract failed: " + builtins.toJSON {
@@ -83,6 +188,10 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
           hasAccessPrefix
           hasCoreReturnRoute
           nat66ExcludesPublicPrefix
+          routedGuaModeRecord
+          routedGuaHasNoDiagnostic
+          missingAuthorityDiagnostic
+          missingReturnRouteDiagnostic
           ;
         accessClient = {
           addr6 = accessClient.addr6 or null;
@@ -90,6 +199,10 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
         };
         coreWanRoutes6 = coreWanRoutes6;
         natIntent = core.natIntent;
+        routedGuaMode = routedGuaMode;
+        routedGuaDiagnostics = routedGuaDiagnostics;
+        missingAuthority = missingAuthority;
+        missingReturnRoute = missingReturnRoute;
       })
 ' >/dev/null
 
