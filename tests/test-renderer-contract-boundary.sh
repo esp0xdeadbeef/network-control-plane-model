@@ -53,9 +53,11 @@ jq -e '
       $target.emissionStage == "control-plane-model-before-renderer"
       and $target.scope.kind == "runtimeTarget"
       and $target.scope.runtimeTarget == "esp0xdeadbeef-site-a-s-router-core-nebula"
+      and $target.payloadRef == "control_plane_model.data.esp0xdeadbeef.site-a.runtimeTargets.esp0xdeadbeef-site-a-s-router-core-nebula"
       and $target.payload.logicalNode.name == "s-router-core-nebula"
       and ($target.payload | has("runtimeTargets") | not)
       and ($target.excluded.unrelatedRuntimeTargets | index("esp0xdeadbeef-site-a-s-router-upstream-selector"))
+      and any($target.includedSharedMetadata[]; .classification == "required-shared-metadata" and .path == "runtimeTargets.esp0xdeadbeef-site-a-s-router-core-nebula")
       and any($target.includedSharedMetadata[]; .classification == "required-shared-metadata" and .path == "routing.mode")
     )
     and (

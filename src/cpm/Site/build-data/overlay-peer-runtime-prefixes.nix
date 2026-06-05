@@ -9,7 +9,7 @@
 
 let
   inherit (helpers) isNonEmptyString;
-  inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
+  inherit (common) attrsOrEmpty listOrEmpty resolveSiteEntry uniqueStrings;
 
   controlPlaneSites =
     let
@@ -20,17 +20,10 @@ let
   currentEnterpriseSiteEntries =
     builtins.filter (entry: entry.enterpriseKey == enterpriseName) allSiteEntries;
 
-  resolvePeerSiteEntry =
-    peerSite:
-    lib.findFirst
-      (entry: entry.siteId == peerSite || entry.siteDisplayName == peerSite || "${entry.enterpriseKey}.${entry.siteKey}" == peerSite)
-      null
-      allSiteEntries;
-
   runtimeRoutedPrefixesForPeerSite =
     peerSite:
     let
-      peerEntry = resolvePeerSiteEntry peerSite;
+      peerEntry = resolveSiteEntry peerSite;
       peerDomains = if peerEntry == null then { } else attrsOrEmpty (peerEntry.site.domains or null);
       peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
     in
@@ -68,7 +61,7 @@ let
   tenantPrefixesForPeerSite =
     peerSite:
     let
-      peerEntry = resolvePeerSiteEntry peerSite;
+      peerEntry = resolveSiteEntry peerSite;
       peerDomains = if peerEntry == null then { } else attrsOrEmpty (peerEntry.site.domains or null);
       peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
       prefixFor =

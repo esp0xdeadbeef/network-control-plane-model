@@ -1,19 +1,26 @@
-{ lib, helpers, realizationIndex, endpointInventoryIndex, inventory ? { }, enterpriseRoot ? { } }:
+{ lib
+, helpers
+, realizationIndex
+, endpointInventoryIndex
+, inventory ? { }
+, enterpriseRoot ? { }
+, ipam ? import ./ipam.nix { inherit lib; }
+, common ? import ./Site/build-data/common.nix {
+    inherit helpers ipam enterpriseRoot;
+  }
+,
+}:
 
 { enterpriseName, siteName, site }:
 
 let
   inherit (helpers) isNonEmptyString sortedNames;
 
-  ipam = import ./ipam.nix { inherit lib; };
   resolveAccessAdvertisements = import ./resolve-access-advertisements.nix { inherit helpers ipam; };
   resolveFirewallIntent = import ./resolve-firewall-intent.nix { inherit helpers; };
   resolvePolicyEndpointBindings = import ./resolve-policy-endpoint-bindings.nix { inherit helpers; };
   resolveRoutedPrefixes = import ./routed-prefixes.nix { inherit helpers; };
 
-  common = import ./Site/build-data/common.nix {
-    inherit helpers ipam enterpriseRoot;
-  };
   inherit (common) allSiteEntries;
 
   sitePath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}";
@@ -268,23 +275,29 @@ let
       )
       true;
 
-  routedClientGuaMode = import ./Site/build-data/routed-client-gua-mode.nix {
-    inherit helpers common;
-  } {
-    inherit tenantPrefixOwners runtimeTargets;
-  };
+  routedClientGuaMode = import ./Site/build-data/routed-client-gua-mode.nix
+    {
+      inherit helpers common;
+    }
+    {
+      inherit tenantPrefixOwners runtimeTargets;
+    };
 
-  ipv4InternetMode = import ./Site/build-data/ipv4-internet-mode.nix {
-    inherit helpers common;
-  } {
-    inherit tenantPrefixOwners runtimeTargets;
-  };
+  ipv4InternetMode = import ./Site/build-data/ipv4-internet-mode.nix
+    {
+      inherit helpers common;
+    }
+    {
+      inherit tenantPrefixOwners runtimeTargets;
+    };
 
-  overlayClientGuaMode = import ./Site/build-data/overlay-client-gua-mode.nix {
-    inherit helpers common;
-  } {
-    inherit runtimeTargets;
-  };
+  overlayClientGuaMode = import ./Site/build-data/overlay-client-gua-mode.nix
+    {
+      inherit helpers common;
+    }
+    {
+      inherit runtimeTargets;
+    };
 
   rendererContracts = import ./Site/build-data/renderer-contracts.nix {
     inherit
@@ -313,9 +326,10 @@ let
   emitOutput = import ./Site/build-data/output.nix;
 in
 if validatePPPoEContracts then
-emitOutput {
-  inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
-  services = resolvedServices;
-}
+  emitOutput
+  {
+    inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
+    services = resolvedServices;
+  }
 else
   throw "unreachable"

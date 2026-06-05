@@ -43,6 +43,30 @@ let
         (sortedNames enterpriseRoot)
     );
 
+  siteEntryAliases =
+    builtins.concatMap
+      (entry: [
+        {
+          name = entry.siteId;
+          value = entry;
+        }
+        {
+          name = entry.siteDisplayName;
+          value = entry;
+        }
+        {
+          name = "${entry.enterpriseKey}.${entry.siteKey}";
+          value = entry;
+        }
+      ])
+      allSiteEntries;
+
+  siteEntryIndex = builtins.listToAttrs siteEntryAliases;
+
+  resolveSiteEntry =
+    peerSite:
+      siteEntryIndex.${peerSite} or null;
+
   pow2 = n: builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) n);
 
   ipv4ToInt =
@@ -95,6 +119,7 @@ in
     failInventory
     ipam
     listOrEmpty
+    resolveSiteEntry
     mergeRoutes
     uniqueStrings
     ;
