@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # GAMP-ID: FS-190-HDS-010-SDS-010-SMS-010
 # GAMP-ID: FS-190-HDS-010-SDS-010-SMS-020
+# GAMP-ID: FS-190-HDS-010-SDS-010-SMS-030
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -19,7 +20,8 @@ missing_scope_stderr="$(mktemp)"
 ambiguous_scope_intent="$(mktemp)"
 ambiguous_scope_json="$(mktemp)"
 ambiguous_scope_stderr="$(mktemp)"
-trap 'rm -f "$archive_json" "$baseline_json" "$missing_endpoint_inventory" "$missing_endpoint_json" "$no_exposure_intent" "$no_exposure_json" "$missing_scope_intent" "$missing_scope_json" "$missing_scope_stderr" "$ambiguous_scope_intent" "$ambiguous_scope_json" "$ambiguous_scope_stderr"' EXIT
+reachability_separation_json="$(mktemp)"
+trap 'rm -f "$archive_json" "$baseline_json" "$missing_endpoint_inventory" "$missing_endpoint_json" "$no_exposure_intent" "$no_exposure_json" "$missing_scope_intent" "$missing_scope_json" "$missing_scope_stderr" "$ambiguous_scope_intent" "$ambiguous_scope_json" "$ambiguous_scope_stderr" "$reachability_separation_json"' EXIT
 
 nix flake archive --json "path:${repo_root}" > "$archive_json"
 
@@ -128,6 +130,111 @@ eval_service_scope_binding_fixture() {
       ' > "$output_path"
 }
 
+eval_reachability_separation_fixture() {
+  local output_path="$1"
+
+  REPO_ROOT="$repo_root" \
+    nix eval \
+      --extra-experimental-features 'nix-command flakes' \
+      --impure --json --expr '
+        let
+          repoRoot = builtins.getEnv "REPO_ROOT";
+          localLib = import (repoRoot + "/lib/utils.nix");
+          helpers = import (repoRoot + "/lib/contract.nix") { lib = localLib; };
+          lib = import <nixpkgs/lib>;
+          common = import (repoRoot + "/src/cpm/ControlModule/lib/common.nix") { inherit helpers; };
+          ipam = import (repoRoot + "/src/cpm/ipam.nix") { inherit lib; };
+          uniqueStrings = values:
+            helpers.sortedNames (
+              builtins.listToAttrs (
+                map
+                  (value: { name = value; value = true; })
+                  (builtins.filter helpers.isNonEmptyString values)
+              )
+            );
+          relation = {
+            action = "allow";
+            from = {
+              kind = "external";
+              uplinks = [ "wan" ];
+            };
+            id = "allow-public-dmz-nebula";
+            to = {
+              kind = "service";
+              name = "dmz-nebula";
+            };
+            trafficType = "nebula";
+          };
+          firewallRule = {
+            action = "accept";
+            relationId = "allow-public-dmz-nebula";
+            from = relation.from;
+            to = relation.to;
+            trafficType = relation.trafficType;
+          };
+          services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            inherit lib helpers common uniqueStrings;
+            sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
+            policyEndpointBindings = {
+              externals.wan = {
+                uplinks = [ "wan" ];
+                runtimeBindings = [ ];
+              };
+              services.dmz-nebula = {
+                providers = [ "c-router-lighthouse" ];
+                trafficType = "nebula";
+              };
+              relations = [ relation ];
+            };
+            providerEndpointForServiceProvider = providerName: {
+              name = providerName;
+              node = "c-router-lighthouse";
+              ipv4 = [ "10.90.10.100" ];
+              runtimeTarget = "esp0xdeadbeef-site-c-c-router-access-dmz";
+            };
+            providerTenantsForServiceProvider = providerName: [ "dmz" ];
+            preferredDnsUplinksForService = serviceName: [ ];
+            preferredDnsUplinksByRelationForService = serviceName: { };
+          };
+          routeModule = import (repoRoot + "/src/cpm/ControlModule/runtime-targets/service-endpoint-routes.nix") {
+            inherit lib common ipam;
+            hasP2PPrefixLength = dst:
+              builtins.isString dst
+              && (builtins.match ".*/3[12]" dst != null || builtins.match ".*/12[78]" dst != null);
+            routeIntent = route: common.attrsOrEmpty (route.intent or null);
+          };
+          service = builtins.head services;
+          noPathRoutes = routeModule.endpointRoutes 4 firewallRule service {
+            routes.ipv4 = [ ];
+          };
+          routedPathRoutes = routeModule.endpointRoutes 4 firewallRule service {
+            routes.ipv4 = [
+              {
+                dst = "10.90.10.0/24";
+                via4 = "10.10.44.1";
+                intent.kind = "internal-reachability";
+              }
+            ];
+          };
+        in
+        {
+          exposure = service.exposure;
+          exposureClass = service.exposureClass;
+          providerEndpoints = service.providerEndpoints;
+          consumed = {
+            exposureRecords = builtins.length (service.exposure.records or [ ]);
+            externalServiceRules = routeModule.externalServiceRules [ firewallRule ];
+            serviceRecordNames = builtins.attrNames (routeModule.serviceRecords services);
+          };
+          emitted = {
+            exposureOnlyMetadata = service.exposure.notInferredFrom;
+            noPathServiceEndpointRoutes = noPathRoutes;
+            routedPathServiceEndpointRoutes = routedPathRoutes;
+          };
+        }
+      ' > "$output_path"
+}
+
 base_intent="${labs_path}/examples/s-router-public-overlay-service/intent.nix"
 base_inventory="${labs_path}/examples/s-router-public-overlay-service/inventory-nixos.nix"
 
@@ -212,6 +319,35 @@ no_exposure_ok="$(
 if [[ "$no_exposure_ok" != "true" ]]; then
   echo "FAIL service-exposure-classification: service existence, provider profile, address ownership, or host placement created exposure without an exposure relation" >&2
   jq '.' "$no_exposure_json" >&2
+  exit 1
+fi
+
+eval_reachability_separation_fixture "$reachability_separation_json"
+
+reachability_separation_ok="$(
+  jq -r '
+    .exposureClass == "public-ingress"
+    and .exposure.classificationSource == "communicationContract.relations"
+    and (.providerEndpoints | length) == 1
+    and .providerEndpoints[0].ipv4 == ["10.90.10.100"]
+    and .providerEndpoints[0].runtimeTarget == "esp0xdeadbeef-site-c-c-router-access-dmz"
+    and .consumed.exposureRecords == 1
+    and (.consumed.externalServiceRules | length) == 1
+    and .consumed.externalServiceRules[0].relationId == "allow-public-dmz-nebula"
+    and .consumed.serviceRecordNames == ["dmz-nebula"]
+    and (.emitted.exposureOnlyMetadata | index("route-availability") != null)
+    and (.emitted.exposureOnlyMetadata | index("host-placement") != null)
+    and .emitted.noPathServiceEndpointRoutes == []
+    and (.emitted.routedPathServiceEndpointRoutes | length) == 1
+    and .emitted.routedPathServiceEndpointRoutes[0].dst == "10.90.10.100"
+    and .emitted.routedPathServiceEndpointRoutes[0].intent == {"kind":"service-endpoint-reachability","service":"dmz-nebula"}
+    and .emitted.routedPathServiceEndpointRoutes[0].relationId == "allow-public-dmz-nebula"
+    and .emitted.routedPathServiceEndpointRoutes[0].trafficType == "nebula"
+  ' "$reachability_separation_json"
+)"
+if [[ "$reachability_separation_ok" != "true" ]]; then
+  echo "FAIL service-exposure-classification: exposure classification, provider endpoints, and host placement must not imply service endpoint reachability without route evidence" >&2
+  jq '.' "$reachability_separation_json" >&2
   exit 1
 fi
 
