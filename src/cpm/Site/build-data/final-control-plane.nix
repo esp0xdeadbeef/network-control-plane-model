@@ -18,6 +18,7 @@
 , policyDerivedDnsAllowedClassesForListeners
 , policyDerivedDnsForwardersForListeners
 , normalizeRuntimeTargetRoutes
+, normalizeRuntimeTargetRoutesAfterPolicyComplements
 , normalizedRuntimeTargets
 ,
 }:
@@ -101,7 +102,10 @@ let
       normalizedRuntimeTargets = routeAugmentedRuntimeTargets;
     };
 
-  runtimeTargets = builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetsWithIntent;
+  runtimeTargets =
+    builtins.mapAttrs
+      (_targetName: normalizeRuntimeTargetRoutesAfterPolicyComplements)
+      runtimeTargetsWithIntent;
 
 in
 {

@@ -49,7 +49,27 @@ let
     ;
   runtimeExitNodes = runtimePrefixExitNodes { inherit attachments routedPrefixesByTenant; };
 
-  normalizeRuntimeTargetRoutes =
+  isPostInitialRoute =
+    route:
+    let
+      kind = (attrsOrEmpty (route.intent or null)).kind or null;
+    in
+    builtins.elem kind [
+      "dns-forwarder-reachability"
+      "service-dns-reachability"
+      "service-endpoint-reachability"
+    ];
+
+  complementSourceRoutes =
+    postInitialOnly: routes:
+    builtins.filter
+      (route:
+        canGeneratePolicyTableComplement route
+        && (!postInitialOnly || isPostInitialRoute route))
+      routes;
+
+  normalizeRuntimeTargetRoutesWith =
+    { postInitialComplementsOnly ? false }:
     target:
     let
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
@@ -57,43 +77,47 @@ let
       targetRole = target.role or "";
       runtimeOriginPrefixes = runtimeOriginPrefixesFromTarget target;
       classifyTargetRoute = classifyRoute { inherit overlayNames runtimeExitNodes targetRole; };
-      classifiedInterfaces = builtins.mapAttrs
-        (
-          _ifName: iface:
-            let
-              routes = attrsOrEmpty (iface.routes or null);
-              dropWrongRuntimeOriginRoute = isRuntimeOriginSourceRouteOnPolicyUplink targetRole runtimeOriginPrefixes iface;
-              ipv4 = uniqueKernelDefaults 4 (
-                dropDuplicateUnlanedDefaults 4 (
-                  builtins.filter (route: route != null) (
-                    builtins.map (classifyTargetRoute 4) (
-                      builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv4 or null))
+      classifiedInterfaces =
+        if postInitialComplementsOnly then
+          interfaces
+        else
+          builtins.mapAttrs
+            (
+              _ifName: iface:
+                let
+                  routes = attrsOrEmpty (iface.routes or null);
+                  dropWrongRuntimeOriginRoute = isRuntimeOriginSourceRouteOnPolicyUplink targetRole runtimeOriginPrefixes iface;
+                  ipv4 = uniqueKernelDefaults 4 (
+                    dropDuplicateUnlanedDefaults 4 (
+                      builtins.filter (route: route != null) (
+                        builtins.map (classifyTargetRoute 4) (
+                          builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv4 or null))
+                        )
+                      )
                     )
-                  )
-                )
-              );
-              ipv6 = uniqueKernelDefaults 6 (
-                dropDuplicateUnlanedDefaults 6 (
-                  builtins.filter (route: route != null) (
-                    builtins.map (classifyTargetRoute 6) (
-                      builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv6 or null))
+                  );
+                  ipv6 = uniqueKernelDefaults 6 (
+                    dropDuplicateUnlanedDefaults 6 (
+                      builtins.filter (route: route != null) (
+                        builtins.map (classifyTargetRoute 6) (
+                          builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv6 or null))
+                        )
+                      )
                     )
-                  )
-                )
-              );
-            in
-            if ipv4 == [ ] && ipv6 == [ ] then
-              iface
-            else
-              iface
-              // {
-                routes = routes // {
-                  ipv4 = uniqueRoutes 4 ipv4;
-                  ipv6 = uniqueRoutes 6 ipv6;
-                };
-              }
-        )
-        interfaces;
+                  );
+                in
+                if ipv4 == [ ] && ipv6 == [ ] then
+                  iface
+                else
+                  iface
+                  // {
+                    routes = routes // {
+                      ipv4 = uniqueRoutes 4 ipv4;
+                      ipv6 = uniqueRoutes 6 ipv6;
+                    };
+                  }
+            )
+            interfaces;
       policyDefaults4 =
         if builtins.hasAttr targetRole rolesWithPolicyDefaults then
           policyDefaultRoutes { inherit isPolicyDefault; } 4 classifiedInterfaces
@@ -115,8 +139,8 @@ let
               base6 = ipv6 ++ runtimeOriginReturnRoutes 6 target iface ipv6;
               dropWrongRuntimeOriginComplement =
                 isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
-              complementBase4 = builtins.filter canGeneratePolicyTableComplement base4;
-              complementBase6 = builtins.filter canGeneratePolicyTableComplement base6;
+              complementBase4 = complementSourceRoutes postInitialComplementsOnly base4;
+              complementBase6 = complementSourceRoutes postInitialComplementsOnly base6;
               augmented4 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
                 base4 ++ policyTableComplements 4 policyDefaults4 complementBase4
               );
@@ -143,7 +167,13 @@ let
           interfaces = normalizedInterfaces;
         };
       };
+
+  normalizeRuntimeTargetRoutes =
+    normalizeRuntimeTargetRoutesWith { };
+
+  normalizeRuntimeTargetRoutesAfterPolicyComplements =
+    normalizeRuntimeTargetRoutesWith { postInitialComplementsOnly = true; };
 in
 {
-  inherit normalizeRuntimeTargetRoutes uniqueRoutes;
+  inherit normalizeRuntimeTargetRoutes normalizeRuntimeTargetRoutesAfterPolicyComplements uniqueRoutes;
 }
