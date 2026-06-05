@@ -1,22 +1,10 @@
 { attrsOrEmpty, defaultDst }:
 
 let
-  viaFieldFor = family: if family == 4 then "via4" else "via6";
-
-  lanedDefaultViaKey =
-    family: route:
-    let
-      viaField = viaFieldFor family;
-    in
-    builtins.toJSON {
-      dst = route.dst or null;
-      via = route.${viaField} or null;
-    };
-
   hasLanedDefaultWithSameVia =
     family: route: routes:
     let
-      viaField = viaFieldFor family;
+      viaField = if family == 4 then "via4" else "via6";
     in
     builtins.any
       (
@@ -32,25 +20,6 @@ in
   inherit hasLanedDefaultWithSameVia;
   dropDuplicateUnlanedDefaults =
     family: routes:
-    let
-      lanedDefaultViaSet =
-        builtins.foldl'
-          (
-            acc: route:
-            if
-              builtins.isAttrs route
-              && (route.dst or null) == defaultDst family
-              && ((attrsOrEmpty (route.lane or null)).access or "") != ""
-            then
-              acc // {
-                ${lanedDefaultViaKey family route} = true;
-              }
-            else
-              acc
-          )
-          { }
-          routes;
-    in
     builtins.filter
       (
         route:
@@ -59,7 +28,7 @@ in
             && (route.dst or null) == defaultDst family
             && ((route.intent or { }).kind or null) == "default-reachability"
             && ((attrsOrEmpty (route.lane or null)).access or "") == ""
-            && builtins.hasAttr (lanedDefaultViaKey family route) lanedDefaultViaSet
+            && hasLanedDefaultWithSameVia family route routes
           )
       )
       routes;

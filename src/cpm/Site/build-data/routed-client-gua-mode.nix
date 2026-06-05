@@ -71,65 +71,26 @@ let
         && isNonEmptyString (owner.owner or null))
       (builtins.attrValues tenantPrefixOwners);
 
-  reverseList =
-    values:
-    builtins.foldl' (acc: value: [ value ] ++ acc) [ ] values;
-
-  groupByDst =
-    routes:
-    builtins.foldl'
-      (
-        acc: route:
-        let
-          dst = route.dst or null;
-        in
-        if isNonEmptyString dst then
-          acc // {
-            ${dst} = [ route ] ++ (acc.${dst} or [ ]);
-          }
-        else
-          acc
-      )
-      { }
-      routes;
-
-  ownerByDst =
-    builtins.foldl'
-      (
-        acc: owner:
-        let
-          dst = owner.dst or null;
-        in
-        if isNonEmptyString dst && !(builtins.hasAttr dst acc) then
-          acc // { ${dst} = owner; }
-        else
-          acc
-      )
-      { }
-      ownerEntries;
-
-  connectedByDst = groupByDst connectedGuaRoutes;
-
-  returnByDst =
-    groupByDst (
-      builtins.filter
-        (route: routeIntentKind route == "internal-reachability")
-        ipv6Routes
-    );
-
   allPrefixes = uniqueStrings (
     (builtins.map (owner: owner.dst) ownerEntries)
     ++ (builtins.map (route: route.dst) connectedGuaRoutes)
   );
 
+  firstOrNull = values:
+    if values == [ ] then null else builtins.head values;
+
   connectedForPrefix = prefix:
-    reverseList (connectedByDst.${prefix} or [ ]);
+    builtins.filter (route: (route.dst or null) == prefix) connectedGuaRoutes;
 
   returnRoutesForPrefix = prefix:
-    reverseList (returnByDst.${prefix} or [ ]);
+    builtins.filter
+      (route:
+        (route.dst or null) == prefix
+        && routeIntentKind route == "internal-reachability")
+      ipv6Routes;
 
   ownerForPrefix = prefix:
-    ownerByDst.${prefix} or null;
+    firstOrNull (builtins.filter (owner: (owner.dst or null) == prefix) ownerEntries);
 
   returnRouteRecord = route:
     {
