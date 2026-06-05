@@ -154,11 +154,87 @@ let
       (translation.address or "")
     ];
   nat66TranslatedAddressOrPrefix = uniqueStrings (builtins.concatMap translatedPrefixesForInterface explicitNat66Interfaces);
+  translatedAddressesForInterface =
+    iface:
+    let
+      explicitAddress = (attrsOrEmpty (iface.ipv4 or null)).address or null;
+      hostUplinkAddress = (attrsOrEmpty ((attrsOrEmpty (iface.hostUplink or null)).ipv4 or null)).address or null;
+      addr4 = iface.addr4 or null;
+    in
+    uniqueStrings (
+      builtins.filter isNonEmptyString [
+        addr4
+        explicitAddress
+        hostUplinkAddress
+      ]
+    );
+  nat44TranslatedAddressOrPrefix =
+    uniqueStrings (
+      builtins.concatMap translatedAddressesForInterface (
+        builtins.filter hasHostIPv4 wanInterfaces
+      )
+    );
   tenantNames = uniqueStrings (
     map (tenant: if builtins.isAttrs tenant then tenant.name or "" else "") (
       listOrEmpty ((attrsOrEmpty (siteAttrs.domains or null)).tenants or null)
     )
   );
+  returnBehaviorFor = familyEnabled: {
+    broadCoreOriginUplinkDefault =
+      if coreOriginUplinkDefaultAllowed then "explicitly-allowed" else "blackholed";
+    sourceScopedException = familyEnabled;
+  };
+  translationRecords =
+    (if nat4Enabled then
+      [
+        {
+          family = 4;
+          mode = "nat44";
+          trafficClass = trafficClass;
+          sourceScope = nat44SourcePrefixes;
+          translatedAddressOrPrefix = nat44TranslatedAddressOrPrefix;
+          translatedAddressOrPrefixState =
+            if nat44TranslatedAddressOrPrefix == [ ] then "runtime-egress-interface-address" else "explicit";
+          egressSurface = {
+            selectedUplinks = selectedUplinks;
+            selectedUplinkInterfaces = nat44RuntimeNames;
+          };
+          tenantIsolationBoundary = {
+            kind = "tenant-source-prefix";
+            tenants = tenantNames;
+            sourcePrefixes = nat44SourcePrefixes;
+          };
+          returnBehavior = returnBehaviorFor nat4Enabled;
+          consumers = [ "routing" "firewall" "renderer" "diagnostic" ];
+        }
+      ]
+    else
+      [ ])
+    ++ (if nat6Enabled then
+      [
+        {
+          family = 6;
+          mode = "nat66";
+          trafficClass = trafficClass;
+          sourceScope = nat66SourcePrefixes;
+          translatedAddressOrPrefix = nat66TranslatedAddressOrPrefix;
+          translatedAddressOrPrefixState =
+            if nat66TranslatedAddressOrPrefix == [ ] then "unavailable" else "explicit";
+          egressSurface = {
+            selectedUplinks = selectedUplinks;
+            selectedUplinkInterfaces = nat66RuntimeNames;
+          };
+          tenantIsolationBoundary = {
+            kind = "tenant-source-prefix";
+            tenants = tenantNames;
+            sourcePrefixes = nat66SourcePrefixes;
+          };
+          returnBehavior = returnBehaviorFor nat6Enabled;
+          consumers = [ "routing" "firewall" "renderer" "diagnostic" ];
+        }
+      ]
+    else
+      [ ]);
   nat66FailureDiagnostic =
     { code
     , message
@@ -271,6 +347,7 @@ in
   diagnostics = {
     nat66 = nat66Diagnostics;
   };
+  inherit translationRecords;
   uplinks = selectedUplinks;
   wanInterfaces = wanRuntimeNames;
   transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
