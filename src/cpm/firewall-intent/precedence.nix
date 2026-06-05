@@ -4,6 +4,21 @@ let
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };
   listOrEmpty = value: if builtins.isList value then value else [ ];
 
+  sortJsonList = values:
+    builtins.sort (left: right: builtins.toJSON left < builtins.toJSON right) (listOrEmpty values);
+
+  sortStringList = values:
+    builtins.sort (left: right: left < right) (map builtins.toString (listOrEmpty values));
+
+  sourcePrefixKey = prefix:
+    let
+      value = attrsOrEmpty prefix;
+    in
+    {
+      family = value.family or null;
+      prefix = value.prefix or "";
+    };
+
   rulePairKey = rule:
     builtins.toJSON [
       (rule.fromInterface or "")
@@ -23,17 +38,34 @@ let
       (rule.toInterface or "")
       (rule.trafficType or "")
       (rule.action or "")
+      (policyEquivalenceKey rule)
+      rule
     ];
 
-  ruleIdentity = rule:
-    builtins.toJSON rule;
+  policyEquivalenceKey = rule:
+    builtins.toJSON {
+      action = rule.action or "";
+      fromInterface = rule.fromInterface or "";
+      toInterface = rule.toInterface or "";
+      family = rule.family or null;
+      relationId = rule.relationId or null;
+      priority = rule.priority or null;
+      trafficType = rule.trafficType or "any";
+      matches = sortJsonList (rule.matches or [ ]);
+      applyTcpMssClamp = rule.applyTcpMssClamp or false;
+      intent = rule.intent or { };
+      sourceScope = {
+        sourceFiles = sortStringList (rule.sourceFiles or [ ]);
+        sourcePrefixes = sortJsonList (map sourcePrefixKey (listOrEmpty (rule.sourcePrefixes or null)));
+      };
+    };
 
   uniqueRules =
     rules:
     let
       step = state: rule:
         let
-          key = ruleIdentity rule;
+          key = policyEquivalenceKey rule;
         in
         if state.seen.${key} or false then
           state

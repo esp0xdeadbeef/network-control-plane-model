@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # GAMP-ID: FS-170-HDS-010-SDS-010-SMS-010
+# GAMP-ID: FS-170-HDS-010-SDS-010-SMS-030
 # GAMP-ID: SMT-CPM-FORWARDING-INTENT-RULE-DEDUPLICATION-001
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
@@ -13,6 +14,101 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 archive_json="${tmp_dir}/archive.json"
 output_json="${tmp_dir}/output.json"
 duplicates_json="${tmp_dir}/duplicates.json"
+equivalence_json="${tmp_dir}/equivalence.json"
+
+REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+  let
+    repoRoot = builtins.getEnv "REPO_ROOT";
+    precedence = import (repoRoot + "/src/cpm/firewall-intent/precedence.nix") { };
+    baseRule = {
+      action = "accept";
+      relationId = "allow-client-dns";
+      priority = 30;
+      trafficType = "dns";
+      matches = [
+        { proto = "udp"; dstPort = 53; }
+        { proto = "tcp"; dstPort = 53; }
+      ];
+      fromInterface = "tenant0";
+      toInterface = "policy0";
+      family = 4;
+      sourcePrefixes = [
+        {
+          family = 4;
+          prefix = "10.20.0.0/24";
+          origin = { diagnostic = "first"; };
+        }
+      ];
+      applyTcpMssClamp = false;
+      intent = { kind = "modeled-policy"; };
+      from = { tag = "client"; diagnostic = "first"; };
+      to = { tag = "resolver"; diagnostic = "first"; };
+      comment = "metadata-first";
+    };
+    metadataVariant =
+      baseRule
+      // {
+        sourcePrefixes = [
+          {
+            family = 4;
+            prefix = "10.20.0.0/24";
+            origin = { diagnostic = "second"; };
+          }
+        ];
+        from = { tag = "client"; diagnostic = "second"; };
+        to = { tag = "resolver"; diagnostic = "second"; };
+        comment = "metadata-second";
+      };
+    distinctPriority = baseRule // { priority = 31; comment = "distinct-priority"; };
+    distinctMatch = baseRule // {
+      matches = [ { proto = "udp"; dstPort = 53; } ];
+      comment = "distinct-match";
+    };
+    distinctSource = baseRule // {
+      sourcePrefixes = [ { family = 4; prefix = "10.21.0.0/24"; } ];
+      comment = "distinct-source";
+    };
+    entry = builtins.head (precedence.sortEntries [
+      {
+        name = "policy-target";
+        value = {
+          mode = "explicit-policy-forwarding";
+          rules = [
+            baseRule
+            metadataVariant
+            distinctPriority
+            distinctMatch
+            distinctSource
+          ];
+        };
+      }
+    ]);
+    comments = map (rule: rule.comment or "") entry.value.rules;
+    metadataRepresentatives =
+      builtins.filter
+        (comment: comment == "metadata-first" || comment == "metadata-second")
+        comments;
+  in
+  {
+    count = builtins.length entry.value.rules;
+    metadataRepresentativeCount = builtins.length metadataRepresentatives;
+    keptDistinctPriority = builtins.elem "distinct-priority" comments;
+    keptDistinctMatch = builtins.elem "distinct-match" comments;
+    keptDistinctSource = builtins.elem "distinct-source" comments;
+  }
+' >"${equivalence_json}"
+
+if ! jq -e '
+  .count == 4
+  and .metadataRepresentativeCount == 1
+  and .keptDistinctPriority == true
+  and .keptDistinctMatch == true
+  and .keptDistinctSource == true
+' "${equivalence_json}" >/dev/null; then
+  echo "FAIL forwarding-intent-rule-deduplication: policy equivalence key collapsed or preserved the wrong records" >&2
+  jq -S . "${equivalence_json}" >&2
+  exit 1
+fi
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
@@ -40,7 +136,9 @@ jq '
       ($rule.toInterface // ""),
       (($rule.family // "") | tostring),
       ($rule.relationId // ""),
+      (($rule.priority // null) | tostring),
       ($rule.trafficType // ""),
+      (($rule.matches // []) | sort_by(tostring) | tostring),
       (($rule.applyTcpMssClamp // false) | tostring),
       (($rule.intent // {}) | tostring),
       (($rule.sourceFiles // []) | sort | tostring),
