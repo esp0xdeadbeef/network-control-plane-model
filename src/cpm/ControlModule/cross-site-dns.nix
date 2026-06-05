@@ -10,24 +10,21 @@ let
   inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
 
   mergeDnsAllowFrom = target: extraAllowFrom:
-    let
-      mergeTargetDns =
-        let
-          targetServices = attrsOrEmpty (target.services or null);
-          targetDns = attrsOrEmpty (targetServices.dns or null);
-          mergedAllowFrom = uniqueStrings ((listOrEmpty (targetDns.allowFrom or null)) ++ extraAllowFrom);
-        in
-        if targetDns == { } then
-          target
-        else
-          target // {
-            services = targetServices // { dns = targetDns // { allowFrom = mergedAllowFrom; }; };
-          };
-    in
-    if extraAllowFrom == [ ] || !(builtins.hasAttr "services" target) then
+    if !(builtins.hasAttr "services" target) then
       target
     else
-      mergeTargetDns;
+      target // {
+        services =
+          let
+            targetServices = attrsOrEmpty (target.services or null);
+            targetDns = attrsOrEmpty (targetServices.dns or null);
+            mergedAllowFrom = uniqueStrings ((listOrEmpty (targetDns.allowFrom or null)) ++ extraAllowFrom);
+          in
+          if extraAllowFrom == [ ] || targetDns == { } then
+            targetServices
+          else
+            targetServices // { dns = targetDns // { allowFrom = mergedAllowFrom; }; };
+      };
 
   runtimeTargetEntries =
     builtins.concatLists (
@@ -60,65 +57,11 @@ let
   entryKey = entry:
     "${entry.enterpriseName}|${entry.siteName}|${entry.targetName}";
 
-  dnsListenersForTarget =
-    target:
-    let dns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
-    in uniqueStrings (listOrEmpty (dns.listen or null));
-
-  dnsForwardersForTarget =
-    target:
-    let dns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
-    in uniqueStrings (listOrEmpty (dns.forwarders or null));
-
-  interfaceCidrsForTarget =
-    target:
-    let
-      interfaces = attrsOrEmpty ((attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null);
-    in
-    uniqueStrings (
-      builtins.concatLists (
-        builtins.map
-          (ifName:
-          let iface = attrsOrEmpty interfaces.${ifName};
-          in
-          (lib.optional (isNonEmptyString (iface.addr4 or null)) iface.addr4)
-          ++ (lib.optional (isNonEmptyString (iface.addr6 or null)) iface.addr6))
-          (sortedNames interfaces)
-      )
-    );
-
-  runtimeOriginSourceCidrsForTarget =
-    target:
-    uniqueStrings (
-      builtins.map
-        (source: source.prefix)
-        (
-          builtins.filter
-            (source: isNonEmptyString (source.prefix or null))
-            (listOrEmpty ((attrsOrEmpty (target.runtimeOriginEgress or null)).sourcePrefixes or null))
-        )
-    );
-
-  dnsEgressSourceCidrsForTarget =
-    target:
-    let
-      dns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
-      roles = attrsOrEmpty (dns.roles or null);
-      recursion = attrsOrEmpty (roles.recursion or null);
-      sources =
-        if listOrEmpty (recursion.outgoingInterfaces or null) != [ ] then
-          listOrEmpty (recursion.outgoingInterfaces or null)
-        else
-          listOrEmpty (dns.outgoingInterfaces or null);
-      sourceToCidr = source:
-        if !isNonEmptyString source then
-          null
-        else if builtins.match ".*:.*" source != null then
-          "${source}/128"
-        else
-          "${source}/32";
-    in
-    uniqueStrings (builtins.filter isNonEmptyString (builtins.map sourceToCidr sources));
+  runtimeTargetFactLib = import ./cross-site-dns/runtime-target-facts.nix {
+    inherit lib helpers common runtimeTargetEntries entryKey;
+  };
+  inherit (runtimeTargetFactLib) interfaceCidrsForTarget;
+  runtimeTargetFacts = runtimeTargetFactLib.facts;
 
   overlayServiceDnsAllowFrom =
     import ./cross-site-dns/overlay-service-allow-from.nix {
@@ -126,20 +69,19 @@ let
         lib
         helpers
         cpmData
-        runtimeTargetEntries
-        entryKey
-        dnsListenersForTarget
         interfaceCidrsForTarget
+        entryKey
         ;
+      runtimeTargetEntries = runtimeTargetFacts;
     };
 
   extraDnsAllowFromByProvider =
     builtins.listToAttrs (
       builtins.map
         (providerEntry: {
-          name = entryKey providerEntry;
+          name = providerEntry.key;
           value =
-            let providerListeners = dnsListenersForTarget providerEntry.target;
+            let providerListeners = providerEntry.dnsListeners;
             in
             if providerListeners == [ ] then
               [ ]
@@ -149,23 +91,21 @@ let
                   (
                     builtins.map
                       (consumerEntry:
-                        let consumerForwarders = dnsForwardersForTarget consumerEntry.target;
-                        in
                         if
-                          entryKey consumerEntry != entryKey providerEntry
-                          && lib.any (forwarder: builtins.elem forwarder providerListeners) consumerForwarders
+                          consumerEntry.key != providerEntry.key
+                          && lib.any (forwarder: builtins.elem forwarder providerListeners) consumerEntry.dnsForwarders
                         then
-                          (interfaceCidrsForTarget consumerEntry.target)
-                          ++ (runtimeOriginSourceCidrsForTarget consumerEntry.target)
-                          ++ (dnsEgressSourceCidrsForTarget consumerEntry.target)
+                          consumerEntry.interfaceCidrs
+                          ++ consumerEntry.runtimeOriginSourceCidrs
+                          ++ consumerEntry.dnsEgressSourceCidrs
                         else
                           [ ])
-                      runtimeTargetEntries
+                      runtimeTargetFacts
                   )
                 ++ overlayServiceDnsAllowFrom providerEntry providerListeners
               );
         })
-        runtimeTargetEntries
+        runtimeTargetFacts
     );
 
 in
