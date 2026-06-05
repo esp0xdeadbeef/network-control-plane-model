@@ -3,7 +3,6 @@
 , cpmData
 , runtimeTargetEntries
 , entryKey
-, dnsListenersForTarget
 , interfaceCidrsForTarget
 ,
 }:
@@ -147,10 +146,10 @@ let
     providerEntry: overlayName: consumerEntry:
     let
       allowedTenants = tenantsAllowedToOverlay consumerEntry.enterpriseName consumerEntry.siteName overlayName;
-      consumerTenants = targetTenantNames consumerEntry.target;
+      consumerTenants = consumerEntry.tenantNames or (targetTenantNames consumerEntry.target);
       consumerDns = attrsOrEmpty ((attrsOrEmpty (consumerEntry.target.services or null)).dns or null);
       consumerUnderlayCidrs =
-        if builtins.isList (consumerDns.allowFrom or null) then consumerDns.allowFrom else interfaceCidrsForTarget consumerEntry.target;
+        if builtins.isList (consumerDns.allowFrom or null) then consumerDns.allowFrom else consumerEntry.interfaceCidrs or (interfaceCidrsForTarget consumerEntry.target);
     in
     if
       consumerEntry.enterpriseName == providerEntry.enterpriseName

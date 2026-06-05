@@ -27,15 +27,19 @@ let
       }
     else
       targetDef;
+  present = realizedTarget && mergedServices != { };
   runtimeServices =
-    if realizedTarget && mergedServices != { } then
+    if present then
       resolveRuntimeServices {
-    inherit nodePath nodeName nodeAttrs;
-    inherit loopback;
-    runtimeOriginEgress = runtimeOriginEgressContract;
-    targetDef = targetDefWithServices;
+        inherit nodePath nodeName nodeAttrs;
+        inherit loopback;
+        runtimeOriginEgress = runtimeOriginEgressContract;
+        targetDef = targetDefWithServices;
       }
     else
       null;
 in
-runtimeServices
+{
+  inherit present;
+  value = runtimeServices;
+}

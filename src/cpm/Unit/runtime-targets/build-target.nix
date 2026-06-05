@@ -155,7 +155,7 @@ let
           nodeAttrs
           ;
       };
-      runtimeServices = buildServices {
+      runtimeServicesResult = buildServices {
         inherit
           nodePath
           nodeName
@@ -186,9 +186,10 @@ let
           nodeRole
           runtimeContainers
           runtimeOriginEgressContract
-          runtimeServices
           runtimeStatePolicy
           ;
+        hasRuntimeServices = runtimeServicesResult.present;
+        runtimeServices = runtimeServicesResult.value;
       };
     in
     {
