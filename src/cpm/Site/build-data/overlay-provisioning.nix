@@ -149,6 +149,7 @@ let
                   { }
               )
               // (if isNonEmptyString (cfg.provider or null) then { provider = cfg.provider; } else { })
+              // (if builtins.isAttrs (cfg.providerAuthority or null) then { providerAuthority = cfg.providerAuthority; } else { })
               // (providerBootstrapDns.normalize overlayPath cfg)
               // (
                 let
