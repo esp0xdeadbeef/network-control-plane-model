@@ -26,6 +26,9 @@ let
 
   runtimeTargetNames = sortedNames runtimeTargets;
   overlayNames = sortedNames overlayProvisioning;
+  providerAuthorityClassifier = import ./provider-authority-classification.nix {
+    inherit helpers common;
+  };
 
   siteScope = {
     kind = "site";
@@ -128,6 +131,9 @@ let
                   overlay = overlayName;
                 };
                 payload = overlay;
+                providerAuthority = providerAuthorityClassifier.classify {
+                  inherit overlayName overlay;
+                };
                 includedRuntimeTargets = targetNames;
                 includedSharedMetadata =
                   sharedMetadata "provider overlay realization and portable comparison context" [
