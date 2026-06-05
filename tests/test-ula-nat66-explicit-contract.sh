@@ -108,9 +108,13 @@ nix eval \
       noSource = natFor noSourceTarget [ nat66Wan transitInterface ] [ ];
       noAuthorityDiagnostic = builtins.head noAuthority.diagnostics.nat66;
       noWanTranslationDiagnostic = builtins.head noWanTranslation.diagnostics.nat66;
+      noIntentDiagnostic = builtins.head noIntent.diagnostics.nat66;
       noSourceDiagnostic = builtins.head noSource.diagnostics.nat66;
       expectedSourcePrefixes = [
         "fd42:dead:beef:10::/64"
+        "fd42:dead:beef:1900::8/128"
+      ];
+      runtimeOriginOnlySourcePrefixes = [
         "fd42:dead:beef:1900::8/128"
       ];
     in {
@@ -164,7 +168,24 @@ nix eval \
           && noWanTranslationDiagnostic.selectedUplinkInterfaces == [ "eth0" ]
           && noWanTranslationDiagnostic.message == "ULA NAT66 was selected without any matching WAN NAT66 translation egress space.";
         noNat66IntentDisablesNat66 = noIntent.families.ipv6 == false && noIntent.masqueradeSourcePrefixes6 == [ ] && noIntent.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66 == false && noIntent.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66SourcePrefixes == [ ];
-        noNat66IntentHasNoDiagnostic = noIntent.diagnostics.nat66 == [ ];
+        noNat66IntentReportsExplicitSelectionDiagnostic =
+          noIntentDiagnostic.code == "nat66-explicit-selection-required"
+          && noIntentDiagnostic.mode == "fail-closed"
+          && noIntentDiagnostic.failClosed == true
+          && noIntentDiagnostic.sourceScope == runtimeOriginOnlySourcePrefixes
+          && noIntentDiagnostic.trafficClass == "internet-egress"
+          && noIntentDiagnostic.egressSurface.selectedUplinks == [ "wan" ]
+          && noIntentDiagnostic.egressSurface.selectedUplinkInterfaces == [ "eth0" ]
+          && noIntentDiagnostic.translatedAddressOrPrefix == [ ]
+          && noIntentDiagnostic.translatedAddressOrPrefixState == "unavailable"
+          && noIntentDiagnostic.addressFamily == 6
+          && noIntentDiagnostic.tenantIsolationBoundary.sourcePrefixes == runtimeOriginOnlySourcePrefixes
+          && noIntentDiagnostic.fallback.unmodeledEgress == false
+          && noIntentDiagnostic.fallback.untranslatedUlaRoute == false
+          && noIntentDiagnostic.fallback.alternateProviders == false
+          && noIntentDiagnostic.selectedUplinks == [ "wan" ]
+          && noIntentDiagnostic.selectedUplinkInterfaces == [ "eth0" ]
+          && noIntentDiagnostic.message == "ULA-to-WAN egress is denied unless NAT66 is explicitly selected.";
         noSourceScopeDisablesNat66 = noSource.families.ipv6 == false && noSource.masqueradeSourcePrefixes6 == [ ] && noSource.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66 == false && noSource.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66SourcePrefixes == [ ];
         noSourceScopeReportsDiagnostic =
           noSourceDiagnostic.code == "nat66-source-prefix-unavailable"
