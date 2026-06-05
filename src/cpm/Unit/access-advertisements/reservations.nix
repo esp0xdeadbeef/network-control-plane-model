@@ -30,6 +30,9 @@ let
   ensureUniqueValues = path: label: values:
     if duplicate values then failInventory path "duplicate ${label} in the same network" else true;
 
+  ensureUniqueReservationIds = path: values:
+    if duplicate values then failInventory path "duplicate reservation id in the same service target" else true;
+
   reservationHostOffset = reservationPath: attrs: familyName:
     let
       familyAttrs = requireAttrs "${reservationPath}.${familyName}" (attrs.${familyName} or null);
@@ -75,8 +78,12 @@ let
           "${entryPath}.reservations"
           "${familyName}.hostOffset"
           (map (reservation: toString reservation.hostOffset) rendered);
+      _uniqueIds =
+        ensureUniqueReservationIds
+          "${entryPath}.reservations"
+          (map (reservation: reservation.id) rendered);
     in
-    builtins.seq _uniqueMacs (builtins.seq _uniqueOffsets rendered);
+    builtins.seq _uniqueMacs (builtins.seq _uniqueOffsets (builtins.seq _uniqueIds rendered));
 in
 {
   inherit resolveReservations;
