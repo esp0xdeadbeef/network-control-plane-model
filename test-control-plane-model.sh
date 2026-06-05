@@ -36,6 +36,7 @@ tests=(
   test-vxlan-contract-required-fields.sh
   test-access-dhcpv6-advertisement-contract.sh
   test-access-ipv6-ra-slaac-flags-contract.sh
+  test-fs330-stable-client-address-identity.sh
   test-access-static-reservation-contracts.sh
   test-static-reservation-offset-resolution.sh
   test-static-reservation-duplicate-service-target-rejection.sh
