@@ -53,6 +53,58 @@ let
     scope = "local-access";
   };
 
+  trafficClassForModeledResolver = target: route: {
+    kind = "public-dns-traffic-classification";
+    trafficClass = "modeled-resolver-traffic";
+    resolverDestination = route.dst or route.destination;
+    requesterScope = target.placement.target or target.logicalNode.name or "access";
+    egressSurface = route.scope or route.class or route.source or "modeled-resolver";
+    protocol = "tcp-udp";
+    port = "53";
+    dnsPolicy = "modeled-resolver-relationship";
+    egressPolicy = "not-direct-public-dns";
+  };
+
+  trafficClassForDeniedDirectPublicDns = target: allowedUpstreamClasses: resolverCidr: {
+    kind = "public-dns-traffic-classification";
+    trafficClass = "denied-direct-public-dns";
+    resolverDestination = resolverCidr;
+    requesterScope = target.placement.target or target.logicalNode.name or "access";
+    egressSurface =
+      if builtins.elem "explicit-egress-default" allowedUpstreamClasses then
+        "explicit-egress-default"
+      else
+        "no-modeled-public-egress";
+    protocol = "tcp-udp";
+    port = "53";
+    dnsPolicy = "direct-public-dns-forbidden";
+    egressPolicy =
+      if builtins.elem "explicit-egress-default" allowedUpstreamClasses then
+        "egress-allowed"
+      else
+        "egress-not-allowed";
+  };
+
+  trafficClassForUnrelatedPayload = target: allowedUpstreamClasses: resolverCidr: {
+    kind = "public-dns-traffic-classification";
+    trafficClass = "unrelated-payload";
+    resolverDestination = resolverCidr;
+    requesterScope = target.placement.target or target.logicalNode.name or "access";
+    egressSurface =
+      if builtins.elem "explicit-egress-default" allowedUpstreamClasses then
+        "explicit-egress-default"
+      else
+        "no-modeled-public-egress";
+    protocol = "non-dns";
+    port = "not-53";
+    dnsPolicy = "not-dns-traffic";
+    egressPolicy =
+      if builtins.elem "explicit-egress-default" allowedUpstreamClasses then
+        "egress-allowed"
+      else
+        "egress-not-allowed";
+  };
+
   optionalString = value:
     if builtins.isString value && value != "" then [ value ] else [ ];
 
@@ -181,14 +233,46 @@ let
         routeContracts = listOrEmpty (dns.routeContracts or null) ++ builtins.map routeContractForForwarder forwarders;
         policyMatrix = listOrEmpty (dns.policyMatrix or null) ++ builtins.map routeContractForForwarder forwarders;
       };
+  dnsWithTrafficClassifications =
+    let
+      allowedUpstreamClasses = listOrEmpty (dnsContracts.allowedUpstreamClasses or null);
+      modeledResolverRoutes =
+        builtins.filter
+          (route: builtins.isAttrs route && (route.source or null) == "router-self" && (route.dst or null) != null)
+          (listOrEmpty (dnsContracts.routeContracts or null));
+      modeledResolverClasses =
+        builtins.map (trafficClassForModeledResolver targetWithDnsContracts) modeledResolverRoutes;
+      deniedResolverCidrs = listOrEmpty (dnsContracts.deniedResolverCidrs or null);
+      emitsDirectPublicDnsDenial =
+        ((attrsOrEmpty (dnsContracts.killSwitch or null)).blockPublicResolvers or false)
+        && deniedResolverCidrs != [ ];
+      deniedDirectClasses =
+        if emitsDirectPublicDnsDenial then
+          builtins.map (trafficClassForDeniedDirectPublicDns targetWithDnsContracts allowedUpstreamClasses) deniedResolverCidrs
+        else
+          [ ];
+      unrelatedPayloadClasses =
+        if deniedResolverCidrs != [ ] then
+          builtins.map (trafficClassForUnrelatedPayload targetWithDnsContracts allowedUpstreamClasses) deniedResolverCidrs
+        else
+          [ ];
+      publicDnsTrafficClassifications =
+        modeledResolverClasses ++ deniedDirectClasses ++ unrelatedPayloadClasses;
+    in
+    if publicDnsTrafficClassifications == [ ] then
+      dnsContracts
+    else
+      dnsContracts // { inherit publicDnsTrafficClassifications; };
   targetWithDnsContracts =
     targetWithDns
     // {
-      services = (attrsOrEmpty (targetWithDns.services or null)) // { dns = dnsContracts; };
+      services = (attrsOrEmpty (targetWithDns.services or null)) // { dns = dnsWithTrafficClassifications; };
     };
 in
-if forwarders == [ ] || dns == { } then
+if dns == { } then
   targetWithDns
+else if forwarders == [ ] then
+  targetWithDnsContracts
 else if (targetWithDns.role or null) != "access" then
   targetWithDnsContracts
 else
