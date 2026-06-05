@@ -47,6 +47,7 @@ in
     bgpSiteAsn
     bgpTopology
     routingMode
+    siteControlPlaneCfg
     siteIpv6Cfg
     siteRouting
     siteTenantsCfg

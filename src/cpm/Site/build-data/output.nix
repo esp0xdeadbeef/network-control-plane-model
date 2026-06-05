@@ -14,6 +14,7 @@
 , policyAttrs
 , policyEndpointBindings
 , policyNodeName
+, rendererContracts
 , routedClientGuaMode
 , routedPrefixesByTenant
 , routingMode
@@ -93,6 +94,7 @@ in
         { }
     );
   runtimeTargets = runtimeTargets;
+  rendererContracts = rendererContracts;
   forwardingSemantics = forwardingSemantics;
   overlays = overlayProvisioning;
   relations = policyEndpointBindings.relations;

@@ -30,6 +30,7 @@ tests=(
   test-forwarding-intent-rule-deduplication.sh
   test-tri-site-external-deny-policy-materialization.sh
   test-provider-overlay-runtime-interface-name.sh
+  test-renderer-contract-boundary.sh
   test-interface-mtu-contract.sh
   test-provider-access-no-side-channel.sh
   test-vxlan-contract-required-fields.sh
