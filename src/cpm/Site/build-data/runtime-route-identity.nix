@@ -30,31 +30,39 @@ let
 
   uniqueRoutes =
     family: routes:
-    let
-      result =
-        builtins.foldl'
-          (
-            acc: route:
-            let
-              key = routeKey family route;
-            in
-            if key == null || builtins.hasAttr key acc.seen then
-              acc
-            else
-              {
-                seen = acc.seen // {
-                  ${key} = true;
-                };
-                values = [ route ] ++ acc.values;
-              }
-          )
-          {
-            seen = { };
-            values = [ ];
-          }
-          routes;
-    in
-    reverseList result.values;
+    if routes == [ ] then
+      [ ]
+    else if builtins.length routes == 1 then
+      let
+        route = builtins.elemAt routes 0;
+      in
+      if routeKey family route == null then [ ] else routes
+    else
+      let
+        result =
+          builtins.foldl'
+            (
+              acc: route:
+              let
+                key = routeKey family route;
+              in
+              if key == null || builtins.hasAttr key acc.seen then
+                acc
+              else
+                {
+                  seen = acc.seen // {
+                    ${key} = true;
+                  };
+                  values = [ route ] ++ acc.values;
+                }
+            )
+            {
+              seen = { };
+              values = [ ];
+            }
+            routes;
+      in
+      reverseList result.values;
 
   isPolicyDefault =
     family: route:

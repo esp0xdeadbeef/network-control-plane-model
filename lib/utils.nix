@@ -6,12 +6,12 @@
       null;
 
   attrNamesSorted = attrs:
-    builtins.sort builtins.lessThan (builtins.attrNames attrs);
+    builtins.attrNames attrs;
 
   attrValuesSorted = attrs:
     builtins.map
       (name: attrs.${name})
-      (builtins.sort builtins.lessThan (builtins.attrNames attrs));
+      (builtins.attrNames attrs);
 
   mapAttrsSorted = f: attrs:
     builtins.listToAttrs (
@@ -20,7 +20,7 @@
           inherit name;
           value = f name attrs.${name};
         })
-        (builtins.sort builtins.lessThan (builtins.attrNames attrs))
+        (builtins.attrNames attrs)
     );
 
   filter = pred: list:

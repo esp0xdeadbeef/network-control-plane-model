@@ -13,14 +13,9 @@ let
 
   deriveCPM = import ./build-cpm.nix { lib = effectiveLib; };
 
-  forwardingModelDump = builtins.toJSON input;
-
   cpm =
     builtins.addErrorContext
-      ''
-        network-forwarding-model:
-        ${forwardingModelDump}
-      ''
+      "while building network-control-plane-model from the explicit network-forwarding-model input"
       (
         deriveCPM {
           forwardingModel = input;
