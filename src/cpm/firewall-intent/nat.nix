@@ -162,6 +162,7 @@ let
   nat66FailureDiagnostic =
     { code
     , message
+    , sourceScope ? nat66SourcePrefixes
     , extra ? { }
     ,
     }:
@@ -169,7 +170,7 @@ let
       inherit code message trafficClass;
       mode = "fail-closed";
       failClosed = true;
-      sourceScope = nat66SourcePrefixes;
+      sourceScope = sourceScope;
       egressSurface = {
         selectedUplinks = selectedUplinks;
         selectedUplinkInterfaces = wanRuntimeNames;
@@ -181,7 +182,7 @@ let
       tenantIsolationBoundary = {
         kind = "tenant-source-prefix";
         tenants = tenantNames;
-        sourcePrefixes = nat66SourcePrefixes;
+        sourcePrefixes = sourceScope;
       };
       fallback = {
         unmodeledEgress = false;
@@ -190,8 +191,23 @@ let
       };
     } // extra;
   nat66Diagnostics =
-    if !exitEnabled || !nat66Requested || nat6Enabled then
+    if !exitEnabled || nat6Enabled then
       [ ]
+    else if !nat66Requested then
+      if runtimeOriginNat66SourcePrefixes == [ ] then
+        [ ]
+      else
+        [
+          (nat66FailureDiagnostic {
+            code = "nat66-explicit-selection-required";
+            message = "ULA-to-WAN egress is denied unless NAT66 is explicitly selected.";
+            sourceScope = runtimeOriginNat66SourcePrefixes;
+            extra = {
+              selectedUplinks = selectedUplinks;
+              selectedUplinkInterfaces = wanRuntimeNames;
+            };
+          })
+        ]
     else if nat66SourcePrefixes == [ ] then
       [
         (nat66FailureDiagnostic {
