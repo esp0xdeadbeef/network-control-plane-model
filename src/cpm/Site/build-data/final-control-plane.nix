@@ -46,6 +46,7 @@ let
     inherit
       lib
       helpers
+      common
       uniqueStrings
       policyEndpointBindings
       providerEndpointForServiceProvider

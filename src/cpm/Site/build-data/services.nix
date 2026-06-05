@@ -1,5 +1,6 @@
 { lib
 , helpers
+, common
 , uniqueStrings
 , policyEndpointBindings
 , providerEndpointForServiceProvider
@@ -11,27 +12,90 @@
 }:
 
 let
-  inherit (helpers) requireStringList sortedNames;
+  inherit (helpers) isNonEmptyString requireString requireStringList sortedNames;
+  inherit (common) failForwarding;
 
   listOrEmpty = value: if builtins.isList value then value else [ ];
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };
 
-  sourceNamesForEndpoint =
-    endpoint:
+  failExposureScope = relation: field: message:
     let
-      attrs = attrsOrEmpty endpoint;
-      kind = attrs.kind or null;
+      relationId =
+        if isNonEmptyString (relation.id or null) then
+          relation.id
+        else
+          "<unidentified>";
     in
-    if kind == "tenant" && builtins.isString (attrs.name or null) then
-      [ attrs.name ]
-    else if kind == "tenant-set" then
-      listOrEmpty (attrs.members or null)
-    else if kind == "external" then
-      if builtins.isString (attrs.name or null) then [ attrs.name ] else listOrEmpty (attrs.uplinks or null)
-    else if kind == "service" && builtins.isString (attrs.name or null) then
-      [ attrs.name ]
+    failForwarding
+      "${sitePath}.communicationContract.relations.${relationId}.${field}"
+      "service exposure scope binding requires ${message}";
+
+  normalizeRequesterScope =
+    relation:
+    let
+      source = attrsOrEmpty (relation.from or null);
+      sourceKind = source.kind or null;
+    in
+    if !isNonEmptyString sourceKind then
+      failExposureScope relation "from.kind" "an explicit requester scope kind"
+    else if sourceKind == "tenant" then
+      {
+        kind = "tenant";
+        names = [ (requireString "${sitePath}.communicationContract.relations[*].from.name" (source.name or null)) ];
+        selector = "name";
+        public = false;
+      }
+    else if sourceKind == "tenant-set" then
+      let
+        names = requireStringList "${sitePath}.communicationContract.relations[*].from.members" (source.members or null);
+      in
+      if names == [ ] then
+        failExposureScope relation "from.members" "a non-empty requester tenant-set scope"
+      else
+        {
+          kind = "tenant-set";
+          inherit names;
+          selector = "members";
+          public = false;
+        }
+    else if sourceKind == "external" then
+      let
+        hasName = isNonEmptyString (source.name or null);
+        hasUplinks = (listOrEmpty (source.uplinks or null)) != [ ];
+      in
+      if hasName && hasUplinks then
+        failExposureScope relation "from" "external requester scope to use exactly one of name or uplinks"
+      else if hasName then
+        {
+          kind = "external";
+          names = [ source.name ];
+          selector = "name";
+          public = endpointIsPublicExternal source;
+        }
+      else if builtins.isList (source.uplinks or null) then
+        let
+          names = requireStringList "${sitePath}.communicationContract.relations[*].from.uplinks" source.uplinks;
+        in
+        if names == [ ] then
+          failExposureScope relation "from.uplinks" "a non-empty external requester scope"
+        else
+          {
+            kind = "external";
+            inherit names;
+            selector = "uplinks";
+            public = endpointIsPublicExternal source;
+          }
+      else
+        failExposureScope relation "from" "requester scope to name an external or uplink"
+    else if sourceKind == "service" then
+      {
+        kind = "service";
+        names = [ (requireString "${sitePath}.communicationContract.relations[*].from.name" (source.name or null)) ];
+        selector = "name";
+        public = false;
+      }
     else
-      [ ];
+      failExposureScope relation "from.kind" "a supported requester scope kind";
 
   endpointIsPublicExternal =
     endpoint:
@@ -44,17 +108,16 @@ let
     && ((listOrEmpty (attrs.uplinks or null)) != [ ] || (listOrEmpty (binding.uplinks or null)) != [ ]);
 
   exposureClassForRelation =
-    providerTenants: relation:
+    providerTenants: relation: requesterScope:
     let
-      source = attrsOrEmpty (relation.from or null);
-      sourceKind = source.kind or null;
-      sourceTenants = sourceNamesForEndpoint source;
+      sourceKind = requesterScope.kind;
+      sourceTenants = requesterScope.names;
       allSourcesOwnProvider =
         sourceTenants != [ ]
         && providerTenants != [ ]
         && builtins.all (tenant: builtins.elem tenant providerTenants) sourceTenants;
     in
-    if endpointIsPublicExternal source then
+    if sourceKind == "external" && requesterScope.public then
       "public-ingress"
     else if sourceKind == "external" then
       "cross-site"
@@ -87,6 +150,10 @@ let
   exposureForService =
     serviceName: providerTenants:
     let
+      owningScope = {
+        kind = "service";
+        name = serviceName;
+      };
       serviceRelations =
         builtins.filter
           (relation:
@@ -102,24 +169,23 @@ let
         builtins.map
           (relation:
             let
-              source = attrsOrEmpty (relation.from or null);
-              exposureClass = exposureClassForRelation providerTenants relation;
+              requesterScope = normalizeRequesterScope relation;
+              exposureClass = exposureClassForRelation providerTenants relation requesterScope;
             in
             {
               inherit exposureClass;
               relationId = relation.id or null;
-              sourceKind = source.kind or null;
-              sourceNames = sourceNamesForEndpoint source;
+              ownerScope = owningScope;
+              inherit requesterScope;
+              sourceKind = requesterScope.kind;
+              sourceNames = requesterScope.names;
               trafficType = relation.trafficType or null;
             })
           serviceRelations;
     in
     {
       class = maxExposureClass (builtins.map (record: record.exposureClass) records);
-      owningScope = {
-        kind = "service";
-        name = serviceName;
-      };
+      inherit owningScope;
       classificationSource = "communicationContract.relations";
       notInferredFrom = [
         "address-ownership"
