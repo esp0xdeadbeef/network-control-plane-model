@@ -87,6 +87,101 @@ let
       else
         stringValue;
 
+  optionalStringList = path: value:
+    if value == null then
+      null
+    else
+      let
+        entries = requireList path value;
+        normalized =
+          builtins.map
+            (entry:
+              let rendered = requireString "${path}[*]" entry;
+              in if rendered == "" then failInventory path "must not contain empty strings" else rendered)
+            entries;
+      in
+      if normalized == [ ] then failInventory path "must contain at least one entry" else normalized;
+
+  requireEnum = path: allowed: value:
+    let rendered = requireString path value;
+    in
+    if builtins.elem rendered allowed then
+      rendered
+    else
+      failInventory path "must be one of ${builtins.concatStringsSep ", " allowed}";
+
+  normalizeStatePredicate = path: behaviorPath: value: behaviorValue:
+    if value == null && behaviorValue == null then
+      null
+    else if builtins.isAttrs value then
+      {
+        present = requireBool "${path}.present" (value.present or true);
+        behavior = requireString "${path}.behavior" (value.behavior or behaviorValue);
+        reason = optionalNonEmptyString "${path}.reason" (value.reason or null);
+        source = requireString "${path}.source" (value.source or "inventory-realization");
+      }
+    else if builtins.isBool value then
+      {
+        present = value;
+        behavior = requireString behaviorPath behaviorValue;
+        source = "inventory-realization";
+      }
+    else if builtins.isString value then
+      {
+        present = true;
+        behavior = requireString path value;
+        source = "inventory-realization";
+      }
+    else if behaviorValue != null then
+      {
+        present = true;
+        behavior = requireString behaviorPath behaviorValue;
+        source = "inventory-realization";
+      }
+    else
+      failInventory path "must be a boolean, string, or attribute set";
+
+  normalizeFs880NamespaceFields = reservationPath: attrs:
+    let
+      namespace = optionalNonEmptyString "${reservationPath}.namespace" (attrs.namespace or null);
+      namespaceOwner = optionalNonEmptyString "${reservationPath}.namespaceOwner" (attrs.namespaceOwner or null);
+      requesterScope = optionalNonEmptyString "${reservationPath}.requesterScope" (attrs.requesterScope or null);
+      requesterScopes = optionalStringList "${reservationPath}.requesterScopes" (attrs.requesterScopes or null);
+      recordClass =
+        if attrs ? recordClass then
+          requireEnum "${reservationPath}.recordClass" [ "A" "AAAA" ] attrs.recordClass
+        else
+          null;
+      fallbackBehavior = optionalNonEmptyString "${reservationPath}.fallbackBehavior" (attrs.fallbackBehavior or null);
+      deniedClasses =
+        if attrs ? deniedClasses then
+          optionalStringList "${reservationPath}.deniedClasses" attrs.deniedClasses
+        else if attrs ? deniedRecordClasses then
+          optionalStringList "${reservationPath}.deniedRecordClasses" attrs.deniedRecordClasses
+        else
+          null;
+      conflictBehavior = optionalNonEmptyString "${reservationPath}.conflictBehavior" (attrs.conflictBehavior or null);
+      conflict = normalizeStatePredicate "${reservationPath}.conflict" "${reservationPath}.conflictBehavior" (attrs.conflict or null) conflictBehavior;
+      staleBehavior = optionalNonEmptyString "${reservationPath}.staleBehavior" (attrs.staleBehavior or null);
+      stale = normalizeStatePredicate "${reservationPath}.stale" "${reservationPath}.staleBehavior" (attrs.stale or null) staleBehavior;
+      revocationBehavior = optionalNonEmptyString "${reservationPath}.revocationBehavior" (attrs.revocationBehavior or null);
+      revocation = normalizeStatePredicate "${reservationPath}.revocation" "${reservationPath}.revocationBehavior" (attrs.revocation or null) revocationBehavior;
+    in
+    { }
+    // (if namespace != null then { inherit namespace; } else { })
+    // (if namespaceOwner != null then { inherit namespaceOwner; } else { })
+    // (if requesterScope != null then { inherit requesterScope; } else { })
+    // (if requesterScopes != null then { inherit requesterScopes; } else { })
+    // (if recordClass != null then { inherit recordClass; } else { })
+    // (if fallbackBehavior != null then { inherit fallbackBehavior; } else { })
+    // (if deniedClasses != null then { inherit deniedClasses; } else { })
+    // (if conflictBehavior != null then { inherit conflictBehavior; } else { })
+    // (if conflict != null then { inherit conflict; } else { })
+    // (if staleBehavior != null then { inherit staleBehavior; } else { })
+    // (if stale != null then { inherit stale; } else { })
+    // (if revocationBehavior != null then { inherit revocationBehavior; } else { })
+    // (if revocation != null then { inherit revocation; } else { });
+
   reservationRequirement = reservationPath: attrs:
     if isNonEmptyString (attrs.id or null) then
       attrs.id
@@ -235,7 +330,8 @@ let
               upstreamBehaviorRef = entryPath;
             }
             // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
-            // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { }))
+            // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { })
+            // (normalizeFs880NamespaceFields reservationPath attrs))
           (builtins.length reservations);
       _uniqueMacs = ensureUniqueValues "${entryPath}.reservations" "MAC address" (map (reservation: reservation.mac) rendered);
       _uniqueOffsets =
