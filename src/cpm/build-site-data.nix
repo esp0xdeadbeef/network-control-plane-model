@@ -173,6 +173,8 @@ let
     runtimeTargets
     ;
 
+  pppoePairingFallbackRowId = "FS-800-HDS-030-SDS-030-SMS-010";
+
   validatePPPoEContracts =
     let
       siteTargetNames =
@@ -205,14 +207,14 @@ let
             + (if pppoe ? server then 1 else 0);
           _unexpected =
             if unexpectedServiceNames != [ ] then
-              common.failInventory pppoePath "must contain only 'client' or 'server' roles"
+              common.failInventory pppoePath "${pppoePairingFallbackRowId}: must contain only 'client' or 'server' roles"
             else
               true;
           _roleCount =
             if roleCount == 1 then
               true
             else
-              common.failInventory pppoePath "must define exactly one of 'client' or 'server'";
+              common.failInventory pppoePath "${pppoePairingFallbackRowId}: must define exactly one of 'client' or 'server'";
           role = if pppoe ? client then "client" else "server";
           service = pppoe.${role};
         in
@@ -244,7 +246,7 @@ let
         else
           common.failInventory
             "realization.nodes.*.services.pppoe"
-            "PPPoE interface '${interface}' requires exactly one client and one server before renderer handoff";
+            "${pppoePairingFallbackRowId}: PPPoE interface '${interface}' requires exactly one client and one server before renderer handoff";
       pppoeServerTargets =
         builtins.filter
           (targetName: (common.attrsOrEmpty (pppoeService targetName)) ? server)
@@ -268,7 +270,7 @@ let
         else
           common.failInventory
             "realization.nodes.${targetName}.advertisements"
-            "PPPoE server targets must explicitly disable DHCP4 and IPv6 RA/SLAAC fallback before renderer handoff";
+            "${pppoePairingFallbackRowId}: PPPoE server targets must explicitly disable DHCP4 and IPv6 RA/SLAAC fallback before renderer handoff";
     in
     builtins.deepSeq
       (
