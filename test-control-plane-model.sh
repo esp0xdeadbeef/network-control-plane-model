@@ -39,6 +39,7 @@ tests=(
   test-access-ipv6-ra-slaac-flags-contract.sh
   test-fs330-stable-client-address-identity.sh
   test-access-static-reservation-contracts.sh
+  test-fs880-static-reservation-namespace-fields.sh
   test-static-reservation-offset-resolution.sh
   test-static-reservation-duplicate-service-target-rejection.sh
   test-state-contract-dhcp4-explicit-input-only.sh
