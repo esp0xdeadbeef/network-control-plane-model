@@ -246,6 +246,8 @@ That means CPM output must be the canonical place for:
 * provider-bootstrap DNS contracts that stay separate from customer resolver services
 * service realization structure
 * WAN-facing realized grouping that downstream renderers need for attachment
+* protected secret declarations, secret sources, and source bindings as
+  reference-only records when inventory supplies them
 
 If a renderer needs one of those concepts and it is not explicit here, the preferred fix is to tighten
 the CPM contract rather than teaching each renderer a different fallback heuristic.
@@ -517,6 +519,19 @@ CPM output:
 
 - `control_plane_model.data.<enterprise>.<site>.routing.uplinks.<uplinkName>`
 - For BGP sites, eBGP neighbors are appended to `control_plane_model.data.<enterprise>.<site>.runtimeTargets.<node>.bgp.neighbors`
+
+## Protected secret source records
+
+Inventory may supply reference-only protected secret records:
+
+- `inventory.secretDeclarations`
+- `inventory.secretSources`
+- `inventory.sourceBindings`
+
+CPM preserves these arrays at the root of `control_plane_model` when present.
+They remain declaration/source/binding metadata only; CPM does not expose
+plaintext material or create routing, firewall, DNS, ingress, tenant
+reachability, trust-boundary, or network-behavior authority from them.
 
 ## IPv6 prefix delegation (PD) planning (inventory -> CPM output)
 

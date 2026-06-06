@@ -100,7 +100,25 @@ let
   cpm = {
     version = 1;
     data = cpmDataWithCrossSiteDnsAllowFrom;
-  };
+  }
+  // (
+    if builtins.isList (inventory.secretDeclarations or null) && inventory.secretDeclarations != [ ] then
+      { secretDeclarations = inventory.secretDeclarations; }
+    else
+      { }
+  )
+  // (
+    if builtins.isList (inventory.secretSources or null) && inventory.secretSources != [ ] then
+      { secretSources = inventory.secretSources; }
+    else
+      { }
+  )
+  // (
+    if builtins.isList (inventory.sourceBindings or null) && inventory.sourceBindings != [ ] then
+      { sourceBindings = inventory.sourceBindings; }
+    else
+      { }
+  );
 
   _validatedRuntimeModel =
     if validateRuntimeModel then

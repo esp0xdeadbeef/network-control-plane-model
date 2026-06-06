@@ -23,6 +23,7 @@ tests=(
   test-nix-file-loc.sh
   test-emitter-provenance-repo-boundary.sh
   test-resolved-inventory-secret-facts-contract.sh
+  test-hat-protected-secret-records-contract.sh
   test-dns-killswitch-policy-matrix.sh
   test-dns-namespace-fallback-contract.sh
   test-dns-public-block-source-authority.sh
