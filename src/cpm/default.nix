@@ -102,6 +102,24 @@ let
     data = cpmDataWithCrossSiteDnsAllowFrom;
   }
   // (
+    if builtins.isAttrs (inventory.operationalPrivacyContracts or null) && inventory.operationalPrivacyContracts != { } then
+      { operationalPrivacyContracts = inventory.operationalPrivacyContracts; }
+    else
+      { }
+  )
+  // (
+    if builtins.isAttrs (inventory.failureHandlingContracts or null) && inventory.failureHandlingContracts != { } then
+      { failureHandlingContracts = inventory.failureHandlingContracts; }
+    else
+      { }
+  )
+  // (
+    if builtins.isAttrs (inventory.failureDiagnosticContracts or null) && inventory.failureDiagnosticContracts != { } then
+      { failureDiagnosticContracts = inventory.failureDiagnosticContracts; }
+    else
+      { }
+  )
+  // (
     if builtins.isList (inventory.secretDeclarations or null) && inventory.secretDeclarations != [ ] then
       { secretDeclarations = inventory.secretDeclarations; }
     else
