@@ -80,9 +80,16 @@ base // {
                 ownerScope = "tenant-a";
                 requesterScopes = [ "tenant-a" ];
                 deniedRequesterScopes = [ "tenant-b" ];
+                deniedClasses = [ "PUBLIC-RECURSION" ];
                 addressFamily = "ipv4";
                 addresses = [ "10.20.0.101" ];
                 scopeDenialDiagnostic = "lease-name-denied-requester-scope";
+                revocation = {
+                  present = true;
+                  behavior = "revoke-lease-and-suppress-answer";
+                  reason = "client-revoked";
+                  source = "inventory-realization";
+                };
               }
               {
                 name = "client-01.tenant-a.lan.";
@@ -91,9 +98,16 @@ base // {
                 ownerScope = "tenant-a";
                 requesterScopes = [ "tenant-a" ];
                 deniedRequesterScopes = [ "tenant-b" ];
+                deniedClasses = [ "PUBLIC-RECURSION" ];
                 addressFamily = "ipv6";
                 addresses = [ "fd00:20::101" ];
                 scopeDenialDiagnostic = "lease-name-denied-requester-scope";
+                revocation = {
+                  present = true;
+                  behavior = "revoke-lease-and-suppress-answer";
+                  reason = "client-revoked";
+                  source = "inventory-realization";
+                };
               }
             ];
             recordPublications = [
@@ -149,7 +163,7 @@ base // {
               {
                 namespace = "tenant-a.lan.";
                 diagnosticType = "stale-lease";
-                recordNames = [ "old-client.tenant-a.lan." ];
+                recordNames = [ "old-client.tenant-a.lan." "client-01.tenant-a.lan." ];
                 behavior = "suppress-stale-answer";
                 reason = "lease-expired";
                 resolutionAuthority = "cpm-diagnostic";
@@ -346,16 +360,31 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     diagnosticTypes = builtins.map (entry: entry.diagnosticType) dns.namespaceDiagnostics;
   in
     authority.namespace == "tenant-a.lan."
+    && authority.namespaceOwner == "tenant-a"
     && authority.ownerScope == "tenant-a"
     && authority.requesterScopes == [ "tenant-a" ]
     && authority.addressFamilies == [ "ipv4" "ipv6" ]
     && authority.fallbackBehavior == "local-authority-before-recursion"
+    && lease4.namespaceOwner == "tenant-a"
+    && lease6.namespaceOwner == "tenant-a"
+    && lease4.recordClass == "A"
+    && lease6.recordClass == "AAAA"
+    && lease4.fallbackBehavior == "local-authority-before-recursion"
+    && lease6.fallbackBehavior == "local-authority-before-recursion"
+    && lease4.deniedClasses == [ "PUBLIC-RECURSION" ]
+    && lease6.deniedClasses == [ "PUBLIC-RECURSION" ]
     && lease4.addressFamily == "ipv4"
     && lease6.addressFamily == "ipv6"
     && lease4.addresses == [ "10.20.0.101" ]
     && lease6.addresses == [ "fd00:20::101" ]
     && lease4.scopeDenialDiagnostic == "lease-name-denied-requester-scope"
     && lease6.scopeDenialDiagnostic == "lease-name-denied-requester-scope"
+    && lease4.conflict.present == true
+    && lease4.conflict.behavior == "fail-closed"
+    && lease4.stale.present == true
+    && lease4.stale.behavior == "suppress-stale-answer"
+    && lease4.revocation.present == true
+    && lease4.revocation.behavior == "revoke-lease-and-suppress-answer"
     && staticPublication.publicationScopes == [ "tenant-a" ]
     && reversePublication.reverseName == "printer.tenant-a.lan."
     && discoveryPublication.publicationDenialDiagnostic == "discovery-record-not-published-to-requester-scope"

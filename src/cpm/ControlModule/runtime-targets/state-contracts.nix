@@ -20,11 +20,49 @@ let
   recordPolicyFor = statePolicy:
     attrsOrEmpty (statePolicy.operationalRecords or null);
 
+  leaseNamespaceRecordFields = [
+    "time"
+    "node"
+    "service"
+    "eventType"
+    "clientOrAddress"
+    "action"
+    "result"
+    "severity"
+    "namespace"
+    "namespaceOwner"
+    "requesterScope"
+    "recordClass"
+    "deniedClasses"
+    "conflict"
+    "stale"
+    "revocation"
+  ];
+
+  leaseOperationalEventTypes = [
+    "lease-allocated"
+    "lease-renewed"
+    "lease-released"
+    "lease-conflict-detected"
+    "lease-marked-stale"
+    "lease-revoked"
+  ];
+
   dhcp4LeaseContract = targetName: persistencePolicy: entry:
     persistenceContract targetName persistencePolicy "dhcp4" (entry.id or entry.interface or "unknown") {
       kind = "lease-state";
       interface = entry.interface or "";
       tenant = entry.tenant or "";
+      leaseNamespaceFields = [
+        "namespace"
+        "namespaceOwner"
+        "requesterScope"
+        "recordClass"
+        "deniedClasses"
+        "conflict"
+        "stale"
+        "revocation"
+      ];
     };
 
   dhcpv6LeaseContract = targetName: persistencePolicy: entry:
@@ -32,6 +70,16 @@ let
       kind = "lease-state";
       interface = entry.interface or "";
       tenant = entry.tenant or "";
+      leaseNamespaceFields = [
+        "namespace"
+        "namespaceOwner"
+        "requesterScope"
+        "recordClass"
+        "deniedClasses"
+        "conflict"
+        "stale"
+        "revocation"
+      ];
     };
 
   dnsStateContracts = targetName: persistencePolicy: dns:
@@ -68,14 +116,16 @@ let
 
   dhcp4RecordContract = targetName: recordPolicy: entry:
     recordContract targetName recordPolicy "dhcp4" (entry.id or entry.interface or "unknown") {
-      eventTypes = [ "lease-allocated" "lease-renewed" "lease-released" ];
+      eventTypes = leaseOperationalEventTypes;
+      fields = leaseNamespaceRecordFields;
       interface = entry.interface or "";
       tenant = entry.tenant or "";
     };
 
   dhcpv6RecordContract = targetName: recordPolicy: entry:
     recordContract targetName recordPolicy "dhcpv6" (entry.id or entry.interface or "unknown") {
-      eventTypes = [ "lease-allocated" "lease-renewed" "lease-released" ];
+      eventTypes = leaseOperationalEventTypes;
+      fields = leaseNamespaceRecordFields;
       interface = entry.interface or "";
       tenant = entry.tenant or "";
     };
@@ -131,7 +181,7 @@ let
 
 in
 targetName: target:
-  (builtins.removeAttrs target [ "statePolicy" ])
+(builtins.removeAttrs target [ "statePolicy" ])
   // {
-    stateContracts = buildStateContracts targetName target;
-  }
+  stateContracts = buildStateContracts targetName target;
+}

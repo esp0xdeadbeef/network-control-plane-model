@@ -110,6 +110,7 @@ else
               publicRecursionFallback
               requesterScope
               ;
+            deniedClasses = deniedRecordClasses;
           } // lib.optionalAttrs (fallbackTarget != null) { inherit fallbackTarget; })
         )
       );

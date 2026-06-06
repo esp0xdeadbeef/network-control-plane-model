@@ -159,9 +159,9 @@ in
       localRecords = normalizeLocalRecords dnsPath dns;
       namespaceFallback = normalizeNamespaceFallback dnsPath dns;
       namespaceAuthority = normalizeNamespaceAuthority dnsPath dns;
-      leaseNameScopes = normalizeLeaseNameScopes dnsPath dns;
-      recordPublications = normalizeRecordPublications dnsPath dns;
       namespaceDiagnostics = normalizeNamespaceDiagnostics dnsPath dns;
+      leaseNameScopes = normalizeLeaseNameScopes dnsPath dns namespaceAuthority namespaceFallback namespaceDiagnostics;
+      recordPublications = normalizeRecordPublications dnsPath dns;
     in
     builtins.seq _forwarderConflict (
       builtins.seq _killSwitchNoPublicFallback (
@@ -182,7 +182,7 @@ in
             routeContracts
             routePreference
             ;
-          }
+        }
           // lib.optionalAttrs (localZones != [ ]) { inherit localZones; }
           // lib.optionalAttrs (localRecords != [ ]) { inherit localRecords; }
           // lib.optionalAttrs (namespaceFallback != null) { inherit namespaceFallback; }
