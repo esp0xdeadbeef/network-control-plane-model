@@ -36,6 +36,11 @@ let
       inherit helpers;
     };
 
+  providerAccessRequiredFieldsValidation =
+    import ./ControlModule/provider-access-required-fields.nix {
+      inherit helpers inventory;
+    };
+
   ipam = import ./ipam.nix { inherit lib; };
 
   common = import ./Site/build-data/common.nix {
@@ -117,5 +122,5 @@ let
       };
 in
 builtins.seq
-  (forceAll [ _validatedRuntimeModel _validatedInventory ])
+  (forceAll [ _validatedRuntimeModel _validatedInventory providerAccessRequiredFieldsValidation ])
   cpm
