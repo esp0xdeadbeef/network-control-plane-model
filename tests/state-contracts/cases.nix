@@ -143,14 +143,19 @@ let
   dnsResolverRecord = builtins.elemAt persistent.stateContracts.operationalRecords.dnsResolver 0;
 
   requiredRecordFields = [
-    "time"
-    "node"
-    "service"
-    "eventType"
-    "clientOrAddress"
-    "action"
-    "result"
-    "severity"
+    "recordType"
+    "timestampSource"
+    "site"
+    "context"
+    "runtimeFactSet"
+    "modelProvenance"
+    "decision"
+    "reason"
+    "redactionClass"
+  ];
+
+  conditionalRecordFields = [
+    "tenant"
   ];
 
   excludedRecordFields = [
@@ -169,6 +174,13 @@ let
     "conflict"
     "stale"
     "revocation"
+  ];
+
+  operationalRecords = [
+    dhcp4Record
+    dhcpv6Record
+    dnsServiceRecord
+    dnsResolverRecord
   ];
 in
 {
@@ -326,16 +338,32 @@ in
     && dnsResolverRecord.path == "/persist/network/records/dns-resolver/router-access-client/resolver-state.jsonl";
 
   operationalRecordContextFields =
-    hasAll requiredRecordFields dhcp4Record.fields
-    && hasAll requiredRecordFields dhcpv6Record.fields
-    && hasAll requiredRecordFields dnsServiceRecord.fields
-    && hasAll requiredRecordFields dnsResolverRecord.fields;
+    builtins.all
+      (record:
+        hasAll requiredRecordFields record.fields
+        && hasAll conditionalRecordFields record.fields
+        && record.schema.requiredFields == requiredRecordFields
+        && record.schema.conditionalFields == conditionalRecordFields)
+      operationalRecords;
 
   operationalRecordExcludedFields =
     hasAll excludedRecordFields dhcp4Record.excludedFields
     && hasAll excludedRecordFields dhcpv6Record.excludedFields
     && hasAll excludedRecordFields dnsServiceRecord.excludedFields
     && hasAll excludedRecordFields dnsResolverRecord.excludedFields;
+
+  operationalRecordIncompleteEvidenceClassification =
+    builtins.all
+      (record:
+        record.schema.incompleteEvidence.classification == "incomplete-evidence"
+        && record.schema.incompleteEvidence.whenMissingFields == [
+          "site"
+          "context"
+          "runtimeFactSet"
+          "modelProvenance"
+        ]
+        && record.schema.incompleteEvidence.promotionAllowed == false)
+      operationalRecords;
 
   missingPersistenceRootThrows =
     builtins.deepSeq missingPersistenceRoot.stateContracts.persistence.dhcp4Leases true;
