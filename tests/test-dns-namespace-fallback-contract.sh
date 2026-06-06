@@ -397,13 +397,16 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && missingRecord.action == "block"
     && missingRecord.publicRecursionFallback == false
     && missingRecord.deniedRecordClasses == [ "PUBLIC-RECURSION" ]
+    && missingRecord.deniedClasses == [ "PUBLIC-RECURSION" ]
     && missingRecord.leakPrevention == "fail-closed"
     && deniedScope.action == "deny"
     && deniedScope.publicRecursionFallback == false
+    && deniedScope.deniedClasses == [ "A" "AAAA" "PUBLIC-RECURSION" ]
     && !(deniedScope ? fallbackTarget)
     && deniedScope.leakPrevention == "terminal-denial"
     && fallbackDecision.allowedRecordClasses == [ "A" "AAAA" ]
     && fallbackDecision.deniedRecordClasses == [ "LOCAL-AUTHORITY" ]
+    && fallbackDecision.deniedClasses == [ "LOCAL-AUTHORITY" ]
     && fallbackDecision.fallbackTarget == "guest-recursive-dns"
     && fallbackDecision.publicRecursionFallback == true
     && fallbackDecision.leakPrevention == "explicit-split-horizon-fallback"

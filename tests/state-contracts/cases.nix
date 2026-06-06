@@ -159,6 +159,17 @@ let
     "fullPacketPayload"
     "unboundedDebugOutput"
   ];
+
+  leaseNamespaceFields = [
+    "namespace"
+    "namespaceOwner"
+    "requesterScope"
+    "recordClass"
+    "deniedClasses"
+    "conflict"
+    "stale"
+    "revocation"
+  ];
 in
 {
   dhcp4PersistenceContract =
@@ -174,6 +185,7 @@ in
     && dhcp4.stateLossHandling == "fail-closed-require-persistent-state"
     && dhcp4.interface == "tenant-client"
     && dhcp4.tenant == "client"
+    && hasAll leaseNamespaceFields dhcp4.leaseNamespaceFields
     && dhcp4.source == "inventory-realization"
     && dhcp4.path == "/persist/network/state/dhcp4/router-access-client/client";
 
@@ -185,6 +197,7 @@ in
     && dhcpv6.durabilityClass == "restart-persistent"
     && dhcpv6.interface == "tenant-client"
     && dhcpv6.tenant == "client"
+    && hasAll leaseNamespaceFields dhcpv6.leaseNamespaceFields
     && dhcpv6.source == "inventory-realization"
     && dhcpv6.path == "/persist/network/state/dhcpv6/router-access-client/client-v6";
 
@@ -272,6 +285,10 @@ in
     && dhcp4Record.source == "inventory-realization"
     && builtins.elem "lease-allocated" dhcp4Record.eventTypes
     && builtins.elem "lease-released" dhcp4Record.eventTypes
+    && builtins.elem "lease-conflict-detected" dhcp4Record.eventTypes
+    && builtins.elem "lease-marked-stale" dhcp4Record.eventTypes
+    && builtins.elem "lease-revoked" dhcp4Record.eventTypes
+    && hasAll leaseNamespaceFields dhcp4Record.fields
     && dhcp4Record.path == "/persist/network/records/dhcp4/router-access-client/client.jsonl";
 
   dhcpv6OperationalRecordContract =
@@ -282,6 +299,10 @@ in
     && dhcpv6Record.source == "inventory-realization"
     && builtins.elem "lease-allocated" dhcpv6Record.eventTypes
     && builtins.elem "lease-released" dhcpv6Record.eventTypes
+    && builtins.elem "lease-conflict-detected" dhcpv6Record.eventTypes
+    && builtins.elem "lease-marked-stale" dhcpv6Record.eventTypes
+    && builtins.elem "lease-revoked" dhcpv6Record.eventTypes
+    && hasAll leaseNamespaceFields dhcpv6Record.fields
     && dhcpv6Record.path == "/persist/network/records/dhcpv6/router-access-client/client-v6.jsonl";
 
   dnsServiceOperationalRecordContract =
