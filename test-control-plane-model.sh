@@ -49,8 +49,10 @@ tests=(
   test-state-contract-dns-explicit-input-only.sh
   test-state-contract-dns-resolver-persistence.sh
   test-state-contract-dns-service-persistence.sh
+  test-state-contract-durability-classes.sh
   test-state-contract-ephemeral-explicit.sh
   test-state-contract-ephemeral-summary.sh
+  test-state-contract-invalid-durability-class-fails.sh
   test-state-contract-operational-exclusions.sh
   test-state-contract-operational-fields.sh
   test-state-contract-record-dhcp4.sh

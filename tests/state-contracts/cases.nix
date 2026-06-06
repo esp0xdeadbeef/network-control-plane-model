@@ -60,6 +60,24 @@ let
     };
   };
 
+  restartTolerant = addStateContracts "router-access-lab" {
+    statePolicy.persistence = {
+      required = false;
+      root = "/run/network/state";
+      durabilityClass = "restart-tolerant";
+      stateLossHandling = "rebuild-from-modeled-runtime-facts";
+    };
+    advertisements = {
+      dhcp4 = [
+        {
+          id = "lab";
+          interface = "tenant-lab";
+          tenant = "lab";
+        }
+      ];
+    };
+  };
+
   noAdvertisements = addStateContracts "router-no-advertisements" {
     statePolicy.persistence.root = "/persist/network/state";
   };
@@ -99,12 +117,26 @@ let
     ];
   };
 
+  invalidDurabilityClass = addStateContracts "router-bad-durability" {
+    statePolicy.persistence = {
+      required = false;
+      durabilityClass = "restart-eventually";
+    };
+    advertisements.dhcp4 = [
+      {
+        id = "bad";
+        interface = "tenant-bad";
+      }
+    ];
+  };
+
   dhcp4 = builtins.elemAt persistent.stateContracts.persistence.dhcp4Leases 0;
   dhcpv6 = builtins.elemAt persistent.stateContracts.persistence.dhcpv6Leases 0;
   dnsService = builtins.elemAt persistent.stateContracts.persistence.dnsServiceState 0;
   dnsResolver = builtins.elemAt persistent.stateContracts.persistence.dnsResolverState 0;
   relatedService = builtins.elemAt persistent.stateContracts.persistence.relatedServices 0;
   ephemeralDhcp4 = builtins.elemAt ephemeral.stateContracts.persistence.dhcp4Leases 0;
+  restartTolerantDhcp4 = builtins.elemAt restartTolerant.stateContracts.persistence.dhcp4Leases 0;
   dhcp4Record = builtins.elemAt persistent.stateContracts.operationalRecords.dhcp4Leases 0;
   dhcpv6Record = builtins.elemAt persistent.stateContracts.operationalRecords.dhcpv6Leases 0;
   dnsServiceRecord = builtins.elemAt persistent.stateContracts.operationalRecords.dnsService 0;
@@ -135,6 +167,11 @@ in
     && dhcp4.kind == "lease-state"
     && dhcp4.mode == "persistent"
     && dhcp4.required == true
+    && dhcp4.targetName == "router-access-client"
+    && dhcp4.scope == { target = "router-access-client"; service = "dhcp4"; id = "client"; interface = "tenant-client"; tenant = "client"; }
+    && dhcp4.stateClass == "lease-state"
+    && dhcp4.durabilityClass == "restart-persistent"
+    && dhcp4.stateLossHandling == "fail-closed-require-persistent-state"
     && dhcp4.interface == "tenant-client"
     && dhcp4.tenant == "client"
     && dhcp4.source == "inventory-realization"
@@ -145,6 +182,7 @@ in
     && dhcpv6.kind == "lease-state"
     && dhcpv6.mode == "persistent"
     && dhcpv6.required == true
+    && dhcpv6.durabilityClass == "restart-persistent"
     && dhcpv6.interface == "tenant-client"
     && dhcpv6.tenant == "client"
     && dhcpv6.source == "inventory-realization"
@@ -155,6 +193,11 @@ in
     && dnsService.kind == "service-state"
     && dnsService.mode == "persistent"
     && dnsService.required == true
+    && dnsService.targetName == "router-access-client"
+    && dnsService.scope == { target = "router-access-client"; service = "dns-service"; id = "service-state"; }
+    && dnsService.stateClass == "service-state"
+    && dnsService.durabilityClass == "restart-persistent"
+    && dnsService.stateLossHandling == "fail-closed-require-persistent-state"
     && dnsService.listen == [ "10.20.10.1" ]
     && dnsService.source == "inventory-realization"
     && dnsService.path == "/persist/network/state/dns-service/router-access-client/service-state";
@@ -164,6 +207,7 @@ in
     && dnsResolver.kind == "resolver-state"
     && dnsResolver.mode == "persistent"
     && dnsResolver.required == true
+    && dnsResolver.durabilityClass == "restart-persistent"
     && dnsResolver.forwarders == [ "1.1.1.1" ]
     && dnsResolver.source == "inventory-realization"
     && dnsResolver.path == "/persist/network/state/dns-resolver/router-access-client/resolver-state";
@@ -173,6 +217,7 @@ in
     && relatedService.kind == "service-state"
     && relatedService.mode == "persistent"
     && relatedService.required == true
+    && relatedService.durabilityClass == "restart-persistent"
     && relatedService.source == "inventory-realization"
     && relatedService.path == "/persist/network/state/mdns/router-access-client/service-state";
 
@@ -184,8 +229,20 @@ in
     && ephemeralDhcp4.kind == "lease-state"
     && ephemeralDhcp4.mode == "ephemeral"
     && ephemeralDhcp4.required == false
+    && ephemeralDhcp4.durabilityClass == "disposable"
+    && ephemeralDhcp4.stateLossHandling == "recreate-empty-state"
     && ephemeralDhcp4.source == "explicit-ephemeral"
     && ephemeralDhcp4.runtimeLocation == "ephemeral";
+
+  restartTolerantPersistenceContract =
+    restartTolerantDhcp4.service == "dhcp4"
+    && restartTolerantDhcp4.kind == "lease-state"
+    && restartTolerantDhcp4.mode == "ephemeral"
+    && restartTolerantDhcp4.required == false
+    && restartTolerantDhcp4.durabilityClass == "restart-tolerant"
+    && restartTolerantDhcp4.stateLossHandling == "rebuild-from-modeled-runtime-facts"
+    && restartTolerantDhcp4.source == "inventory-realization"
+    && restartTolerantDhcp4.path == "/run/network/state/dhcp4/router-access-lab/lab";
 
   persistentSummaryNotEphemeral =
     persistent.stateContracts.ephemeral.explicit == false
@@ -207,6 +264,11 @@ in
     && dhcp4Record.format == "jsonl"
     && dhcp4Record.mode == "persistent"
     && dhcp4Record.required == true
+    && dhcp4Record.targetName == "router-access-client"
+    && dhcp4Record.scope == { target = "router-access-client"; service = "dhcp4"; id = "client"; interface = "tenant-client"; tenant = "client"; }
+    && dhcp4Record.stateClass == "operational-record"
+    && dhcp4Record.durabilityClass == "restart-persistent"
+    && dhcp4Record.stateLossHandling == "fail-closed-require-persistent-state"
     && dhcp4Record.source == "inventory-realization"
     && builtins.elem "lease-allocated" dhcp4Record.eventTypes
     && builtins.elem "lease-released" dhcp4Record.eventTypes
@@ -262,4 +324,7 @@ in
 
   missingRecordRootThrows =
     builtins.deepSeq missingRecordRoot.stateContracts.operationalRecords.dhcp4Leases true;
+
+  invalidDurabilityClassThrows =
+    builtins.deepSeq invalidDurabilityClass.stateContracts.persistence.dhcp4Leases true;
 }
