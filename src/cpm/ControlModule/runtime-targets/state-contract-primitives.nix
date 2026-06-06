@@ -18,6 +18,52 @@ let
     let value = policy.${field} or "";
     in if isNonEmptyString value then value else "";
 
+  allowedDurabilityClasses = [
+    "disposable"
+    "restart-tolerant"
+    "restart-persistent"
+  ];
+
+  requireDurabilityClass = path: value:
+    if builtins.elem value allowedDurabilityClasses then
+      value
+    else
+      throw "${path} must be one of: disposable, restart-tolerant, restart-persistent";
+
+  durabilityClassFor = policyPath: policy: required: hasPath:
+    let
+      defaultClass =
+        if required then
+          "restart-persistent"
+        else if hasPath then
+          "restart-tolerant"
+        else
+          "disposable";
+      durabilityClass = requireDurabilityClass "${policyPath}.durabilityClass" (policy.durabilityClass or defaultClass);
+      _requiredClass =
+        if required && durabilityClass != "restart-persistent" then
+          throw "${policyPath}.durabilityClass must be restart-persistent when required=true"
+        else
+          true;
+    in
+    builtins.seq _requiredClass durabilityClass;
+
+  stateLossHandlingFor = policyPath: policy: durabilityClass:
+    let
+      defaultHandling =
+        if durabilityClass == "restart-persistent" then
+          "fail-closed-require-persistent-state"
+        else if durabilityClass == "restart-tolerant" then
+          "rebuild-from-runtime-sources"
+        else
+          "recreate-empty-state";
+      value = policy.stateLossHandling or defaultHandling;
+    in
+    if isNonEmptyString value then
+      value
+    else
+      throw "${policyPath}.stateLossHandling must be a non-empty string";
+
   servicePath = root: service: targetName: id:
     "${root}/${service}/${targetName}/${id}";
 
@@ -38,36 +84,56 @@ let
       required = persistenceRequired persistencePolicy;
       root = rootFor persistencePolicy "root";
       path = buildPath root (attrs.path or "") (servicePath root service targetName id);
+      hasPath = isNonEmptyString path;
+      durabilityClass = durabilityClassFor "statePolicy.persistence" persistencePolicy required hasPath;
+      stateLossHandling = stateLossHandlingFor "statePolicy.persistence" persistencePolicy durabilityClass;
       mode = if required then "persistent" else "ephemeral";
       _pathRequired =
-        if required && !isNonEmptyString path then
+        if required && !hasPath then
           throw "statePolicy.persistence.root or explicit ${service}.${id}.path is required when persistence.required=true"
         else
           true;
     in
     builtins.seq _pathRequired ({
-      inherit service id mode required;
-      source = if isNonEmptyString path then "inventory-realization" else "explicit-ephemeral";
+      inherit service id mode required targetName durabilityClass stateLossHandling;
+      stateClass = attrs.kind or "state";
+      scope = {
+        target = targetName;
+        inherit service id;
+      }
+      // (if isNonEmptyString (attrs.interface or "") then { interface = attrs.interface; } else { })
+      // (if isNonEmptyString (attrs.tenant or "") then { tenant = attrs.tenant; } else { });
+      source = if hasPath then "inventory-realization" else "explicit-ephemeral";
     }
     // attrs
-    // (if isNonEmptyString path then { inherit path; } else { runtimeLocation = "ephemeral"; }));
+    // (if hasPath then { inherit path; } else { runtimeLocation = "ephemeral"; }));
 
   recordContract = targetName: recordPolicy: service: id: attrs:
     let
       required = recordRequired recordPolicy;
       root = rootFor recordPolicy "root";
       path = buildPath root (attrs.path or "") (servicePath root service targetName "${id}.jsonl");
+      hasPath = isNonEmptyString path;
+      durabilityClass = durabilityClassFor "statePolicy.operationalRecords" recordPolicy required hasPath;
+      stateLossHandling = stateLossHandlingFor "statePolicy.operationalRecords" recordPolicy durabilityClass;
       _pathRequired =
-        if required && !isNonEmptyString path then
+        if required && !hasPath then
           throw "statePolicy.operationalRecords.root or explicit ${service}.${id}.path is required when operationalRecords.required=true"
         else
           true;
     in
     builtins.seq _pathRequired ({
-      inherit service id required;
+      inherit service id required targetName durabilityClass stateLossHandling;
       format = "jsonl";
       mode = if required then "persistent" else "ephemeral";
-      source = if isNonEmptyString path then "inventory-realization" else "explicit-ephemeral";
+      stateClass = "operational-record";
+      scope = {
+        target = targetName;
+        inherit service id;
+      }
+      // (if isNonEmptyString (attrs.interface or "") then { interface = attrs.interface; } else { })
+      // (if isNonEmptyString (attrs.tenant or "") then { tenant = attrs.tenant; } else { });
+      source = if hasPath then "inventory-realization" else "explicit-ephemeral";
       fields = [
         "time"
         "node"
@@ -86,7 +152,7 @@ let
       ];
     }
     // attrs
-    // (if isNonEmptyString path then { inherit path; } else { runtimeLocation = "ephemeral"; }));
+    // (if hasPath then { inherit path; } else { runtimeLocation = "ephemeral"; }));
 in
 {
   inherit
