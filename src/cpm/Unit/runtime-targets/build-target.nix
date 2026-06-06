@@ -78,8 +78,10 @@ let
         buildExplicitInterfaceEntry {
           inherit
             nodeName
+            nodeRole
             ifName
             portBindings
+            targetDef
             targetHostName
             targetId
             realizedTarget
