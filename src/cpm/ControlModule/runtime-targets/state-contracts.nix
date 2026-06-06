@@ -21,14 +21,6 @@ let
     attrsOrEmpty (statePolicy.operationalRecords or null);
 
   leaseNamespaceRecordFields = [
-    "time"
-    "node"
-    "service"
-    "eventType"
-    "clientOrAddress"
-    "action"
-    "result"
-    "severity"
     "namespace"
     "namespaceOwner"
     "requesterScope"

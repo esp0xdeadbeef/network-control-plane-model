@@ -56,12 +56,14 @@ tests=(
   test-state-contract-invalid-durability-class-fails.sh
   test-state-contract-operational-exclusions.sh
   test-state-contract-operational-fields.sh
+  test-state-contract-operational-incomplete-evidence.sh
   test-state-contract-record-dhcp4.sh
   test-state-contract-record-dhcpv6.sh
   test-state-contract-record-dns-resolver.sh
   test-state-contract-record-dns-service.sh
   test-state-contract-record-required-root-fails.sh
   test-state-contract-related-service-persistence.sh
+  test-fs890-operational-record-schema-runtime-target.sh
   test-delegated-overlay-public-egress.sh
   test-example-overlay-dns-return-table.sh
   test-core-overlay-delegated-egress-source-scope.sh

@@ -67,6 +67,32 @@ let
   servicePath = root: service: targetName: id:
     "${root}/${service}/${targetName}/${id}";
 
+  appendUnique = base: extra:
+    base ++ builtins.filter (field: !(builtins.elem field base)) extra;
+
+  operationalRecordRequiredFields = [
+    "recordType"
+    "timestampSource"
+    "site"
+    "context"
+    "runtimeFactSet"
+    "modelProvenance"
+    "decision"
+    "reason"
+    "redactionClass"
+  ];
+
+  operationalRecordConditionalFields = [
+    "tenant"
+  ];
+
+  operationalRecordExcludedFields = [
+    "secrets"
+    "certificates"
+    "fullPacketPayload"
+    "unboundedDebugOutput"
+  ];
+
   persistenceRequired = requiredFlag "statePolicy.persistence.required";
 
   recordRequired = requiredFlag "statePolicy.operationalRecords.required";
@@ -116,6 +142,9 @@ let
       hasPath = isNonEmptyString path;
       durabilityClass = durabilityClassFor "statePolicy.operationalRecords" recordPolicy required hasPath;
       stateLossHandling = stateLossHandlingFor "statePolicy.operationalRecords" recordPolicy durabilityClass;
+      fieldExtensions = listOrEmpty (attrs.fields or null);
+      excludedFieldExtensions = listOrEmpty (attrs.excludedFields or null);
+      attrsWithoutSchemaOverrides = builtins.removeAttrs attrs [ "fields" "excludedFields" ];
       _pathRequired =
         if required && !hasPath then
           throw "statePolicy.operationalRecords.root or explicit ${service}.${id}.path is required when operationalRecords.required=true"
@@ -134,30 +163,34 @@ let
       // (if isNonEmptyString (attrs.interface or "") then { interface = attrs.interface; } else { })
       // (if isNonEmptyString (attrs.tenant or "") then { tenant = attrs.tenant; } else { });
       source = if hasPath then "inventory-realization" else "explicit-ephemeral";
-      fields = [
-        "time"
-        "node"
-        "service"
-        "eventType"
-        "clientOrAddress"
-        "action"
-        "result"
-        "severity"
-      ];
-      excludedFields = [
-        "secrets"
-        "certificates"
-        "fullPacketPayload"
-        "unboundedDebugOutput"
-      ];
+      fields = appendUnique
+        (operationalRecordRequiredFields ++ operationalRecordConditionalFields)
+        fieldExtensions;
+      excludedFields = appendUnique operationalRecordExcludedFields excludedFieldExtensions;
+      schema = {
+        requiredFields = operationalRecordRequiredFields;
+        conditionalFields = operationalRecordConditionalFields;
+        incompleteEvidence = {
+          classification = "incomplete-evidence";
+          whenMissingFields = [
+            "site"
+            "context"
+            "runtimeFactSet"
+            "modelProvenance"
+          ];
+          promotionAllowed = false;
+        };
+      };
     }
-    // attrs
+    // attrsWithoutSchemaOverrides
     // (if hasPath then { inherit path; } else { runtimeLocation = "ephemeral"; }));
 in
 {
   inherit
     attrsOrEmpty
     listOrEmpty
+    operationalRecordConditionalFields
+    operationalRecordRequiredFields
     persistenceContract
     persistenceRequired
     recordContract
