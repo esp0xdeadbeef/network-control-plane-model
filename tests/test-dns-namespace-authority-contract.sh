@@ -3,6 +3,9 @@
 # GAMP-ID: FS-560-HDS-010-SDS-010-SMS-020
 # GAMP-ID: FS-560-HDS-010-SDS-010-SMS-030
 # GAMP-ID: FS-560-HDS-010-SDS-010-SMS-040
+# GAMP-ID: FS-880-HDS-010-SDS-010-SMS-010
+# GAMP-ID: FS-880-HDS-010-SDS-010-SMS-020
+# GAMP-ID: FS-880-HDS-010-SDS-010-SMS-030
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -24,6 +27,15 @@ output_json="${tmp_dir}/cpm.json"
 cat >"${inventory_path}" <<EOF
 let
   base = import ${fixture_dir}/inventory.nix;
+  modeledRouterSelfDns = {
+    implementation = "unbound";
+    listen = [ ];
+    allowFrom = [ ];
+    forwarders = [ "1.1.1.1" ];
+    deniedResolverCidrs = [ ];
+    killSwitch.blockPublicResolvers = false;
+    allowedUpstreamClasses = [ "local-access" "explicit-egress-default" ];
+  };
 in
 base // {
   realization = base.realization // {
@@ -152,6 +164,16 @@ base // {
               }
             ];
           };
+        };
+      };
+      globex-nyc-access-runtime = base.realization.nodes.globex-nyc-access-runtime // {
+        services = (base.realization.nodes.globex-nyc-access-runtime.services or { }) // {
+          dns = modeledRouterSelfDns;
+        };
+      };
+      globex-lon-access-runtime = base.realization.nodes.globex-lon-access-runtime // {
+        services = (base.realization.nodes.globex-lon-access-runtime.services or { }) // {
+          dns = modeledRouterSelfDns;
         };
       };
     };
