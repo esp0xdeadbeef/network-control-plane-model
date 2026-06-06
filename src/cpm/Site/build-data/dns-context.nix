@@ -1,6 +1,7 @@
 { lib
 , helpers
 , common
+, providerAccessDns
 , inventoryEndpoints
 , sitePath
 , domains
@@ -30,7 +31,7 @@ let
   };
 
   dnsPolicyDerived = import ../../ControlModule/dns-policy/derived-services.nix {
-    inherit lib helpers dnsPolicy sitePath allowedRelations serviceDefinitions;
+    inherit lib helpers dnsPolicy providerAccessDns sitePath allowedRelations serviceDefinitions;
   };
 
 in
@@ -49,5 +50,6 @@ in
     policyDerivedDnsDirectEgressBlockedForTenants
     policyDerivedDnsForwardersForListeners
     policyDerivedDnsForwardersForTenants
+    policyDerivedDnsUpstreamRecordsForListeners
     ;
 }

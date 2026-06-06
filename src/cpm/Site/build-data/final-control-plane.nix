@@ -17,6 +17,7 @@
 , providerTenantsForServiceProvider
 , policyDerivedDnsAllowedClassesForListeners
 , policyDerivedDnsForwardersForListeners
+, policyDerivedDnsUpstreamRecordsForListeners
 , normalizeRuntimeTargetRoutes
 , normalizeRuntimeTargetRoutesAfterPolicyComplements
 , normalizedRuntimeTargets
@@ -67,6 +68,7 @@ let
       ipam
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsForwardersForListeners
+      policyDerivedDnsUpstreamRecordsForListeners
       ;
   };
 

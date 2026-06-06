@@ -155,6 +155,7 @@ in
         if dns ? directEgressBlockedTenants then normalizeStringList dnsPath dns "directEgressBlockedTenants" else null;
       routeContracts = requireList "${dnsPath}.routeContracts" (dns.routeContracts or [ ]);
       policyMatrix = requireList "${dnsPath}.policyMatrix" (dns.policyMatrix or [ ]);
+      upstreamResolvers = requireList "${dnsPath}.upstreamResolvers" (dns.upstreamResolvers or [ ]);
       localZones = normalizeLocalZones dnsPath dns;
       localRecords = normalizeLocalRecords dnsPath dns;
       namespaceFallback = normalizeNamespaceFallback dnsPath dns;
@@ -173,6 +174,7 @@ in
           // lib.optionalAttrs (outgoingInterfaces != [ ]) { inherit outgoingInterfaces; }
           // lib.optionalAttrs (roles != { }) { inherit roles; }
           // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
+          // lib.optionalAttrs (upstreamResolvers != [ ]) { inherit upstreamResolvers; }
           // {
           inherit
             allowedUpstreamClasses

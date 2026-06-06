@@ -4,6 +4,7 @@
 , ipam
 , policyDerivedDnsAllowedClassesForListeners
 , policyDerivedDnsForwardersForListeners
+, policyDerivedDnsUpstreamRecordsForListeners
 ,
 }:
 
@@ -16,6 +17,7 @@ let
       common
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsForwardersForListeners
+      policyDerivedDnsUpstreamRecordsForListeners
       ;
   };
   addStateContracts = import ./state-contracts.nix {

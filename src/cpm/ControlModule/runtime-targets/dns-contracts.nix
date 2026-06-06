@@ -3,6 +3,7 @@
 , common
 , policyDerivedDnsAllowedClassesForListeners
 , policyDerivedDnsForwardersForListeners
+, policyDerivedDnsUpstreamRecordsForListeners ? (_listeners: [ ])
 ,
 }:
 
@@ -37,6 +38,12 @@ let
     dst = forwarder;
     source = "dns-service";
   };
+
+  routeContractForUpstreamResolver = resolver:
+    attrsOrEmpty resolver
+    // {
+      source = (attrsOrEmpty resolver).source or "provider-access-dns";
+    };
 
   routeForForwarder = forwarder: {
     dst = forwarder;
@@ -164,8 +171,21 @@ let
       hasModeledDnsPolicy = existingServices ? dns;
       existingDns = attrsOrEmpty (existingServices.dns or null);
       existingForwarders = listOrEmpty (existingDns.forwarders or null);
+      existingUpstreamResolvers = listOrEmpty (existingDns.upstreamResolvers or null);
+      derivedUpstreamResolvers = policyDerivedDnsUpstreamRecordsForListeners listeners;
+      upstreamResolvers =
+        if existingUpstreamResolvers != [ ] then
+          existingUpstreamResolvers
+        else
+          derivedUpstreamResolvers;
       derivedForwarders = policyDerivedDnsForwardersForListeners listeners;
-      forwarders = if existingForwarders != [ ] then existingForwarders else derivedForwarders;
+      forwarders =
+        if upstreamResolvers != [ ] then
+          [ ]
+        else if existingForwarders != [ ] then
+          existingForwarders
+        else
+          derivedForwarders;
       allowedUpstreamClasses =
         lib.unique (
           listOrEmpty (existingDns.allowedUpstreamClasses or null)
@@ -180,6 +200,7 @@ let
           blockDirectEgress = true;
           directEgressBlockedTenants = listOrEmpty (existingDns.directEgressBlockedTenants or null);
           forwarders = forwarders;
+          upstreamResolvers = upstreamResolvers;
           allowedUpstreamClasses = allowedUpstreamClasses;
           outgoingInterfaces =
             if listOrEmpty (existingDns.outgoingInterfaces or null) != [ ] then
@@ -213,9 +234,20 @@ let
   targetWithDns = synthesizeRouterSelfDns target;
   dns = attrsOrEmpty (targetWithDns.services.dns or null);
   forwarders = listOrEmpty (dns.forwarders or null);
+  upstreamResolverContracts = builtins.map routeContractForUpstreamResolver (listOrEmpty (dns.upstreamResolvers or null));
+  suppressForwarderContracts = upstreamResolverContracts != [ ] && forwarders == [ ];
+  dnsWithUpstreamResolverContracts =
+    if upstreamResolverContracts == [ ] then
+      dns
+    else
+      dns
+      // {
+        routeContracts = listOrEmpty (dns.routeContracts or null) ++ upstreamResolverContracts;
+        policyMatrix = listOrEmpty (dns.policyMatrix or null) ++ upstreamResolverContracts;
+      };
   dnsContracts =
     if forwarders == [ ] then
-      dns
+      dnsWithUpstreamResolverContracts
     else
       let
         allowedUpstreamClasses =
@@ -230,8 +262,8 @@ let
       // {
         allowedUpstreamClasses = allowedUpstreamClasses;
         roles = roles // { recursion = recursionRole // { allowedUpstreamClasses = allowedUpstreamClasses; }; };
-        routeContracts = listOrEmpty (dns.routeContracts or null) ++ builtins.map routeContractForForwarder forwarders;
-        policyMatrix = listOrEmpty (dns.policyMatrix or null) ++ builtins.map routeContractForForwarder forwarders;
+        routeContracts = listOrEmpty (dns.routeContracts or null) ++ upstreamResolverContracts ++ builtins.map routeContractForForwarder forwarders;
+        policyMatrix = listOrEmpty (dns.policyMatrix or null) ++ upstreamResolverContracts ++ builtins.map routeContractForForwarder forwarders;
       };
   dnsWithTrafficClassifications =
     let
@@ -271,6 +303,8 @@ let
 in
 if dns == { } then
   targetWithDns
+else if suppressForwarderContracts then
+  targetWithDnsContracts
 else if forwarders == [ ] then
   targetWithDnsContracts
 else if (targetWithDns.role or null) != "access" then
