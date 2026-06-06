@@ -18,6 +18,11 @@ let
   hostsRoot = requireAttrs "inventory.deployment.hosts" (deployment.hosts or { });
   realization = requireAttrs "inventory.realization" (inventoryRoot.realization or { });
   nodesRoot = requireAttrs "inventory.realization.nodes" (realization.nodes or { });
+  fabricLinksRoot =
+    if builtins.isAttrs (realization.fabricLinks or null) then
+      requireAttrs "inventory.realization.fabricLinks" realization.fabricLinks
+    else
+      { };
 
   routeLib = import ./EquipmentModule/realization-index/routes.nix {
     inherit helpers failInventory;
@@ -30,12 +35,16 @@ let
     inherit (hostLib) hostIndex;
     inherit (routeLib) requireRoutes;
   };
+  fabricLinkLib = import ./EquipmentModule/realization-index/fabric-links.nix {
+    inherit helpers failInventory;
+  };
   inherit (hostLib) hostIndex;
   inherit (portLib)
     buildSelectorIndex
     normalizeContainerBinding
     normalizePortBinding
     ;
+  inherit (fabricLinkLib) normalizeFabricLinks;
 
   buildTargetDef = targetName:
     let
@@ -80,6 +89,8 @@ let
             (sortedNames ports)
         );
 
+      fabricLinkBindings = normalizeFabricLinks targetName targetPath target fabricLinksRoot;
+
       containers =
         if builtins.isAttrs (target.containers or null) then
           requireAttrs "${targetPath}.containers" target.containers
@@ -110,6 +121,7 @@ let
             byLogicalInterface = buildSelectorIndex targetPath portDefs "logicalInterface";
             byUplink = buildSelectorIndex targetPath portDefs "uplink";
           };
+          fabricLinkBindings = fabricLinkBindings;
           containerBindings = containerBindings;
         };
       };
@@ -125,6 +137,7 @@ let
     inherit helpers targetDefs;
   };
   inherit (validations)
+    validateUniqueFabricLinksPerTarget
     validateUniqueLinkAdapterNamesPerHost
     validateUniqueRuntimeIfNamesPerTarget
     ;
@@ -146,6 +159,6 @@ let
       );
 in
 builtins.seq validateUniqueLinkAdapterNamesPerHost
-  (builtins.seq validateUniqueRuntimeIfNamesPerTarget {
+  (builtins.seq validateUniqueRuntimeIfNamesPerTarget (builtins.seq validateUniqueFabricLinksPerTarget {
     inherit targetDefs byLogical;
-  })
+  }))

@@ -71,9 +71,16 @@ let
               (sortedNames targetDef.portBindings.portDefs)
           ))
       (sortedNames targetDefs));
+
+  validateUniqueFabricLinksPerTarget =
+    forceAll (builtins.map
+      (targetName:
+        targetDefs.${targetName}.fabricLinkBindings.byLink)
+      (sortedNames targetDefs));
 in
 {
   inherit
+    validateUniqueFabricLinksPerTarget
     validateUniqueLinkAdapterNamesPerHost
     validateUniqueRuntimeIfNamesPerTarget
     ;

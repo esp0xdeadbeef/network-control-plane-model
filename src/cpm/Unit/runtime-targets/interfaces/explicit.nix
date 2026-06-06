@@ -28,6 +28,12 @@ let
       portBindings.byLogicalInterface.${ifName}
     else
       null;
+  fabricLinkBindingForInterface =
+    { sourceKind, backingRef, targetDef }:
+    if sourceKind == "p2p" && targetDef != null && hasAttr backingRef.name targetDef.fabricLinkBindings.byLink then
+      targetDef.fabricLinkBindings.byLink.${backingRef.name}
+    else
+      null;
   overlayAddress =
     { sourceKind, backingRef, nodeName, family }:
     let
@@ -52,7 +58,7 @@ let
     in
     if isNonEmptyString (service.interface or null) then service.interface else null;
 in
-{ nodeName, ifName, iface, portBindings, targetHostName, targetId, realizedTarget }:
+{ nodeName, nodeRole, ifName, iface, portBindings, targetDef, targetHostName, targetId, realizedTarget }:
 let
   ifacePath = "${sitePath}.nodes.${nodeName}.interfaces.${ifName}";
   ifaceAttrs = requireAttrs ifacePath iface;
@@ -60,7 +66,11 @@ let
   sourceIfName = requireString "${ifacePath}.interface" (ifaceAttrs.interface or null);
   backingRef = resolveBackingRef nodeName ifName ifaceAttrs;
   portBinding = portBindingForInterface { inherit sourceKind backingRef ifName portBindings; };
-  requiresExplicitPortRealization = realizedTarget && (sourceKind == "p2p" || sourceKind == "wan");
+  fabricLinkBinding = fabricLinkBindingForInterface { inherit sourceKind backingRef targetDef; };
+  isSelectorFabricRole = nodeRole == "downstream-selector" || nodeRole == "upstream-selector";
+  hasSelectorFabricLink = isSelectorFabricRole && fabricLinkBinding != null;
+  requiresExplicitPortRealization =
+    realizedTarget && (sourceKind == "wan" || (sourceKind == "p2p" && !hasSelectorFabricLink));
   _requiredPortBinding =
     if requiresExplicitPortRealization && portBinding == null then
       if sourceKind == "p2p" then
@@ -75,6 +85,8 @@ let
       overlayRuntimeIfName
     else if portBinding != null then
       portBinding.runtimeIfName
+    else if fabricLinkBinding != null && isNonEmptyString (fabricLinkBinding.runtimeIfName or null) then
+      fabricLinkBinding.runtimeIfName
     else
       sourceIfName;
   overlayAddr4 = overlayAddress { inherit sourceKind backingRef nodeName; family = 4; };
@@ -180,14 +192,21 @@ let
     // binderSourceAudit.make {
       path = ifacePath;
       field = "effectiveRuntimeRealization.interfaces.${ifName}";
-      binderSourceClass = if portBinding != null then "public-inventory" else "runtime-facts";
-      binderSourcePath = if portBinding != null then "${targetId}.ports" else ifacePath;
+      binderSourceClass = if portBinding != null || fabricLinkBinding != null then "public-inventory" else "runtime-facts";
+      binderSourcePath =
+        if portBinding != null then
+          "${targetId}.ports"
+        else if fabricLinkBinding != null then
+          fabricLinkBinding.sourcePath
+        else
+          ifacePath;
       upstreamBehaviorRef = ifacePath;
     }
     // (if portBinding != null && isNonEmptyString (portBinding.adapterName or null) then { adapterName = portBinding.adapterName; } else { })
     // (if portBinding != null && builtins.isAttrs (portBinding.attach or null) then { attach = portBinding.attach; } else { })
     // (if effectiveMtu != null then { mtu = effectiveMtu; } else { })
     // (if portBinding != null && builtins.isAttrs (portBinding.vxlan or null) then { vxlan = portBinding.vxlan; } else { })
+    // (if fabricLinkBinding != null then { fabricLink = fabricLinkBinding; } else { })
     // (if sourceKind == "wan" then { upstream = requireString "${ifacePath}.upstream" (ifaceAttrs.upstream or null); } else { })
     // (if sourceKind == "wan" && builtins.isAttrs (ifaceAttrs.wan or null) then { wan = ifaceAttrs.wan; } else { })
     // (if sourceKind == "tenant" then { tenant = tenantName; } else { })

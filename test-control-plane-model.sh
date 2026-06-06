@@ -69,6 +69,7 @@ tests=(
   test-example-overlay-dns-return-table.sh
   test-core-overlay-delegated-egress-source-scope.sh
   test-tri-site-edge-core-dns-service-public-egress-forwarding.sh
+  test-selector-fabric-links-realization.sh
   test-upstream-selector-no-core-crossconnect.sh
   test-upstream-selector-nebula-underlay-core-transit.sh
   test-runtime-underlay-endpoint-source-routes.sh
