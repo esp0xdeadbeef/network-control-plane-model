@@ -1,4 +1,4 @@
-{ lib, dnsPolicy, serviceDefinitions, context }:
+{ lib, dnsPolicy, providerAccessDns, serviceDefinitions, context }:
 
 let
   inherit (dnsPolicy)
@@ -30,6 +30,19 @@ let
         && (relation.from.kind or null) == "service"
         && (relation.from.name or null) == serviceName)
       allowedDnsExternalRelations;
+
+  serviceExternalDnsRelations = serviceName:
+    builtins.filter
+      (relation:
+        builtins.isAttrs (relation.from or null)
+        && (relation.from.kind or null) == "service"
+        && (relation.from.name or null) == serviceName)
+      allowedDnsExternalRelations;
+
+  providerAccessRecordsForHostedServices = hostedDnsServices:
+    lib.concatMap
+      (serviceName: lib.concatMap providerAccessDns.recordsForRelation (serviceExternalDnsRelations serviceName))
+      hostedDnsServices;
 in
 {
   forTenants = tenantNames:
@@ -51,8 +64,17 @@ in
   forListeners = listenAddrs:
     let
       hostedDnsServices = hostedDnsServicesForListeners listenAddrs;
+      providerAccessRecords = providerAccessRecordsForHostedServices hostedDnsServices;
     in
-    if builtins.any hasServiceExternalDnsEgress hostedDnsServices then defaultPublicForwarders else [ ];
+    if providerAccessRecords != [ ] then
+      [ ]
+    else if builtins.any hasServiceExternalDnsEgress hostedDnsServices then
+      defaultPublicForwarders
+    else
+      [ ];
+
+  upstreamRecordsForListeners = listenAddrs:
+    providerAccessRecordsForHostedServices (hostedDnsServicesForListeners listenAddrs);
 
   allowFromForListeners = listenAddrs:
     uniqueStrings (

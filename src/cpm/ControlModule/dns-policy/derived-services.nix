@@ -1,6 +1,7 @@
 { lib
 , helpers
 , dnsPolicy
+, providerAccessDns
 , sitePath
 , allowedRelations
 , serviceDefinitions
@@ -32,7 +33,7 @@ let
   };
 
   forwarders = import ./derived-services/forwarders.nix {
-    inherit lib dnsPolicy serviceDefinitions context;
+    inherit lib dnsPolicy providerAccessDns serviceDefinitions context;
   };
 
   directEgress = import ./derived-services/direct-egress.nix {
@@ -44,6 +45,7 @@ in
 
   policyDerivedDnsForwardersForTenants = forwarders.forTenants;
   policyDerivedDnsForwardersForListeners = forwarders.forListeners;
+  policyDerivedDnsUpstreamRecordsForListeners = forwarders.upstreamRecordsForListeners;
   policyDerivedDnsAllowFromForListeners = forwarders.allowFromForListeners;
   policyDerivedDnsAllowedClassesForTenants = allowedClasses.forTenants;
   policyDerivedDnsAllowedClassesForListeners = allowedClasses.forListeners;

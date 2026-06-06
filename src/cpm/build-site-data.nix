@@ -53,11 +53,26 @@ let
     upstreamSelectorNodeName
     ;
 
+  providerAccessDns = import ./Site/build-data/provider-access-dns.nix {
+    inherit
+      lib
+      helpers
+      common
+      inventoryAttrs
+      enterpriseName
+      siteName
+      siteId
+      siteDisplayName
+      serviceDefinitions
+      ;
+  };
+
   dnsContext = import ./Site/build-data/dns-context.nix {
     inherit
       lib
       helpers
       common
+      providerAccessDns
       inventoryEndpoints
       sitePath
       domains
@@ -78,6 +93,7 @@ let
     policyDerivedDnsDirectEgressBlockedForTenants
     policyDerivedDnsForwardersForListeners
     policyDerivedDnsForwardersForTenants
+    policyDerivedDnsUpstreamRecordsForListeners
     providerEndpointForServiceProvider
     providerTenantsForServiceProvider
     ;
@@ -161,6 +177,7 @@ let
       policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
+      policyDerivedDnsUpstreamRecordsForListeners
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       ;

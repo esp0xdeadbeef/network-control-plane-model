@@ -12,6 +12,7 @@
 , policyDerivedDnsDirectEgressBlockedForTenants
 , policyDerivedDnsForwardersForListeners
 , policyDerivedDnsForwardersForTenants
+, policyDerivedDnsUpstreamRecordsForListeners
 , uniqueStrings
 ,
 }:
@@ -203,6 +204,7 @@ let
       policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
+      policyDerivedDnsUpstreamRecordsForListeners
       normalizeRuntimeServices
       ;
   };

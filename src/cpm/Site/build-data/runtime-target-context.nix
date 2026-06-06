@@ -26,6 +26,7 @@
 , policyDerivedDnsDirectEgressBlockedForTenants
 , policyDerivedDnsForwardersForListeners
 , policyDerivedDnsForwardersForTenants
+, policyDerivedDnsUpstreamRecordsForListeners
 ,
 }:
 
@@ -67,6 +68,7 @@ let
       policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
+      policyDerivedDnsUpstreamRecordsForListeners
       uniqueStrings
       ;
   };

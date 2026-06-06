@@ -36,6 +36,7 @@
 , policyDerivedDnsDirectEgressBlockedForTenants
 , policyDerivedDnsForwardersForListeners
 , policyDerivedDnsForwardersForTenants
+, policyDerivedDnsUpstreamRecordsForListeners
 , normalizeRuntimeTargetRoutes
 , normalizeRuntimeTargetRoutesAfterPolicyComplements
 , enterpriseName
@@ -74,6 +75,7 @@ let
       policyDerivedDnsDirectEgressBlockedForTenants
       policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
+      policyDerivedDnsUpstreamRecordsForListeners
       ;
   };
 
@@ -101,6 +103,7 @@ let
       providerTenantsForServiceProvider
       policyDerivedDnsAllowedClassesForListeners
       policyDerivedDnsForwardersForListeners
+      policyDerivedDnsUpstreamRecordsForListeners
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       normalizedRuntimeTargets

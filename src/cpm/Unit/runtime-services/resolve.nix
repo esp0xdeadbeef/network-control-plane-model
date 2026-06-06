@@ -14,6 +14,7 @@
   policyDerivedDnsDirectEgressBlockedForTenants,
   policyDerivedDnsForwardersForListeners,
   policyDerivedDnsForwardersForTenants,
+  policyDerivedDnsUpstreamRecordsForListeners,
   normalizeRuntimeServices,
 }:
 
@@ -58,9 +59,14 @@
           if builtins.isList (dnsService.listen or null) then
             policyDerivedDnsForwardersForListeners dnsService.listen
           else
-            [ ]
+          [ ]
         )
       );
+      derivedUpstreamRecords =
+        if builtins.isList (dnsService.listen or null) then
+          policyDerivedDnsUpstreamRecordsForListeners dnsService.listen
+        else
+          [ ];
       derivedAllowFrom =
         if builtins.isList (dnsService.listen or null) then policyDerivedDnsAllowFromForListeners dnsService.listen else [ ];
       derivedAllowedClasses =
@@ -78,6 +84,8 @@
       mergedForwarders =
         if explicitForwarders != [ ] then
           explicitForwarders
+        else if derivedUpstreamRecords != [ ] then
+          [ ]
         else
           orderedUniqueStrings filteredDerivedForwarders;
       mergedAllowFrom = if derivedAllowFrom == [ ] then explicitAllowFrom else uniqueStrings (explicitAllowFrom ++ derivedAllowFrom);
@@ -131,6 +139,7 @@
         dnsService
         // lib.optionalAttrs (mergedAllowFrom != [ ]) { allowFrom = mergedAllowFrom; }
         // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; }
+        // lib.optionalAttrs (derivedUpstreamRecords != [ ]) { upstreamResolvers = derivedUpstreamRecords; }
         // lib.optionalAttrs (mergedOutgoingInterfaces != [ ]) { outgoingInterfaces = mergedOutgoingInterfaces; }
         // { roles = mergedRoles; }
         // lib.optionalAttrs (mergedAllowedClasses != [ ]) { allowedUpstreamClasses = mergedAllowedClasses; }
