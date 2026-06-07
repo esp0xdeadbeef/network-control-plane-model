@@ -148,6 +148,7 @@ let
       fromIfaces = endpointIfaces relation (relation.from or null) (relation.to or null);
       action = if (relation.action or "allow") == "deny" then "deny" else "accept";
       id = relationId relation;
+      direction = "relation-forward";
     in
     builtins.concatLists (
       map
@@ -164,7 +165,7 @@ let
                 comment = id;
                 priority = relation.priority or null;
                 trafficType = relation.trafficType or "any";
-                direction = "relation-forward";
+                inherit direction;
                 matches = relationMatches relation;
                 from = attrsOrEmpty (relation.from or null);
                 to = attrsOrEmpty (relation.to or null);
@@ -176,6 +177,11 @@ let
                 fromInterface = fromIface.runtimeIfName;
                 toInterface = toIface.runtimeIfName;
                 applyTcpMssClamp = false;
+              }
+              // common.relationHandoff {
+                relationId = id;
+                inherit action direction fromIface toIface;
+                policyPoint = "policy-router";
               }
               // (if builtins.isAttrs (relation.intent or null) then { intent = relation.intent; } else { })
               // (if isNonEmptyString (relation.comment or null) then { comment = relation.comment; } else { }))
