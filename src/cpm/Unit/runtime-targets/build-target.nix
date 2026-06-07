@@ -1,4 +1,4 @@
-{ lib, helpers, common, realizationIndex, enterpriseName, siteName, sitePath, nodes, routingMode, bgpSiteAsn, uplinkRouting, overlayProvisioning, attachments, routedPrefixesByTenant, buildExplicitInterfaceEntry, buildSyntheticUplinkInterfaceEntry, resolveRuntimeContainers, resolveRuntimeServices, bgpNetworksForNode, bgpNeighborsForNode, filterRoutesForBgp, routerRoleSet, ... }:
+{ lib, helpers, common, realizationIndex, enterpriseName, siteName, sitePath, nodes, routingMode, bgpSiteAsn, uplinkRouting, overlayProvisioning, siteOverlays, attachments, routedPrefixesByTenant, buildExplicitInterfaceEntry, buildSyntheticUplinkInterfaceEntry, buildInventoryOverlayRuntimeAdapterEntry, resolveRuntimeContainers, resolveRuntimeServices, bgpNetworksForNode, bgpNeighborsForNode, filterRoutesForBgp, routerRoleSet, ... }:
 
 let
   inherit (helpers)
@@ -9,6 +9,7 @@ let
     requireString
     sortedNames
     ;
+  inherit (common) attrsOrEmpty failInventory;
   buildContext = import ./build-context.nix {
     inherit
       lib
@@ -89,6 +90,16 @@ let
           iface = nodeInterfaces.${ifName};
         }
       ) (sortedNames nodeInterfaces);
+      explicitOverlayNames =
+        builtins.filter
+          (overlayName: overlayName != null)
+          (builtins.map
+            (ifName:
+              let
+                iface = attrsOrEmpty nodeInterfaces.${ifName};
+              in
+              if (iface.kind or null) == "overlay" then iface.overlay or null else null)
+            (sortedNames nodeInterfaces));
       uplinkAttrs = if builtins.isAttrs (nodeAttrs.uplinks or null) then nodeAttrs.uplinks else { };
       syntheticEntries =
         builtins.map
@@ -112,9 +123,38 @@ let
               !(builtins.elem uplinkName overlayNames) && !hasExplicitWANForUplink nodeInterfaces uplinkName
             ) (sortedNames uplinkAttrs)
           );
+      inventoryOverlayEntries =
+        builtins.map
+          (overlayName:
+            let
+              entryName = "overlay-${overlayName}";
+              _noCollision =
+                if builtins.hasAttr entryName nodeInterfaces || builtins.hasAttr entryName uplinkAttrs then
+                  failInventory
+                    "inventory.controlPlane.sites.${enterpriseName}.${siteName}.overlays.${overlayName}.runtimeNodes.${nodeName}"
+                    "FS-267-HDS-010-SDS-010-SMS-010: inventory overlay runtime adapter '${entryName}' collides with an existing forwarding-model interface or uplink"
+                else
+                  true;
+            in
+            builtins.seq _noCollision (
+              buildInventoryOverlayRuntimeAdapterEntry {
+                inherit nodeName nodeRole targetId overlayName;
+                overlayCfg = siteOverlays.${overlayName};
+              }
+            ))
+          (
+            builtins.filter
+              (overlayName:
+                let
+                  runtimeNodes = attrsOrEmpty ((attrsOrEmpty siteOverlays.${overlayName}).runtimeNodes or null);
+                in
+                !(builtins.elem overlayName explicitOverlayNames)
+                && builtins.isAttrs (runtimeNodes.${nodeName} or null))
+              (sortedNames siteOverlays)
+          );
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
       runtimeInterfacesBase = addOverlayUnderlayEndpointRoutes nodeRole (
-        builtins.listToAttrs (explicitEntries ++ syntheticEntries)
+        builtins.listToAttrs (explicitEntries ++ syntheticEntries ++ inventoryOverlayEntries)
       );
       runtimeOriginEgressContract = runtimeOriginEgress.contractFor {
         inherit nodeRole uplinkAttrs loopback;

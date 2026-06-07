@@ -22,6 +22,7 @@
 , uplinkRouting
 , overlayProvisioning
 , overlayNames
+, siteOverlays
 , siteTenantsCfg
 , siteIpv6Cfg
 , routedPrefixesByTenant
@@ -64,6 +65,7 @@ let
       uplinkRouting
       overlayProvisioning
       overlayNames
+      siteOverlays
       siteIpv6Cfg
       siteTenantsCfg
       routedPrefixesByTenant
