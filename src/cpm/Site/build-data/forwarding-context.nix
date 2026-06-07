@@ -49,6 +49,7 @@ in
     routingMode
     siteControlPlaneCfg
     siteIpv6Cfg
+    siteOverlays
     siteRouting
     siteTenantsCfg
     siteUplinksCfg

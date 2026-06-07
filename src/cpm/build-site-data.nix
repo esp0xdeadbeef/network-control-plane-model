@@ -130,6 +130,7 @@ let
     routingMode
     siteControlPlaneCfg
     siteIpv6Cfg
+    siteOverlays
     siteRouting
     siteTenantsCfg
     siteUplinksCfg
@@ -164,6 +165,7 @@ let
       uplinkRouting
       overlayProvisioning
       overlayNames
+      siteOverlays
       siteTenantsCfg
       siteIpv6Cfg
       routedPrefixesByTenant

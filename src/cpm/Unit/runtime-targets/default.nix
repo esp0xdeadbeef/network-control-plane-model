@@ -12,10 +12,12 @@
   bgpTopology,
   uplinkRouting,
   overlayProvisioning,
+  siteOverlays,
   attachments,
   routedPrefixesByTenant,
   buildExplicitInterfaceEntry,
   buildSyntheticUplinkInterfaceEntry,
+  buildInventoryOverlayRuntimeAdapterEntry,
   resolveRuntimeContainers,
   resolveRuntimeServices,
   bgpNetworksForNode,
@@ -65,10 +67,12 @@ let
       bgpTopology
       uplinkRouting
       overlayProvisioning
+      siteOverlays
       attachments
       routedPrefixesByTenant
       buildExplicitInterfaceEntry
       buildSyntheticUplinkInterfaceEntry
+      buildInventoryOverlayRuntimeAdapterEntry
       resolveRuntimeContainers
       resolveRuntimeServices
       bgpNetworksForNode

@@ -15,6 +15,7 @@
 , uplinkRouting
 , overlayProvisioning
 , overlayNames
+, siteOverlays
 , siteIpv6Cfg
 , siteTenantsCfg
 , routedPrefixesByTenant
@@ -50,6 +51,10 @@ let
   buildSyntheticUplinkInterfaceEntry = import ../../Unit/runtime-targets/interfaces/synthetic-uplink.nix {
     inherit helpers common sitePath enterpriseName siteName overlayNames uplinkRouting;
     inherit (hostUplinkValidator) requireExplicitHostUplinkAddressing;
+  };
+
+  buildInventoryOverlayRuntimeAdapterEntry = import ../../Unit/runtime-targets/interfaces/inventory-overlay-runtime-adapter.nix {
+    inherit helpers common sitePath enterpriseName siteName;
   };
 
   runtimeServices = import ../../Unit/runtime-services {
@@ -96,10 +101,12 @@ let
       bgpTopology
       uplinkRouting
       overlayProvisioning
+      siteOverlays
       attachments
       routedPrefixesByTenant
       buildExplicitInterfaceEntry
       buildSyntheticUplinkInterfaceEntry
+      buildInventoryOverlayRuntimeAdapterEntry
       ;
     inherit (runtimeServices)
       resolveRuntimeServices
