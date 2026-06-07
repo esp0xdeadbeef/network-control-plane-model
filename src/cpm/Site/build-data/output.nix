@@ -1,5 +1,6 @@
 { lib
 , accessAdvertisements
+, accessSpaceDiscovery
 , attachments
 , bgpSiteAsn
 , bgpTopology
@@ -129,6 +130,14 @@ in
         builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
     };
 }
+// (
+  if accessSpaceDiscovery != null then
+    {
+      accessSpaceDiscovery = accessSpaceDiscovery;
+    }
+  else
+    { }
+)
 // (lib.optionalAttrs (ipv4Output != { }) { ipv4 = ipv4Output; })
 // (lib.optionalAttrs (ipv6Output != { }) { ipv6 = ipv6Output; })
 // (

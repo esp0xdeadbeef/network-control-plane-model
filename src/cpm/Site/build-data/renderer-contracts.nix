@@ -1,4 +1,5 @@
 { lib
+, accessSpaceDiscovery
 , helpers
 , common
 , communicationContract
@@ -180,7 +181,7 @@ let
     [
       {
         name = "policy";
-        sourceFacts = [ "policy" "communicationContract" ];
+        sourceFacts = [ "policy" "communicationContract" "accessSpaceDiscovery" ];
       }
       {
         name = "reachability";
@@ -306,7 +307,9 @@ in
         runtimeTargetNames = runtimeTargetNames;
       };
       forwardingSemantics = forwardingSemantics;
-    } // (if communicationContract != null then { inherit communicationContract; } else { });
+    }
+    // (if communicationContract != null then { inherit communicationContract; } else { })
+    // (if accessSpaceDiscovery != null then { inherit accessSpaceDiscovery; } else { });
     comparisonInputs = {
       rendererTargets = rendererTargets;
       requiredCapabilities = builtins.map (capability: capability.name) requiredCapabilities;
