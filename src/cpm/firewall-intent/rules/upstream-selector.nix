@@ -79,17 +79,26 @@ let
   runtimeOriginRules = builtins.concatLists (
     map (
       sourceIface:
-      map (wanIface: {
-        action = "accept";
-        intent = {
-          kind = "runtime-origin-egress";
-          source = "loopback-runtime-identity";
-        };
-        fromInterface = sourceIface.runtimeIfName;
-        toInterface = wanIface.runtimeIfName;
-        sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
-        applyTcpMssClamp = false;
-      }) (wanCoreInterfacesFor sourceIface)
+      map
+        (wanIface:
+          {
+            action = "accept";
+            intent = {
+              kind = "runtime-origin-egress";
+              source = "loopback-runtime-identity";
+            };
+            fromInterface = sourceIface.runtimeIfName;
+            toInterface = wanIface.runtimeIfName;
+            sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
+            applyTcpMssClamp = false;
+          } // common.selectorRuntimeRuleAudit {
+            relationId = "runtime-origin-egress";
+            direction = "core-runtime-origin-egress";
+            fromIface = sourceIface;
+            toIface = wanIface;
+            decomposed = true;
+          })
+        (wanCoreInterfacesFor sourceIface)
     ) runtimeOriginCoreInterfaces
   );
 
@@ -120,27 +129,42 @@ let
             [ ]
           else
             [
-              (common.withSourcePrefixes {
-                action = "accept";
-                relationId = "runtime-origin-egress";
-                intent = {
-                  kind = "runtime-origin-egress";
-                  source = "loopback-runtime-identity";
-                  stage = "upstream-selector-policy-core-egress";
-                };
-                fromInterface = policyIface.runtimeIfName;
-                toInterface = coreIface.runtimeIfName;
-                applyTcpMssClamp = true;
-              } policySourcePrefixes)
+              (common.withSourcePrefixes
+                ({
+                  action = "accept";
+                  intent = {
+                    kind = "runtime-origin-egress";
+                    source = "loopback-runtime-identity";
+                    stage = "upstream-selector-policy-core-egress";
+                  };
+                  fromInterface = policyIface.runtimeIfName;
+                  toInterface = coreIface.runtimeIfName;
+                  applyTcpMssClamp = true;
+                } // common.selectorRuntimeRuleAudit {
+                  relationId = "runtime-origin-egress";
+                  direction = "forward-runtime-origin";
+                  fromIface = policyIface;
+                  toIface = coreIface;
+                  decomposed = true;
+                })
+                policySourcePrefixes)
             ]
         )
         ++ [
-          (common.withSourcePrefixes {
-            action = "accept";
-            fromInterface = coreIface.runtimeIfName;
-            toInterface = policyIface.runtimeIfName;
-            applyTcpMssClamp = false;
-          } (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
+          (common.withSourcePrefixes
+            ({
+              action = "accept";
+              fromInterface = coreIface.runtimeIfName;
+              toInterface = policyIface.runtimeIfName;
+              applyTcpMssClamp = false;
+            } // common.selectorRuntimeRuleAudit {
+              relationId = "runtime-origin-egress";
+              direction = "reverse-runtime-origin";
+              fromIface = coreIface;
+              toIface = policyIface;
+              decomposed = true;
+            })
+            (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
         ]
     ) policyInterfaces
   );

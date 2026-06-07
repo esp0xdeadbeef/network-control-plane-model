@@ -7,6 +7,7 @@
 , sourcePrefixesAllowedToInterface
 , uniqueSourcePrefixes
 , withSourcePrefixes
+, selectorRuntimeRuleAudit ? null
 ,
 }:
 
@@ -71,9 +72,12 @@ builtins.concatLists (
             else
               [
                 (withSourcePrefixes
-                  {
+                  ({
                     action = "accept";
                     relationId = "runtime-origin-egress";
+                    comment = "runtime-origin-egress";
+                    trafficType = "any";
+                    direction = "selector-default-egress";
                     priority = 19;
                     intent = {
                       kind = "runtime-origin-egress";
@@ -83,7 +87,18 @@ builtins.concatLists (
                     fromInterface = fromIface.runtimeIfName;
                     toInterface = toIface.runtimeIfName;
                     applyTcpMssClamp = false;
-                  }
+                  } // (
+                    if selectorRuntimeRuleAudit == null then
+                      { }
+                    else
+                      selectorRuntimeRuleAudit {
+                        relationId = "runtime-origin-egress";
+                        direction = "selector-default-egress";
+                        fromIface = fromIface;
+                        toIface = toIface;
+                        decomposed = true;
+                      }
+                  ))
                   egressPrefixes)
               ]
           )

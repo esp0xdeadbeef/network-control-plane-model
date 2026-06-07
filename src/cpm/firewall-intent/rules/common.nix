@@ -114,6 +114,7 @@ rec {
   runtimeOriginDefaultForwardRulesWith = import ./runtime-origin-default.nix {
     inherit
       laneAccess
+      selectorRuntimeRuleAudit
       sourcePrefixesForInterface
       sourcePrefixesReachableVia
       sourcePrefixesWithRouteVia
@@ -144,37 +145,117 @@ rec {
       ++ (if (laneValue.uplink or null) == null then [ ] else [ laneValue.uplink ])
     );
 
-  selectorPairRule = fromIface: toIface: [
+  selectorScope = iface:
+    let
+      ref = backingRef iface;
+      laneValue = lane iface;
+    in
     {
+      runtimeInterface = iface.runtimeIfName;
+      relationPurpose =
+        if (laneValue.kind or null) == "access-edge" then
+          "access-to-selector"
+        else if (laneValue.kind or null) == "access" then
+          "selector-to-policy"
+        else if (laneValue.uplink or null) != null then
+          "selector-policy-uplink"
+        else if uplinks iface != [ ] then
+          "selector-core-transport"
+        else
+          "selector-transport";
+      lane = laneValue;
+      backingRef = ref;
+      hostFacing = false;
+    };
+
+  selectorRelationId = direction: fromIface: toIface:
+    let
+      fromScope = selectorScope fromIface;
+      toScope = selectorScope toIface;
+      fromLane = lane fromIface;
+      toLane = lane toIface;
+      access =
+        if (fromLane.access or null) != null then
+          fromLane.access
+        else if (toLane.access or null) != null then
+          toLane.access
+        else
+          "no-access";
+      uplink =
+        if (fromLane.uplink or null) != null then
+          fromLane.uplink
+        else if (toLane.uplink or null) != null then
+          toLane.uplink
+        else
+          builtins.concatStringsSep "-" (uplinks fromIface ++ uplinks toIface);
+      uplinkPart = if uplink == "" then "no-uplink" else uplink;
+    in
+    "selector-handoff-${direction}--${access}--${fromScope.relationPurpose}-to-${toScope.relationPurpose}--${uplinkPart}";
+
+  selectorRuntimeRuleAudit =
+    { relationId
+    , direction
+    , fromIface
+    , toIface
+    , trafficType ? "any"
+    , decomposed ? false
+    ,
+    }:
+    {
+      relationId = relationId;
+      comment = relationId;
+      trafficType = trafficType;
+      direction = direction;
+      from = selectorScope fromIface;
+      to = selectorScope toIface;
+      relationCardinality = {
+        unit = "selector-forwarding-rule";
+        decomposition =
+          if decomposed then
+            "decomposed-by-selector-interface-scope"
+          else
+            "one-rule-per-selector-handoff-direction";
+        decomposed = decomposed;
+      };
+    };
+
+  selectorPairAudit = direction: fromIface: toIface:
+    selectorRuntimeRuleAudit {
+      relationId = selectorRelationId direction fromIface toIface;
+      inherit direction fromIface toIface;
+    };
+
+  selectorPairRule = fromIface: toIface: [
+    ({
       action = "accept";
       fromInterface = fromIface.runtimeIfName;
       toInterface = toIface.runtimeIfName;
       applyTcpMssClamp = true;
-    }
-    {
+    } // selectorPairAudit "forward" fromIface toIface)
+    ({
       action = "accept";
       fromInterface = toIface.runtimeIfName;
       toInterface = fromIface.runtimeIfName;
       applyTcpMssClamp = false;
-    }
+    } // selectorPairAudit "reverse" toIface fromIface)
   ];
 
   selectorPairRuleWithRuntimeOriginScope = runtimeOriginSourcePrefixes: fromIface: toIface: [
     (withSourcePrefixes
-      {
+      ({
         action = "accept";
         fromInterface = fromIface.runtimeIfName;
         toInterface = toIface.runtimeIfName;
         applyTcpMssClamp = true;
-      }
+      } // selectorPairAudit "forward-runtime-origin" fromIface toIface)
       (sourcePrefixesReachableVia runtimeOriginSourcePrefixes fromIface))
     (withSourcePrefixes
-      {
+      ({
         action = "accept";
         fromInterface = toIface.runtimeIfName;
         toInterface = fromIface.runtimeIfName;
         applyTcpMssClamp = false;
-      }
+      } // selectorPairAudit "reverse-runtime-origin" toIface fromIface)
       (sourcePrefixesReachableVia runtimeOriginSourcePrefixes toIface))
   ];
 }
