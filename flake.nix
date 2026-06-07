@@ -82,6 +82,23 @@
               network-forwarding-model.libBySystem.${system}
             else
               throw "network-control-plane-model: network-forwarding-model.libBySystem.${system} is required for compileAndBuild";
+
+          exposeHostNetwork =
+            result:
+            let
+              controlPlaneModel = result.control_plane_model or result;
+              hostNetwork =
+                controlPlaneModel.hostNetwork
+                  or controlPlaneModel.renderedHostNetwork
+                  or null;
+            in
+            if hostNetwork == null then
+              result
+            else
+              result // {
+                inherit hostNetwork;
+                renderedHostNetwork = hostNetwork;
+              };
         in
         rec {
           build =
@@ -101,10 +118,12 @@
                       inherit inventory validateForwardingModel validateRuntimeModel;
                     }
                   );
+
+              result = {
+                control_plane_model = cpm;
+              };
             in
-            builtins.seq cpm {
-              control_plane_model = cpm;
-            };
+            builtins.seq cpm (exposeHostNetwork result);
 
           get_CPM =
             { input
