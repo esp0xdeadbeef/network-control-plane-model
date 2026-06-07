@@ -38,7 +38,7 @@ let
     || builtins.elem iface.sourceInterfaceName selectedUplinks
     || builtins.elem (backingRefName iface) selectedUplinks;
   localInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
-  transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p") interfaceRecords;
+  transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p" || iface.sourceKind == "pppoe-session") interfaceRecords;
   uplinkInterfaces = builtins.filter (
     iface:
     (iface.sourceKind == "wan" && selectedUplinkFor iface)

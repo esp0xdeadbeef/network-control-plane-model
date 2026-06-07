@@ -8,7 +8,6 @@
     network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
 
-    # Used by test scripts as a flake-locked source of intent/inventory fixtures.
     network-labs.url = "github:esp0xdeadbeef/network-labs";
   };
 
@@ -46,6 +45,10 @@
           valueOrPath { }
         else
           valueOrPath;
+
+      mkClientFixtures = import ./lib/client-fixtures {
+        lib = nixpkgs.lib;
+      };
 
       mkPkgs =
         system:
@@ -148,6 +151,18 @@
               inherit validateForwardingModel validateRuntimeModel;
             };
 
+          clientFixtures = mkClientFixtures {
+            buildFromPaths =
+              { intentPath
+              , inventoryPath ? null
+              , ...
+              }:
+              compileAndBuildFromPaths {
+                inputPath = intentPath;
+                inherit inventoryPath;
+              };
+          };
+
           writeJSON =
             { input
             , inventory ? { }
@@ -178,6 +193,19 @@
       lib = forAll mkSystemLib;
 
       libBySystem = forAll mkSystemLib;
+
+      clientFixtures = mkClientFixtures {
+        buildFromPaths =
+          { pkgs
+          , intentPath
+          , inventoryPath ? null
+          , ...
+          }:
+          self.libBySystem.${pkgs.system}.compileAndBuildFromPaths {
+            inputPath = intentPath;
+            inherit inventoryPath;
+          };
+      };
 
       packages = forAll (
         system:
@@ -307,8 +335,6 @@
                   ;;
               esac
 
-              # Nix path coercion is strict: inventory and input paths must be absolute.
-              # Make the wrapper resilient so docs and scripts can use relative paths.
               INPUTS_NIX="$(realpath "$INPUTS_NIX")"
               if [ -n "$INVENTORY" ]; then
                 INVENTORY="$(realpath "$INVENTORY")"

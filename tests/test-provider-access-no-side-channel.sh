@@ -84,6 +84,31 @@ jq -e '
       and $server.customerAddress == $customerAddress
       and $server.implementation == "rp-pppoe"
       and $server.mtu == 1492;
+  def has_pppoe_session_interface($target; $runtimeInterface; $role; $address; $peer; $serviceInterface):
+    rt($target).effectiveRuntimeRealization.interfaces[$runtimeInterface] as $iface
+    | $iface.sourceKind == "pppoe-session"
+      and $iface.runtimeIfName == $runtimeInterface
+      and $iface.renderedIfName == $runtimeInterface
+      and $iface.ipv4.address == ($address + "/32")
+      and $iface.ipv4.peer == ($peer + "/32")
+      and $iface.pppoe.role == $role
+      and $iface.pppoe.serviceInterface == $serviceInterface
+      and any($iface.routes.ipv4[]?;
+        .dst == ($peer + "/32")
+        and .proto == "pppoe-session"
+        and .intent.kind == "connected-reachability"
+      )
+      and any($iface.routes.ipv4[]?;
+        .dst == "0.0.0.0/0"
+        and .proto == "pppoe-session"
+        and .intent.kind == "default-reachability"
+      );
+  def has_forward_rule($target; $from; $to):
+    any(rt($target).forwardingIntent.rules[]?;
+      .action == "accept"
+      and .fromInterface == $from
+      and .toInterface == $to
+    );
   def pppoe_targets:
     [
       site.runtimeTargets
@@ -189,6 +214,14 @@ jq -e '
     and has_pppoe_client("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b"; "ppp1")
     and has_pppoe_server("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a"; "203.0.113.5"; "203.0.113.4")
     and has_pppoe_server("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b"; "203.0.113.1"; "203.0.113.2")
+    and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "server"; "203.0.113.5"; "203.0.113.4"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
+    and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "client"; "203.0.113.4"; "203.0.113.5"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
+    and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b"; "ppp1"; "server"; "203.0.113.1"; "203.0.113.2"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
+    and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "ppp1"; "client"; "203.0.113.2"; "203.0.113.1"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "tenant-provider-handoff-a"; "ppp0")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "tenant-provider-handoff-a")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "ens80")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ens80"; "ppp0")
     and pppoe_targets == [
       "esp0xdeadbeef-site-a-nixos-core-testnet-host-isp",
       "esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp",
