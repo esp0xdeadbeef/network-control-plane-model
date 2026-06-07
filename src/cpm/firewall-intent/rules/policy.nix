@@ -13,6 +13,7 @@ let
   };
   endpointSelection = import ./policy-endpoints.nix { inherit common endpointContext; };
   inherit (endpointContext) attrsOrEmpty listOrEmpty;
+  inherit (endpointContext) serviceNamesForEndpoint serviceRecords;
   inherit (endpointSelection) endpointIfaces endpointIfacesForPeerAccess;
 
   relationId = relation:
@@ -31,6 +32,59 @@ let
     else
       trafficTypeMatches.${relation.trafficType or "any"} or [ ];
 
+  sourcePrefixForAddress = family: address: {
+    inherit family;
+    prefix = address;
+  };
+
+  uniqueSourcePrefixes =
+    prefixes:
+    builtins.attrValues (
+      builtins.listToAttrs (
+        map
+          (prefix: {
+            name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
+            value = prefix;
+          })
+          prefixes
+      )
+    );
+
+  serviceSourcePrefixes =
+    endpoint:
+    uniqueSourcePrefixes (
+      builtins.concatLists (
+        map
+          (serviceName:
+            let
+              service = attrsOrEmpty (serviceRecords.${serviceName} or null);
+              providerEndpoints = listOrEmpty (service.providerEndpoints or null);
+            in
+            builtins.concatLists (
+              map
+                (providerEndpoint:
+                  let
+                    endpoint = attrsOrEmpty providerEndpoint;
+                  in
+                  map (sourcePrefixForAddress 4) (listOrEmpty (endpoint.ipv4 or null))
+                  ++ map (sourcePrefixForAddress 6) (listOrEmpty (endpoint.ipv6 or null)))
+                providerEndpoints
+            ))
+          (serviceNamesForEndpoint endpoint)
+      )
+    );
+
+  withRelationSourceScope = relation: rule:
+    let
+      fromEndpoint = attrsOrEmpty (relation.from or null);
+      prefixes =
+        if (fromEndpoint.kind or null) == "service" then
+          serviceSourcePrefixes fromEndpoint
+        else
+          [ ];
+    in
+    common.withSourcePrefixes rule prefixes;
+
   relationRules = relationRaw:
     let
       relation = attrsOrEmpty relationRaw;
@@ -46,18 +100,19 @@ let
               endpointIfacesForPeerAccess relation (relation.to or null) (relation.from or null) (common.laneAccess fromIface);
           in
           map
-            (toIface: {
-              inherit action;
-              relationId = id;
-              priority = relation.priority or null;
-              trafficType = relation.trafficType or "any";
-              matches = relationMatches relation;
-              from = attrsOrEmpty (relation.from or null);
-              to = attrsOrEmpty (relation.to or null);
-              fromInterface = fromIface.runtimeIfName;
-              toInterface = toIface.runtimeIfName;
-              applyTcpMssClamp = false;
-            })
+            (toIface:
+              withRelationSourceScope relation {
+                inherit action;
+                relationId = id;
+                priority = relation.priority or null;
+                trafficType = relation.trafficType or "any";
+                matches = relationMatches relation;
+                from = attrsOrEmpty (relation.from or null);
+                to = attrsOrEmpty (relation.to or null);
+                fromInterface = fromIface.runtimeIfName;
+                toInterface = toIface.runtimeIfName;
+                applyTcpMssClamp = false;
+              })
             toIfaces)
         fromIfaces
     );
