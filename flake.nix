@@ -81,24 +81,26 @@
             if network-forwarding-model ? libBySystem then
               network-forwarding-model.libBySystem.${system}
             else
-              throw "network-control-plane-model: network-forwarding-model.libBySystem.${system} is required for compileAndBuild";
+              throw "network-control-plane-model requires network-forwarding-model.libBySystem.${system}";
 
           exposeHostNetwork =
             result:
             let
               controlPlaneModel = result.control_plane_model or result;
-              hostNetwork =
-                controlPlaneModel.hostNetwork
-                  or controlPlaneModel.renderedHostNetwork
-                  or null;
             in
-            if hostNetwork == null then
-              result
-            else
-              result // {
-                inherit hostNetwork;
-                renderedHostNetwork = hostNetwork;
-              };
+            result // {
+              renderedHostNetwork =
+                result.renderedHostNetwork
+                  or result.hostNetwork
+                  or controlPlaneModel.renderedHostNetwork
+                  or controlPlaneModel.hostNetwork;
+
+              hostNetwork =
+                result.hostNetwork
+                  or result.renderedHostNetwork
+                  or controlPlaneModel.hostNetwork
+                  or controlPlaneModel.renderedHostNetwork;
+            };
         in
         rec {
           build =
@@ -111,7 +113,7 @@
             let
               cpm =
                 builtins.addErrorContext
-                  "while building network-control-plane-model from the explicit network-forwarding-model input"
+                  "while building network-control-plane-model from forwarding-model input"
                   (
                     buildCPM {
                       forwardingModel = input;
@@ -215,19 +217,16 @@
 
       clientFixtures = mkClientFixtures {
         buildFromPaths =
-          { system ? if pkgs == null then null else pkgs.system
-          , pkgs ? null
-          , intentPath
+          { intentPath
           , inventoryPath ? null
+          , pkgs ? null
+          , system ? if pkgs == null then builtins.currentSystem else pkgs.system
           , ...
           }:
-          if system == null then
-            throw "network-control-plane-model client fixture requires either system or pkgs"
-          else
-            self.libBySystem.${system}.compileAndBuildFromPaths {
-              inputPath = intentPath;
-              inherit inventoryPath;
-            };
+          self.libBySystem.${system}.compileAndBuildFromPaths {
+            inputPath = intentPath;
+            inherit inventoryPath;
+          };
       };
 
       packages = forAll (
