@@ -215,15 +215,19 @@
 
       clientFixtures = mkClientFixtures {
         buildFromPaths =
-          { pkgs
+          { system ? if pkgs == null then null else pkgs.system
+          , pkgs ? null
           , intentPath
           , inventoryPath ? null
           , ...
           }:
-          self.libBySystem.${pkgs.system}.compileAndBuildFromPaths {
-            inputPath = intentPath;
-            inherit inventoryPath;
-          };
+          if system == null then
+            throw "network-control-plane-model client fixture requires either system or pkgs"
+          else
+            self.libBySystem.${system}.compileAndBuildFromPaths {
+              inputPath = intentPath;
+              inherit inventoryPath;
+            };
       };
 
       packages = forAll (
