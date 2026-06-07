@@ -54,7 +54,9 @@ jq -e '
   | ($interfaces | map(select(.virtualAdapter == true))) as $virtual
   | ($interfaces | map(select(.adapterClass == "selector-fabric-link"))) as $selector
   | ($interfaces | map(select(.adapterClass == "provider-session"))) as $provider
+  | ($interfaces | map(select(.sourceKind == "overlay" and .adapterClass == "vpn"))) as $overlayVpn
   | ($interfaces | map(select(.sourceKind == "p2p" and .virtualAdapter == false))) as $hostP2p
+  | ($interfaces | map(select(.sourceKind == "tenant" and .virtualAdapter == false))) as $hostTenant
   | [
       $virtual[]
       | select(
@@ -87,6 +89,27 @@ jq -e '
         )
     ] as $badProvider
   | [
+      $overlayVpn[]
+      | select(
+          .virtualAdapter != true
+          or .hostFacing != false
+          or .exclusionReason != "overlay-tunnel-adapter"
+          or .tunnelPurpose != "overlay-reachability"
+          or ((.runtimeIfName // "") == "")
+          or ((.renderedIfName // "") != (.runtimeIfName // ""))
+          or ((.provider // "") != "nebula" and (.provider // "") != "wireguard")
+          or ((.overlay // "") == "")
+        )
+    ] as $badOverlayVpn
+  | [
+      $virtual[]
+      | select(
+          (.adapterClass != "selector-fabric-link")
+          and (.adapterClass != "provider-session")
+          and ((.sourceKind == "overlay" and .adapterClass == "vpn") | not)
+        )
+    ] as $unexpectedVirtual
+  | [
       $hostP2p[]
       | select(
           .adapterClass != "p2p-realization"
@@ -94,29 +117,45 @@ jq -e '
           or ((.owningRole // "") == "")
         )
     ] as $badHostP2p
+  | [
+      $hostTenant[]
+      | select(
+          .adapterClass != "tenant-role-surface"
+          or .hostFacing != true
+          or ((.owningRole // "") == "")
+        )
+    ] as $badHostTenant
   | {
       virtualCount: ($virtual | length),
       selectorFabricLinkCount: ($selector | length),
       providerSessionCount: ($provider | length),
+      overlayVpnCount: ($overlayVpn | length),
       providerClientRuntimeAdapters: ($provider | map(select(.serviceRole == "client" and ((.runtimeAdapter // "") | test("^ppp[0-9]+$")))) | length),
       providerServerImplementations: ($provider | map(select(.serviceRole == "server" and .implementation == "rp-pppoe")) | length),
       hostFacingInterfaceCount: ($interfaces | map(select(.hostFacing == true)) | length),
       ambiguousVirtualCount: ($ambiguousVirtual | length),
       badSelectorCount: ($badSelector | length),
       badProviderCount: ($badProvider | length),
-      badHostP2pCount: ($badHostP2p | length)
+      badOverlayVpnCount: ($badOverlayVpn | length),
+      unexpectedVirtualCount: ($unexpectedVirtual | length),
+      badHostP2pCount: ($badHostP2p | length),
+      badHostTenantCount: ($badHostTenant | length)
     }
   | select(
-      .virtualCount == 76
+      .virtualCount == 82
       and .selectorFabricLinkCount == 68
       and .providerSessionCount == 8
+      and .overlayVpnCount == 6
       and .providerClientRuntimeAdapters == 4
       and .providerServerImplementations == 4
       and .hostFacingInterfaceCount == 108
       and .ambiguousVirtualCount == 0
       and .badSelectorCount == 0
       and .badProviderCount == 0
+      and .badOverlayVpnCount == 0
+      and .unexpectedVirtualCount == 0
       and .badHostP2pCount == 0
+      and .badHostTenantCount == 0
     )
 ' "${output_json}" >/dev/null
 
