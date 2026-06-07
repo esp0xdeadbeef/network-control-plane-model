@@ -1,27 +1,14 @@
-{ lib }:
+{ buildFromPaths }:
 
 { intentPath
-, inventoryPath
-, sopsPath
-, fixture
+, inventoryPath ? null
+, ...
 }:
 
-let
-  output = import ./build-from-paths.nix { inherit lib; } {
-    inherit intentPath inventoryPath sopsPath fixture;
-  };
-in
+{ pkgs, ... }:
 {
-  imports = [
-    sopsPath
-  ];
-
-  inherit (output.config)
-    system
-    environment
-    networking
-    services
-    systemd
-    containers
-    _module;
+  _module.args.clientFixture =
+    buildFromPaths {
+      inherit pkgs intentPath inventoryPath;
+    };
 }
