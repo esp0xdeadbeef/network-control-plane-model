@@ -168,6 +168,74 @@ rec {
       hostFacing = false;
     };
 
+  interfaceScope = iface:
+    let
+      ref = backingRef iface;
+      laneValue = lane iface;
+      fabricLink = attrsOrEmpty (iface.fabricLink or null);
+    in
+    {
+      runtimeInterface = iface.runtimeIfName;
+      logicalInterface = iface.sourceInterface or null;
+      sourceKind = iface.sourceKind or null;
+      adapterClass = iface.adapterClass or null;
+      virtualAdapter = iface.virtualAdapter or false;
+      hostFacing = iface.hostFacing or false;
+      lane = laneValue;
+      backingRef = ref;
+    }
+    // (if (iface.tenant or null) != null then { tenant = iface.tenant; } else { })
+    // (if (iface.upstream or null) != null then { upstream = iface.upstream; } else { })
+    // (if (iface.overlay or null) != null then { overlay = iface.overlay; } else { })
+    // (if (iface.provider or null) != null then { provider = iface.provider; } else { })
+    // (if (fabricLink.link or null) != null then { fabricLink = fabricLink.link; } else { });
+
+  candidateEgress = iface:
+    let
+      scope = interfaceScope iface;
+    in
+    scope // {
+      uplinks = uplinks iface;
+      access = laneAccess iface;
+      uplink = laneUplink iface;
+    };
+
+  policyPointTraversal =
+    { relationId
+    , action
+    , direction
+    , fromIface
+    , toIface
+    , policyPoint ? "policy-router"
+    ,
+    }:
+    {
+      inherit relationId action direction policyPoint;
+      sourceInterface = fromIface.runtimeIfName;
+      destinationInterface = toIface.runtimeIfName;
+      nonBypass = true;
+      source = interfaceScope fromIface;
+      destination = interfaceScope toIface;
+    };
+
+  relationHandoff =
+    { relationId
+    , action
+    , direction
+    , fromIface
+    , toIface
+    , policyPoint ? "policy-router"
+    ,
+    }:
+    {
+      sourceScope = interfaceScope fromIface;
+      destinationScope = interfaceScope toIface;
+      candidateEgress = candidateEgress toIface;
+      policyPointTraversal = policyPointTraversal {
+        inherit relationId action direction fromIface toIface policyPoint;
+      };
+    };
+
   selectorRelationId = direction: fromIface: toIface:
     let
       fromScope = selectorScope fromIface;
@@ -217,6 +285,11 @@ rec {
             "one-rule-per-selector-handoff-direction";
         decomposed = decomposed;
       };
+    }
+    // relationHandoff {
+      inherit relationId direction fromIface toIface;
+      action = "accept";
+      policyPoint = "selector";
     };
 
   selectorPairAudit = direction: fromIface: toIface:

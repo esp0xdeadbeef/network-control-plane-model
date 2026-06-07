@@ -103,6 +103,8 @@ let
     relation: fromIfaces: toIfaces: extra:
     let
       trafficType = relation.trafficType or "any";
+      action = "accept";
+      direction = "relation-forward";
     in
     builtins.concatLists (
       map (
@@ -110,7 +112,7 @@ let
         map (
           toIface:
           {
-            action = "accept";
+            inherit action;
             relationId = relation.id or null;
             comment =
               if builtins.isString (relation.id or null) then
@@ -121,7 +123,7 @@ let
                 null;
             priority = relation.priority or null;
             inherit trafficType;
-            direction = "relation-forward";
+            inherit direction;
             matches = relationMatches relation;
             from = attrsOrEmpty (relation.from or null);
             to = attrsOrEmpty (relation.to or null);
@@ -133,6 +135,11 @@ let
             fromInterface = fromIface.runtimeIfName;
             toInterface = toIface.runtimeIfName;
             applyTcpMssClamp = false;
+          }
+          // common.relationHandoff {
+            relationId = relation.id or null;
+            inherit action direction fromIface toIface;
+            policyPoint = "upstream-selector";
           }
           // extra
         ) toIfaces
