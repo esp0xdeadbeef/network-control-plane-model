@@ -161,11 +161,18 @@ let
               withRelationSourceScope relation {
                 inherit action;
                 relationId = id;
+                comment = id;
                 priority = relation.priority or null;
                 trafficType = relation.trafficType or "any";
+                direction = "relation-forward";
                 matches = relationMatches relation;
                 from = attrsOrEmpty (relation.from or null);
                 to = attrsOrEmpty (relation.to or null);
+                relationCardinality = {
+                  unit = "policy-router-forwarding-rule";
+                  decomposition = "decomposed-by-policy-interface-scope";
+                  decomposed = true;
+                };
                 fromInterface = fromIface.runtimeIfName;
                 toInterface = toIface.runtimeIfName;
                 applyTcpMssClamp = false;

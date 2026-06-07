@@ -101,6 +101,13 @@ let
                 inherit (sourceScope) sourceFiles sourcePrefixes;
                 applyTcpMssClamp = false;
               }
+              // common.selectorRuntimeRuleAudit {
+                relationId = "runtime-routed-prefix-public-egress";
+                direction = "policy-to-public-uplink";
+                fromIface = exitPolicyIface;
+                toIface = coreIface;
+                decomposed = true;
+              }
               // (if sourceScope.sourceFiles != [ ] then { family = 6; } else { })
             ) (exitCoreInterfacesFor exitPolicyIface)
           ) (exitPolicyInterfacesFor ingressPolicyIface)
@@ -128,6 +135,13 @@ let
                     toInterface = toIface.runtimeIfName;
                     inherit (fromEntry) sourceFiles sourcePrefixes;
                     applyTcpMssClamp = false;
+                  }
+                  // common.selectorRuntimeRuleAudit {
+                    relationId = "runtime-routed-prefix-public-egress";
+                    direction = "overlay-to-policy";
+                    fromIface = fromEntry.iface;
+                    toIface = toIface;
+                    decomposed = true;
                   }
                   // (if fromEntry.sourceFiles != [ ] then { family = 6; } else { })
                 )

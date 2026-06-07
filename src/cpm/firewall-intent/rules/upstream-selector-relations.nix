@@ -112,11 +112,24 @@ let
           {
             action = "accept";
             relationId = relation.id or null;
+            comment =
+              if builtins.isString (relation.id or null) then
+                relation.id
+              else if builtins.isString (relation.name or null) then
+                relation.name
+              else
+                null;
             priority = relation.priority or null;
             inherit trafficType;
+            direction = "relation-forward";
             matches = relationMatches relation;
             from = attrsOrEmpty (relation.from or null);
             to = attrsOrEmpty (relation.to or null);
+            relationCardinality = {
+              unit = "selector-forwarding-rule";
+              decomposition = "decomposed-by-selector-interface-scope";
+              decomposed = true;
+            };
             fromInterface = fromIface.runtimeIfName;
             toInterface = toIface.runtimeIfName;
             applyTcpMssClamp = false;

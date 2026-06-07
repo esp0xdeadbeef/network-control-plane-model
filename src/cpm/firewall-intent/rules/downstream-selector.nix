@@ -83,11 +83,18 @@ let
             (toIface: {
               inherit action;
               relationId = id;
+              comment = id;
               priority = relation.priority or null;
               trafficType = relation.trafficType or "any";
+              direction = "relation-forward";
               matches = relationMatches relation;
               from = attrsOrEmpty (relation.from or null);
               to = attrsOrEmpty (relation.to or null);
+              relationCardinality = {
+                unit = "selector-forwarding-rule";
+                decomposition = "decomposed-by-selector-interface-scope";
+                decomposed = true;
+              };
               fromInterface = fromIface.runtimeIfName;
               toInterface = toIface.runtimeIfName;
               applyTcpMssClamp = false;
