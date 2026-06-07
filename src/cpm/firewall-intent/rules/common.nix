@@ -173,6 +173,12 @@ rec {
       ref = backingRef iface;
       laneValue = lane iface;
       fabricLink = attrsOrEmpty (iface.fabricLink or null);
+      hygieneBoundaryFields =
+        (if builtins.hasAttr "boundaryIdentity" iface then { boundaryIdentity = iface.boundaryIdentity; } else { })
+        // (if builtins.hasAttr "sourceScopeAuthority" iface then { sourceScopeAuthority = iface.sourceScopeAuthority; } else { })
+        // (if builtins.hasAttr "hygieneDecision" iface then { hygieneDecision = iface.hygieneDecision; } else { })
+        // (if builtins.hasAttr "spoofing" iface then { spoofing = iface.spoofing; } else { })
+        // (if builtins.hasAttr "hygieneBoundary" iface then { hygieneBoundary = iface.hygieneBoundary; } else { });
     in
     {
       runtimeInterface = iface.runtimeIfName;
@@ -188,7 +194,8 @@ rec {
     // (if (iface.upstream or null) != null then { upstream = iface.upstream; } else { })
     // (if (iface.overlay or null) != null then { overlay = iface.overlay; } else { })
     // (if (iface.provider or null) != null then { provider = iface.provider; } else { })
-    // (if (fabricLink.link or null) != null then { fabricLink = fabricLink.link; } else { });
+    // (if (fabricLink.link or null) != null then { fabricLink = fabricLink.link; } else { })
+    // hygieneBoundaryFields;
 
   candidateEgress = iface:
     let
