@@ -46,10 +46,17 @@ OUTPUT_JSON="${output_json}" INVENTORY_PATH="${labs_path}/examples/s-router-over
     if overlayIface.runtimeIfName == expectedInterface
       && overlayIface.renderedIfName == expectedInterface
       && overlayIface.sourceKind == "overlay"
+      && overlayIface.adapterClass == "vpn"
+      && overlayIface.virtualAdapter == true
+      && overlayIface.hostFacing == false
+      && overlayIface.exclusionReason == "overlay-tunnel-adapter"
+      && overlayIface.provider == "nebula"
+      && overlayIface.overlay == "east-west"
+      && overlayIface.tunnelPurpose == "overlay-reachability"
     then
       true
     else
-      throw "provider-overlay-runtime-interface-name failed: CPM must preserve inventory controlPlane.sites.*.overlays.*.runtimeNodes.<node>.service.interface as effectiveRuntimeRealization.interfaces.<overlay>.runtimeIfName/renderedIfName so renderers install routes/firewall rules on the provider-created TUN name instead of the logical overlay key."
+      throw "provider-overlay-runtime-interface-name failed: CPM must preserve inventory controlPlane.sites.*.overlays.*.runtimeNodes.<node>.service.interface as effectiveRuntimeRealization.interfaces.<overlay>.runtimeIfName/renderedIfName and classify the provider-created TUN as a non-host-facing virtual adapter."
 ' >/dev/null
 
 echo "PASS provider-overlay-runtime-interface-name"

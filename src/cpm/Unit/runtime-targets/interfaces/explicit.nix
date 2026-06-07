@@ -18,6 +18,7 @@ let
   runtimeRoutedPrefixRoutesFor = import ./runtime-routed-prefix-routes.nix { inherit helpers common; };
   routeFilter = import ./default-route-filter.nix { inherit helpers common uplinkRouting; };
   binderSourceAudit = import ../../../binder-source-audit.nix { inherit helpers; };
+  interfaceTaxonomy = import ./taxonomy.nix { inherit helpers common; };
   portBindingForInterface =
     { sourceKind, backingRef, ifName, portBindings }:
     if sourceKind == "p2p" then
@@ -176,6 +177,19 @@ let
     ipv4 = routeFilter.filterUnavailableDefaultRoutes 4 (effectiveRoutesRaw.ipv4 or null);
     ipv6 = routeFilter.filterUnavailableDefaultRoutes 6 (effectiveRoutesRaw.ipv6 or null);
   };
+  taxonomy = interfaceTaxonomy.taxonomyFor {
+    inherit
+      ifacePath
+      ifName
+      sourceKind
+      backingRef
+      nodeRole
+      targetDef
+      portBinding
+      fabricLinkBinding
+      overlayProvisioning
+      ;
+  };
   value =
     {
       runtimeTarget = targetId;
@@ -189,6 +203,7 @@ let
       routes = effectiveRoutes;
       backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
     }
+    // taxonomy
     // binderSourceAudit.make {
       path = ifacePath;
       field = "effectiveRuntimeRealization.interfaces.${ifName}";
