@@ -10,10 +10,14 @@ let
     clientFixture.control_plane_model or clientFixture;
 
   renderedHostNetwork =
-    clientFixture.renderedHostNetwork
-      or clientFixture.hostNetwork
-      or controlPlaneModel.renderedHostNetwork
-      or controlPlaneModel.hostNetwork;
+    if clientFixture ? renderedHostNetwork then
+      clientFixture.renderedHostNetwork
+    else if clientFixture ? hostNetwork then
+      clientFixture.hostNetwork
+    else if controlPlaneModel ? renderedHostNetwork then
+      controlPlaneModel.renderedHostNetwork
+    else
+      { };
 in
 {
   _module.args.clientFixture = clientFixture;

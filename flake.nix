@@ -81,25 +81,30 @@
             if network-forwarding-model ? libBySystem then
               network-forwarding-model.libBySystem.${system}
             else
-              throw "network-control-plane-model requires network-forwarding-model.libBySystem.${system}";
+              throw "network-control-plane-model requires network-forwarding-model.libBySystem";
 
-          exposeHostNetwork =
+          resolveHostNetwork =
             result:
             let
               controlPlaneModel = result.control_plane_model or result;
             in
-            result // {
-              renderedHostNetwork =
-                result.renderedHostNetwork
-                  or result.hostNetwork
-                  or controlPlaneModel.renderedHostNetwork
-                  or controlPlaneModel.hostNetwork;
+            if result ? renderedHostNetwork then
+              result.renderedHostNetwork
+            else if result ? hostNetwork then
+              result.hostNetwork
+            else if controlPlaneModel ? renderedHostNetwork then
+              controlPlaneModel.renderedHostNetwork
+            else
+              { };
 
-              hostNetwork =
-                result.hostNetwork
-                  or result.renderedHostNetwork
-                  or controlPlaneModel.hostNetwork
-                  or controlPlaneModel.renderedHostNetwork;
+          exposeHostNetwork =
+            result:
+            let
+              hostNetwork = resolveHostNetwork result;
+            in
+            result // {
+              inherit hostNetwork;
+              renderedHostNetwork = hostNetwork;
             };
         in
         rec {
