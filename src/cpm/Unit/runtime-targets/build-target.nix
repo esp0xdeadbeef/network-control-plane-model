@@ -45,6 +45,23 @@ let
       ;
   };
   binderSourceAudit = import ../../binder-source-audit.nix { inherit helpers; };
+  attrsOrEmpty = value: if builtins.isAttrs value then value else { };
+  firstOrNull = values: if values == [ ] then null else builtins.head values;
+  stripPrefixLength = value:
+    if !(isNonEmptyString value) then "" else builtins.head (lib.splitString "/" value);
+  pppoeServiceForTarget = targetName:
+    attrsOrEmpty ((attrsOrEmpty (realizationIndex.targetDefs.${targetName}.node.services or null)).pppoe or null);
+  pppoePeerTargetsFor = role: interface:
+    builtins.filter
+      (
+        targetName:
+        let
+          service = pppoeServiceForTarget targetName;
+          peer = attrsOrEmpty (service.${role} or null);
+        in
+        peer != { } && (peer.interface or null) == interface
+      )
+      (sortedNames realizationIndex.targetDefs);
   buildRuntimeTarget =
     nodeName:
     let
@@ -161,13 +178,158 @@ let
         interfaces = runtimeInterfacesBase;
       };
       runtimeInterfaces = runtimeOriginEgress.applyToInterfaces runtimeOriginEgressContract runtimeInterfacesBase;
-      effectiveRuntimeInterfaces =
+      routeFilteredRuntimeInterfaces =
         if isBgpRouter then
           lib.mapAttrs (
             _: iface: iface // { routes = filterRoutesForBgp (iface.routes or { }); }
           ) runtimeInterfaces
         else
           runtimeInterfaces;
+      pppoeService = if realizedTarget then pppoeServiceForTarget targetId else { };
+      pppoeServer = attrsOrEmpty (pppoeService.server or null);
+      pppoeClient = attrsOrEmpty (pppoeService.client or null);
+      pppoeSessionInterfaceEntry =
+        if pppoeServer != { } then
+          let
+            peerTargetName = firstOrNull (pppoePeerTargetsFor "client" pppoeServer.interface);
+            peerClient =
+              if peerTargetName == null then { } else attrsOrEmpty ((pppoeServiceForTarget peerTargetName).client or null);
+            runtimeInterface = peerClient.runtimeInterface or null;
+            providerAddress = stripPrefixLength (pppoeServer.providerAddress or "");
+            customerAddress = stripPrefixLength (pppoeServer.customerAddress or "");
+          in
+          if !(isNonEmptyString runtimeInterface) then
+            null
+          else
+            {
+              name = runtimeInterface;
+              value = {
+                runtimeTarget = targetId;
+                logicalNode = nodeName;
+                sourceInterface = runtimeInterface;
+                sourceKind = "pppoe-session";
+                runtimeIfName = runtimeInterface;
+                renderedIfName = runtimeInterface;
+                addr4 = "${providerAddress}/32";
+                routes = {
+                  ipv4 =
+                    [
+                      {
+                        dst = "${customerAddress}/32";
+                        proto = "pppoe-session";
+                        intent = {
+                          kind = "connected-reachability";
+                          source = "pppoe-server-session";
+                        };
+                      }
+                    ]
+                    ++ lib.optional ((peerClient.defaultRoute or false) == true) {
+                      dst = "0.0.0.0/0";
+                      proto = "pppoe-session";
+                      intent = {
+                        kind = "default-reachability";
+                        source = "pppoe-server-session";
+                      };
+                    };
+                  ipv6 = [ ];
+                };
+                backingRef = {
+                  kind = "pppoe-session";
+                  id = "pppoe-session::${targetId}::${runtimeInterface}";
+                  name = pppoeServer.interface;
+                  peerRuntimeTarget = peerTargetName;
+                };
+                ipv4 = {
+                  address = "${providerAddress}/32";
+                  peer = "${customerAddress}/32";
+                };
+                pppoe = {
+                  role = "server";
+                  serviceInterface = pppoeServer.interface;
+                  peerRuntimeTarget = peerTargetName;
+                };
+              } // binderSourceAudit.make {
+                path = "${targetDef.nodePath}.services.pppoe.server";
+                field = "effectiveRuntimeRealization.interfaces.${runtimeInterface}";
+                binderSourceClass = "public-inventory";
+                binderSourcePath = "${targetDef.nodePath}.services.pppoe.server";
+                upstreamBehaviorRef = "${targetDef.nodePath}.services.pppoe.server";
+              };
+            }
+        else if pppoeClient != { } then
+          let
+            peerTargetName = firstOrNull (pppoePeerTargetsFor "server" pppoeClient.interface);
+            peerServer =
+              if peerTargetName == null then { } else attrsOrEmpty ((pppoeServiceForTarget peerTargetName).server or null);
+            runtimeInterface = pppoeClient.runtimeInterface or null;
+            providerAddress = stripPrefixLength (peerServer.providerAddress or "");
+            customerAddress = stripPrefixLength (peerServer.customerAddress or "");
+          in
+          if !(isNonEmptyString runtimeInterface) || peerServer == { } then
+            null
+          else
+            {
+              name = runtimeInterface;
+              value = {
+                runtimeTarget = targetId;
+                logicalNode = nodeName;
+                sourceInterface = runtimeInterface;
+                sourceKind = "pppoe-session";
+                runtimeIfName = runtimeInterface;
+                renderedIfName = runtimeInterface;
+                addr4 = "${customerAddress}/32";
+                routes = {
+                  ipv4 =
+                    [
+                      {
+                        dst = "${providerAddress}/32";
+                        proto = "pppoe-session";
+                        intent = {
+                          kind = "connected-reachability";
+                          source = "pppoe-client-session";
+                        };
+                      }
+                    ]
+                    ++ lib.optional ((pppoeClient.defaultRoute or false) == true) {
+                      dst = "0.0.0.0/0";
+                      proto = "pppoe-session";
+                      intent = {
+                        kind = "default-reachability";
+                        source = "pppoe-client-session";
+                      };
+                    };
+                  ipv6 = [ ];
+                };
+                backingRef = {
+                  kind = "pppoe-session";
+                  id = "pppoe-session::${targetId}::${runtimeInterface}";
+                  name = pppoeClient.interface;
+                  peerRuntimeTarget = peerTargetName;
+                };
+                ipv4 = {
+                  address = "${customerAddress}/32";
+                  peer = "${providerAddress}/32";
+                };
+                pppoe = {
+                  role = "client";
+                  serviceInterface = pppoeClient.interface;
+                  peerRuntimeTarget = peerTargetName;
+                };
+              } // binderSourceAudit.make {
+                path = "${targetDef.nodePath}.services.pppoe.client";
+                field = "effectiveRuntimeRealization.interfaces.${runtimeInterface}";
+                binderSourceClass = "public-inventory";
+                binderSourcePath = "${targetDef.nodePath}.services.pppoe.client";
+                upstreamBehaviorRef = "${targetDef.nodePath}.services.pppoe.client";
+              };
+            }
+        else
+          null;
+      effectiveRuntimeInterfaces =
+        if pppoeSessionInterfaceEntry == null then
+          routeFilteredRuntimeInterfaces
+        else
+          routeFilteredRuntimeInterfaces // { ${pppoeSessionInterfaceEntry.name} = pppoeSessionInterfaceEntry.value; };
       placement =
         if realizedTarget then
           {
