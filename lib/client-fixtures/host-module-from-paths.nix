@@ -3,8 +3,24 @@
 args:
 
 let
+  lib =
+    args.lib or null;
+
+  mkDefault =
+    if lib == null then
+      value: value
+    else
+      lib.mkDefault value;
+
+  fixtureArgs =
+    builtins.removeAttrs args [
+      "config"
+      "lib"
+      "options"
+    ];
+
   clientFixture =
-    buildFromPaths args;
+    buildFromPaths fixtureArgs;
 
   controlPlaneModel =
     clientFixture.control_plane_model or clientFixture;
@@ -16,11 +32,13 @@ let
       clientFixture.hostNetwork
     else if controlPlaneModel ? renderedHostNetwork then
       controlPlaneModel.renderedHostNetwork
+    else if controlPlaneModel ? hostNetwork then
+      controlPlaneModel.hostNetwork
     else
       { };
 in
 {
-  _module.args.clientFixture = clientFixture;
-  _module.args.controlPlaneModel = controlPlaneModel;
-  _module.args.renderedHostNetwork = renderedHostNetwork;
+  _module.args.clientFixture = mkDefault clientFixture;
+  _module.args.controlPlaneModel = mkDefault controlPlaneModel;
+  _module.args.renderedHostNetwork = mkDefault renderedHostNetwork;
 }
