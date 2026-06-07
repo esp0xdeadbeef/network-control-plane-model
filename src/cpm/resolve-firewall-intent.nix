@@ -26,6 +26,9 @@ let
     );
 
   communicationContract = attrsOrEmpty (siteAttrs.communicationContract or null);
+  accessSpaceDiscovery = attrsOrEmpty (siteAttrs.accessSpaceDiscovery or null);
+  sharedServicePolicyAtoms =
+    listOrEmpty (accessSpaceDiscovery.sharedServicePolicyAtoms or null);
   siteRelations =
     if builtins.isList (communicationContract.relations or null) then
       communicationContract.relations
@@ -112,6 +115,7 @@ let
               overlayNames
               policyEndpointBindings
               services
+              sharedServicePolicyAtoms
               siteRelations
               trafficTypeMatches
               runtimeOriginSourcePrefixes

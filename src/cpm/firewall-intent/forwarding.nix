@@ -16,6 +16,7 @@ in
   overlayNames ? [ ],
   policyEndpointBindings,
   services,
+  sharedServicePolicyAtoms ? [ ],
   siteRelations,
   trafficTypeMatches ? { },
   target,
@@ -176,7 +177,7 @@ else if role == "policy" then
     rules = buildPolicyRules {
       endpointBindings = attrsOrEmpty policyEndpointBindings;
       relations = siteRelations;
-      inherit services trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
+      inherit services sharedServicePolicyAtoms trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
     };
   } // policyDiagnosticAttrs)
 else if role == "core" then

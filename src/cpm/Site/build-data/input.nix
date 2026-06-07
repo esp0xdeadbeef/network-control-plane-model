@@ -36,6 +36,22 @@ let
     else
       [ ];
 
+  accessSpaceDiscovery =
+    if builtins.isAttrs (siteAttrs.accessSpaceDiscovery or null) then
+      let
+        discovery = requireAttrs "${sitePath}.accessSpaceDiscovery" siteAttrs.accessSpaceDiscovery;
+      in
+      (if builtins.isList (discovery.sharedServicePolicyAtoms or null) then
+        {
+          sharedServicePolicyAtoms =
+            requireList "${sitePath}.accessSpaceDiscovery.sharedServicePolicyAtoms"
+              discovery.sharedServicePolicyAtoms;
+        }
+      else
+        { })
+    else
+      null;
+
   domainsValue = requireAttrs "${sitePath}.domains" (siteAttrs.domains or null);
   domains = {
     tenants = requireList "${sitePath}.domains.tenants" (domainsValue.tenants or null);
@@ -96,6 +112,7 @@ let
 in
 {
   inherit
+    accessSpaceDiscovery
     allowedRelations
     attachments
     communicationContract

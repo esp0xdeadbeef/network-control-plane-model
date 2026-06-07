@@ -28,6 +28,7 @@ let
     inherit helpers common inventory site sitePath;
   };
   inherit (siteInput)
+    accessSpaceDiscovery
     allowedRelations
     attachments
     communicationContract
@@ -323,6 +324,7 @@ let
   rendererContracts = import ./Site/build-data/renderer-contracts.nix {
     inherit
       lib
+      accessSpaceDiscovery
       helpers
       common
       communicationContract
@@ -349,7 +351,7 @@ in
 if validatePPPoEContracts then
   emitOutput
   {
-    inherit lib accessAdvertisements attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
+    inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
     services = resolvedServices;
   }
 else
