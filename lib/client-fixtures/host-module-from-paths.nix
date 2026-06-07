@@ -7,8 +7,9 @@ let
     args.lib or null;
 
   mkDefault =
+    value:
     if lib == null then
-      value: value
+      value
     else
       lib.mkDefault value;
 
