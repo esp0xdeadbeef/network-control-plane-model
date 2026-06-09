@@ -45,7 +45,6 @@ let
       ;
   };
   binderSourceAudit = import ../../binder-source-audit.nix { inherit helpers; };
-  attrsOrEmpty = value: if builtins.isAttrs value then value else { };
   firstOrNull = values: if values == [ ] then null else builtins.head values;
   stripPrefixLength = value:
     if !(isNonEmptyString value) then "" else builtins.head (lib.splitString "/" value);
