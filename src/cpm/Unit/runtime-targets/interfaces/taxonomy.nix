@@ -34,10 +34,11 @@ let
     , virtualAdapter ? false
     , hostFacing ? true
     , extra ? { }
+    , direction ? null
     ,
     }:
     {
-      inherit adapterClass virtualAdapter hostFacing;
+      inherit adapterClass virtualAdapter hostFacing direction;
       owningRole = nodeRole;
     } // extra;
 
@@ -306,6 +307,13 @@ let
       backingRefName = backingRef.name or null;
       pppoeSession =
         if targetDef != null then pppoeServiceForInterface ifName backingRefName targetDef else null;
+      direction =
+        if sourceKind == "tenant" then
+          if nodeRole != null && builtins.substring 0 4 nodeRole == "core" then "egress" else "ingress"
+        else if sourceKind == "p2p" then
+          if nodeRole != null && builtins.substring 0 4 nodeRole == "core" then "ingress" else "egress"
+        else if sourceKind == "wan" then "egress"
+        else null;
       taxonomy =
         if sourceKind == "overlay" then
           overlayTaxonomy { inherit nodeRole backingRef overlayProvisioning; }
@@ -316,17 +324,17 @@ let
         else if sourceKind == "p2p" then
           baseTaxonomy {
             adapterClass = "p2p-realization";
-            inherit nodeRole;
+            inherit nodeRole direction;
           }
         else if sourceKind == "tenant" then
           baseTaxonomy {
             adapterClass = "tenant-role-surface";
-            inherit nodeRole;
+            inherit nodeRole direction;
           }
         else if sourceKind == "wan" then
           baseTaxonomy {
             adapterClass = "wan-uplink";
-            inherit nodeRole;
+            inherit nodeRole direction;
           }
         else
           baseTaxonomy {
