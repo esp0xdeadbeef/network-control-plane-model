@@ -406,7 +406,7 @@ let
           in
           if needsCoreEgress then
             let
-              stripped = builtins.removeAttrs p2pVal [ "runtimeIfName" "runtimeInterface" ];
+              stripped = builtins.removeAttrs p2pVal [ "runtimeIfName" "renderedIfName" "runtimeInterface" ];
             in
             effectiveRuntimeInterfaces // {
               "core-uplink-egress" = stripped // {
