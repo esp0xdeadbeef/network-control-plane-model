@@ -149,7 +149,7 @@ let
       requesterScopes = optionalStringList "${reservationPath}.requesterScopes" (attrs.requesterScopes or null);
       recordClass =
         if attrs ? recordClass then
-          requireEnum "${reservationPath}.recordClass" [ "A" "AAAA" ] attrs.recordClass
+          requireEnum "${reservationPath}.recordClass" [ "A" "AAAA" "dhcp4-lease-name" "dhcpv6-lease-name" ] attrs.recordClass
         else
           null;
       fallbackBehavior = optionalNonEmptyString "${reservationPath}.fallbackBehavior" (attrs.fallbackBehavior or null);
