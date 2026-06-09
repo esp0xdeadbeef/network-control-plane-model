@@ -247,6 +247,40 @@ let
                   serviceInterface = pppoeServer.interface;
                   peerRuntimeTarget = peerTargetName;
                 };
+              } // {
+                boundaryIdentity = {
+                virtualAdapter = true;
+                hostFacing = false;
+                  kind = "virtual-adapter-hygiene-boundary";
+                  adapterClass = "pppoe-tunnel-adapter";
+                  sourceKind = "pppoe-session";
+                  logicalInterface = runtimeInterface;
+                  boundary = "pppoe-session";
+                  owningRole = nodeRole;
+                };
+                sourceScopeAuthority = {
+                  authority = "control-plane-model";
+                  mode = "structured-source-scope";
+                  sourceRequired = true;
+                  failClosedWhenAbsent = true;
+                  sourceClass = "pppoe-session-adapter";
+                };
+                hygieneDecision = {
+                  enforcement = "fail-closed";
+                  interfaceTupleOnlyAuthority = false;
+                };
+                spoofing = {
+                  rejection = "fail-closed";
+                  interfaceTupleOnlyBypass = false;
+                };
+                hygieneBoundary = {
+                  provenance = {
+                    route.gate = "route-intent-and-policy-only-classification";
+                    firewall.gate = "relation-handoff";
+                    nat.gate = "route-safety";
+                    providerEgress.gate = "provider-egress-source";
+                  };
+                };
               } // binderSourceAudit.make {
                 path = "${targetDef.nodePath}.services.pppoe.server";
                 field = "effectiveRuntimeRealization.interfaces.${runtimeInterface}";
@@ -313,6 +347,40 @@ let
                   role = "client";
                   serviceInterface = pppoeClient.interface;
                   peerRuntimeTarget = peerTargetName;
+                };
+              } // {
+                boundaryIdentity = {
+                virtualAdapter = true;
+                hostFacing = false;
+                  kind = "virtual-adapter-hygiene-boundary";
+                  adapterClass = "pppoe-tunnel-adapter";
+                  sourceKind = "pppoe-session";
+                  logicalInterface = runtimeInterface;
+                  boundary = "pppoe-session";
+                  owningRole = nodeRole;
+                };
+                sourceScopeAuthority = {
+                  authority = "control-plane-model";
+                  mode = "structured-source-scope";
+                  sourceRequired = true;
+                  failClosedWhenAbsent = true;
+                  sourceClass = "pppoe-session-adapter";
+                };
+                hygieneDecision = {
+                  enforcement = "fail-closed";
+                  interfaceTupleOnlyAuthority = false;
+                };
+                spoofing = {
+                  rejection = "fail-closed";
+                  interfaceTupleOnlyBypass = false;
+                };
+                hygieneBoundary = {
+                  provenance = {
+                    route.gate = "route-intent-and-policy-only-classification";
+                    firewall.gate = "relation-handoff";
+                    nat.gate = "route-safety";
+                    providerEgress.gate = "provider-egress-source";
+                  };
                 };
               } // binderSourceAudit.make {
                 path = "${targetDef.nodePath}.services.pppoe.client";
