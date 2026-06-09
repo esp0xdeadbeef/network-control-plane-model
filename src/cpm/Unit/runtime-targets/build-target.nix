@@ -385,31 +385,7 @@ let
           isBgpRouter
           placement
           loopback
-          effectiveRuntimeInterfaces =
-            let
-              ifaceList = builtins.attrValues effectiveRuntimeInterfaces;
-              hostP2p = builtins.filter
-                (i: (i.hostFacing or false) == true && (i.sourceKind or "") == "p2p")
-                ifaceList;
-              hasTenant = builtins.any
-                (i: (i.sourceKind or "") == "tenant")
-                ifaceList;
-              nodeRoleStr = nodeRole or "";
-              isCore = builtins.substring 0 4 nodeRoleStr == "core";
-              needsCoreEgress = isCore && !hasTenant && builtins.length hostP2p == 1;
-              p2pEntry = if needsCoreEgress then builtins.head hostP2p else null;
-            in
-            if needsCoreEgress then
-              effectiveRuntimeInterfaces // {
-                "core-uplink-egress" = p2pEntry // {
-                  sourceKind = "core-egress";
-                  adapterClass = "core-role-egress";
-                  direction = "egress";
-                  hostFacing = true;
-                  virtualAdapter = false;
-                };
-              }
-            else effectiveRuntimeInterfaces;
+          effectiveRuntimeInterfaces
           nodeRole
           runtimeContainers
           runtimeOriginEgressContract
