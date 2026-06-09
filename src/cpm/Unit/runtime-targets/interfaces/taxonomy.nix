@@ -325,6 +325,12 @@ let
           baseTaxonomy {
             adapterClass = "p2p-realization";
             inherit nodeRole direction;
+            hostFacing =
+              if nodeRole != null && builtins.substring 0 4 nodeRole == "core"
+                 && backingRefName != null
+                 && (builtins.match ".*access-iot.*" backingRefName) != null
+              then false
+              else true;
           }
         else if sourceKind == "tenant" then
           baseTaxonomy {
