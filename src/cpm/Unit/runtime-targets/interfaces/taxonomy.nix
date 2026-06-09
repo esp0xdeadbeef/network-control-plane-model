@@ -330,6 +330,10 @@ let
                  && backingRefName != null
                  && (builtins.match ".*access-iot.*" backingRefName) != null
               then false
+              else if nodeRole != null && builtins.substring 0 6 nodeRole == "access"
+                 && backingRefName != null
+                 && (builtins.match ".*(nebula|wireguard).*" backingRefName) != null
+              then false
               else true;
           }
         else if sourceKind == "tenant" then
