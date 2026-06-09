@@ -405,8 +405,11 @@ let
             p2pVal = if needsCoreEgress then builtins.head hostP2p else null;
           in
           if needsCoreEgress then
+            let
+              stripped = builtins.removeAttrs p2pVal [ "runtimeIfName" "runtimeInterface" ];
+            in
             effectiveRuntimeInterfaces // {
-              "core-uplink-egress" = p2pVal // {
+              "core-uplink-egress" = stripped // {
                 sourceKind = "core-egress";
                 adapterClass = "core-role-egress";
                 direction = "egress";
