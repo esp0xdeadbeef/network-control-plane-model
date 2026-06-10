@@ -489,7 +489,9 @@ let
             in
             effectiveRuntimeInterfaces // {
               "core-uplink-egress" = stripped // {
-                sourceKind = "core-egress";
+                sourceKind = "p2p";
+                runtimeIfName = "core-uplink-egress";
+                renderedIfName = "core-uplink-egress";
                 adapterClass = "core-role-egress";
                 direction = "egress";
                 hostFacing = true;
