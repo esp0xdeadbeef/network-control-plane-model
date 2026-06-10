@@ -97,12 +97,14 @@ jq -e '
         .dst == ($peer + "/32")
         and .proto == "pppoe-session"
         and .intent.kind == "connected-reachability"
-      )
-      and any($iface.routes.ipv4[]?;
-        .dst == "0.0.0.0/0"
-        and .proto == "pppoe-session"
-        and .intent.kind == "default-reachability"
       );
+  def has_pppoe_client_session_interface($target; $runtimeInterface; $role; $address; $peer; $serviceInterface):
+    has_pppoe_session_interface($target; $runtimeInterface; $role; $address; $peer; $serviceInterface)
+    and any(rt($target).effectiveRuntimeRealization.interfaces[$runtimeInterface].routes.ipv4[]?;
+      .dst == "0.0.0.0/0"
+      and .proto == "pppoe-session"
+      and .intent.kind == "default-reachability"
+    );
   def has_forward_rule($target; $from; $to):
     any(rt($target).forwardingIntent.rules[]?;
       .action == "accept"
@@ -215,9 +217,9 @@ jq -e '
     and has_pppoe_server("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a"; "203.0.113.5"; "203.0.113.4")
     and has_pppoe_server("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b"; "203.0.113.1"; "203.0.113.2")
     and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "server"; "203.0.113.5"; "203.0.113.4"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
-    and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "client"; "203.0.113.4"; "203.0.113.5"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
+    and has_pppoe_client_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "client"; "203.0.113.4"; "203.0.113.5"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
     and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b"; "ppp1"; "server"; "203.0.113.1"; "203.0.113.2"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
-    and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "ppp1"; "client"; "203.0.113.2"; "203.0.113.1"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
+    and has_pppoe_client_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "ppp1"; "client"; "203.0.113.2"; "203.0.113.1"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "tenant-provider-handoff-a"; "ppp0")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "tenant-provider-handoff-a")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "ens80")
@@ -234,6 +236,10 @@ jq -e '
     and has_explicit_snat("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "testnet-routed-isp"; "ens80")
     and no_access_translation_side_effect("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a")
     and no_access_translation_side_effect("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b")
+    and (rt("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a").effectiveRuntimeRealization.interfaces.ppp0.routes.ipv4
+      | map(select(.intent.kind == "default-reachability")) == [])
+    and (rt("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b").effectiveRuntimeRealization.interfaces.ppp1.routes.ipv4
+      | map(select(.intent.kind == "default-reachability")) == [])
 ' "${output_json}" >/dev/null
 
 echo "PASS provider-access-no-side-channel row-semantics"

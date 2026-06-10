@@ -211,25 +211,16 @@ let
                 renderedIfName = runtimeInterface;
                 addr4 = "${providerAddress}/32";
                 routes = {
-                  ipv4 =
-                    [
-                      {
-                        dst = "${customerAddress}/32";
-                        proto = "pppoe-session";
-                        intent = {
-                          kind = "connected-reachability";
-                          source = "pppoe-server-session";
-                        };
-                      }
-                    ]
-                    ++ lib.optional ((peerClient.defaultRoute or false) == true) {
-                      dst = "0.0.0.0/0";
+                  ipv4 = [
+                    {
+                      dst = "${customerAddress}/32";
                       proto = "pppoe-session";
                       intent = {
-                        kind = "default-reachability";
+                        kind = "connected-reachability";
                         source = "pppoe-server-session";
                       };
-                    };
+                    }
+                  ];
                   ipv6 = [ ];
                 };
                 backingRef = {
@@ -332,17 +323,20 @@ let
       removeDefaultRoutesOnPppoeCoreP2ps =
         ifaces:
         let
-          pppoeClientTargets = builtins.listToAttrs (
+          pppoeLinkNames = builtins.listToAttrs (
             builtins.filter (e: e != null) (
               builtins.map (targetName:
-                let svc = pppoeServiceForTarget targetName;
-                in if (svc.client or {}) != {} then { name = targetName; value = true; } else null
+                let
+                  svc = pppoeServiceForTarget targetName;
+                  linkName = (svc.client or {}).interface or (svc.server or {}).interface or null;
+                in
+                if isNonEmptyString linkName then { name = linkName; value = true; } else null
               ) (sortedNames realizationIndex.targetDefs)
             )
           );
-          isPppoeCorePeer = iface:
+          isPppoeLink = iface:
             (iface.sourceKind or "") == "p2p"
-            && builtins.hasAttr (iface.backingRef.peerRuntimeTarget or "") pppoeClientTargets;
+            && builtins.hasAttr (iface.backingRef.name or "") pppoeLinkNames;
           stripDefaultRoutes = iface:
             let
               routes = iface.routes or {};
@@ -356,7 +350,7 @@ let
             iface // { routes = routes // { inherit ipv4 ipv6; }; };
         in
         builtins.mapAttrs (_: iface:
-          if isPppoeCorePeer iface then stripDefaultRoutes iface else iface
+          if isPppoeLink iface then stripDefaultRoutes iface else iface
         ) ifaces;
       effectiveRuntimeInterfaces =
         removeDefaultRoutesOnPppoeCoreP2ps effectiveRuntimeInterfacesUnfiltered;
