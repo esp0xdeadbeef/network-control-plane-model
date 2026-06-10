@@ -263,7 +263,7 @@ rec {
           toLane.uplink
         else
           builtins.concatStringsSep "-" (uplinks fromIface ++ uplinks toIface);
-      uplinkPart = if uplink == "" then "no-uplink" else uplink;
+      uplinkPart = if uplink == "" then "fabric" else uplink;
     in
     "selector-handoff-${direction}--${access}--${fromScope.relationPurpose}-to-${toScope.relationPurpose}--${uplinkPart}";
 
