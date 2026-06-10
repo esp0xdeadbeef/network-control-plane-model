@@ -111,23 +111,30 @@ let
     in
     if matchesCore == [ ] then null else builtins.elemAt matchesCore 0;
 
-  # Additional cores that have source-prefix coverage for this policy interface's
-  # traffic via siteRuntimeOriginSourcePrefixes, even when the uplink name
-  # doesn't match.  This ensures internetModes-covered paths (e.g. client tenant
-  # prefixes on core-upstream-vlan4) get forwardingIntent rules even when the
-  # intent's allow rule names a different uplink.
+  # For every policy interface, also generate forwarding rules to the
+  # core-upstream-vlan4 interface (the default internet egress core).  This
+  # ensures that when the routing decision selects vlan4 egress for tenant
+  # traffic, the nft oifname constraint matches.  Without this, traffic whose
+  # intent allow rule names a specific uplink (e.g. testnet-host-isp) cannot
+  # reach the default internet core (vlan4) even though the CPM internetModes
+  # on that core covers the tenant's source prefixes.
+  vlan4CoreInterface =
+    let
+      candidates = builtins.filter (
+        coreIface:
+        builtins.match ".*core-upstream-vlan4.*" coreIface.runtimeIfName != null
+      ) coreInterfaces;
+    in
+    if candidates == [ ] then null else builtins.elemAt candidates 0;
+
   additionalCoresForPolicy =
     policyIface:
     let
-      policySourcePrefixes =
-        common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface;
       primaryCore = coreForPolicy policyIface;
     in
-    builtins.filter (
-      coreIface:
-      coreIface.runtimeIfName != (if primaryCore == null then "" else primaryCore.runtimeIfName)
-      && common.sourcePrefixesAllowedToInterface policySourcePrefixes coreIface != [ ]
-    ) coreInterfaces;
+    if vlan4CoreInterface == null then [ ]
+    else if primaryCore != null && primaryCore.runtimeIfName == vlan4CoreInterface.runtimeIfName then [ ]
+    else [ vlan4CoreInterface ];
 
   # Generate pair rules for additional cores (internetModes-based coverage)
   additionalSelectorPairRules = builtins.concatLists (
