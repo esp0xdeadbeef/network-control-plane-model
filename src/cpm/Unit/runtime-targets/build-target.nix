@@ -352,8 +352,62 @@ let
         builtins.mapAttrs (_: iface:
           if isPppoeLink iface then stripDefaultRoutes iface else iface
         ) ifaces;
+      addDefaultViaDownstreamSelector =
+        ifaces:
+        let
+          hasPppoeService =
+            (pppoeServiceForTarget targetId) != {};
+          downstreamSelectorNodeName = sitePath + ".nodes." + "downstream-selector";
+          isDownstreamSelectorP2p = iface:
+            (iface.sourceKind or "") == "p2p"
+            && (builtins.match ".*downstream-selector.*" (iface.backingRef.name or "") != null);
+          peerAddr = iface:
+            let
+              addr = iface.addr4 or "";
+              parts = lib.splitString "/" addr;
+              addrStr = if builtins.length parts >= 1 then builtins.elemAt parts 0 else "";
+              addrOctets = lib.splitString "." addrStr;
+            in
+            if builtins.length addrOctets != 4 then null
+            else
+              let
+                lastOctet = builtins.elemAt addrOctets 3;
+                lastInt = lib.toInt (if lastOctet == "" then "0" else lastOctet);
+                peerInt = if lib.mod lastInt 2 == 0 then lastInt + 1 else lastInt - 1;
+                peerOctets = builtins.genList (i:
+                  if i == 3 then toString peerInt
+                  else builtins.elemAt addrOctets i
+                ) 4;
+              in builtins.concatStringsSep "." peerOctets;
+          peerAddr6 = iface:
+            null;  # IPv6 peer calculation deferred; IPv4 default route is sufficient for HAT egress
+          addDefaultRoute = iface:
+            let
+              routes = iface.routes or {};
+              ipv4 = (routes.ipv4 or []) ++
+                lib.optional (peerAddr iface != null) {
+                  dst = "0.0.0.0/0";
+                  proto = "default";
+                  intent.kind = "default-reachability";
+                  via4 = peerAddr iface;
+                };
+              ipv6 = (routes.ipv6 or []) ++
+                lib.optional (peerAddr6 iface != null) {
+                  dst = "::/0";
+                  proto = "default";
+                  intent.kind = "default-reachability";
+                  via6 = peerAddr6 iface;
+                };
+            in
+            iface // { routes = routes // { inherit ipv4 ipv6; }; };
+        in
+        if !hasPppoeService then ifaces
+        else
+          builtins.mapAttrs (_: iface:
+            if isDownstreamSelectorP2p iface then addDefaultRoute iface else iface
+          ) ifaces;
       effectiveRuntimeInterfaces =
-        removeDefaultRoutesOnPppoeCoreP2ps effectiveRuntimeInterfacesUnfiltered;
+        addDefaultViaDownstreamSelector (removeDefaultRoutesOnPppoeCoreP2ps effectiveRuntimeInterfacesUnfiltered);
       placement =
         if realizedTarget then
           {
