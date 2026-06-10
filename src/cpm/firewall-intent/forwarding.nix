@@ -39,6 +39,7 @@ let
     || builtins.elem (backingRefName iface) selectedUplinks;
   localInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
   transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p" || iface.sourceKind == "pppoe-session") interfaceRecords;
+  pppoeSessionInterfaces = builtins.filter (iface: iface.sourceKind == "pppoe-session") interfaceRecords;
   uplinkInterfaces = builtins.filter (
     iface:
     (iface.sourceKind == "wan" && selectedUplinkFor iface)
@@ -145,7 +146,7 @@ in
 if role == "access" then
   {
     mode = "explicit-access-forwarding";
-    localInterfaces = map (iface: iface.runtimeIfName) localInterfaces;
+    localInterfaces = map (iface: iface.runtimeIfName) (localInterfaces ++ pppoeSessionInterfaces);
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     rules = buildAccessRules {
       inherit localInterfaces transitInterfaces runtimeOriginSourcePrefixes;
