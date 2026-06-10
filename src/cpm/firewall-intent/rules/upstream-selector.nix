@@ -111,6 +111,78 @@ let
     in
     if matchesCore == [ ] then null else builtins.elemAt matchesCore 0;
 
+  # Additional cores that have source-prefix coverage for this policy interface's
+  # traffic via siteRuntimeOriginSourcePrefixes, even when the uplink name
+  # doesn't match.  This ensures internetModes-covered paths (e.g. client tenant
+  # prefixes on core-upstream-vlan4) get forwardingIntent rules even when the
+  # intent's allow rule names a different uplink.
+  additionalCoresForPolicy =
+    policyIface:
+    let
+      policySourcePrefixes =
+        common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface;
+      primaryCore = coreForPolicy policyIface;
+    in
+    builtins.filter (
+      coreIface:
+      coreIface.runtimeIfName != (if primaryCore == null then "" else primaryCore.runtimeIfName)
+      && common.sourcePrefixesAllowedToInterface policySourcePrefixes coreIface != [ ]
+    ) coreInterfaces;
+
+  # Generate pair rules for additional cores (internetModes-based coverage)
+  additionalSelectorPairRules = builtins.concatLists (
+    map (
+      policyIface:
+      let
+        extraCores = additionalCoresForPolicy policyIface;
+      in
+      builtins.concatLists (map (coreIface:
+        let
+          policySourcePrefixes = common.sourcePrefixesAllowedToInterface
+            (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface)
+            coreIface;
+        in
+        common.selectorPairRule policyIface coreIface
+        ++ (
+          if policySourcePrefixes == [ ] then [ ]
+          else [
+            (common.withSourcePrefixes ({
+              action = "accept";
+              intent = {
+                kind = "runtime-origin-egress";
+                source = "loopback-runtime-identity";
+                stage = "upstream-selector-policy-core-egress";
+              };
+              fromInterface = policyIface.runtimeIfName;
+              toInterface = coreIface.runtimeIfName;
+              applyTcpMssClamp = true;
+            } // common.selectorRuntimeRuleAudit {
+              relationId = "runtime-origin-egress";
+              direction = "forward-runtime-origin";
+              fromIface = policyIface;
+              toIface = coreIface;
+              decomposed = true;
+            }) policySourcePrefixes)
+          ]
+        )
+        ++ [
+          (common.withSourcePrefixes ({
+            action = "accept";
+            fromInterface = coreIface.runtimeIfName;
+            toInterface = policyIface.runtimeIfName;
+            applyTcpMssClamp = false;
+          } // common.selectorRuntimeRuleAudit {
+            relationId = "runtime-origin-egress";
+            direction = "reverse-runtime-origin";
+            fromIface = coreIface;
+            toIface = policyIface;
+            decomposed = true;
+          }) (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
+        ]
+      ) extraCores)
+    ) policyInterfaces
+  );
+
   selectorPairRules = builtins.concatLists (
     map (
       policyIface:
@@ -170,6 +242,7 @@ let
   );
 in
 selectorPairRules
+++ additionalSelectorPairRules
 ++ builtins.concatLists (map relationRules.externalTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.overlayUnderlayTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.externalServiceTransitRule (listOrEmpty relations))
