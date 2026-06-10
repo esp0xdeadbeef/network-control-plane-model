@@ -323,6 +323,14 @@ let
       inherit runtimeTargets;
     };
 
+  ulaNat66Mode = import ./Site/build-data/ula-nat66-mode.nix
+    {
+      inherit helpers common;
+    }
+    {
+      inherit tenantPrefixOwners runtimeTargets;
+    };
+
   rendererContracts = import ./Site/build-data/renderer-contracts.nix {
     inherit
       lib
@@ -353,7 +361,7 @@ in
 if validatePPPoEContracts then
   emitOutput
   {
-    inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics;
+    inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
     services = resolvedServices;
   }
 else
