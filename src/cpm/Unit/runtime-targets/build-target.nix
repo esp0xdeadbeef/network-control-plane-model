@@ -324,11 +324,42 @@ let
             }
         else
           null;
-      effectiveRuntimeInterfaces =
+      effectiveRuntimeInterfacesUnfiltered =
         if pppoeSessionInterfaceEntry == null then
           routeFilteredRuntimeInterfaces
         else
           routeFilteredRuntimeInterfaces // { ${pppoeSessionInterfaceEntry.name} = pppoeSessionInterfaceEntry.value; };
+      removeDefaultRoutesOnPppoeCoreP2ps =
+        ifaces:
+        let
+          pppoeClientTargets = builtins.listToAttrs (
+            builtins.filter (e: e != null) (
+              builtins.map (targetName:
+                let svc = pppoeServiceForTarget targetName;
+                in if (svc.client or {}) != {} then { name = targetName; value = true; } else null
+              ) (sortedNames realizationIndex.targetDefs)
+            )
+          );
+          isPppoeCorePeer = iface:
+            (iface.sourceKind or "") == "p2p"
+            && builtins.hasAttr (iface.backingRef.peerRuntimeTarget or "") pppoeClientTargets;
+          stripDefaultRoutes = iface:
+            let
+              routes = iface.routes or {};
+              ipv4 = builtins.filter
+                (r: ((r.intent or {}).kind or "") != "default-reachability")
+                (routes.ipv4 or []);
+              ipv6 = builtins.filter
+                (r: ((r.intent or {}).kind or "") != "default-reachability")
+                (routes.ipv6 or []);
+            in
+            iface // { routes = routes // { inherit ipv4 ipv6; }; };
+        in
+        builtins.mapAttrs (_: iface:
+          if isPppoeCorePeer iface then stripDefaultRoutes iface else iface
+        ) ifaces;
+      effectiveRuntimeInterfaces =
+        removeDefaultRoutesOnPppoeCoreP2ps effectiveRuntimeInterfacesUnfiltered;
       placement =
         if realizedTarget then
           {
