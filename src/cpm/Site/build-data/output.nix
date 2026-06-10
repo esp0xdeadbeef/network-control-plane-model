@@ -32,6 +32,7 @@
 , uplinkNames
 , uplinkRouting
 , upstreamSelectorNodeName
+, ulaNat66Mode
 ,
 }:
 
@@ -82,9 +83,25 @@ let
         };
       };
 
+  ulaNat66Payload =
+    if ulaNat66Mode.records.ulaNat66 == [ ] && ulaNat66Mode.diagnostics.ulaNat66 == [ ] then
+      { }
+    else
+      {
+        internetModes = {
+          ulaNat66 = ulaNat66Mode.records.ulaNat66;
+        };
+        diagnostics = {
+          ulaNat66 = ulaNat66Mode.diagnostics.ulaNat66;
+        };
+      };
+
   ipv6Output =
-    (if ipv6Plan != null then ipv6Plan else { })
-    // lib.recursiveUpdate routedClientGuaPayload overlayClientGuaPayload;
+    lib.recursiveUpdate
+      (lib.recursiveUpdate
+        (if ipv6Plan != null then ipv6Plan else { })
+        (lib.recursiveUpdate routedClientGuaPayload overlayClientGuaPayload))
+      ulaNat66Payload;
 in
 {
   siteId = siteId;
