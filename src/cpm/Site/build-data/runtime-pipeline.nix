@@ -40,6 +40,7 @@
 , policyDerivedDnsUpstreamRecordsForListeners
 , normalizeRuntimeTargetRoutes
 , normalizeRuntimeTargetRoutesAfterPolicyComplements
+, normalizeRuntimeTargetRoutesWith
 , enterpriseName
 , siteName
 ,
@@ -81,8 +82,38 @@ let
       ;
   };
 
+  # Compute global {addr4 -> laneAccess} map across all targets.
+  # Used to filter cross-lane complements: only complement source routes
+  # whose dst belongs to the same access node as the current interface.
+  globalAddr4Access = builtins.listToAttrs (
+    builtins.concatLists (builtins.map
+      (target:
+        let
+          ifaces = common.attrsOrEmpty ((common.attrsOrEmpty (target.effectiveRuntimeRealization or { })).interfaces or { });
+        in
+        builtins.concatLists (builtins.map
+          (ifName:
+            let
+              iface = ifaces.${ifName} or { };
+              addr4 = iface.addr4 or null;
+              access = (common.attrsOrEmpty ((common.attrsOrEmpty (iface.backingRef or { })).lane or { })).access or null;
+            in
+            if addr4 != null && access != null then
+              [ { name = addr4; value = access; } ]
+            else [ ]
+          )
+          (builtins.attrNames ifaces)
+        )
+      )
+      (builtins.attrValues runtimeTargetContext.initialRuntimeTargets)
+    )
+  );
+
+  normalizeRuntimeTargetRoutesWithGlobal =
+    normalizeRuntimeTargetRoutesWith { inherit globalAddr4Access; };
+
   normalizedRuntimeTargets =
-    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutes) runtimeTargetContext.initialRuntimeTargets;
+    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutesWithGlobal) runtimeTargetContext.initialRuntimeTargets;
 
   finalControlPlane = import ./final-control-plane.nix {
     inherit
