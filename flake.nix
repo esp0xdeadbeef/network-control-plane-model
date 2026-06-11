@@ -387,27 +387,41 @@
       checks = forAll (system:
         let
           pkgs = mkPkgs system;
+          lib = self.libBySystem.${system};
+
+          cpm_nixos_json = pkgs.writeText "cpm-nixos.json"
+            (builtins.toJSON (lib.compileAndBuildFromPaths {
+              inputPath = "${network-labs}/HAT/emulated-isp-residential-testnet/intent.nix";
+              inventoryPath = "${network-labs}/HAT/emulated-isp-residential-testnet/inventory-nixos.nix";
+            }));
+
+          cpm_clab_json = pkgs.writeText "cpm-clab.json"
+            (builtins.toJSON (lib.compileAndBuildFromPaths {
+              inputPath = "${network-labs}/HAT/emulated-isp-residential-testnet/intent.nix";
+              inventoryPath = "${network-labs}/HAT/emulated-isp-residential-testnet/inventory-clab.nix";
+            }));
         in
         {
           "FS-800-HDS-010-SDS-013-SMS-020" =
-            let
-              testScript = "${self}/tests/test-FS-800-HDS-010-SDS-013-SMS-020-cpm-provider-handoff-fabric-egress.sh";
-            in
             pkgs.runCommand "check-FS-800-HDS-010-SDS-013-SMS-020"
               {
                 nativeBuildInputs = [ pkgs.bash pkgs.jq ];
+                CPM_NIXOS_JSON = cpm_nixos_json;
+                CPM_CLAB_JSON = cpm_clab_json;
+                NETWORK_REPO_DIRECT_TEST_OK = "1";
               }
               ''
                 set -euo pipefail
                 echo "check: FS-800-HDS-010-SDS-013-SMS-020 construction test"
+                test_script="${self}/tests/test-FS-800-HDS-010-SDS-013-SMS-020-cpm-provider-handoff-fabric-egress.sh"
                 echo "  validating test script syntax..."
-                bash -n ${testScript}
-                echo "  test script: $(wc -l < ${testScript}) lines, $(wc -c < ${testScript}) bytes"
-                echo "  GAMP-ID header: $(head -3 ${testScript} | grep GAMP-ID || echo 'MISSING')"
+                bash -n "$test_script"
+                echo "  test script: $(wc -l < "$test_script") lines"
+                echo "  GAMP-ID header: $(head -3 "$test_script" | grep GAMP-ID || echo 'MISSING')"
                 echo ""
-                echo "  NOTE: full test requires network-labs repo and nix run."
-                echo "  Run manually: bash ${testScript}"
-                echo ""
+                echo "  executing full construction test with pre-built CPM outputs..."
+                cd "${self}"
+                bash "$test_script"
                 touch $out
               '';
         }
