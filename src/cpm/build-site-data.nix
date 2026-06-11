@@ -123,6 +123,7 @@ let
     ipv6Plan
     normalizeRuntimeTargetRoutes
     normalizeRuntimeTargetRoutesAfterPolicyComplements
+    normalizeRuntimeTargetRoutesWith
     overlayNames
     overlayProvisioning
     overlayReachability
@@ -183,6 +184,7 @@ let
       policyDerivedDnsUpstreamRecordsForListeners
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
+      normalizeRuntimeTargetRoutesWith
       ;
   };
   inherit (runtimePipeline)

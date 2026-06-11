@@ -189,7 +189,7 @@ let
       interfaces;
 
   normalizeRuntimeTargetRoutesWith =
-    { postInitialComplementsOnly ? false }:
+    { postInitialComplementsOnly ? false, globalAddr4Access ? { } }:
     target:
     let
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
@@ -263,21 +263,15 @@ let
               complementBase6 = complementSourceRoutes postInitialComplementsOnly base6;
               ifaceLane = (attrsOrEmpty (iface.backingRef or null)).lane or null;
               ifaceAccess = (attrsOrEmpty ifaceLane).access or null;
-              # Collect addr4 values owned by OTHER interfaces (different lane.access)
-              otherAccessAddr4s = builtins.map
-                (otherIfName:
-                  let
-                    otherIface = classifiedInterfaces.${otherIfName} or { };
-                    otherAccess = (attrsOrEmpty ((attrsOrEmpty (otherIface.backingRef or { })).lane or { })).access or null;
-                  in
-                  if otherIfName != _ifName && otherAccess != null && otherAccess != ifaceAccess
-                  then otherIface.addr4 or null
-                  else null)
-                (builtins.attrNames classifiedInterfaces);
-              otherAccessDsts4 = builtins.filter (x: x != null) otherAccessAddr4s;
-              # Filter: remove source routes whose dst is owned by another lane
+              # Filter: remove source routes whose dst belongs to a different access.
+              # Uses global addr4->access map to determine which access owns each dst.
               ownLaneComplementBase4 = builtins.filter
-                (route: !builtins.any (x: x == (route.dst or "")) otherAccessDsts4)
+                (route:
+                  let
+                    dst = route.dst or "";
+                    dstAccess = globalAddr4Access.${dst} or null;
+                  in
+                  dstAccess == null || dstAccess == ifaceAccess)
                 complementBase4;
               ownLaneComplementBase6 = complementBase6;
               taggedComplementBase4 =
@@ -331,5 +325,5 @@ let
     normalizeRuntimeTargetRoutesWith { postInitialComplementsOnly = true; };
 in
 {
-  inherit normalizeRuntimeTargetRoutes normalizeRuntimeTargetRoutesAfterPolicyComplements uniqueRoutes;
+  inherit normalizeRuntimeTargetRoutes normalizeRuntimeTargetRoutesAfterPolicyComplements normalizeRuntimeTargetRoutesWith uniqueRoutes;
 }
