@@ -83,11 +83,21 @@ let
     family: defaults: routes:
     builtins.concatLists (builtins.map (
       route:
+      let
+        routeLaneAccess = (attrsOrEmpty (route.lane or null)).access or null;
+        matching =
+          if routeLaneAccess != null then
+            builtins.filter
+              (d: (attrsOrEmpty (d.lane or null)).access or null == routeLaneAccess)
+              defaults
+          else
+            defaults;
+      in
       builtins.map (
         defaultRoute:
         route
         // {
-          lane = route.lane or defaultRoute.lane;
+          lane = route.lane or null;
           policyOnly = true;
           reason = "policy-table-internal-reachability";
           intent = (attrsOrEmpty (route.intent or null)) // {
@@ -95,7 +105,7 @@ let
             source = "policy-default-lane";
           };
         }
-      ) defaults
+      ) matching
     ) (builtins.filter (isPolicyTableComplementSource family) routes));
 in
 {
