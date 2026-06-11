@@ -7,6 +7,7 @@
 , communicationContract
 , coreNodeNames
 , domainsValue
+, endpointAssignment
 , forwardingSemantics
 , ipv4InternetMode
 , ipv6Plan
@@ -210,7 +211,7 @@ in
       endpointBindings =
         builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
     };
-  inherit hostNat fabricSubnets;
+  inherit hostNat fabricSubnets endpointAssignment;
 }
 // (
   if accessSpaceDiscovery != null then
