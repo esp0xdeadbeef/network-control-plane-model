@@ -105,10 +105,82 @@ let
       normalizedRuntimeTargets = routeAugmentedRuntimeTargets;
     };
 
+  addCoreTenantReturnRoutes =
+    rtAttrs:
+    lib.mapAttrs
+      (targetName: target:
+        let
+          natIntent = target.natIntent or {};
+          masqPrefixes4 = natIntent.masqueradeSourcePrefixes4 or [];
+          role = target.role or "";
+          isCore = builtins.substring 0 4 role == "core";
+          interfaces = (target.effectiveRuntimeRealization or {}).interfaces or {};
+          isFabricP2p = iface:
+            (iface.sourceKind or "") == "p2p"
+            && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
+          peer4For = addr:
+            let
+              parts = lib.splitString "/" addr;
+              addrStr = if builtins.length parts >= 1 then builtins.elemAt parts 0 else "";
+              octets = lib.splitString "." addrStr;
+            in
+            if builtins.length octets != 4 then null
+            else
+              let
+                lastOctet = builtins.elemAt octets 3;
+                lastInt = lib.toInt (if lastOctet == "" then "0" else lastOctet);
+                peerInt = if lib.mod lastInt 2 == 0 then lastInt + 1 else lastInt - 1;
+                peerOctets = builtins.genList
+                  (i: if i == 3 then builtins.toString peerInt else builtins.elemAt octets i)
+                  4;
+              in builtins.concatStringsSep "." peerOctets;
+        in
+        if !isCore || masqPrefixes4 == [] then
+          target
+        else
+          let
+            updatedInterfaces =
+              builtins.mapAttrs
+                (ifName: iface:
+                  if !(isFabricP2p iface) then
+                    iface
+                  else
+                    let
+                      peer4 = peer4For (iface.addr4 or "");
+                      routes = iface.routes or {};
+                      tenantRoutes =
+                        if peer4 == null then []
+                        else builtins.map
+                          (prefix: {
+                            dst = prefix;
+                            proto = "internal";
+                            via4 = peer4;
+                            intent = {
+                              kind = "internal-reachability";
+                              source = "tenant-subnet-return";
+                            };
+                          })
+                          masqPrefixes4;
+                      ipv4 = (routes.ipv4 or []) ++ tenantRoutes;
+                      ipv6 = routes.ipv6 or [];
+                    in
+                    iface // { routes = routes // { inherit ipv4 ipv6; }; }
+                )
+                interfaces;
+          in
+          target // {
+            effectiveRuntimeRealization =
+              (target.effectiveRuntimeRealization or {}) // {
+                interfaces = updatedInterfaces;
+              };
+          }
+      )
+      rtAttrs;
+
   runtimeTargets =
     builtins.mapAttrs
       (_targetName: normalizeRuntimeTargetRoutesAfterPolicyComplements)
-      runtimeTargetsWithIntent;
+      (addCoreTenantReturnRoutes runtimeTargetsWithIntent);
 
 in
 {
