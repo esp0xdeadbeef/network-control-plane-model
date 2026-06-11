@@ -333,6 +333,14 @@ let
       inherit tenantPrefixOwners runtimeTargets;
     };
 
+  endpointAssignmentModule = import ./Site/build-data/endpoint-assignment.nix {
+    inherit lib helpers common enterpriseName siteName;
+    ownership = siteAttrs.ownership or { };
+    inventoryEndpoints = inventoryEndpoints;
+    runtimeTargets = runtimeTargets;
+  };
+  inherit (endpointAssignmentModule) endpointAssignment;
+
   rendererContracts = import ./Site/build-data/renderer-contracts.nix {
     inherit
       lib
@@ -363,7 +371,7 @@ in
 if validatePPPoEContracts then
   emitOutput
   {
-    inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
+    inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
     services = resolvedServices;
   }
 else
