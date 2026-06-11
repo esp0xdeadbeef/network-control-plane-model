@@ -34,6 +34,7 @@
 , uplinkRouting
 , upstreamSelectorNodeName
 , ulaNat66Mode
+, endpointAssignmentCheckDiagnostics ? [ ]
 ,
 }:
 
@@ -212,6 +213,10 @@ in
         builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
     };
   inherit hostNat fabricSubnets endpointAssignment;
+  endpointAssignmentCheck = {
+    validated = endpointAssignmentCheckDiagnostics == [ ];
+    diagnostics = endpointAssignmentCheckDiagnostics;
+  };
 }
 // (
   if accessSpaceDiscovery != null then

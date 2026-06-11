@@ -424,6 +424,161 @@
                 bash "$test_script"
                 touch $out
               '';
+
+          "FS-720-HDS-030-SDS-010-SMS-010-checker" =
+            let
+              # Pre-build checker results against hand-crafted test data
+              helpers = import ./src/cpm/cpm-contract-support.nix { inherit lib; };
+              ipam = import ./src/cpm/ipam.nix { inherit lib; };
+              common = import ./src/cpm/Site/build-data/common.nix {
+                inherit helpers ipam;
+                enterpriseRoot = { };
+              };
+              checkerModule = import ./src/cpm/Site/check/endpoint-assignment-checker.nix {
+                inherit helpers common;
+              };
+
+              # Test cases: name -> { endpointAssignment, expectedResult }
+              happyAssignment = {
+                "site-a-client01" = {
+                  name = "client01"; tenant = "client"; enterprise = "esp";
+                  site = "site-a"; mode = "static"; family = "dual";
+                  bridge = "br-client"; owningSubstrate = "s-router-test-clients";
+                  namespaceOwner = "site-a-access-client";
+                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
+                };
+                "site-a-guest01" = {
+                  name = "guest01"; tenant = "guest"; enterprise = "esp";
+                  site = "site-a"; mode = "dhcp"; family = "ipv4";
+                  bridge = "br-guest"; owningSubstrate = "s-router-test-clients";
+                  namespaceOwner = "site-a-access-guest";
+                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  dhcp = { servedPrefix4 = "10.20.30.1/24"; gw4 = "10.20.30.1"; conflict = "reject-overlap"; };
+                };
+              };
+              happyResultRef = checkerModule { endpointAssignment = happyAssignment; };
+
+              conflictAssignment = {
+                "site-a-client01" = {
+                  name = "client01"; tenant = "client"; enterprise = "esp";
+                  site = "site-a"; mode = "static"; family = "ipv4";
+                  bridge = "br-shared"; owningSubstrate = "s-router-test-clients";
+                  namespaceOwner = "site-a-access-client";
+                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
+                };
+                "site-a-guest01" = {
+                  name = "guest01"; tenant = "guest"; enterprise = "esp";
+                  site = "site-a"; mode = "dhcp"; family = "ipv4";
+                  bridge = "br-shared"; owningSubstrate = "s-router-test-clients";
+                  namespaceOwner = "site-a-access-guest";
+                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  dhcp = { servedPrefix4 = "10.20.20.1/24"; gw4 = "10.20.20.1"; conflict = "reject-overlap"; };
+                };
+              };
+              conflictResultRef = checkerModule { endpointAssignment = conflictAssignment; };
+
+              nullBridgeAssignment = {
+                "site-a-client01" = {
+                  name = "client01"; tenant = "client"; enterprise = "esp";
+                  site = "site-a"; mode = "static"; family = "dual";
+                  owningSubstrate = "s-router-test-clients";
+                  namespaceOwner = "site-a-access-client";
+                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
+                };
+              };
+              nullBridgeResultRef = checkerModule { endpointAssignment = nullBridgeAssignment; };
+
+              # Force all results (deepSeq to catch lazy evaluation issues)
+              forced = builtins.deepSeq happyResultRef.diagnostics
+                (builtins.deepSeq conflictResultRef.diagnostics
+                  (builtins.deepSeq nullBridgeResultRef.diagnostics true));
+
+              testData = pkgs.writeText "checker-test-data.json"
+                (builtins.toJSON {
+                  happy = {
+                    result = happyResultRef.result;
+                    diagnostics = happyResultRef.diagnostics;
+                  };
+                  conflict = {
+                    result = conflictResultRef.result;
+                    diagnostics = conflictResultRef.diagnostics;
+                  };
+                  nullBridge = {
+                    result = nullBridgeResultRef.result;
+                    diagnostics = nullBridgeResultRef.diagnostics;
+                  };
+                });
+            in
+            pkgs.runCommand "check-FS-720-HDS-030-SDS-010-SMS-010-checker"
+              {
+                nativeBuildInputs = [ pkgs.bash pkgs.jq ];
+                TEST_DATA_JSON = testData;
+              }
+              ''
+                set -euo pipefail
+                echo "check: FS-720-HDS-030-SDS-010-SMS-010 Phase 3 checker contract test"
+                PASS=0; FAIL=0
+                pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
+                fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
+
+                echo ""
+                echo "=== Test 1: Happy path — clean records ==="
+                if [ "$(jq -r '.happy.result' "$TEST_DATA_JSON")" = "PASS" ]; then
+                  pass "Happy path: result=PASS"
+                else
+                  fail "Happy path: result=PASS (got $(jq -r '.happy.result' "$TEST_DATA_JSON"))"
+                fi
+                diag_count=$(jq '.happy.diagnostics | length' "$TEST_DATA_JSON")
+                if [ "$diag_count" -eq 0 ]; then
+                  pass "Happy path: 0 diagnostics"
+                else
+                  fail "Happy path: 0 diagnostics (got $diag_count)"
+                fi
+
+                echo ""
+                echo "=== Test 2: P6 — DHCP/static conflict on same bridge ==="
+                if [ "$(jq -r '.conflict.result' "$TEST_DATA_JSON")" = "FAIL" ]; then
+                  pass "P6: result=FAIL (conflict detected)"
+                else
+                  fail "P6: result=FAIL"
+                fi
+                if jq -e '.conflict.diagnostics[] | select(.code == "static-dhcp-conflict")' "$TEST_DATA_JSON" >/dev/null 2>&1; then
+                  pass "P6: static-dhcp-conflict diagnostic emitted"
+                else
+                  fail "P6: static-dhcp-conflict diagnostic emitted"
+                fi
+
+                echo ""
+                echo "=== Test 3: P8 — Null bridge diagnostic ==="
+                if [ "$(jq -r '.nullBridge.result' "$TEST_DATA_JSON")" = "FAIL" ]; then
+                  pass "P8: result=FAIL (bridge missing detected)"
+                else
+                  fail "P8: result=FAIL"
+                fi
+                if jq -e '.nullBridge.diagnostics[] | select(.code == "missing-bridge")' "$TEST_DATA_JSON" >/dev/null 2>&1; then
+                  pass "P8: missing-bridge diagnostic emitted"
+                else
+                  fail "P8: missing-bridge diagnostic emitted"
+                fi
+                if jq -e '.nullBridge.diagnostics[] | select(.code == "incomplete-record")' "$TEST_DATA_JSON" >/dev/null 2>&1; then
+                  pass "P8: incomplete-record diagnostic also emitted"
+                else
+                  fail "P8: incomplete-record diagnostic also emitted"
+                fi
+
+                echo ""
+                echo "=== FS-720-HDS-030-SDS-010-SMS-010 CPM Phase 3 Checker (flake) Results ==="
+                echo "PASS: $PASS  FAIL: $FAIL"
+                if [ "$FAIL" -gt 0 ]; then
+                  echo "Some tests FAILED."
+                  exit 1
+                fi
+                echo "All tests PASSED."
+                touch $out
+              '';
         }
       );
 
