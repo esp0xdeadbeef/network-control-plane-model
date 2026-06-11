@@ -69,6 +69,8 @@ assert_protected_records() {
     | ($cpm.secretDeclarations // []) as $declarations
     | ($cpm.secretSources // []) as $sources
     | ($cpm.sourceBindings // []) as $bindings
+    | ($cpm.secretDeliveryRecords // []) as $deliveries
+    | ($cpm.secretReadiness // {}) as $readiness
     | ($declarations | length) == 2
       and ($sources | length) == 2
       and ($bindings | length) == 2
@@ -89,7 +91,8 @@ assert_protected_records() {
       and any($declarations[]; .purpose == "pppoe-password")
       and all($sources[];
         .sourceClass == "deployment-platform-secret-reference"
-        and (.reference.runtimePath | startswith("/run/secrets/hat-pppoe-"))
+        and (.reference.runtimePath | test("^hat-pppoe-(username|password)$"))
+        and (.reference.mediatedRuntimePath | startswith("/run/secrets/hat-pppoe-"))
         and .materialAccess == "not-supplied-by-source-record"
         and .plaintextMaterial == false
         and .providerNeutral == true
@@ -118,6 +121,24 @@ assert_protected_records() {
         and (has("password") | not)
         and .usernameFile == "/run/secrets/hat-pppoe-username"
         and .passwordFile == "/run/secrets/hat-pppoe-password"
+      )
+      # FS-840-HDS-010-SDS-010-SMS-010: delivery records scoped by consumer
+      and ($deliveries | length) == 2
+      and all($deliveries[];
+        .deliveryScope.site == $expected_site
+        and .deliveryScope.host == $expected_host
+        and .deliveryScope.consumer.node == $expected_consumer
+        and (.mediatedPath | startswith("/run/secrets/hat-pppoe-"))
+        and has_id("FS-840-HDS-010-SDS-010-SMS-010")
+      )
+      # FS-840-HDS-010-SDS-010-SMS-030: readiness diagnostics
+      and ($readiness.allMaterialReady == false)
+      and (($readiness.readinessDiagnostics // []) | length) == 2
+      and all(($readiness.readinessDiagnostics // [])[];
+        .materialAccess == "not-supplied-by-source-record"
+        and (.mediatedPath | startswith("/run/secrets/hat-pppoe-"))
+        and (.diagnostic | startswith("FS-840-HDS-010-SDS-010-SMS-030"))
+        and has_id("FS-840-HDS-010-SDS-010-SMS-030")
       )
   ' "${output}" >/dev/null || {
     echo "FAIL hat-protected-secret-records-contract: ${name} protected records not preserved" >&2

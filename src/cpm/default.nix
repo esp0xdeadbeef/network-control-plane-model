@@ -3,6 +3,7 @@
 , forwardingModel
 , inventory ? { }
 , validateRuntimeModel ? false
+, secretPlatformSubstrate ? "nixos"
 ,
 }:
 
@@ -97,9 +98,14 @@ let
       inherit lib helpers cpmData;
     };
 
-  cpm = {
+  secretSourceContract =
+    import ./secret-source-contract.nix {
+      inherit lib helpers inventory secretPlatformSubstrate;
+    };
+
+  cpmWithMediatedCredentials = {
     version = 1;
-    data = cpmDataWithCrossSiteDnsAllowFrom;
+    data = secretSourceContract.mediateCredentialPaths cpmDataWithCrossSiteDnsAllowFrom;
   }
   // (
     if builtins.isAttrs (inventory.operationalPrivacyContracts or null) && inventory.operationalPrivacyContracts != { } then
@@ -120,23 +126,27 @@ let
       { }
   )
   // (
-    if builtins.isList (inventory.secretDeclarations or null) && inventory.secretDeclarations != [ ] then
-      { secretDeclarations = inventory.secretDeclarations; }
+    if secretSourceContract.secretDeclarations != [ ] then
+      { secretDeclarations = secretSourceContract.secretDeclarations; }
     else
       { }
   )
   // (
-    if builtins.isList (inventory.secretSources or null) && inventory.secretSources != [ ] then
-      { secretSources = inventory.secretSources; }
+    if secretSourceContract.secretSources != [ ] then
+      { secretSources = secretSourceContract.secretSources; }
     else
       { }
   )
   // (
-    if builtins.isList (inventory.sourceBindings or null) && inventory.sourceBindings != [ ] then
-      { sourceBindings = inventory.sourceBindings; }
+    if secretSourceContract.sourceBindings != [ ] then
+      { sourceBindings = secretSourceContract.sourceBindings; }
     else
       { }
-  );
+  )
+  // {
+    secretDeliveryRecords = secretSourceContract.secretDeliveryRecords;
+    secretReadiness = secretSourceContract.secretReadiness;
+  };
 
   _validatedRuntimeModel =
     if validateRuntimeModel then
@@ -145,7 +155,7 @@ let
           inherit helpers;
         }
         {
-          inherit cpm;
+          cpm = cpmWithMediatedCredentials;
         }
     else
       true;
@@ -159,4 +169,4 @@ let
 in
 builtins.seq
   (forceAll [ _validatedRuntimeModel _validatedInventory providerAccessRequiredFieldsValidation ])
-  cpm
+  cpmWithMediatedCredentials
