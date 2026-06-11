@@ -341,6 +341,15 @@ let
   };
   inherit (endpointAssignmentModule) endpointAssignment;
 
+  endpointAssignmentChecker = import ./Site/check/endpoint-assignment-checker.nix {
+    inherit helpers common;
+  };
+
+  validateEndpointAssignments =
+    endpointAssignmentChecker {
+      inherit endpointAssignment;
+    };
+
   rendererContracts = import ./Site/build-data/renderer-contracts.nix {
     inherit
       lib
@@ -369,10 +378,13 @@ let
   emitOutput = import ./Site/build-data/output.nix;
 in
 if validatePPPoEContracts then
-  emitOutput
-  {
-    inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
-    services = resolvedServices;
-  }
+  builtins.deepSeq
+    validateEndpointAssignments.diagnostics
+    (emitOutput
+    {
+      inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
+      services = resolvedServices;
+      endpointAssignmentCheckDiagnostics = validateEndpointAssignments.diagnostics;
+    })
 else
   throw "unreachable"
