@@ -13,7 +13,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-hat_dir="/home/deadbeef/github/network-labs/HAT/emulated-isp-residential-testnet"
+hat_dir="${HAT_DIR:-/home/deadbeef/github/network-labs/HAT/emulated-isp-residential-testnet}"
 
 all_checks_passed=true
 
@@ -115,10 +115,16 @@ run_checks() {
 # --- NixOS substrate ---
 echo "--- FS-800-HDS-010-SDS-013-SMS-020: Testing NixOS substrate ---"
 output_nixos="${tmp_dir}/cpm-nixos.json"
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
-  "${hat_dir}/intent.nix" \
-  "${hat_dir}/inventory-nixos.nix" \
-  "${output_nixos}" >/dev/null
+
+if [[ -n "${CPM_NIXOS_JSON:-}" ]]; then
+  # Use pre-built CPM JSON from flake check
+  cp "${CPM_NIXOS_JSON}" "${output_nixos}"
+else
+  nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+    "${hat_dir}/intent.nix" \
+    "${hat_dir}/inventory-nixos.nix" \
+    "${output_nixos}" >/dev/null
+fi
 
 nixos_checks=$(run_checks "nixos" "site-a" "${output_nixos}")
 echo "${nixos_checks}" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
@@ -134,10 +140,16 @@ fi
 # --- CLAB substrate ---
 echo "--- FS-800-HDS-010-SDS-013-SMS-020: Testing CLAB substrate ---"
 output_clab="${tmp_dir}/cpm-clab.json"
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
-  "${hat_dir}/intent.nix" \
-  "${hat_dir}/inventory-clab.nix" \
-  "${output_clab}" >/dev/null
+
+if [[ -n "${CPM_CLAB_JSON:-}" ]]; then
+  # Use pre-built CPM JSON from flake check
+  cp "${CPM_CLAB_JSON}" "${output_clab}"
+else
+  nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+    "${hat_dir}/intent.nix" \
+    "${hat_dir}/inventory-clab.nix" \
+    "${output_clab}" >/dev/null
+fi
 
 clab_checks=$(run_checks "clab" "site-b" "${output_clab}")
 echo "${clab_checks}" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
@@ -165,6 +177,59 @@ if [[ "${all_checks_passed}" == "true" ]]; then
   echo "GAP NOTE: IPv6 default route on downstream-selector p2p is deferred"
   echo "  (build-target.nix line 384: peerAddr6 = null). IPv4 default route is"
   echo "  sufficient for HAT egress. IPv6 fabric-egress is tracked as deferred."
+  # --- Seeded negative: inject a default-reachability into the PPPoE p2p ---
+  #  and verify the test DETECTS the violation (P1 must return false).
+  echo ""
+  echo "--- FS-800-HDS-010-SDS-013-SMS-020: Seeded negative (detect injected default) ---"
+
+  # Use NixOS output as the corruption target.
+  neg_json="${tmp_dir}/cpm-nixos-corrupted.json"
+  p2p_key="p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a"
+
+  # Inject a default-reachability route into the PPPoE p2p interface
+  jq --arg p2p_key "$p2p_key" '
+    def root: if type == "array" then .[0] else . end;
+    (root.control_plane_model.data.esp0xdeadbeef.["site-a"]
+      .runtimeTargets["esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"]
+      .effectiveRuntimeRealization.interfaces[$p2p_key].routes.ipv4) += [
+        {
+          intent: { kind: "default-reachability" },
+          proto: "default",
+          via4: "10.255.255.1"
+        }
+      ]
+  ' "${output_nixos}" > "${neg_json}"
+
+  # Run the P1 check on the corrupted output — it MUST return false.
+  neg_result=$(jq -e --arg substrate "nixos" '
+    def root: if type == "array" then .[0] else . end;
+    def site: root.control_plane_model.data.esp0xdeadbeef.["site-a"];
+    def rt($target): site.runtimeTargets[$target];
+    def prefix: "nixos";
+    def labelA: "nixos-provider-handoff-access-a";
+    def targetA: "esp0xdeadbeef-site-a-nixos-provider-handoff-access-a";
+    def no_default($target; $iface_name):
+      rt($target).effectiveRuntimeRealization.interfaces[$iface_name] as $iface
+      | (($iface.routes.ipv4 // []) | map(select(.intent.kind == "default-reachability")) | length) == 0
+      and (($iface.routes.ipv6 // []) | map(select(.intent.kind == "default-reachability")) | length) == 0;
+    no_default(targetA; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
+  ' "${neg_json}" 2>/dev/null || true)
+
+  if [[ "${neg_result}" == "false" ]]; then
+    echo "  Seeded negative PASS: injected default-reachability correctly detected as violation"
+  else
+    echo "  Seeded negative FAIL: injected default-reachability NOT detected (expected false, got '${neg_result}')"
+    all_checks_passed=false
+  fi
+
+  if [[ "${all_checks_passed}" == "true" ]]; then
+    echo ""
+    echo "PASS FS-800-HDS-010-SDS-013-SMS-020 construction test (all checks + seeded negative)"
+  else
+    echo ""
+    echo "FAIL FS-800-HDS-010-SDS-013-SMS-020 construction test (seeded negative failed)"
+    exit 1
+  fi
   exit 0
 else
   echo "FAIL FS-800-HDS-010-SDS-013-SMS-020 construction test"
