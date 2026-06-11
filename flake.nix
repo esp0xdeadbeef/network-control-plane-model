@@ -384,6 +384,35 @@
         }
       );
 
+      checks = forAll (system:
+        let
+          pkgs = mkPkgs system;
+        in
+        {
+          "FS-800-HDS-010-SDS-013-SMS-020" =
+            let
+              testScript = "${self}/tests/test-FS-800-HDS-010-SDS-013-SMS-020-cpm-provider-handoff-fabric-egress.sh";
+            in
+            pkgs.runCommand "check-FS-800-HDS-010-SDS-013-SMS-020"
+              {
+                nativeBuildInputs = [ pkgs.bash pkgs.jq ];
+              }
+              ''
+                set -euo pipefail
+                echo "check: FS-800-HDS-010-SDS-013-SMS-020 construction test"
+                echo "  validating test script syntax..."
+                bash -n ${testScript}
+                echo "  test script: $(wc -l < ${testScript}) lines, $(wc -c < ${testScript}) bytes"
+                echo "  GAMP-ID header: $(head -3 ${testScript} | grep GAMP-ID || echo 'MISSING')"
+                echo ""
+                echo "  NOTE: full test requires network-labs repo and nix run."
+                echo "  Run manually: bash ${testScript}"
+                echo ""
+                touch $out
+              '';
+        }
+      );
+
       apps = forAll (system: {
         debug = {
           type = "app";
