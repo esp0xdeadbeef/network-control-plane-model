@@ -153,14 +153,25 @@ let
               builtins.filter
                 (route: !dropWrongRuntimeOriginComplement route)
                 (complementSourceRoutes true base6);
+            ifaceLane = (attrsOrEmpty (iface.backingRef or null)).lane or null;
+            taggedPostInitial4 =
+              if ifaceLane != null then
+                builtins.map (route: route // { lane = ifaceLane; }) postInitial4
+              else
+                postInitial4;
+            taggedPostInitial6 =
+              if ifaceLane != null then
+                builtins.map (route: route // { lane = ifaceLane; }) postInitial6
+              else
+                postInitial6;
             extra4 =
               builtins.filter
                 (route: !dropWrongRuntimeOriginComplement route)
-                (policyTableComplements 4 policyDefaults4 postInitial4);
+                (policyTableComplements 4 policyDefaults4 taggedPostInitial4);
             extra6 =
               builtins.filter
                 (route: !dropWrongRuntimeOriginComplement route)
-                (policyTableComplements 6 policyDefaults6 postInitial6);
+                (policyTableComplements 6 policyDefaults6 taggedPostInitial6);
             final4 = appendUniqueRoutes 4 base4 extra4;
             final6 = appendUniqueRoutes 6 base6 extra6;
           in

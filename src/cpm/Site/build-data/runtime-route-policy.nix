@@ -87,7 +87,7 @@ let
         defaultRoute:
         route
         // {
-          lane = defaultRoute.lane;
+          lane = route.lane or defaultRoute.lane;
           policyOnly = true;
           reason = "policy-table-internal-reachability";
           intent = (attrsOrEmpty (route.intent or null)) // {
