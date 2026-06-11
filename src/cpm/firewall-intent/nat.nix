@@ -336,6 +336,26 @@ let
       wanRuntimeNames
       ;
   };
+  # === hostNat contract block (SMS-020 / SMS-040) ===
+  hostNat =
+    let
+      nat4WanInterfaces = builtins.filter hasHostIPv4 wanInterfaces;
+      firstWan = if nat4WanInterfaces != [ ] then builtins.head nat4WanInterfaces else null;
+      hostUplink = if firstWan != null then attrsOrEmpty (firstWan.hostUplink or null) else { };
+      bridgeName = if isNonEmptyString (hostUplink.bridge or null) then hostUplink.bridge else null;
+      attach = if firstWan != null then attrsOrEmpty (firstWan.attach or null) else { };
+      vlanValue = if builtins.isInt (attach.vlan or null) then attach.vlan else null;
+      fabricNat44SourcePrefixes = if nat4Enabled then nat44SourcePrefixes else [ ];
+      fabricReturnRouteSubnets =
+        if nat4Enabled then nat44SourcePrefixes else [ ];
+    in
+    {
+      required = nat4Enabled;
+      egressBridge = bridgeName;
+      vlanId = vlanValue;
+      hostMasqueradePrefixes4 = fabricNat44SourcePrefixes;
+      returnRouteSubnets = fabricReturnRouteSubnets;
+    };
 in
 {
   enabled = natEnabled;
@@ -372,4 +392,5 @@ in
   routeSafety = {
     coreOriginUplinkDefault = coreUplinkRouteSafety;
   };
+  inherit hostNat;
 }

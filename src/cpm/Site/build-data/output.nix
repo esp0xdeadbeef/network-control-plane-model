@@ -102,6 +102,70 @@ let
         (if ipv6Plan != null then ipv6Plan else { })
         (lib.recursiveUpdate routedClientGuaPayload overlayClientGuaPayload))
       ulaNat66Payload;
+
+  # --- hostNat extraction ---
+  coreNatIntents =
+    builtins.filter
+      (targetName:
+        let
+          t = runtimeTargets.${targetName} or { };
+        in
+        (t.role or "") == "core" && builtins.isAttrs (t.natIntent or null))
+      (builtins.attrNames runtimeTargets);
+
+  hostNat =
+    if coreNatIntents != [ ] then
+      (runtimeTargets.${builtins.head coreNatIntents}.natIntent or { }).hostNat or { }
+    else
+      { };
+
+  # --- fabricSubnets enumeration ---
+  # Deduplicate a list of strings
+  dedupStrings = lst:
+    builtins.attrNames (
+      builtins.listToAttrs (
+        builtins.map (s: { name = s; value = true; }) (
+          builtins.filter isNonEmptyString lst
+        )
+      )
+    );
+
+  tenantSubnets =
+    builtins.concatMap
+      (tenant:
+        if builtins.isAttrs tenant then
+          let
+            ipv4 = tenant.ipv4 or "";
+          in
+          if isNonEmptyString ipv4 then [ ipv4 ] else [ ]
+        else if isNonEmptyString tenant then
+          [ tenant ]
+        else
+          [ ])
+      (builtins.attrValues (if builtins.isAttrs (domainsValue.tenants or null) then domainsValue.tenants else { })
+        ++ (if builtins.isList (domainsValue.tenants or null) then domainsValue.tenants else [ ]));
+
+  transitSubnets =
+    let
+      t = if transitAttrs != null then transitAttrs else { };
+      adjacencies = if builtins.isList (t.adjacencies or null) then t.adjacencies else [ ];
+    in
+    dedupStrings (
+      builtins.concatMap
+        (adj:
+          let
+            endpoints = if builtins.isList (adj.endpoints or null) then adj.endpoints else [ ];
+          in
+          builtins.concatMap
+            (ep:
+              let
+                addr4 = if builtins.isAttrs ep then ep.local.ipv4 or "" else "";
+              in
+              if isNonEmptyString addr4 then [ addr4 ] else [ ])
+            endpoints)
+        adjacencies);
+
+  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets);
 in
 {
   siteId = siteId;
@@ -146,6 +210,7 @@ in
       endpointBindings =
         builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
     };
+  inherit hostNat fabricSubnets;
 }
 // (
   if accessSpaceDiscovery != null then
