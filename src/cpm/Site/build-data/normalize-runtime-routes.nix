@@ -261,11 +261,40 @@ let
                 isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
               complementBase4 = complementSourceRoutes postInitialComplementsOnly base4;
               complementBase6 = complementSourceRoutes postInitialComplementsOnly base6;
+              ifaceLane = (attrsOrEmpty (iface.backingRef or null)).lane or null;
+              ifaceAccess = (attrsOrEmpty ifaceLane).access or null;
+              # Collect addr4 values owned by OTHER interfaces (different lane.access)
+              otherAccessAddr4s = builtins.map
+                (otherIfName:
+                  let
+                    otherIface = classifiedInterfaces.${otherIfName} or { };
+                    otherAccess = (attrsOrEmpty ((attrsOrEmpty (otherIface.backingRef or { })).lane or { })).access or null;
+                  in
+                  if otherIfName != _ifName && otherAccess != null && otherAccess != ifaceAccess
+                  then otherIface.addr4 or null
+                  else null)
+                (builtins.attrNames classifiedInterfaces);
+              otherAccessDsts4 = builtins.filter (x: x != null) otherAccessAddr4s;
+              # Filter: remove source routes whose dst is owned by another lane
+              ownLaneComplementBase4 = builtins.filter
+                (route: !builtins.any (x: x == (route.dst or "")) otherAccessDsts4)
+                complementBase4;
+              ownLaneComplementBase6 = complementBase6;
+              taggedComplementBase4 =
+                if ifaceLane != null then
+                  builtins.map (route: route // { lane = ifaceLane; }) ownLaneComplementBase4
+                else
+                  ownLaneComplementBase4;
+              taggedComplementBase6 =
+                if ifaceLane != null then
+                  builtins.map (route: route // { lane = ifaceLane; }) complementBase6
+                else
+                  complementBase6;
               augmented4 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
-                base4 ++ policyTableComplements 4 policyDefaults4 complementBase4
+                base4 ++ policyTableComplements 4 policyDefaults4 taggedComplementBase4
               );
               augmented6 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
-                base6 ++ policyTableComplements 6 policyDefaults6 complementBase6
+                base6 ++ policyTableComplements 6 policyDefaults6 taggedComplementBase6
               );
             in
             iface
