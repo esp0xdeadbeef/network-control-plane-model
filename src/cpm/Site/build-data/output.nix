@@ -35,7 +35,8 @@
 , upstreamSelectorNodeName
 , ulaNat66Mode
 , endpointAssignmentCheckDiagnostics ? [ ]
-,
+ , emulationSubnets ? [ ]
+ ,
 }:
 
 let
@@ -167,7 +168,12 @@ let
             endpoints)
         adjacencies);
 
-  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets);
+  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets ++ emulationSubnets);
+  fabricSubnetSources = {
+    tenantCount = builtins.length tenantSubnets;
+    transitCount = builtins.length transitSubnets;
+    emulationCount = builtins.length emulationSubnets;
+  };
 in
 {
   siteId = siteId;
@@ -212,7 +218,7 @@ in
       endpointBindings =
         builtins.removeAttrs policyEndpointBindings [ "interfaceTags" ];
     };
-  inherit hostNat fabricSubnets endpointAssignment;
+  inherit hostNat fabricSubnets fabricSubnetSources endpointAssignment;
   endpointAssignmentCheck = {
     validated = endpointAssignmentCheckDiagnostics == [ ];
     diagnostics = endpointAssignmentCheckDiagnostics;
