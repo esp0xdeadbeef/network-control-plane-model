@@ -40,6 +40,8 @@ let
   localInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
   transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p" || iface.sourceKind == "pppoe-session") interfaceRecords;
   pppoeSessionInterfaces = builtins.filter (iface: iface.sourceKind == "pppoe-session") interfaceRecords;
+  wanInterfaces = builtins.filter (iface: iface.sourceKind == "wan") interfaceRecords;
+  lanInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
   uplinkInterfaces = builtins.filter (
     iface:
     (iface.sourceKind == "wan" && selectedUplinkFor iface)
@@ -186,6 +188,8 @@ else if role == "core" then
     mode = "explicit-core-forwarding";
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     uplinkInterfaces = map (iface: iface.runtimeIfName) uplinkInterfaces;
+    wanInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
+    lanInterfaces = map (iface: iface.runtimeIfName) lanInterfaces;
     rules = buildCoreRules {
       inherit tenantPrefixOwners transitInterfaces uplinkInterfaces dnsServicePublicEgressRules;
     };
