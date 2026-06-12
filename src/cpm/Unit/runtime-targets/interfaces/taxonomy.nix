@@ -359,8 +359,14 @@ let
             adapterClass = "runtime-interface";
             inherit nodeRole;
           };
+      explicitRole = {
+        explicitWan = sourceKind == "wan" && (taxonomy.adapterClass or null) == "wan-uplink";
+        explicitTransit = sourceKind == "p2p" && (taxonomy.adapterClass or null) == "p2p-realization";
+        explicitLocalAdapter = sourceKind == "tenant" && (taxonomy.adapterClass or null) == "tenant-role-surface";
+        explicitUplink = false;
+      };
     in
-    virtualRequired { inherit ifacePath taxonomy; };
+    virtualRequired { inherit ifacePath taxonomy; } // { explicit = explicitRole; };
 in
 {
   inherit taxonomyFor;
