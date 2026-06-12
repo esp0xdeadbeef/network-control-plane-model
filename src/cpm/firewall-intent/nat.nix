@@ -57,6 +57,7 @@ let
     builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
     ++ siteNat44SourcePrefixes
     ++ runtimeOriginNat44SourcePrefixes
+    ++ masqueradeFabricPrefixes4
   );
   nat66ByUplink = attrsOrEmpty (egressIntent.nat66 or null);
   nat66SelectedIntents = map (uplink: attrsOrEmpty (nat66ByUplink.${uplink} or null)) selectedUplinks;
@@ -65,6 +66,7 @@ let
   nat66SourcePrefixes = uniqueStrings (
     builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat66SelectedIntents
     ++ runtimeOriginNat66SourcePrefixes
+    ++ masqueradeFabricPrefixes6
   );
   nat66Authority = natEgressAuthority { inherit interfaceRecords nat66ByUplink; };
   inherit (nat66Authority) explicitNat66Interfaces explicitNat66RuntimeNames hasNat66EgressAuthority;
@@ -80,6 +82,30 @@ let
     in
     warnings;
   transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p") interfaceRecords;
+  # === SMS-100: CPM NAT fabric prefix inclusion ===
+  # Fabric-internal interfaces: non-WAN, non-overlay, non-declined
+  # These are p2p and tenant interfaces whose addresses need masquerading
+  # when they source traffic through a NAT-eligible core.
+  fabricSourceInterfaces = builtins.filter
+    (iface:
+      iface.sourceKind != "wan"
+      && iface.sourceKind != "overlay"
+      && !(declined iface)
+    )
+    interfaceRecords;
+  # Derive subnet prefixes from addr4, excluding /32 host routes
+  masqueradeFabricPrefixes4 = uniqueStrings (
+    builtins.filter (prefix: prefix != "" && builtins.match ".*/32$" prefix == null) (
+      map (iface: iface.addr4 or "") fabricSourceInterfaces
+    )
+  );
+  # Derive subnet prefixes from addr6, excluding /128 host routes
+  masqueradeFabricPrefixes6 = uniqueStrings (
+    builtins.filter (prefix: prefix != "" && builtins.match ".*/128$" prefix == null) (
+      map (iface: iface.addr6 or "") fabricSourceInterfaces
+    )
+  );
+  # === end SMS-100 ===
   physicalWanInterfaces = builtins.filter
     (
       iface:
@@ -384,6 +410,8 @@ in
       [ ];
   masqueradeSourcePrefixes4 = if nat4Enabled then nat44SourcePrefixes else [ ];
   masqueradeSourcePrefixes6 = if nat6Enabled then nat66SourcePrefixes else [ ];
+  masqueradeFabricPrefixes4 = if nat4Enabled then masqueradeFabricPrefixes4 else [ ];
+  masqueradeFabricPrefixes6 = if nat6Enabled then masqueradeFabricPrefixes6 else [ ];
   tcpMssClampInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
   uplinkFamilies = {
     ipv4 = map (iface: iface.runtimeIfName) (builtins.filter hasHostIPv4 wanInterfaces);
