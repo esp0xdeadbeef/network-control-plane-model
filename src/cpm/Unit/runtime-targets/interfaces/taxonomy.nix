@@ -328,11 +328,19 @@ let
             hostFacing =
               if nodeRole != null && builtins.substring 0 4 nodeRole == "core"
                  && backingRefName != null
-                 && (builtins.match ".*access-iot.*" backingRefName) != null
+                 && ((backingRef.lane or { }).access or null) != null
               then false
               else if nodeRole != null && builtins.substring 0 6 nodeRole == "access"
                  && backingRefName != null
-                 && (builtins.match ".*(nebula|wireguard).*" backingRefName) != null
+                 && (
+                   let
+                     allUplinks =
+                       (backingRef.uplinks or [ ])
+                       ++ ((backingRef.lane or { }).uplinks or [ ])
+                       ++ (let u = (backingRef.lane or { }).uplink or null; in if u == null then [ ] else [ u ]);
+                   in
+                     builtins.any (name: builtins.hasAttr name overlayProvisioning) allUplinks
+                 )
               then false
               else true;
           }
