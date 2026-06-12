@@ -96,13 +96,13 @@ let
   # Derive subnet prefixes from addr4, excluding /32 host routes
   masqueradeFabricPrefixes4 = uniqueStrings (
     builtins.filter (prefix: prefix != "" && builtins.match ".*/32$" prefix == null) (
-      map (iface: (iface.addr4 or null) or "") fabricSourceInterfaces
+      map (iface: let a = iface.addr4 or null; in if builtins.isString a then a else "") fabricSourceInterfaces
     )
   );
   # Derive subnet prefixes from addr6, excluding /128 host routes
   masqueradeFabricPrefixes6 = uniqueStrings (
     builtins.filter (prefix: prefix != "" && builtins.match ".*/128$" prefix == null) (
-      map (iface: (iface.addr6 or null) or "") fabricSourceInterfaces
+      map (iface: let a = iface.addr6 or null; in if builtins.isString a then a else "") fabricSourceInterfaces
     )
   );
   # === end SMS-100 ===
