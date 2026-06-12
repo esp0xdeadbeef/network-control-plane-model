@@ -111,30 +111,29 @@ let
     in
     if matchesCore == [ ] then null else builtins.elemAt matchesCore 0;
 
-  # For every policy interface, also generate forwarding rules to the
-  # core-upstream-vlan4 interface (the default internet egress core).  This
-  # ensures that when the routing decision selects vlan4 egress for tenant
-  # traffic, the nft oifname constraint matches.  Without this, traffic whose
-  # intent allow rule names a specific uplink (e.g. testnet-host-isp) cannot
-  # reach the default internet core (vlan4) even though the CPM internetModes
-  # on that core covers the tenant's source prefixes.
-  vlan4CoreInterface =
-    let
-      candidates = builtins.filter (
-        coreIface:
-        builtins.match ".*core-upstream-vlan4.*" coreIface.runtimeIfName != null
-      ) coreInterfaces;
-    in
-    if candidates == [ ] then null else builtins.elemAt candidates 0;
+  # For every policy interface, also generate forwarding rules to internet
+  # egress core interfaces so that egress surface constraints match when
+  # routing selects internet egress for tenant traffic.  Without this, traffic
+  # whose intent allow rule names a specific uplink (e.g. testnet-host-isp)
+  # cannot reach an internet egress core even though the CPM internetModes
+  # on that core cover the tenant's source prefixes.
+  # Internet egress cores are identified structurally: core interfaces that
+  # serve non-overlay uplinks (not solely transport/overlay cores).
+  internetEgressCoreInterfaces =
+    builtins.filter (
+      coreIface:
+      !(isOverlayCoreInterface coreIface)
+    ) coreInterfaces;
 
   additionalCoresForPolicy =
     policyIface:
     let
       primaryCore = coreForPolicy policyIface;
     in
-    if vlan4CoreInterface == null then [ ]
-    else if primaryCore != null && primaryCore.runtimeIfName == vlan4CoreInterface.runtimeIfName then [ ]
-    else [ vlan4CoreInterface ];
+    builtins.filter (
+      coreIface:
+      primaryCore == null || coreIface.runtimeIfName != primaryCore.runtimeIfName
+    ) internetEgressCoreInterfaces;
 
   # Generate pair rules for additional cores (internetModes-based coverage)
   additionalSelectorPairRules = builtins.concatLists (
