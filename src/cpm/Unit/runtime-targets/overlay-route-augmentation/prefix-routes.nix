@@ -74,7 +74,21 @@ in
       overlay = if isNonEmptyString overlayName then overlayProvisioning.${overlayName} or { } else { };
       runtimeNodeCfg =
         if isNonEmptyString runtimeNode then
-          ((overlay.nebula or { }).runtimeNodes or { }).${runtimeNode} or { }
+          let
+            allNodes =
+              builtins.foldl'
+                (acc: k:
+                  let
+                    v = overlay.${k} or null;
+                  in
+                    if builtins.isAttrs v && builtins.isAttrs (v.runtimeNodes or null) then
+                      acc // v.runtimeNodes
+                    else
+                      acc)
+                (overlay.runtimeNodes or { })
+                (builtins.attrNames overlay);
+          in
+            allNodes.${runtimeNode} or { }
         else
           { };
       unsafeRoutes = listOrEmpty (runtimeNodeCfg.unsafeRoutes or null);
