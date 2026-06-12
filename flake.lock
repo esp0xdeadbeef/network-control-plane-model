@@ -43,6 +43,7 @@
       "original": {
         "owner": "esp0xdeadbeef",
         "repo": "network-forwarding-model",
+        "rev": "9579ffc72731a2a8480eda94d4259ac371e3a273",
         "type": "github"
       }
     },
@@ -90,6 +91,7 @@
       "original": {
         "owner": "esp0xdeadbeef",
         "repo": "network-labs",
+        "rev": "ee83c2bac5c066cea2ed75d7072ea7e243a2111a",
         "type": "github"
       }
     },
