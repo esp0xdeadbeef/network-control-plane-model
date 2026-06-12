@@ -365,8 +365,36 @@ let
         explicitLocalAdapter = sourceKind == "tenant" && (taxonomy.adapterClass or null) == "tenant-role-surface";
         explicitUplink = false;
       };
+      # DHCP authority declaration per FS-380-HDS-010-SDS-010-SMS-110.
+      # CPM must declare whether DHCP is permitted on each interface.
+      # Defaults to false — DHCP must be opt-in from model intent.
+      # Renderers consume these fields instead of hardcoding DHCPServer=true.
+      dhcpAuthority = {
+        server = {
+          enabled = false;
+          pool = null;
+          authoritySource = null;
+        };
+        client = {
+          enabled = false;
+          interface = null;
+        };
+      };
+
+      # DNS resolver configuration per interface — FS-540-HDS-010-SDS-010-SMS-020.
+      # CPM must declare which DNS resolver each interface should use, rather than
+      # leaving renderers to infer resolver addresses from topology position.
+      dnsResolver = {
+        resolver4 = if sourceKind == "tenant" && nodeRole == "access" then "127.0.0.1" else null;
+        resolver6 = if sourceKind == "tenant" && nodeRole == "access" then "::1" else null;
+        resolverSource =
+          if sourceKind == "tenant" && nodeRole == "access" then "local-recursive"
+          else if sourceKind == "tenant" then "upstream-forwarder"
+          else if sourceKind == "wan" then "dhcp-provided"
+          else "none";
+      };
     in
-    virtualRequired { inherit ifacePath taxonomy; } // { explicit = explicitRole; };
+    virtualRequired { inherit ifacePath taxonomy; } // { explicit = explicitRole; inherit dhcpAuthority dnsResolver; };
 in
 {
   inherit taxonomyFor;
