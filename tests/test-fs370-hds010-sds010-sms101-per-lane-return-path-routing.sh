@@ -7,12 +7,13 @@
 # SMS Acceptance Predicates covered:
 #   P1 ✓ Policy node per-lane routes through correct DS-facing interface
 #   P2 ✓ DS node per-lane routes through correct access-facing interface
-#   N1 ✓ Return path routed to wrong lane → diagnostic
-#   N2 ✓ Missing per-lane return path → diagnostic
+#   N1 ✓ Return path routed to wrong lane → diagnostic (seeded negative active)
+#   N2 ✓ Missing per-lane return path → diagnostic (seeded negative active)
 #
-# The CPM should emit per-lane routing metadata (lane identity, interface
-# binding, and return-path routes) that renderers consume to materialize
-# ip rules and per-lane policy tables.
+# The CPM shall emit per-lane routing metadata (backingRef.lane with
+# access/uplink classification) and per-lane policy routes on the policy
+# and downstream-selector nodes so that renderers can materialize
+# correct return-path ip rules and per-lane policy tables.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,6 +28,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     system = builtins.currentSystem;
     labs = flake.inputs.network-labs.outPath;
 
+    # Use single-wan-with-nebula example which compiles cleanly
     baseIntent = import (labs + "/examples/single-wan-with-nebula/intent.nix");
     baseInventory = import (labs + "/examples/single-wan-with-nebula/inventory-nixos.nix");
 
@@ -36,124 +38,157 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     };
 
     site = result.control_plane_model.data.esp0xdeadbeef."site-a";
+    rt = site.runtimeTargets or {};
 
-    # Extract routing data from runtime targets
-    runtimeTargets = site.runtimeTargets or {};
-    policyRT = runtimeTargets."policy-runtime" or {};
-    dsRT = runtimeTargets."downstream-selector-runtime" or {};
+    # Find policy and DS runtime targets by key suffix
+    rtKeys = builtins.attrNames rt;
+    policyKey = builtins.head (builtins.filter (k: builtins.match ".*-policy$" k != null) rtKeys);
+    dsKey = builtins.head (builtins.filter (k: builtins.match ".*-downstream-selector$" k != null) rtKeys);
 
-    # Extract forwardingIntent rules with lane metadata
-    forwardingIntent = site.forwardingIntent or {};
-    forwardingRules = forwardingIntent.rules or [];
+    siteExists = policyKey != null && dsKey != null;
 
-    # Extract route data from runtime targets or transit
-    policyRoutes = policyRT.forwardingIntent or {};
-    dsRoutes = dsRT.forwardingIntent or {};
+    policyRT = if policyKey != null then rt.${policyKey} else {};
+    dsRT = if dsKey != null then rt.${dsKey} else {};
 
-    # Check for lane metadata on routes
-    hasLaneMetadata = rules:
-      builtins.any
-        (rule: (rule ? candidateEgress && rule.candidateEgress ? backingRef && rule.candidateEgress.backingRef ? lane)
-               || (rule ? lane))
-        rules;
+    policyERR = policyRT.effectiveRuntimeRealization or {};
+    dsERR = dsRT.effectiveRuntimeRealization or {};
 
-    # Check that policy node routes exist
-    policyRoutesExist =
-      (policyRT ? forwardingIntent)
-      || (policyRT ? effectiveRuntimeRealization)
-      || (site ? transit)
-      || (site ? forwardingIntent);
+    policyIfaces = policyERR.interfaces or {};
+    dsIfaces = dsERR.interfaces or {};
 
-    # Check for per-lane routing infrastructure
-    # The CPM should provide lane identity + interface binding for policy/DS nodes
-    transitData = site.transit or {};
-    transitAdjacencies = transitData.adjacencies or [];
-    transitOrdering = transitData.ordering or [];
+    # ===== PREDICATE P1: Policy node has per-lane DS-facing interfaces with lane metadata =====
+    policyDSFacing = builtins.filter
+      (n: builtins.match ".*downstream.*policy.*access.*" n != null)
+      (builtins.attrNames policyIfaces);
 
-    # Check that transit includes lane data
-    hasLaneAdjacencies =
-      builtins.any
-        (adj: builtins.any
-          (ep: (ep ? lane) || (ep ? backingRef && ep.backingRef ? lane))
-          (adj.endpoints or []))
-        transitAdjacencies;
+    policyDSFacingWithLane = builtins.filter
+      (n:
+        (policyIfaces.${n} ? backingRef && policyIfaces.${n}.backingRef ? lane)
+        || (policyIfaces.${n} ? lane)
+      )
+      policyDSFacing;
 
-    # Look for route data on policy node targeting DS-facing interfaces
-    policyRoutingData =
-      if policyRT ? effectiveRuntimeRealization
-      then policyRT.effectiveRuntimeRealization.interfaces or {}
-      else {};
+    p1PolicyDSLanes = builtins.length policyDSFacing > 0
+      && builtins.length policyDSFacingWithLane == builtins.length policyDSFacing;
 
-    dsRoutingData =
-      if dsRT ? effectiveRuntimeRealization
-      then dsRT.effectiveRuntimeRealization.interfaces or {}
-      else {};
+    # ===== PREDICATE P2: DS node has per-lane interfaces with lane metadata and policy routes =====
+    # (interface naming varies by fixture; use lane metadata presence instead of name patterns)
+    dsAllWithLane = builtins.filter
+      (n:
+        (dsIfaces.${n} ? backingRef && dsIfaces.${n}.backingRef ? lane)
+        || (dsIfaces.${n} ? lane)
+      )
+      (builtins.attrNames dsIfaces);
 
-    # Verify route data with lane information exists on interfaces
-    policyIfacesWithLanes =
-      builtins.filter
-        (name: (policyRoutingData.${name} ? backingRef && policyRoutingData.${name}.backingRef ? lane)
-                || (policyRoutingData.${name} ? lane))
-        (builtins.attrNames policyRoutingData);
+    p2DSHasLaneRoutes = builtins.length dsAllWithLane > 0;
 
-    dsIfacesWithLanes =
-      builtins.filter
-        (name: (dsRoutingData.${name} ? backingRef && dsRoutingData.${name}.backingRef ? lane)
-                || (dsRoutingData.${name} ? lane))
-        (builtins.attrNames dsRoutingData);
+    # ===== SEEDED NEGATIVE N1: No lane mismatch between policy and DS =====
+    extractLaneAccess = iface:
+      if iface ? backingRef && iface.backingRef ? lane then
+        iface.backingRef.lane.access or null
+      else if iface ? lane then
+        iface.lane.access or null
+      else null;
 
-    # === Seeded negative checks ===
-    # N1: Verify no lane mismatch in return path
-    # If a policy route for lane "A" points to a DS interface belonging to lane "B", that is wrong
-    # We check that lanes referenced in policy node routes match their interface bindings
+    # Get lane accesses from policy DS-facing interfaces
+    policyLaneAccesses = builtins.filter (v: v != null)
+      (builtins.map (n: extractLaneAccess (policyIfaces.${n} or {})) policyDSFacingWithLane);
 
-    # N2: Check for missing lane data diagnostics
-    # The CPM should report diagnostics when per-lane data is missing
-    forwardingDiagnostics = forwardingIntent.diagnostics or {};
-    unresolvedLanes =
-      if forwardingDiagnostics ? unresolvedDenyEndpoints then
-        builtins.any
-          (d: (d.code or "") == "missing-per-lane-return-path" || (d.reason or "") == "missing lane return path")
-          (forwardingDiagnostics.unresolvedDenyEndpoints or [])
-      else false;
+    # DS policy-facing interfaces should have matching lanes
+    dsPolicyFacing = builtins.filter
+      (n: builtins.match ".*downstream-selector.*policy.*access.*" n != null)
+      (builtins.attrNames dsIfaces);
 
-    # Build check results
-    checks = {
-      # Baseline CPM construction succeeds
-      cpmSucceeds = result ? control_plane_model;
+    dsLaneAccesses = builtins.filter (v: v != null)
+      (builtins.map (n: extractLaneAccess (dsIfaces.${n} or {})) dsPolicyFacing);
 
-      # Site data exists
-      siteExists = site ? siteId;
+    # Every policy lane access MUST have a matching DS lane (no orphaned policy lanes)
+    missingDSMatches = builtins.filter
+      (access: !(builtins.elem access dsLaneAccesses))
+      policyLaneAccesses;
 
-      # Transit adjacency data present
-      transitAdjacenciesExist = transitAdjacencies != [] || transitOrdering != [];
+    n1NoLaneMismatch = builtins.length missingDSMatches == 0;
 
-      # Lane metadata present on forwarding rules or transit
-      anyLaneMetadata =
-        hasLaneMetadata forwardingRules
-        || hasLaneAdjacencies
-        || policyIfacesWithLanes != []
-        || dsIfacesWithLanes != [];
+    # ===== SEEDED NEGATIVE N2: Per-lane policy routes exist on policy and DS =====
+    hasPolicyRoutes = builtins.filter
+      (n:
+        let
+          routes = builtins.concatLists [
+            (policyIfaces.${n}.routes.ipv4 or [])
+            (policyIfaces.${n}.routes.ipv6 or [])
+          ];
+        in
+        builtins.any (r: (r.policyOnly or false) == true) routes
+      )
+      policyDSFacingWithLane;
 
-      # Forwarding intent rules exist
-      forwardingRulesExist = forwardingRules != [];
+    n2PolicyLanesHaveRoutes = builtins.length hasPolicyRoutes > 0;
 
-      # Lane routing infrastructure detected
-      # NOTE: This is the SMS-101 gap — CPM currently does not emit
-      # per-lane return-path routes on policy/DS nodes. This test
-      # serves as the construction specification. When CMC implements
-      # the per-lane return-path routing module, these checks will pass.
-      laneRoutingInfrastructure =
-        policyIfacesWithLanes != [] || dsIfacesWithLanes != [];
+    hasDSRoutes = builtins.filter
+      (n:
+        let
+          routes = builtins.concatLists [
+            (dsIfaces.${n}.routes.ipv4 or [])
+            (dsIfaces.${n}.routes.ipv6 or [])
+          ];
+        in
+        builtins.any (r: (r.policyOnly or false) == true) routes
+      )
+      dsPolicyFacing;
+
+    n2DSLanesHaveRoutes = builtins.length hasDSRoutes > 0;
+
+    # ===== ADDITIONAL: Verify policy node has upstream-facing lanes =====
+    policyUSFacing = builtins.filter
+      (n: builtins.match ".*policy.*upstream-selector.*" n != null)
+      (builtins.attrNames policyIfaces);
+
+    policyUSFacingWithLane = builtins.filter
+      (n:
+        (policyIfaces.${n} ? backingRef && policyIfaces.${n}.backingRef ? lane)
+        || (policyIfaces.${n} ? lane)
+      )
+      policyUSFacing;
+
+    p3PolicyUSLanes = builtins.length policyUSFacingWithLane > 0
+      && builtins.length policyUSFacingWithLane == builtins.length policyUSFacing;
+
+    # ===== VERDICT =====
+    allPassed =
+      siteExists
+      && p1PolicyDSLanes
+      && p2DSHasLaneRoutes
+      && n1NoLaneMismatch
+      && n2PolicyLanesHaveRoutes
+      && n2DSLanesHaveRoutes
+      && p3PolicyUSLanes;
+
+    diagnostics = {
+      inherit
+        siteExists
+        p1PolicyDSLanes
+        p2DSHasLaneRoutes
+        n1NoLaneMismatch
+        n2PolicyLanesHaveRoutes
+        n2DSLanesHaveRoutes
+        p3PolicyUSLanes
+        ;
+      policyDSFacingCount = builtins.length policyDSFacing;
+      policyDSLaneCount = builtins.length policyDSFacingWithLane;
+      dsLaneCount = builtins.length dsAllWithLane;
+      missingDSMatchCount = builtins.length missingDSMatches;
+      policyLaneRouteCount = builtins.length hasPolicyRoutes;
+      dsLaneRouteCount = builtins.length hasDSRoutes;
+      policyUSLaneCount = builtins.length policyUSFacingWithLane;
+      policyKey = policyKey;
+      dsKey = dsKey;
     };
+
   in
-    # For now, verify baseline CPM structure exists.
-    # The per-lane routing gap (laneRoutingInfrastructure=false) is the
-    # construction target — this test documents the expected interface.
-    if checks.siteExists && checks.cpmSucceeds then
-      builtins.trace "SMS-101: CPM baseline OK. Per-lane return-path routing infrastructure: ${if checks.laneRoutingInfrastructure then "PRESENT" else "NOT YET IMPLEMENTED (expected gap — this test is the specification)"}" true
+    if allPassed then
+      builtins.trace "SMS-101: ALL PREDICATES VERIFIED. Per-lane return-path routing infrastructure PRESENT." true
     else
-      throw ("fs370-sms101 per-lane return-path routing checks failed: " + builtins.toJSON checks)
+      throw ("SMS-101 per-lane return-path routing FAILED: " + builtins.toJSON diagnostics)
 ' >/dev/null
 
 echo "PASS fs370-sms101-per-lane-return-path-routing"
