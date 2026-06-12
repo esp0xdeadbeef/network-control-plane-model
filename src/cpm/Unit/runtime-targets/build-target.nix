@@ -487,18 +487,13 @@ let
             needsCoreEgress = isCore && !hasTenant && builtins.length hostP2p == 1;
             p2pVal = if needsCoreEgress then builtins.head hostP2p else null;
           in
-          # Do NOT create a duplicate core-uplink-egress interface that clones
-          # the p2p link's addr4. FS-255 SMS-010 requires p2p links be kept OUT
-          # of the host-facing interface count. The single p2p interface already
-          # serves as the egress path; adding a clone with the same /31 address
-          # creates a routing conflict (systemd-networkd sees two interfaces
-          # with identical IPs and leaves one stuck in "configuring").
           if needsCoreEgress then
             let
-              p2pName = p2pVal.runtimeIfName or p2pVal.renderedIfName or p2pVal.logicalName or "unknown";
+              stripped = builtins.removeAttrs p2pVal [ "runtimeIfName" "renderedIfName" "runtimeInterface" ];
             in
             effectiveRuntimeInterfaces // {
-              "${p2pName}" = (effectiveRuntimeInterfaces."${p2pName}" or p2pVal) // {
+              "core-uplink-egress" = stripped // {
+                sourceKind = "core-egress";
                 adapterClass = "core-role-egress";
                 direction = "egress";
                 hostFacing = true;
