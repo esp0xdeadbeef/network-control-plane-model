@@ -5,6 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -16,7 +17,7 @@ require_cmd() {
 require_cmd jq
 require_cmd nix
 
-hat_dir="/home/deadbeef/github/network-labs/HAT/emulated-isp-residential-testnet"
+hat_dir="$(pinned_hat_dir)"
 tmp_dir="$(mktemp -d)"
 output_json="${tmp_dir}/control-plane.json"
 trap 'rm -rf "${tmp_dir}"' EXIT

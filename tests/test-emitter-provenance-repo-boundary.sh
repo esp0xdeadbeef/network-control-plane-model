@@ -4,7 +4,8 @@ set -euo pipefail
 # GAMP-SCOPE: software-module-test
 
 repo_root="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel)"
-foreign_cwd="${NETWORK_FOREIGN_CWD:-/home/deadbeef/github/network-codex-agent}"
+source "${repo_root}/tests/lib/pinned-paths.sh"
+foreign_cwd="${NETWORK_FOREIGN_CWD:-}"
 
 fail() {
   echo "$1" >&2

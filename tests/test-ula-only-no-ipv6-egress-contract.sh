@@ -14,11 +14,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
 output_json="$(mktemp)"
 trap 'rm -f "${output_json}"' EXIT
 
-example_root="${repo_root}/../network-labs/examples/single-wan-uplink-static-egress"
+example_root="$(pinned_network_labs)/examples/single-wan-uplink-static-egress"
 
 nix run "${repo_root}#compile-and-build-control-plane-model" -- \
   "${example_root}/intent.nix" \

@@ -5,6 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -13,13 +14,13 @@ single_wan_json="${tmp_dir}/single-wan.json"
 provider_access_json="${tmp_dir}/provider-access.json"
 
 nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
-  /home/deadbeef/github/network-labs/examples/single-wan/intent.nix \
-  /home/deadbeef/github/network-labs/examples/single-wan/inventory-clab.nix \
+  $(pinned_network_labs)/examples/single-wan/intent.nix \
+  $(pinned_network_labs)/examples/single-wan/inventory-clab.nix \
   "${single_wan_json}" >/dev/null
 
 nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
-  /home/deadbeef/github/network-labs/HAT/emulated-isp-residential-testnet/intent.nix \
-  /home/deadbeef/github/network-labs/HAT/emulated-isp-residential-testnet/inventory-nixos.nix \
+  $(pinned_hat_dir)/intent.nix \
+  $(pinned_hat_dir)/inventory-nixos.nix \
   "${provider_access_json}" >/dev/null
 
 jq -e '

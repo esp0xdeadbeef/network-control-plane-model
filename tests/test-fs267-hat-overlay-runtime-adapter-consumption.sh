@@ -5,6 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -17,7 +18,7 @@ require_cmd git
 require_cmd jq
 require_cmd nix
 
-labs_path="${NETWORK_LABS_PATH:-/home/deadbeef/github/network-labs}"
+labs_path="${NETWORK_LABS_PATH:-$(pinned_network_labs)}"
 expected_labs_rev="c783759618a5bb751b497a4ebae210372d966bc5"
 actual_labs_rev="$(git -C "${labs_path}" rev-parse HEAD)"
 

@@ -5,11 +5,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-sat_dir="/home/deadbeef/github/network-labs/sat"
+sat_dir="$(pinned_sat_dir)"
 intent_path="${sat_dir}/intent.nix"
 inventory_path="${sat_dir}/inventory.nix"
 provider_table_path="${sat_dir}/provider-access-fixture-table.nix"

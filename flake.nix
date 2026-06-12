@@ -5,10 +5,10 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-network.url = "github:NixOS/nixpkgs/ac56c456ebe4901c561d3ebf1c98fbd970aea753";
 
-    network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model";
+    network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/9579ffc72731a2a8480eda94d4259ac371e3a273";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
 
-    network-labs.url = "github:esp0xdeadbeef/network-labs";
+    network-labs.url = "github:esp0xdeadbeef/network-labs/ee83c2bac5c066cea2ed75d7072ea7e243a2111a";
   };
 
   outputs =
