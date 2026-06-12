@@ -6,8 +6,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
-labs_path="${NETWORK_LABS_PATH:-/home/deadbeef/github/network-labs}"
+labs_path="${NETWORK_LABS_PATH:-$(pinned_network_labs)}"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
