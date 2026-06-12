@@ -79,6 +79,8 @@ eval_must_fail() {
 
 # ---------------------------------------------------------------
 # Test 1: Static endpoint emits all P3 fields
+#   Uses proper network prefix (.0/24), not host address (.1/24).
+#   deriveGateway4 must produce .1 (first usable host), not .0 (network addr).
 # ---------------------------------------------------------------
 echo "=== Test 1: Static endpoint P3 fields ==="
 
@@ -87,7 +89,7 @@ fixture='
   siteName = "site-a";
   ownership = {
     prefixes = [
-      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.1/24"; ipv6 = "2001:db8:20:20::1/64"; }
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; ipv6 = "2001:db8:20:20::/64"; }
     ];
     endpoints = [
       { name = "client01"; kind = "host"; tenant = "client"; }
@@ -159,7 +161,7 @@ fixture='
   siteName = "site-a";
   ownership = {
     prefixes = [
-      { name = "guest"; kind = "tenant"; ipv4 = "10.20.30.1/24"; ipv6 = "2001:db8:30:30::1/64"; }
+      { name = "guest"; kind = "tenant"; ipv4 = "10.20.30.0/24"; ipv6 = "2001:db8:30:30::/64"; }
     ];
     endpoints = [
       { name = "guest01"; kind = "host"; tenant = "guest"; }
@@ -176,10 +178,10 @@ else
   fail "DHCP: mode=dhcp (got: $(echo "$dhcp_result" | grep '"mode"' || echo 'none'))"
 fi
 
-if echo "$dhcp_result" | grep -q '"servedPrefix4".*"10.20.30.1/24"'; then
-  pass "DHCP: servedPrefix4 present"
+if echo "$dhcp_result" | grep -q '"servedPrefix4".*"10.20.30.0/24"'; then
+  pass "DHCP: servedPrefix4=10.20.30.0/24"
 else
-  fail "DHCP: servedPrefix4 present (P2)"
+  fail "DHCP: servedPrefix4=10.20.30.0/24 (P2 — network prefix, not host address)"
 fi
 
 if echo "$dhcp_result" | grep -q '"gw4".*"10.20.30.1"'; then
@@ -223,8 +225,8 @@ fixture='
   siteName = "site-a";
   ownership = {
     prefixes = [
-      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.1/24"; }
-      { name = "guest"; kind = "tenant"; ipv4 = "10.20.30.1/24"; }
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; }
+      { name = "guest"; kind = "tenant"; ipv4 = "10.20.30.0/24"; }
     ];
     endpoints = [
       { name = "client01"; kind = "host"; tenant = "client"; }
@@ -292,7 +294,7 @@ fixture='
   siteName = "site-a";
   ownership = {
     prefixes = [
-      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.1/24"; }
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; }
     ];
     endpoints = [
       { name = "client01"; kind = "host"; tenant = "client"; assignment = "static"; }
@@ -348,7 +350,7 @@ fixture='
   siteName = "site-a";
   ownership = {
     prefixes = [
-      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.1/24"; }
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; }
     ];
     endpoints = [
       { name = "client01"; kind = "host"; tenant = "client"; }
@@ -382,7 +384,7 @@ fixture='
   siteName = "site-a";
   ownership = {
     prefixes = [
-      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.1/24"; }
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; }
     ];
     endpoints = [
       { name = "client01"; kind = "host"; tenant = "client"; assignmentMode = "static-only"; }
@@ -399,6 +401,83 @@ if echo "$explicit_result" | grep -q '"static-only"'; then
   pass "Explicit: static-only respected"
 else
   fail "Explicit: static-only respected (got: $explicit_result)"
+fi
+
+# ---------------------------------------------------------------
+# Test 9: Seeded negative — gateway4 must be .1 not .0 (network addr)
+#   This test proves FS-720-HDS-030-SDS-010-SMS-010 P3/P7 fix:
+#   stripCidr("10.20.20.0/24") alone yields "10.20.20.0" which is
+#   NOT a valid gateway. deriveGateway4 must produce "10.20.20.1".
+# ---------------------------------------------------------------
+echo ""
+echo "=== Test 9: gateway4 derived as .1 not .0 (seeded negative) ==="
+
+fixture='
+  enterpriseName = "esp";
+  siteName = "site-a";
+  ownership = {
+    prefixes = [
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; }
+    ];
+    endpoints = [
+      { name = "client01"; kind = "host"; tenant = "client"; }
+    ];
+  };
+  inventoryEndpoints = {
+    client01 = { ipv4 = [ "10.20.20.10" ]; };
+  };
+'
+
+gw4_result=$(eval_assignment "$fixture" 'result.endpointAssignment."site-a-client01".static.gateway4 or null')
+
+if echo "$gw4_result" | grep -q '"10.20.20.1"'; then
+  pass "gateway4=10.20.20.1 (correct — first usable host, not network address)"
+else
+  fail "gateway4 should be 10.20.20.1 but got: $gw4_result"
+fi
+
+# Negative assertion: must NOT be the network address .0
+if echo "$gw4_result" | grep -q '"10.20.20.0"'; then
+  fail "REGRESSION: gateway4=10.20.20.0 — network address emitted as gateway (stripCidr bug)"
+else
+  pass "gateway4 is NOT 10.20.20.0 (network address correctly excluded)"
+fi
+
+# ---------------------------------------------------------------
+# Test 10: IPv6 gateway6 derived as ::1 not ::0 (seeded negative)
+# ---------------------------------------------------------------
+echo ""
+echo "=== Test 10: gateway6 derived as ::1 not ::0 (seeded negative) ==="
+
+fixture='
+  enterpriseName = "esp";
+  siteName = "site-a";
+  ownership = {
+    prefixes = [
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; ipv6 = "2001:db8:20:20::/64"; }
+    ];
+    endpoints = [
+      { name = "client01"; kind = "host"; tenant = "client"; }
+    ];
+  };
+  inventoryEndpoints = {
+    client01 = { ipv4 = [ "10.20.20.10" ]; ipv6 = [ "2001:db8:20:20::10" ]; };
+  };
+'
+
+gw6_result=$(eval_assignment "$fixture" 'result.endpointAssignment."site-a-client01".static.gateway6 or null')
+
+if echo "$gw6_result" | grep -q '"2001:db8:20:20::1"'; then
+  pass "gateway6=2001:db8:20:20::1 (correct — first usable host)"
+else
+  fail "gateway6 should be 2001:db8:20:20::1 but got: $gw6_result"
+fi
+
+# Negative assertion: must NOT be the all-zeros address
+if echo "$gw6_result" | grep -q '"2001:db8:20:20::"'; then
+  fail "REGRESSION: gateway6=2001:db8:20:20:: — network address emitted as gateway"
+else
+  pass "gateway6 is NOT 2001:db8:20:20:: (network address correctly excluded)"
 fi
 
 # ---------------------------------------------------------------

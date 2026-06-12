@@ -145,14 +145,49 @@ let
 
   # ---------------------------------------------------------------
   # Gateway derivation from tenant prefix
+  #
+  # FS-720-HDS-030-SDS-010-SMS-010 P3/P7: The gateway MUST be a
+  # usable host address, not the network (all-zeros) address.
+  # stripCidr on e.g. "10.20.20.0/24" yields "10.20.20.0", which is
+  # the network address — not routable as a gateway.
+  #
+  # We replace the last component with "1" to produce the first
+  # usable host address in the subnet (e.g. "10.20.20.1").
   # ---------------------------------------------------------------
   deriveGateway4 = prefix:
-    let cidr = prefix.ipv4 or "";
-    in if isNonEmptyString cidr then stripCidr cidr else null;
+    let
+      cidr = prefix.ipv4 or "";
+      addr = if isNonEmptyString cidr then stripCidr cidr else null;
+    in
+    if addr != null then
+      let
+        octets = lib.splitString "." addr;
+        lastIdx = builtins.length octets - 1;
+        gwOctets =
+          (lib.take lastIdx octets) ++ [ "1" ];
+      in
+      lib.concatStringsSep "." gwOctets
+    else null;
 
   deriveGateway6 = prefix:
-    let cidr = prefix.ipv6 or "";
-    in if isNonEmptyString cidr then stripCidr cidr else null;
+    let
+      cidr = prefix.ipv6 or "";
+      addr = if isNonEmptyString cidr then stripCidr cidr else null;
+    in
+    if addr != null then
+      # Compressed form (e.g. "fd42:dead:beef:20::"): append "1" → "::1"
+      # Otherwise replace last hextet with "1"
+      if lib.hasSuffix "::" addr then
+        "${addr}1"
+      else
+        let
+          hextets = lib.splitString ":" addr;
+          lastIdx = builtins.length hextets - 1;
+          gwHextets =
+            (lib.take lastIdx hextets) ++ [ "1" ];
+        in
+        lib.concatStringsSep ":" gwHextets
+    else null;
 
   # ---------------------------------------------------------------
   # Bridge / attachment surface from runtime targets
