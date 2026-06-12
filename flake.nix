@@ -429,6 +429,63 @@
                 touch $out
               '';
 
+          "FS-440-HDS-010-SDS-010-SMS-010" =
+            pkgs.runCommand "check-FS-440-HDS-010-SDS-010-SMS-010"
+              {
+                nativeBuildInputs = [ pkgs.bash pkgs.jq ];
+                NETWORK_REPO_DIRECT_TEST_OK = "1";
+              }
+              ''
+                set -euo pipefail
+                echo "check: FS-440-HDS-010-SDS-010-SMS-010 provider classification seeded negatives"
+                test_script="${self}/tests/test-fs440-hds010-sds010-sms010-provider-classification-negatives.sh"
+                echo "  validating test script syntax..."
+                bash -n "$test_script"
+                echo "  test script: $(wc -l < "$test_script") lines"
+                echo ""
+                cd "${self}"
+                bash "$test_script"
+                touch $out
+              '';
+
+          "FS-680-HDS-010-SDS-010-SMS-040" =
+            pkgs.runCommand "check-FS-680-HDS-010-SDS-010-SMS-040"
+              {
+                nativeBuildInputs = [ pkgs.bash pkgs.jq ];
+                NETWORK_REPO_DIRECT_TEST_OK = "1";
+              }
+              ''
+                set -euo pipefail
+                echo "check: FS-680-HDS-010-SDS-010-SMS-040 shared service exposure authentication"
+                test_script="${self}/tests/test-fs680-hds010-sds010-sms040-shared-service-exposure-auth.sh"
+                echo "  validating test script syntax..."
+                bash -n "$test_script"
+                echo "  test script: $(wc -l < "$test_script") lines"
+                echo ""
+                cd "${self}"
+                bash "$test_script"
+                touch $out
+              '';
+
+          "FS-370-HDS-010-SDS-010-SMS-101" =
+            pkgs.runCommand "check-FS-370-HDS-010-SDS-010-SMS-101"
+              {
+                nativeBuildInputs = [ pkgs.bash pkgs.jq ];
+                NETWORK_REPO_DIRECT_TEST_OK = "1";
+              }
+              ''
+                set -euo pipefail
+                echo "check: FS-370-HDS-010-SDS-010-SMS-101 per-lane return-path routing"
+                test_script="${self}/tests/test-fs370-hds010-sds010-sms101-per-lane-return-path-routing.sh"
+                echo "  validating test script syntax..."
+                bash -n "$test_script"
+                echo "  test script: $(wc -l < "$test_script") lines"
+                echo ""
+                cd "${self}"
+                bash "$test_script"
+                touch $out
+              '';
+
           "FS-720-HDS-030-SDS-010-SMS-010-checker" =
             let
               # Pre-build checker results against hand-crafted test data
