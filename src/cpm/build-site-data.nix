@@ -185,6 +185,7 @@ let
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       normalizeRuntimeTargetRoutesWith
+      emulationSubnets
       ;
   };
   inherit (runtimePipeline)

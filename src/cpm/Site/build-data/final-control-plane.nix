@@ -21,6 +21,7 @@
 , normalizeRuntimeTargetRoutes
 , normalizeRuntimeTargetRoutesAfterPolicyComplements
 , normalizedRuntimeTargets
+, emulationSubnets ? [ ]
 ,
 }:
 
@@ -177,10 +178,95 @@ let
       )
       rtAttrs;
 
+  # Add emulation subnet routes to fabric chain nodes (downstream-selector,
+  # policy, upstream-selector) so that renderers generate nftables forwarding
+  # rules. Core nodes already receive return routes via addCoreTenantReturnRoutes.
+  #
+  # Per SMS-012: "CPM shall generate selector routes, nftables allow rules, and
+  # policy-routing lane entries for emulation subnets using the same fabric-chain
+  # path as tenant/transit subnets."
+  addEmulationSubnetFabricRoutes =
+    rtAttrs:
+    if emulationSubnets == [ ] then
+      rtAttrs
+    else
+    let
+      fabricRoles = [ "downstream-selector" "policy" "upstream-selector" ];
+      peer4For = addr:
+        let
+          parts = lib.splitString "/" addr;
+          addrStr = if builtins.length parts >= 1 then builtins.elemAt parts 0 else "";
+          octets = lib.splitString "." addrStr;
+        in
+        if builtins.length octets != 4 then null
+        else
+          let
+            lastOctet = builtins.elemAt octets 3;
+            lastInt = lib.toInt (if lastOctet == "" then "0" else lastOctet);
+            peerInt = if lib.mod lastInt 2 == 0 then lastInt + 1 else lastInt - 1;
+            peerOctets = builtins.genList
+              (i: if i == 3 then builtins.toString peerInt else builtins.elemAt octets i)
+              4;
+          in builtins.concatStringsSep "." peerOctets;
+      isFabricP2p = iface:
+        (iface.sourceKind or "") == "p2p"
+        && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
+      emulationRoutesFor = peer4:
+        builtins.map
+          (subnet: {
+            dst = subnet;
+            proto = "emulation";
+            via4 = peer4;
+            intent = {
+              kind = "emulation-reachability";
+              source = "hat-emulation-subnet";
+            };
+            emulationSubnet = true;
+          })
+          emulationSubnets;
+      augmentTarget = targetName: target:
+        let
+          role = target.role or "";
+          interfaces = (target.effectiveRuntimeRealization or {}).interfaces or {};
+        in
+        if !(builtins.elem role fabricRoles) then
+          target
+        else
+          let
+            updatedInterfaces =
+              builtins.mapAttrs
+                (ifName: iface:
+                  if !(isFabricP2p iface) then
+                    iface
+                  else
+                    let
+                      peer4 = peer4For (iface.addr4 or "");
+                      routes = iface.routes or {};
+                      newRoutes = if peer4 == null then [] else emulationRoutesFor peer4;
+                      ipv4 = (routes.ipv4 or []) ++ newRoutes;
+                      ipv6 = routes.ipv6 or [];
+                    in
+                    iface // { routes = routes // { inherit ipv4 ipv6; }; }
+                )
+                interfaces;
+          in
+          target // {
+            effectiveRuntimeRealization =
+              (target.effectiveRuntimeRealization or {}) // {
+                interfaces = updatedInterfaces;
+              };
+          };
+    in
+    builtins.mapAttrs augmentTarget rtAttrs;
+
+  # Apply emulation subnet routes BEFORE core tenant return routes so both
+  # augmentations compose correctly.
+  runtimeTargetsWithEmulation = addEmulationSubnetFabricRoutes runtimeTargetsWithIntent;
+
   runtimeTargets =
     builtins.mapAttrs
       (_targetName: normalizeRuntimeTargetRoutesAfterPolicyComplements)
-      (addCoreTenantReturnRoutes runtimeTargetsWithIntent);
+      (addCoreTenantReturnRoutes runtimeTargetsWithEmulation);
 
 in
 {
