@@ -467,6 +467,30 @@
                 touch $out
               '';
 
+          "FS-181-HDS-010-SDS-030-SMS-010" =
+            pkgs.runCommand "check-FS-181-HDS-010-SDS-030-SMS-010"
+              {
+                nativeBuildInputs = [ pkgs.bash pkgs.jq pkgs.nix ];
+                NETWORK_REPO_DIRECT_TEST_OK = "1";
+                NIX_CONFIG = "experimental-features = nix-command flakes";
+                HOME = "/build";
+              }
+              ''
+                set -euo pipefail
+                export HOME="/build"
+                mkdir -p "$HOME"
+                echo "check: FS-181-HDS-010-SDS-030-SMS-010 realization authority binding"
+                test_script="${self}/tests/test-fs181-hds010-sds030-sms010-realization-authority-binding.sh"
+                echo "  validating test script syntax..."
+                bash -n "$test_script"
+                echo "  test script: $(wc -l < "$test_script") lines"
+                echo "  GAMP-ID header: $(head -3 "$test_script" | grep GAMP-ID || echo 'MISSING')"
+                echo ""
+                cd "${self}"
+                bash "$test_script"
+                touch $out
+              '';
+
           "FS-370-HDS-010-SDS-010-SMS-101" =
             pkgs.runCommand "check-FS-370-HDS-010-SDS-010-SMS-101"
               {
