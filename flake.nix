@@ -113,6 +113,7 @@
             , inventory ? { }
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
+    , emulationSubnets ? [ ]
             ,
             }:
             let
@@ -122,7 +123,7 @@
                   (
                     buildCPM {
                       forwardingModel = input;
-                      inherit inventory validateForwardingModel validateRuntimeModel;
+                      inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets;
                     }
                   );
 
@@ -137,11 +138,12 @@
             , inventory ? { }
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
+    , emulationSubnets ? [ ]
             ,
             }:
             buildCPM {
-              forwardingModel = input;
-              inherit inventory validateForwardingModel validateRuntimeModel;
+                      forwardingModel = input;
+              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets;
             };
 
           getCPM = get_CPM;
@@ -153,11 +155,12 @@
             , inventory ? { }
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
+    , emulationSubnets ? [ ]
             ,
             }:
             build {
               input = forwardingLib.buildFromCompilerInputs { inherit input; };
-              inherit inventory validateForwardingModel validateRuntimeModel;
+              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets;
             };
 
           compileAndBuildFromPaths =
@@ -165,6 +168,7 @@
             , inventoryPath ? null
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
+    , emulationSubnets ? [ ]
             ,
             }:
             compileAndBuild {
