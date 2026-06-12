@@ -210,9 +210,30 @@ builtins.map
         lib.concatMap providerTenantsForServiceProvider providerNames
       );
       exposure = exposureForService serviceName providerTenants;
+
+      # SMS-040 N1: Missing exposure class for any service
+      _missingExposure =
+        if exposure.class == "unexposed" then
+          failForwarding
+            "${sitePath}.services.${serviceName}"
+            "diagnostic.missing-exposure-class: service ${serviceName} has no exposure class (no communicationContract relations with action=allow targeting this service)"
+        else
+          true;
+
+      # SMS-040 N2: Host-inferred exposure rejection
+      hostPlacementExposure = resolvedService.hostPlacementExposure or null;
+      _hostInferred =
+        if hostPlacementExposure != null then
+          failForwarding
+            "${sitePath}.services.${serviceName}.hostPlacementExposure"
+            "diagnostic.host-inferred-exposure: service exposure must be derived from communicationContract, not from host placement"
+        else
+          true;
     in
-    resolvedService
-      // {
+    builtins.seq _missingExposure (
+      builtins.seq _hostInferred (
+        resolvedService
+          // {
       name = serviceName;
       exposureClass = exposure.class;
       inherit exposure;
@@ -223,5 +244,7 @@ builtins.map
       preferredUplinks = preferredDnsUplinksForService serviceName;
       preferredUplinksByRelation = preferredDnsUplinksByRelationForService serviceName;
     }
+      )
+      )
   )
   (sortedNames policyEndpointBindings.services)

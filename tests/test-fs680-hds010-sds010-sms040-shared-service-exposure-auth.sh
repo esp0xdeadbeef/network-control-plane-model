@@ -3,12 +3,10 @@
 # GAMP-SCOPE: software-module-test
 # Focused construction test: shared service exposure authentication.
 #
-# SMS Acceptance Predicates covered:
-#   P1 ✓ Exposure class present → valid classification
-#   N1 ✓ Missing exposure class → diagnostic.missing-exposure-class
-#   N2 ✓ Host-inferred exposure → diagnostic.host-inferred-exposure rejection
-#   P2 ✓ Authentication boundary present → valid binding
-#   P3 ✓ Cloud dependency when modeled → valid binding
+# SMS Acceptance Predicates (ACTIVE seeded negatives):
+#   P1 ✓ Service with relations → builds clean
+#   N1 ✓ Service with NO relations → diagnostic.missing-exposure-class
+#   N2 ✓ Service with hostPlacementExposure → diagnostic.host-inferred-exposure
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,87 +15,53 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 echo "--- FS-680-HDS-010-SDS-010-SMS-040: shared service exposure authentication ---"
 echo ""
 
-REPO_ROOT="${repo_root}" nix eval --impure --expr '
-  let
-    flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
-    system = builtins.currentSystem;
-    labs = flake.inputs.network-labs.outPath;
+PASS=0; FAIL=0
+pass() { echo "PASS $1"; PASS=$((PASS+1)); }
+fail() { echo "FAIL $1"; FAIL=$((FAIL+1)); }
 
-    baseIntent = import (labs + "/examples/single-wan-with-nebula/intent.nix");
-    baseInventory = import (labs + "/examples/single-wan-with-nebula/inventory-nixos.nix");
+# Build helper: returns "PASS" if CPM succeeds, "FAIL" if it throws
+run_check() {
+  local desc="$1" intent_expr="$2"
+  local result
+  result=$(REPO_ROOT="$repo_root" nix eval --impure --raw --expr "
+    let flake = builtins.getFlake (toString ./.); system = builtins.currentSystem;
+        labs = flake.inputs.network-labs.outPath;
+        baseIntent = import (labs + \"/examples/single-wan-with-nebula/intent.nix\");
+        baseInventory = import (labs + \"/examples/single-wan-with-nebula/inventory-nixos.nix\");
+        runner = intent: builtins.tryEval (
+          let r = flake.lib.\${system}.compileAndBuild {
+            input = intent; inventory = baseInventory;
+          }; in builtins.deepSeq r.control_plane_model true
+        );
+    in if (runner (${intent_expr})).success then \"PASS\" else \"FAIL\"
+  " 2>&1)
+  echo "$result"
+}
 
-    # Build CPM and extract services data
-    build = inventory:
-      flake.lib.${system}.compileAndBuild {
-        input = baseIntent;
-        inherit inventory;
-      };
+BASE_INTENT='baseIntent'
+ADD_SVC_NO_REL='baseIntent // { esp0xdeadbeef = baseIntent.esp0xdeadbeef // { "site-a" = baseIntent.esp0xdeadbeef."site-a" // { communicationContract = (baseIntent.esp0xdeadbeef."site-a".communicationContract or {}) // { services = ((baseIntent.esp0xdeadbeef."site-a".communicationContract or {}).services or []) ++ [{ name = "n1-svc"; providers = []; trafficType = "dns"; }]; }; }; }; }'
+ADD_SVC_HOST_PLACE='baseIntent // { esp0xdeadbeef = baseIntent.esp0xdeadbeef // { "site-a" = baseIntent.esp0xdeadbeef."site-a" // { communicationContract = (baseIntent.esp0xdeadbeef."site-a".communicationContract or {}) // { services = ((baseIntent.esp0xdeadbeef."site-a".communicationContract or {}).services or []) ++ [{ name = "n2-svc"; providers = []; trafficType = "dns"; hostPlacementExposure = "public"; }]; }; }; }; }'
+ADD_SVC_WITH_REL='baseIntent // { esp0xdeadbeef = baseIntent.esp0xdeadbeef // { "site-a" = baseIntent.esp0xdeadbeef."site-a" // { communicationContract = (baseIntent.esp0xdeadbeef."site-a".communicationContract or {}) // { services = ((baseIntent.esp0xdeadbeef."site-a".communicationContract or {}).services or []) ++ [{ name = "clean-svc"; providers = []; trafficType = "dns"; }]; relations = ((baseIntent.esp0xdeadbeef."site-a".communicationContract or {}).relations or []) ++ [{ id = "rc"; action = "allow"; priority = 50; from = { kind = "tenant"; name = "admin"; }; to = { kind = "service"; name = "clean-svc"; }; trafficType = "dns"; }]; }; }; }; }'
 
-    getServices = result:
-      result.control_plane_model.data.esp0xdeadbeef."site-a"
-        .rendererContracts.scopedArtifacts.services or {};
+# P0: Base fixture
+R=$(run_check "P0" "$BASE_INTENT")
+[ "$R" = "PASS" ] && pass "P0 — base fixture builds clean" || fail "P0 — $R"
 
-    # === Positive case: services with explicit exposure class ===
-    positiveResult = build baseInventory;
-    positiveServices = getServices positiveResult;
+# N1: Service with NO relations
+R=$(run_check "N1" "$ADD_SVC_NO_REL")
+[ "$R" = "FAIL" ] && pass "N1 — missing exposure class rejected" || fail "N1 — expected FAIL, got: $R"
 
-    # Check that service exposure records have exposureClass field
-    hasExposureField = services:
-      if services ? sharedServiceExposure then
-        builtins.all
-          (record: record ? exposureClass && (record.exposureClass or "") != "")
-          (services.sharedServiceExposure.records or [])
-      else true;  # No services = no negative
+# N2: Service with hostPlacementExposure
+R=$(run_check "N2" "$ADD_SVC_HOST_PLACE")
+[ "$R" = "FAIL" ] && pass "N2 — host-inferred exposure rejected" || fail "N2 — expected FAIL, got: $R"
 
-    # === Negative 1: Check that CPM exposes exposure classification ===
-    # The CPM services.nix already computes exposureClassForRelation.
-    # We verify the CPM output contracts include exposure infrastructure.
-    cpmExposureExists =
-      positiveServices ? sharedServiceExposure
-      || positiveServices ? serviceExposure
-      || true;  # Exposure classification may be embedded in service records
+# P1: Service with relations
+R=$(run_check "P1" "$ADD_SVC_WITH_REL")
+[ "$R" = "PASS" ] && pass "P1 — service with relations builds clean" || fail "P1 — expected PASS, got: $R"
 
-    # === Negative 2: Check for host-placement-derived exposure ===
-    # The CPM should classify exposure from modeled policy, not from host placement.
-    # We verify no "host-inferred" exposure classification exists.
-    noHostInferredExposure =
-      if positiveServices ? sharedServiceExposure then
-        !(builtins.any
-          (record: (record.exposureSource or "") == "host-placement")
-          (positiveServices.sharedServiceExposure.records or []))
-      else true;
-
-    # === Check renderer contracts for service exposure ===
-    rendererContracts =
-      positiveResult.control_plane_model.data.esp0xdeadbeef."site-a"
-        .rendererContracts or {};
-    serviceContracts = rendererContracts.scopedArtifacts.services or {};
-
-    # Verify exposure class infrastructure exists
-    hasExposureInfrastructure =
-      (serviceContracts ? sharedServiceExposure)
-      || (positiveResult.control_plane_model.data.esp0xdeadbeef."site-a"
-            ? services)
-      || true;
-
-    checks = {
-      # Baseline construction succeeds
-      buildSucceeds = positiveResult ? control_plane_model;
-
-      # Exposure infrastructure present in CPM output
-      inherit cpmExposureExists;
-
-      # No host-placement-inferred exposure
-      inherit noHostInferredExposure;
-
-      # Output is well-formed
-      outputWellFormed = positiveResult.control_plane_model.data.esp0xdeadbeef ? "site-a";
-    };
-  in
-    if builtins.all (value: value == true) (builtins.attrValues checks) then
-      true
-    else
-      throw ("fs680-sms040 shared service exposure authentication checks failed: " + builtins.toJSON checks)
-' >/dev/null
-
-echo "PASS fs680-sms040-shared-service-exposure-authentication"
+echo ""
+echo "=== FS-680-HDS-010-SDS-010-SMS-040 Results ==="
+echo "Pass: $PASS  Fail: $FAIL"
+[ "$FAIL" -eq 0 ] && echo "RESULT: PASS — all SMS-040 predicates with active seeded negatives" && exit 0
+echo "RESULT: FAIL"
+exit 1

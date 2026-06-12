@@ -99,6 +99,31 @@ in
         else
           true;
 
+      # SMS-010: Reject commercial VPN with publicIngress.allowed=true (unauthorized authority claim)
+      _commercialPublicIngress =
+        if isCommercialVpn && publicIngressAllowed then
+          failInventory "${authorityPath}.publicIngress.allowed" "commercial VPN must not claim public ingress authority (portable-egress only)"
+        else
+          true;
+
+      # SMS-010: Reject ipv4Mode/natMode conflict
+      ipv4Mode =
+        stringOr "${authorityPath}.ipv4Mode"
+          (if ipam4 != { } then "overlay-node-host-only" else "unspecified")
+          (authority.ipv4Mode or null);
+      ipv6Mode =
+        stringOr "${authorityPath}.ipv6Mode"
+          (if ipam6 != { } then "overlay-node-host-only" else "unspecified")
+          (authority.ipv6Mode or null);
+      nat44 =
+        stringOr "${authorityPath}.nat.nat44" "none" (nat.nat44 or null);
+
+      _ipv4NatConflict =
+        if ipv4Mode == "routed-public" && nat44 != "none" then
+          failInventory "${authorityPath}" "provider-ipv4-nat-conflict: routed-public ipv4Mode with nat44=${nat44} requires nat44=none"
+        else
+          true;
+
       nodeEndpointRecords =
         builtins.concatLists (
           builtins.map
@@ -150,7 +175,9 @@ in
           };
     in
     builtins.seq _runtimeAuthority (
-      builtins.seq _commercialPresence {
+      builtins.seq _commercialPresence (
+        builtins.seq _commercialPublicIngress (
+          builtins.seq _ipv4NatConflict {
         rowIds = [
           "FS-440-HDS-010-SDS-010-SMS-010"
           "FS-440-HDS-010-SDS-010-SMS-020"
@@ -172,15 +199,7 @@ in
           runtimeFacts = "${authorityPath}.runtimeFacts";
         };
         baseClassification = {
-          inherit upstreamType;
-          ipv4Mode =
-            stringOr "${authorityPath}.ipv4Mode"
-              (if ipam4 != { } then "overlay-node-host-only" else "unspecified")
-              (authority.ipv4Mode or null);
-          ipv6Mode =
-            stringOr "${authorityPath}.ipv6Mode"
-              (if ipam6 != { } then "overlay-node-host-only" else "unspecified")
-              (authority.ipv6Mode or null);
+          inherit upstreamType ipv4Mode ipv6Mode;
           prefixAuthority = {
             routedClient = routedClientAllowed;
             delegated = delegatedClientAllowed;
@@ -201,7 +220,7 @@ in
             source = stringOr "${authorityPath}.routeAuthority.source" "provider-authority-record" (routeAuthority.source or null);
           };
           nat = {
-            nat44 = stringOr "${authorityPath}.nat.nat44" "none" (nat.nat44 or null);
+            inherit nat44;
             nat66 = stringOr "${authorityPath}.nat.nat66" "none" (nat.nat66 or null);
           };
           failureBehavior =
@@ -291,5 +310,7 @@ in
               [ ];
         };
       }
+      )
+      )
     );
 }
