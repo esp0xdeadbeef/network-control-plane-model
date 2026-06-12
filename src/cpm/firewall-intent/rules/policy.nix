@@ -145,49 +145,85 @@ let
   relationRules = relationRaw:
     let
       relation = attrsOrEmpty relationRaw;
-      fromIfaces = endpointIfaces relation (relation.from or null) (relation.to or null);
       action = if (relation.action or "allow") == "deny" then "deny" else "accept";
       id = relationId relation;
-      direction = "relation-forward";
-    in
-    builtins.concatLists (
-      map
-        (fromIface:
-          let
-            toIfaces =
-              endpointIfacesForPeerAccess relation (relation.to or null) (relation.from or null) (common.laneAccess fromIface);
-          in
+
+      buildDirectionRules =
+        { direction
+        , fromEndpoint
+        , toEndpoint
+        , reverseSource ? false
+        }:
+        let
+          fromIfaces = endpointIfaces relation fromEndpoint toEndpoint;
+          relationForSource =
+            if reverseSource then
+              relation // {
+                from = attrsOrEmpty toEndpoint;
+                to = attrsOrEmpty fromEndpoint;
+              }
+            else
+              relation;
+          ruleEndpointFrom = attrsOrEmpty fromEndpoint;
+          ruleEndpointTo = attrsOrEmpty toEndpoint;
+        in
+        builtins.concatLists (
           map
-            (toIface:
-              withRelationSourceScope relation {
-                inherit action;
-                relationId = id;
-                comment = id;
-                priority = relation.priority or null;
-                trafficType = relation.trafficType or "any";
-                inherit direction;
-                matches = relationMatches relation;
-                from = attrsOrEmpty (relation.from or null);
-                to = attrsOrEmpty (relation.to or null);
-                relationCardinality = {
-                  unit = "policy-router-forwarding-rule";
-                  decomposition = "decomposed-by-policy-interface-scope";
-                  decomposed = true;
-                };
-                fromInterface = fromIface.runtimeIfName;
-                toInterface = toIface.runtimeIfName;
-                applyTcpMssClamp = false;
-              }
-              // common.relationHandoff {
-                relationId = id;
-                inherit action direction fromIface toIface;
-                policyPoint = "policy-router";
-              }
-              // (if builtins.isAttrs (relation.intent or null) then { intent = relation.intent; } else { })
-              // (if isNonEmptyString (relation.comment or null) then { comment = relation.comment; } else { }))
-            toIfaces)
-        fromIfaces
-    );
+            (fromIface:
+              let
+                toIfaces =
+                  endpointIfacesForPeerAccess relation toEndpoint fromEndpoint (common.laneAccess fromIface);
+              in
+              map
+                (toIface:
+                  withRelationSourceScope relationForSource {
+                    inherit action;
+                    relationId = id;
+                    comment = id;
+                    priority = relation.priority or null;
+                    trafficType = relation.trafficType or "any";
+                    inherit direction;
+                    matches = relationMatches relation;
+                    from = ruleEndpointFrom;
+                    to = ruleEndpointTo;
+                    relationCardinality = {
+                      unit = "policy-router-forwarding-rule";
+                      decomposition = "decomposed-by-policy-interface-scope";
+                      decomposed = true;
+                    };
+                    fromInterface = fromIface.runtimeIfName;
+                    toInterface = toIface.runtimeIfName;
+                    applyTcpMssClamp = false;
+                  }
+                  // common.relationHandoff {
+                    relationId = id;
+                    inherit action direction fromIface toIface;
+                    policyPoint = "policy-router";
+                  }
+                  // (if builtins.isAttrs (relation.intent or null) then { intent = relation.intent; } else { })
+                  // (if isNonEmptyString (relation.comment or null) then { comment = relation.comment; } else { }))
+                toIfaces)
+            fromIfaces
+        );
+
+      forwardRules = buildDirectionRules {
+        direction = "relation-forward";
+        fromEndpoint = relation.from or null;
+        toEndpoint = relation.to or null;
+      };
+
+      reverseRules =
+        if (relation.returnBehavior or null) == "symmetric" then
+          buildDirectionRules {
+            direction = "relation-reverse";
+            fromEndpoint = relation.to or null;
+            toEndpoint = relation.from or null;
+            reverseSource = true;
+          }
+        else
+          [ ];
+    in
+    forwardRules ++ reverseRules;
 
   sharedDiscoveryPolicyRules = atomRaw:
     let
