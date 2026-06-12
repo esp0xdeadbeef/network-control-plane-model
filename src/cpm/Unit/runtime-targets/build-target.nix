@@ -360,7 +360,10 @@ let
           downstreamSelectorNodeName = sitePath + ".nodes." + "downstream-selector";
           isDownstreamSelectorP2p = iface:
             (iface.sourceKind or "") == "p2p"
-            && (builtins.match ".*downstream-selector.*" (iface.backingRef.name or "") != null)
+            && (let
+                  lane = iface.backingRef.lane or {};
+                  kind = lane.kind or null;
+                in kind == "access-edge" || kind == "access")
             && nodeRole != "downstream-selector";
           peerAddr = iface:
             let
