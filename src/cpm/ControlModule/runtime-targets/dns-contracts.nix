@@ -186,6 +186,15 @@ let
           existingForwarders
         else
           derivedForwarders;
+      # GAMP: FS-540-HDS-010-SDS-010-SMS-035 — filter self-referential forwarders
+      nonLoopbackListeners = builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners;
+      selfRefForwarders = builtins.filter (f: builtins.elem f nonLoopbackListeners) forwarders;
+      safeForwarders =
+        if selfRefForwarders != [ ] then
+          builtins.trace "FS-540-HDS-010-SDS-010-SMS-035: self-referential DNS forwarder(s) filtered from router-self service: ${builtins.concatStringsSep ", " selfRefForwarders}; these match listen addresses and would cause a DNS loop"
+            (builtins.filter (f: !(builtins.elem f nonLoopbackListeners)) forwarders)
+        else
+          forwarders;
       allowedUpstreamClasses =
         lib.unique (
           listOrEmpty (existingDns.allowedUpstreamClasses or null)
@@ -199,13 +208,13 @@ let
           allowFrom = lib.unique (listOrEmpty (existingDns.allowFrom or null) ++ sources);
           blockDirectEgress = true;
           directEgressBlockedTenants = listOrEmpty (existingDns.directEgressBlockedTenants or null);
-          forwarders = forwarders;
+          forwarders = safeForwarders;
           upstreamResolvers = upstreamResolvers;
           allowedUpstreamClasses = allowedUpstreamClasses;
           outgoingInterfaces =
             if listOrEmpty (existingDns.outgoingInterfaces or null) != [ ] then
               listOrEmpty (existingDns.outgoingInterfaces or null)
-            else if forwarders != [ ] then
+            else if safeForwarders != [ ] then
               builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners
             else
               [ ];
