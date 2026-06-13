@@ -24,8 +24,11 @@ let
         }
       );
 
+  deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
+
   merged = {
     control_plane_model = cpm;
+    inherit deploymentHosts;
   };
 in
 builtins.seq cpm merged
