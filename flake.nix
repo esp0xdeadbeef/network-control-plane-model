@@ -130,6 +130,7 @@
 
               result = {
                 control_plane_model = cpm;
+                deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
               };
             in
             builtins.seq cpm (exposeHostNetwork result);
