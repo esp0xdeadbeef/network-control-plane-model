@@ -127,6 +127,10 @@ let
       deliveryScope = {
         inherit site tenant host service consumer;
       };
+      authorizedScope =
+        if decl != null && hasAttr "authorizedScope" decl
+        then decl.authorizedScope
+        else null;
       mediatedPath = mediatedPath;
       sourceClass = binding.sourceClass or (if src != null then src.sourceClass else null);
       gampIds = [
@@ -180,6 +184,27 @@ let
         diagnostic = "FS-840-HDS-010-SDS-010-SMS-010 SN3: authorizedConsumer is missing, null, or has empty required fields (kind, node, name)";
         gampIds = [
           "FS-840-HDS-010-SDS-010-SMS-010"
+        ];
+      }
+    else
+      null;
+
+  # Validate delivery tenant is within authorizedScope per FS-840-HDS-010-SDS-010-SMS-030 SN2
+  # Reject when a delivery record includes a secret for a tenant not in the authorized scope
+  overBroadDeliveryDiagnosticForRecord = record:
+    let
+      authScope = record.authorizedScope or null;
+      deliveryTenant = record.deliveryScope.tenant or null;
+    in
+    if authScope != null && deliveryTenant != null && !(builtins.elem deliveryTenant authScope) then
+      {
+        deliveryId = record.deliveryId;
+        tenant = deliveryTenant;
+        authorizedScope = authScope;
+        diagnosticName = "runtime-over-broad-secret-delivery";
+        diagnostic = "FS-840-HDS-010-SDS-010-SMS-030 SN2: secret delivery includes tenant '${deliveryTenant}' not in authorizedScope ${builtins.toJSON authScope}";
+        gampIds = [
+          "FS-840-HDS-010-SDS-010-SMS-030"
         ];
       }
     else
@@ -240,6 +265,9 @@ let
 
   consumerRoleMismatchDiagnostics =
     builtins.filter (d: d != null) (builtins.map consumerRoleMismatchDiagnosticForRecord deliveryRecords);
+
+  overBroadDeliveryDiagnostics =
+    builtins.filter (d: d != null) (builtins.map overBroadDeliveryDiagnosticForRecord deliveryRecords);
 
   # Helper: map a single credential file name from abstract to platform path
   # Returns the mapped path or the original if already a platform path
@@ -337,9 +365,10 @@ in
 
   # Authorized consumer validation per FS-840-SMS-010 SN3
   # Consumer role mismatch per FS-840-SMS-010 SN2
+  # Over-broad delivery guard per FS-840-SMS-030 SN2
   secretAuthorization = {
-    inherit authorizedConsumerDiagnostics consumerRoleMismatchDiagnostics;
-    allAuthorized = authorizedConsumerDiagnostics == [ ] && consumerRoleMismatchDiagnostics == [ ];
+    inherit authorizedConsumerDiagnostics consumerRoleMismatchDiagnostics overBroadDeliveryDiagnostics;
+    allAuthorized = authorizedConsumerDiagnostics == [ ] && consumerRoleMismatchDiagnostics == [ ] && overBroadDeliveryDiagnostics == [ ];
   };
 
   # Utility to mediate credential paths in CPM output data tree
