@@ -104,7 +104,101 @@ let
       }) validatedSources
     );
 
+  # ── FS-820-HDS-010-SDS-010-SMS-030: Policy boundary classification ────────
+
+  # Classification enumeration: fields that when present in source binding
+  # metadata indicate unauthorized policy creation (SN1)
+  policyBearingFields = [
+    "allowRoute"
+    "allowFirewall"
+    "allowDns"
+    "allowPublicIngress"
+    "allowTenantReachability"
+    "allowNetworkBehavior"
+  ];
+
+  # Classification enumeration: fields that when present in source binding
+  # metadata indicate unauthorized trust boundary creation (SN2)
+  trustBoundaryFields = [
+    "trustAnchor"
+  ];
+
+  # Predicate: check if a source binding is policy-neutral (no forbidden metadata fields)
+  isBindingPolicyNeutral = binding:
+    let
+      meta = binding.metadata or { };
+    in
+    !(builtins.any (f: hasAttr f meta) (policyBearingFields ++ trustBoundaryFields));
+
+  # Scan a source binding for policy-bearing metadata fields (SN1)
+  policyBoundaryDiagnosticForBinding = binding:
+    let
+      meta = binding.metadata or { };
+      bindingId = binding.id or "unknown";
+      declId = binding.declarationId or "unknown";
+
+      # Find all policy-bearing fields present in metadata
+      foundFields = builtins.filter (f: hasAttr f meta) policyBearingFields;
+    in
+    if foundFields != [ ] then
+      {
+        bindingId = bindingId;
+        declarationId = declId;
+        diagnosticName = "POLICY_BEARING_SOURCE_BINDING";
+        policyFields = foundFields;
+        diagnostic = "FS-820-HDS-010-SDS-010-SMS-030 SN1: source binding '${bindingId}' contains policy-bearing metadata field(s) ${
+          builtins.concatStringsSep ", " foundFields
+        }; source bindings are credential realization data only and shall not create network policy";
+        gampIds = [
+          "FS-820-HDS-010-SDS-010-SMS-030"
+        ];
+      }
+    else
+      null;
+
+  # Scan a source binding for trust-boundary metadata fields (SN2)
+  trustBoundaryDiagnosticForBinding = binding:
+    let
+      meta = binding.metadata or { };
+      bindingId = binding.id or "unknown";
+      declId = binding.declarationId or "unknown";
+      foundFields = builtins.filter (f: hasAttr f meta) trustBoundaryFields;
+    in
+    if foundFields != [ ] then
+      let
+        trustAnchor = meta.trustAnchor or { };
+        affectedTenant =
+          if hasAttr "tenant" trustAnchor
+          then trustAnchor.tenant
+          else "unknown";
+      in
+      {
+        bindingId = bindingId;
+        declarationId = declId;
+        diagnosticName = "TRUST_BOUNDARY_SOURCE_BINDING";
+        trustFields = foundFields;
+        affectedTenant = affectedTenant;
+        diagnostic = "FS-820-HDS-010-SDS-010-SMS-030 SN2: source binding '${bindingId}' contains trust-boundary metadata field(s) ${
+          builtins.concatStringsSep ", " foundFields
+        } (affected tenant '${affectedTenant}'); source bindings are credential realization data only and shall not create trust boundaries";
+        gampIds = [
+          "FS-820-HDS-010-SDS-010-SMS-030"
+        ];
+      }
+    else
+      null;
+
+  policyBoundaryDiagnostics =
+    builtins.filter (d: d != null) (builtins.map policyBoundaryDiagnosticForBinding sourceBindings);
+
+  trustBoundaryDiagnostics =
+    builtins.filter (d: d != null) (builtins.map trustBoundaryDiagnosticForBinding sourceBindings);
+
+  # Filter source bindings to only policy-neutral bindings for downstream consumption
+  policyNeutralBindings = builtins.filter isBindingPolicyNeutral sourceBindings;
+
   # Build scoped delivery records from source bindings per FS-840-HDS-010-SDS-010-SMS-010
+  # Only process policy-neutral bindings per FS-820-SMS-030
   deliveryRecordForBinding = binding:
     let
       decl = declLookup.${binding.declarationId} or null;
@@ -138,7 +232,7 @@ let
       ];
     };
 
-  deliveryRecords = builtins.map deliveryRecordForBinding sourceBindings;
+  deliveryRecords = builtins.map deliveryRecordForBinding policyNeutralBindings;
 
   # Build readiness diagnostics per FS-840-HDS-010-SDS-010-SMS-030
   # Reject when material is not supplied by source (e.g., reference-only secrets
@@ -369,6 +463,14 @@ in
   secretAuthorization = {
     inherit authorizedConsumerDiagnostics consumerRoleMismatchDiagnostics overBroadDeliveryDiagnostics;
     allAuthorized = authorizedConsumerDiagnostics == [ ] && consumerRoleMismatchDiagnostics == [ ] && overBroadDeliveryDiagnostics == [ ];
+  };
+
+  # Policy boundary validation per FS-820-SMS-030
+  # SN1: policy-field classification (POLICY_BEARING_SOURCE_BINDING)
+  # SN2: trust-boundary classification (TRUST_BOUNDARY_SOURCE_BINDING)
+  secretPolicyBoundary = {
+    inherit policyBoundaryDiagnostics trustBoundaryDiagnostics;
+    allPolicyNeutral = policyBoundaryDiagnostics == [ ] && trustBoundaryDiagnostics == [ ];
   };
 
   # Utility to mediate credential paths in CPM output data tree
