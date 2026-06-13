@@ -4,6 +4,7 @@
 , lib ? { }
 , validateForwardingModel ? true
 , validateRuntimeModel ? false
+, secretPlatformSubstrate ? "nixos"
 ,
 }:
 
@@ -19,7 +20,7 @@ let
       (
         deriveCPM {
           forwardingModel = input;
-          inherit inventory validateForwardingModel validateRuntimeModel;
+          inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
         }
       );
 

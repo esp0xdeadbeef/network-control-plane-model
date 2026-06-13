@@ -1,7 +1,7 @@
 { lib
 , helpers
 , inventory ? { }
-, secretPlatformSubstrate ? "nixos"
+, secretPlatformSubstrate
 }:
 
 let
@@ -32,12 +32,11 @@ let
     then inventory.sourceBindings
     else [ ];
 
-  # Platform-specific mapping for secret paths
-  platformSecretBase = substrate:
-    if substrate == "nixos" || substrate == "clab" then
-      "/run/secrets"
-    else
-      null;
+  # Renderer-neutral secret base path from inventory (no platform enumeration)
+  # FS-310-HDS-010-SDS-010-SMS-110: CPM is renderer-neutral and must not
+  # enumerate platform substrates for path computation.
+  # Defaults to "/run/secrets" for backward compatibility; inventory can override.
+  secretBasePath = inventory.secretBasePath or "/run/secrets";
 
   # Validate a single source record's runtimePath is an abstract reference name
   # (no leading /) per FS-820-HDS-010-SDS-010-SMS-030
@@ -58,20 +57,15 @@ let
       source;
 
   # Map an abstract reference name to a deployment-platform path
-  mapRuntimePath = substrate: source:
+  # Uses inventory.secretBasePath — renderer-neutral, no platform enumeration.
+  mapRuntimePath = source:
     let
-      base = platformSecretBase substrate;
       ref = source.reference or { };
       rtPath = ref.runtimePath or "";
-      sourceId = source.id or "unknown";
     in
-    if base == null then
-      failInventory "secretSources.${sourceId}.reference.runtimePath"
-        "FS-820-HDS-010-SDS-010-SMS-030: unknown target substrate '${substrate}' for secret path mapping; known substrates: nixos, clab"
-    else
-      ref // {
-        mediatedRuntimePath = "${base}/${rtPath}";
-      };
+    ref // {
+      mediatedRuntimePath = "${secretBasePath}/${rtPath}";
+    };
 
   # Validate all sources then produce mediated versions
   validatedSources =
@@ -81,7 +75,7 @@ let
     builtins.seq _forced (
       builtins.map (source:
         source // {
-          reference = mapRuntimePath secretPlatformSubstrate source;
+          reference = mapRuntimePath source;
         }
       ) secretSources
     );
@@ -424,7 +418,7 @@ let
 
   # Helper: map a single credential file name from abstract to platform path
   # Returns the mapped path or the original if already a platform path
-  mapCredentialPath = substrate: path:
+  mapCredentialPath = path:
     if !(isNonEmptyString path) then
       path
     else if builtins.substring 0 1 path == "/" then
@@ -432,16 +426,10 @@ let
       # inventory is using abstract names, but tolerate it.
       path
     else
-      let
-        base = platformSecretBase substrate;
-      in
-      if base == null then
-        path
-      else
-        "${base}/${path}";
+      "${secretBasePath}/${path}";
 
   # Mediate credential file paths in a single services attribute set
-  mediateServiceCredentials = substrate: services:
+  mediateServiceCredentials = services:
     let
       pppoe = if builtins.isAttrs (services.pppoe or null) then services.pppoe else { };
       mediateRole = role: roleAttrs:
@@ -451,14 +439,14 @@ let
           mappedCredsWithUsername =
             if hasAttr "usernameFile" creds then
               mappedCreds // {
-                usernameFile = mapCredentialPath substrate creds.usernameFile;
+                usernameFile = mapCredentialPath creds.usernameFile;
               }
             else
               mappedCreds;
           mappedCredsFinal =
             if hasAttr "passwordFile" creds then
               mappedCredsWithUsername // {
-                passwordFile = mapCredentialPath substrate creds.passwordFile;
+                passwordFile = mapCredentialPath creds.passwordFile;
               }
             else
               mappedCredsWithUsername;
@@ -482,7 +470,7 @@ let
       services;
 
   # Walk the CPM data tree and mediate credential paths in all runtime targets
-  mediateCpmData = substrate: cpmData:
+  mediateCpmData = cpmData:
     builtins.mapAttrs (_enterpriseName: enterpriseData:
       builtins.mapAttrs (_siteName: siteData:
         if hasAttr "runtimeTargets" siteData then
@@ -490,7 +478,7 @@ let
             runtimeTargets = builtins.mapAttrs (_targetName: targetData:
               if hasAttr "services" targetData then
                 targetData // {
-                  services = mediateServiceCredentials substrate (targetData.services or { });
+                  services = mediateServiceCredentials (targetData.services or { });
                 }
               else
                 targetData
@@ -542,7 +530,7 @@ in
   };
 
   # Utility to mediate credential paths in CPM output data tree
-  mediateCredentialPaths = mediateCpmData secretPlatformSubstrate;
+  mediateCredentialPaths = mediateCpmData;
 
   # Pass substrate for downstream use
   inherit secretPlatformSubstrate;

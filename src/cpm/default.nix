@@ -3,7 +3,7 @@
 , forwardingModel
 , inventory ? { }
 , validateRuntimeModel ? false
-, secretPlatformSubstrate ? "nixos"
+, secretPlatformSubstrate
 , emulationSubnets ? [ ]
 }:
 

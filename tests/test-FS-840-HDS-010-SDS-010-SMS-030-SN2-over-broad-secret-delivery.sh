@@ -39,6 +39,7 @@ nix_eval_contract() {
       inventory = ${inventory_expr};
       contract = import \"${repo_root}/src/cpm/secret-source-contract.nix\" {
         inherit lib helpers inventory;
+        secretPlatformSubstrate = \"test\";
       };
     in
     contract.secretAuthorization.${attr}
