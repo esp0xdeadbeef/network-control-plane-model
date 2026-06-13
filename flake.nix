@@ -8,7 +8,7 @@
     network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/9579ffc72731a2a8480eda94d4259ac371e3a273";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
 
-    network-labs.url = "github:esp0xdeadbeef/network-labs/ee83c2bac5c066cea2ed75d7072ea7e243a2111a";
+    network-labs.url = "github:esp0xdeadbeef/network-labs/3d07f800ca847b8796c6c85ca7318fbd8f42647b";
   };
 
   outputs =
