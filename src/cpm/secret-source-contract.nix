@@ -160,8 +160,36 @@ let
     else
       null;
 
+  # Validate authorizedConsumer is present and non-empty per FS-840-HDS-010-SDS-010-SMS-010 SN3
+  authorizedConsumerDiagnosticForRecord = record:
+    let
+      consumer = record.deliveryScope.consumer or { };
+      consumerKind = consumer.kind or "";
+      consumerNode = consumer.node or "";
+      consumerName = consumer.name or "";
+    in
+    if consumer == { } || consumer == null
+       || !(isNonEmptyString consumerKind)
+       || !(isNonEmptyString consumerNode)
+       || !(isNonEmptyString consumerName) then
+      {
+        deliveryId = record.deliveryId;
+        consumer = consumer;
+        scope = record.deliveryScope;
+        diagnosticName = "runtime-missing-authorized-consumer";
+        diagnostic = "FS-840-HDS-010-SDS-010-SMS-010 SN3: authorizedConsumer is missing, null, or has empty required fields (kind, node, name)";
+        gampIds = [
+          "FS-840-HDS-010-SDS-010-SMS-010"
+        ];
+      }
+    else
+      null;
+
   readinessDiagnostics =
     builtins.filter (d: d != null) (builtins.map readinessDiagnosticForRecord deliveryRecords);
+
+  authorizedConsumerDiagnostics =
+    builtins.filter (d: d != null) (builtins.map authorizedConsumerDiagnosticForRecord deliveryRecords);
 
   # Helper: map a single credential file name from abstract to platform path
   # Returns the mapped path or the original if already a platform path
@@ -255,6 +283,12 @@ in
   secretReadiness = {
     inherit readinessDiagnostics;
     allMaterialReady = readinessDiagnostics == [ ];
+  };
+
+  # Authorized consumer validation per FS-840-SMS-010 SN3
+  secretAuthorization = {
+    inherit authorizedConsumerDiagnostics;
+    allAuthorized = authorizedConsumerDiagnostics == [ ];
   };
 
   # Utility to mediate credential paths in CPM output data tree
