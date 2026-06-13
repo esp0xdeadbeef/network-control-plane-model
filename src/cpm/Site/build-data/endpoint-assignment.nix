@@ -274,9 +274,9 @@ let
               if isStatic then
                 let
                   addr4 = if builtins.length (invAddr.ipv4 or [ ]) > 0
-                          then builtins.head invAddr.ipv4 else null;
+                          then stripCidr (builtins.head invAddr.ipv4) else null;
                   addr6 = if builtins.length (invAddr.ipv6 or [ ]) > 0
-                          then builtins.head invAddr.ipv6 else null;
+                          then stripCidr (builtins.head invAddr.ipv6) else null;
                   plen4 = if isNonEmptyString (prefix.ipv4 or "")
                           then prefixLen prefix.ipv4 else null;
                   plen6 = if isNonEmptyString (prefix.ipv6 or "")

@@ -96,7 +96,7 @@ fixture='
     ];
   };
   inventoryEndpoints = {
-    client01 = { ipv4 = [ "10.20.20.10" ]; ipv6 = [ "2001:db8:20:20::10" ]; };
+    client01 = { ipv4 = [ "10.20.20.10/24" ]; ipv6 = [ "2001:db8:20:20::10/64" ]; };
   };
 '
 
@@ -234,7 +234,7 @@ fixture='
     ];
   };
   inventoryEndpoints = {
-    client01 = { ipv4 = [ "10.20.20.10" ]; };
+    client01 = { ipv4 = [ "10.20.20.10/24" ]; };
   };
 '
 
@@ -391,7 +391,7 @@ fixture='
     ];
   };
   inventoryEndpoints = {
-    client01 = { ipv4 = [ "10.20.20.10" ]; };
+    client01 = { ipv4 = [ "10.20.20.10/24" ]; };
   };
 '
 
@@ -424,7 +424,7 @@ fixture='
     ];
   };
   inventoryEndpoints = {
-    client01 = { ipv4 = [ "10.20.20.10" ]; };
+    client01 = { ipv4 = [ "10.20.20.10/24" ]; };
   };
 '
 
@@ -461,7 +461,7 @@ fixture='
     ];
   };
   inventoryEndpoints = {
-    client01 = { ipv4 = [ "10.20.20.10" ]; ipv6 = [ "2001:db8:20:20::10" ]; };
+    client01 = { ipv4 = [ "10.20.20.10/24" ]; ipv6 = [ "2001:db8:20:20::10/64" ]; };
   };
 '
 
