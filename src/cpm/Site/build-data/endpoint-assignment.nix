@@ -17,8 +17,8 @@
 , ownership ? { }
 , inventoryEndpoints ? { }
 , runtimeTargets ? { }
-, enterpriseName ? "esp"
-, siteName ? "site-a"
+, enterpriseName
+, siteName
 }:
 
 let

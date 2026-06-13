@@ -114,6 +114,7 @@
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
     , emulationSubnets ? [ ]
+            , secretPlatformSubstrate ? "nixos"
             ,
             }:
             let
@@ -123,7 +124,7 @@
                   (
                     buildCPM {
                       forwardingModel = input;
-                      inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets;
+                      inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets secretPlatformSubstrate;
                     }
                   );
 
@@ -139,11 +140,12 @@
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
     , emulationSubnets ? [ ]
+            , secretPlatformSubstrate ? "nixos"
             ,
             }:
             buildCPM {
                       forwardingModel = input;
-              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets;
+              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets secretPlatformSubstrate;
             };
 
           getCPM = get_CPM;
@@ -156,11 +158,12 @@
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
     , emulationSubnets ? [ ]
+            , secretPlatformSubstrate ? "nixos"
             ,
             }:
             build {
               input = forwardingLib.buildFromCompilerInputs { inherit input; };
-              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets;
+              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets secretPlatformSubstrate;
             };
 
           compileAndBuildFromPaths =
@@ -169,6 +172,7 @@
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
     , emulationSubnets ? [ ]
+            , secretPlatformSubstrate ? "nixos"
             ,
             }:
             compileAndBuild {
@@ -178,7 +182,7 @@
                   { }
                 else
                   readValue inventoryPath;
-              inherit validateForwardingModel validateRuntimeModel;
+              inherit validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
             };
 
           clientFixtures = mkClientFixtures {
@@ -197,14 +201,16 @@
             { input
             , inventory ? { }
             , name ? "output-control-plane-model.json"
+            , secretPlatformSubstrate ? "nixos"
             ,
             }:
-            pkgs.writeText name (builtins.toJSON (build { inherit input inventory; }));
+            pkgs.writeText name (builtins.toJSON (build { inherit input inventory secretPlatformSubstrate; }));
 
           writeCompileAndBuildJSON =
             { inputPath
             , inventoryPath ? null
             , name ? "output-control-plane-model.json"
+            , secretPlatformSubstrate ? "nixos"
             ,
             }:
             pkgs.writeText name (
@@ -213,6 +219,7 @@
                   inherit
                     inputPath
                     inventoryPath
+                    secretPlatformSubstrate
                     ;
                 }
               )

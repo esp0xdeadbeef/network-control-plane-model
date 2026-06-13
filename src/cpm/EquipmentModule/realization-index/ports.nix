@@ -18,7 +18,7 @@ let
   linuxLikePlatforms = {
     home-container = true;
     linux = true;
-    nixos-container = true;
+    linux-container = true;
   };
 
   isLinuxLikePlatform = platform:

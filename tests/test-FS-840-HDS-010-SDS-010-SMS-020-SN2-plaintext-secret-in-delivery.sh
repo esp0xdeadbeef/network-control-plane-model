@@ -38,6 +38,7 @@ nix_eval_plaintext_guard() {
       inventory = ${inventory_expr};
       contract = import \"${repo_root}/src/cpm/secret-source-contract.nix\" {
         inherit lib helpers inventory;
+        secretPlatformSubstrate = \"test\";
       };
     in
     contract.secretPlaintextGuard.${attr}
@@ -560,6 +561,7 @@ delivery_records_json="$(nix eval --impure --json --expr "
     lib = pkgs.lib;
     helpers = import \"${repo_root}/src/cpm/cpm-contract-support.nix\" { inherit lib; };
     inventory = {
+      secretBasePath = \"/run/secrets\";
       secretDeclarations = [
         {
           id = \"decl-ref-check-020\";
@@ -630,6 +632,7 @@ delivery_records_json="$(nix eval --impure --json --expr "
     };
     contract = import \"${repo_root}/src/cpm/secret-source-contract.nix\" {
       inherit lib helpers inventory;
+      secretPlatformSubstrate = \"test\";
     };
     dr = builtins.elemAt contract.secretDeliveryRecords 0;
   in
