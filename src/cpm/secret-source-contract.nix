@@ -188,8 +188,58 @@ let
   readinessDiagnostics =
     builtins.filter (d: d != null) (builtins.map readinessDiagnosticForRecord deliveryRecords);
 
+  # Validate consumerRole matches host's modeled role per FS-840-HDS-010-SDS-010-SMS-010 SN2
+  consumerRoleMismatchDiagnosticForRecord = record:
+    let
+      consumer = record.deliveryScope.consumer or { };
+      consumerRole = consumer.role or null;
+      hostName = record.deliveryScope.host or null;
+      hostDef =
+        if hostName != null
+           && inventory ? deployment
+           && inventory.deployment ? hosts
+           && hasAttr hostName inventory.deployment.hosts
+        then inventory.deployment.hosts.${hostName}
+        else null;
+      hostRole = if hostDef != null && hasAttr "role" hostDef then hostDef.role else null;
+    in
+    if consumerRole != null && hostRole != null && !(isNonEmptyString consumerRole) then
+      # consumerRole present but empty → treat as mismatch with any host role
+      {
+        deliveryId = record.deliveryId;
+        consumer = consumer;
+        scope = record.deliveryScope;
+        host = hostName;
+        consumerRole = consumerRole;
+        hostRole = hostRole;
+        diagnosticName = "runtime-consumer-role-mismatch";
+        diagnostic = "FS-840-HDS-010-SDS-010-SMS-010 SN2: consumerRole is empty string for host '${hostName}' (expected role '${hostRole}')";
+        gampIds = [
+          "FS-840-HDS-010-SDS-010-SMS-010"
+        ];
+      }
+    else if consumerRole != null && hostRole != null && consumerRole != hostRole then
+      {
+        deliveryId = record.deliveryId;
+        consumer = consumer;
+        scope = record.deliveryScope;
+        host = hostName;
+        consumerRole = consumerRole;
+        hostRole = hostRole;
+        diagnosticName = "runtime-consumer-role-mismatch";
+        diagnostic = "FS-840-HDS-010-SDS-010-SMS-010 SN2: consumerRole '${consumerRole}' does not match host '${hostName}' expected role '${hostRole}'";
+        gampIds = [
+          "FS-840-HDS-010-SDS-010-SMS-010"
+        ];
+      }
+    else
+      null;
+
   authorizedConsumerDiagnostics =
     builtins.filter (d: d != null) (builtins.map authorizedConsumerDiagnosticForRecord deliveryRecords);
+
+  consumerRoleMismatchDiagnostics =
+    builtins.filter (d: d != null) (builtins.map consumerRoleMismatchDiagnosticForRecord deliveryRecords);
 
   # Helper: map a single credential file name from abstract to platform path
   # Returns the mapped path or the original if already a platform path
@@ -286,9 +336,10 @@ in
   };
 
   # Authorized consumer validation per FS-840-SMS-010 SN3
+  # Consumer role mismatch per FS-840-SMS-010 SN2
   secretAuthorization = {
-    inherit authorizedConsumerDiagnostics;
-    allAuthorized = authorizedConsumerDiagnostics == [ ];
+    inherit authorizedConsumerDiagnostics consumerRoleMismatchDiagnostics;
+    allAuthorized = authorizedConsumerDiagnostics == [ ] && consumerRoleMismatchDiagnostics == [ ];
   };
 
   # Utility to mediate credential paths in CPM output data tree
