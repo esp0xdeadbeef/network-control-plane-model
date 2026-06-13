@@ -146,6 +146,9 @@ let
   // {
     secretDeliveryRecords = secretSourceContract.secretDeliveryRecords;
     secretReadiness = secretSourceContract.secretReadiness;
+    secretAuthorization = secretSourceContract.secretAuthorization;
+    secretPlaintextGuard = secretSourceContract.secretPlaintextGuard;
+    secretPolicyBoundary = secretSourceContract.secretPolicyBoundary;
   };
 
   _validatedRuntimeModel =
