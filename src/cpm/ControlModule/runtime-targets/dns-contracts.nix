@@ -191,8 +191,7 @@ let
       selfRefForwarders = builtins.filter (f: builtins.elem f nonLoopbackListeners) forwarders;
       safeForwarders =
         if selfRefForwarders != [ ] then
-          builtins.trace "FS-540-HDS-010-SDS-010-SMS-035: self-referential DNS forwarder(s) filtered from router-self service: ${builtins.concatStringsSep ", " selfRefForwarders}; these match listen addresses and would cause a DNS loop"
-            (builtins.filter (f: !(builtins.elem f nonLoopbackListeners)) forwarders)
+          builtins.filter (f: !(builtins.elem f nonLoopbackListeners)) forwarders
         else
           forwarders;
       allowedUpstreamClasses =
