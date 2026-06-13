@@ -38,6 +38,7 @@ tests=(
   test-access-dhcpv6-advertisement-contract.sh
   test-access-ipv6-ra-slaac-flags-contract.sh
   test-fs330-stable-client-address-identity.sh
+  test-fs540-hds010-sds010-sms035-self-referential-forwarder.sh
   test-access-static-reservation-contracts.sh
   test-fs880-static-reservation-namespace-fields.sh
   test-static-reservation-offset-resolution.sh
