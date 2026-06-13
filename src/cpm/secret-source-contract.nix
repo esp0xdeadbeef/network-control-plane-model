@@ -123,6 +123,23 @@ let
     "trustAnchor"
   ];
 
+  # ── FS-840-HDS-010-SDS-010-SMS-020 SN2: Plaintext secret in delivery guard ──
+
+  # Field names that indicate plaintext secret content (actual key material
+  # rather than path references) in source records. When any of these fields
+  # is present with a non-empty string value in a source behind a delivery
+  # record, the delivery record is considered to contain plaintext content.
+  plaintextSecretContentFields = [
+    "privateKey"
+    "psk"
+    "presharedKey"
+    "sharedSecret"
+    "password"
+    "secretContent"
+    "keyMaterial"
+    "secretValue"
+  ];
+
   # Predicate: check if a source binding is policy-neutral (no forbidden metadata fields)
   isBindingPolicyNeutral = binding:
     let
@@ -226,6 +243,9 @@ let
         then decl.authorizedScope
         else null;
       mediatedPath = mediatedPath;
+      # Explicit secret-reference field per FS-840-HDS-010-SDS-010-SMS-020:
+      # delivery records carry secret references (paths), never plaintext values.
+      secretReference = mediatedPath;
       sourceClass = binding.sourceClass or (if src != null then src.sourceClass else null);
       gampIds = [
         "FS-840-HDS-010-SDS-010-SMS-010"
@@ -304,6 +324,42 @@ let
     else
       null;
 
+  # Scan a delivery record for plaintext secret content (FS-840-SMS-020 SN2)
+  # Rejects when a delivery record's underlying source contains plaintext
+  # secret values (e.g., privateKey, psk, password) instead of only
+  # secret references (paths). Delivery records shall only carry
+  # secretReference (filesystem paths), never actual key material.
+  plaintextSecretDiagnosticForRecord = record:
+    let
+      src = sourceLookup.${record.sourceId} or null;
+      # Check source for any plaintext content field with a non-empty string value
+      foundFields =
+        if src != null then
+          builtins.filter (f:
+            hasAttr f src && isNonEmptyString src.${f}
+          ) plaintextSecretContentFields
+        else
+          [];
+      sourceClass = record.sourceClass or "unknown";
+    in
+    if foundFields != [ ] then
+      {
+        deliveryId = record.deliveryId;
+        diagnosticName = "PLAINTEXT_SECRET_IN_DELIVERY";
+        credentialClass = sourceClass;
+        plaintextFields = foundFields;
+        diagnostic = "FS-840-HDS-010-SDS-010-SMS-020 SN2: delivery record '${
+          record.deliveryId
+        }' contains plaintext secret content field(s) ${
+          builtins.concatStringsSep ", " foundFields
+        } in credential class '${sourceClass}'; delivery records shall only contain secret references (paths), not plaintext values";
+        gampIds = [
+          "FS-840-HDS-010-SDS-010-SMS-020"
+        ];
+      }
+    else
+      null;
+
   readinessDiagnostics =
     builtins.filter (d: d != null) (builtins.map readinessDiagnosticForRecord deliveryRecords);
 
@@ -362,6 +418,9 @@ let
 
   overBroadDeliveryDiagnostics =
     builtins.filter (d: d != null) (builtins.map overBroadDeliveryDiagnosticForRecord deliveryRecords);
+
+  plaintextSecretDiagnostics =
+    builtins.filter (d: d != null) (builtins.map plaintextSecretDiagnosticForRecord deliveryRecords);
 
   # Helper: map a single credential file name from abstract to platform path
   # Returns the mapped path or the original if already a platform path
@@ -463,6 +522,15 @@ in
   secretAuthorization = {
     inherit authorizedConsumerDiagnostics consumerRoleMismatchDiagnostics overBroadDeliveryDiagnostics;
     allAuthorized = authorizedConsumerDiagnostics == [ ] && consumerRoleMismatchDiagnostics == [ ] && overBroadDeliveryDiagnostics == [ ];
+  };
+
+  # Plaintext secret in delivery guard per FS-840-SMS-020 SN2
+  # Rejects delivery records whose underlying sources contain plaintext
+  # secret values (privateKey, psk, password, etc.) instead of only
+  # secret references (paths).
+  secretPlaintextGuard = {
+    inherit plaintextSecretDiagnostics;
+    allPlaintextFree = plaintextSecretDiagnostics == [ ];
   };
 
   # Policy boundary validation per FS-820-SMS-030
