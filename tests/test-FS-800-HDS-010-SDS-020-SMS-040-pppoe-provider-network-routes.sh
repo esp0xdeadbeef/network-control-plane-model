@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # GAMP-ID: FS-800-HDS-010-SDS-020-SMS-040
 # GAMP-SCOPE: software-module-test
-# Focused construction test: CPM PPPoE provider-network route generation
+# Focused construction test: CPM provider-network route generation
 # on fabric chain P2P interfaces (downstream-selector, policy, upstream-selector).
+# Scans all services for providerAddress/customerAddress handoff addressing.
 #
 # SMS Acceptance Predicates:
 #   P1: downstream-selector has route for 203.0.113.0/24 on p2p to provider-handoff access nodes
 #   P2: policy has route for 203.0.113.0/24 on p2p to downstream-selector
 #   P3: upstream-selector has route for 203.0.113.0/24 on p2p to policy
-#   P4: Routes carry proto=pppoe-provider, intent=pppoe-provider-reachability
+#   P4: Routes carry proto=provider, intent=provider-reachability
 #   P5: /32 provider and customer address host routes present
-#   P6: No PPPoE routes leak onto WAN-uplink interfaces
-#   P7: Seeded negative: HAT inventory without PPPoE services produces no PPPoE routes
+#   P6: No provider routes leak onto WAN-uplink interfaces
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,7 +31,7 @@ nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${hat_dir}/inventory-nixos.nix" \
   "${output_json}" >/dev/null
 
-echo "--- FS-800-HDS-010-SDS-020-SMS-040: CPM PPPoE provider-network route generation ---"
+echo "--- FS-800-HDS-010-SDS-020-SMS-040: CPM provider-network route generation ---"
 echo ""
 
 # ── P1: downstream-selector has 203.0.113.0/24 route on p2p to provider-handoff ──
@@ -46,19 +46,19 @@ check_p1() {
 
     # Check there is a route for 203.0.113.0/24 on a p2p interface
     # where backingRef.lane.access ends with "provider-handoff-access-a" or "provider-handoff-access-b"
-    def has_pppoe_route($iface):
+    def has_provider_route($iface):
       (($iface.routes.ipv4 // []) | map(select(
         .dst == "203.0.113.0/24"
-        and .proto == "pppoe-provider"
-        and .intent.kind == "pppoe-provider-reachability"
-        and .intent.source == "pppoe-provider-network"
+        and .proto == "provider"
+        and .intent.kind == "provider-reachability"
+        and .intent.source == "provider-network"
         and (.via4 // "") != ""
       )) | length) > 0;
 
     (dsIfs | to_entries | map(select(
       .value.sourceKind == "p2p"
       and ((.value.backingRef.lane.access // "") | test("provider-handoff-access-[ab]$"))
-    )) | map(has_pppoe_route(.value)) | all)
+    )) | map(has_provider_route(.value)) | all)
   ' "${output_json}" 2>/dev/null || echo "false")
 
   if [[ "${result}" == "true" ]]; then
@@ -80,15 +80,15 @@ check_p2() {
     def pol: rt("esp0xdeadbeef-site-a-nixos-policy");
     def polIfs: pol.effectiveRuntimeRealization.interfaces;
 
-    def has_pppoe_route($iface):
+    def has_provider_route($iface):
       (($iface.routes.ipv4 // []) | map(select(
         .dst == "203.0.113.0/24"
-        and .proto == "pppoe-provider"
-        and .intent.kind == "pppoe-provider-reachability"
+        and .proto == "provider"
+        and .intent.kind == "provider-reachability"
         and (.via4 // "") != ""
       )) | length) > 0;
 
-    (polIfs | to_entries | map(select(.value.sourceKind == "p2p")) | map(has_pppoe_route(.value)) | any)
+    (polIfs | to_entries | map(select(.value.sourceKind == "p2p")) | map(has_provider_route(.value)) | any)
   ' "${output_json}" 2>/dev/null || echo "false")
 
   if [[ "${result}" == "true" ]]; then
@@ -110,15 +110,15 @@ check_p3() {
     def us: rt("esp0xdeadbeef-site-a-nixos-upstream-selector");
     def usIfs: us.effectiveRuntimeRealization.interfaces;
 
-    def has_pppoe_route($iface):
+    def has_provider_route($iface):
       (($iface.routes.ipv4 // []) | map(select(
         .dst == "203.0.113.0/24"
-        and .proto == "pppoe-provider"
-        and .intent.kind == "pppoe-provider-reachability"
+        and .proto == "provider"
+        and .intent.kind == "provider-reachability"
         and (.via4 // "") != ""
       )) | length) > 0;
 
-    (usIfs | to_entries | map(select(.value.sourceKind == "p2p")) | map(has_pppoe_route(.value)) | any)
+    (usIfs | to_entries | map(select(.value.sourceKind == "p2p")) | map(has_provider_route(.value)) | any)
   ' "${output_json}" 2>/dev/null || echo "false")
 
   if [[ "${result}" == "true" ]]; then
@@ -142,16 +142,16 @@ check_p4() {
 
     (allRoutes | map(select(
       .dst == "203.0.113.0/24"
-      and .proto == "pppoe-provider"
-      and .intent.kind == "pppoe-provider-reachability"
-      and .intent.source == "pppoe-provider-network"
+      and .proto == "provider"
+      and .intent.kind == "provider-reachability"
+      and .intent.source == "provider-network"
     )) | length) > 0
   ' "${output_json}" 2>/dev/null || echo "false")
 
   if [[ "${result}" == "true" ]]; then
-    echo "PASS: P4 — PPPoE routes carry proto=pppoe-provider, intent=pppoe-provider-reachability"
+    echo "PASS: P4 — Provider routes carry proto=provider, intent=provider-reachability"
   else
-    echo "FAIL: P4 — PPPoE routes missing correct proto/intent tags"
+    echo "FAIL: P4 — Provider routes missing correct proto/intent tags"
     all_checks_passed=false
   fi
 }
@@ -170,7 +170,7 @@ check_p5() {
     def has_host($addr):
       (allRoutes | map(select(
         .dst == $addr
-        and .proto == "pppoe-provider"
+        and .proto == "provider"
         and (.via4 // "") != ""
       )) | length) > 0;
 
@@ -189,7 +189,7 @@ check_p5() {
 }
 check_p5
 
-# ── P6: No PPPoE routes on WAN-uplink interfaces ──
+# ── P6: No provider routes on WAN-uplink interfaces ──
 check_p6() {
   local result
   result=$(jq -e '
@@ -197,20 +197,20 @@ check_p6() {
     def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
     def rt($target): site.runtimeTargets[$target];
 
-    def has_pppoe_on_wan:
+    def has_provider_on_wan:
       [ site.runtimeTargets | to_entries[].value.effectiveRuntimeRealization.interfaces | to_entries[]
         | select(.value.sourceKind == "wan")
         | (.value.routes.ipv4 // [])
-        | map(select(.proto == "pppoe-provider"))
+        | map(select(.proto == "provider"))
       ] | flatten | length > 0;
 
-    has_pppoe_on_wan | not
+    has_provider_on_wan | not
   ' "${output_json}" 2>/dev/null || echo "false")
 
   if [[ "${result}" == "true" ]]; then
-    echo "PASS: P6 — No PPPoE routes leak onto WAN-uplink interfaces"
+    echo "PASS: P6 — No provider routes leak onto WAN-uplink interfaces"
   else
-    echo "FAIL: P6 — PPPoE routes found on WAN interfaces (leakage)"
+    echo "FAIL: P6 — Provider routes found on WAN interfaces (leakage)"
     all_checks_passed=false
   fi
 }
@@ -223,16 +223,16 @@ jq -r '
   def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
   def rt($target): site.runtimeTargets[$target];
 
-  def pppoe_routes_on($node_name; $node_id):
+  def provider_routes_on($node_name; $node_id):
     rt($node_id).effectiveRuntimeRealization.interfaces
     | to_entries[]
-    | select((.value.routes.ipv4 // []) | map(select(.proto == "pppoe-provider")) | length > 0)
-    | "  \($node_name):\(.key) → \([.value.routes.ipv4[] | select(.proto == "pppoe-provider") | "\(.dst) via \(.via4 // "?")"] | join(", "))";
+    | select((.value.routes.ipv4 // []) | map(select(.proto == "provider")) | length > 0)
+    | "  \($node_name):\(.key) → \([.value.routes.ipv4[] | select(.proto == "provider") | "\(.dst) via \(.via4 // "?")"] | join(", "))";
 
-  pppoe_routes_on("DS"; "esp0xdeadbeef-site-a-nixos-downstream-selector"),
-  pppoe_routes_on("POL"; "esp0xdeadbeef-site-a-nixos-policy"),
-  pppoe_routes_on("US"; "esp0xdeadbeef-site-a-nixos-upstream-selector")
-' "${output_json}" 2>/dev/null || echo "(no PPPoE routes found)"
+  provider_routes_on("DS"; "esp0xdeadbeef-site-a-nixos-downstream-selector"),
+  provider_routes_on("POL"; "esp0xdeadbeef-site-a-nixos-policy"),
+  provider_routes_on("US"; "esp0xdeadbeef-site-a-nixos-upstream-selector")
+' "${output_json}" 2>/dev/null || echo "(no provider routes found)"
 echo ""
 
 echo ""

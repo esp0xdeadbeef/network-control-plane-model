@@ -177,68 +177,90 @@ let
       )
       rtAttrs;
 
-  # ── PPPoE provider-network route injection ──
-  # Derive PPP network prefixes from PPPoE server providerAddress values
-  # in the inventory and add routes on fabric chain P2P interfaces so that
-  # selectors can reach the provider handoff network (TEST-NET-3, 203.0.113.0/24)
-  # through the provider-handoff access nodes.
+  # ── Provider-network route injection ──
+  # Scan ALL runtime-target services for provider handoff addressing
+  # (providerAddress / customerAddress fields at the server or service level).
+  # PPPoE is one input source; any future provider handoff type that supplies
+  # these fields gets fabric routes automatically.
+  #
+  # Derive /24 provider-network prefixes and collect /32 host routes, then
+  # inject them onto fabric chain P2P interfaces so selectors can reach the
+  # provider handoff network through the provider-handoff access nodes.
   #
   # Per URS L229: "the reference SAT lab shall realize upstream-emulation cases
   # with VLAN 11 through VLAN 20 as ISP-emulation handoff networks using the
   # TEST-NET-3 documentation IPv4 range, 203.0.113.0/24."
-  addPppoeSubnetFabricRoutes =
+  addProviderSubnetFabricRoutes =
     rtAttrs:
     let
-      # Collect PPP network prefixes from PPPoE server services
-      pppoeSubnetSet =
+      # Collect provider network prefixes from all services that have
+      # providerAddress / customerAddress handoff fields.
+      providerSubnetSet =
         builtins.foldl'
           (acc: targetName:
             let
               target = rtAttrs.${targetName} or { };
               services = target.services or { };
-              pppoe = services.pppoe or { };
-              server = pppoe.server or { };
-              providerAddr = server.providerAddress or "";
-              customerAddr = server.customerAddress or "";
-              derivePppoeSubnet = addr:
+              # Scan every service on this target for handoff addresses.
+              # A service may expose providerAddress directly or via a
+              # server/client sub-record (e.g. pppoe.server.providerAddress).
+              scanService = svcAcc: svcName:
                 let
-                  octets = lib.splitString "." addr;
+                  svc = services.${svcName} or { };
+                  server = svc.server or { };
+                  client = svc.client or { };
+                  providerAddr =
+                    svc.providerAddress or server.providerAddress or "";
+                  customerAddr =
+                    svc.customerAddress or server.customerAddress or client.customerAddress or "";
+                  deriveProviderSubnet = addr:
+                    let
+                      octets = lib.splitString "." addr;
+                    in
+                    if builtins.length octets >= 3 then
+                      let
+                        network = "${builtins.elemAt octets 0}.${builtins.elemAt octets 1}.${builtins.elemAt octets 2}.0/24";
+                      in
+                      svcAcc // { ${network} = true; }
+                    else
+                      svcAcc;
+                  accWithProvider =
+                    if providerAddr != "" then deriveProviderSubnet providerAddr else svcAcc;
                 in
-                if builtins.length octets >= 3 then
-                  let
-                    network = "${builtins.elemAt octets 0}.${builtins.elemAt octets 1}.${builtins.elemAt octets 2}.0/24";
-                  in
-                  acc // { ${network} = true; }
-                else
-                  acc;
-              accWithProvider =
-                if providerAddr != "" then derivePppoeSubnet providerAddr else acc;
+                if customerAddr != "" then deriveProviderSubnet customerAddr else accWithProvider;
             in
-            if customerAddr != "" then derivePppoeSubnet customerAddr else accWithProvider)
+            builtins.foldl' scanService acc (builtins.attrNames services))
           { }
           (builtins.attrNames rtAttrs);
-      pppoeSubnets = builtins.attrNames pppoeSubnetSet;
+      providerSubnets = builtins.attrNames providerSubnetSet;
       # Also collect /32 host routes for provider and customer addresses
-      pppoeHostSet =
+      providerHostSet =
         builtins.foldl'
           (acc: targetName:
             let
               target = rtAttrs.${targetName} or { };
               services = target.services or { };
-              pppoe = services.pppoe or { };
-              server = pppoe.server or { };
-              providerAddr = server.providerAddress or "";
-              customerAddr = server.customerAddress or "";
-              accWithProvider =
-                if providerAddr != "" then acc // { "${providerAddr}/32" = true; } else acc;
+              scanService = svcAcc: svcName:
+                let
+                  svc = services.${svcName} or { };
+                  server = svc.server or { };
+                  client = svc.client or { };
+                  providerAddr =
+                    svc.providerAddress or server.providerAddress or "";
+                  customerAddr =
+                    svc.customerAddress or server.customerAddress or client.customerAddress or "";
+                  accWithProvider =
+                    if providerAddr != "" then svcAcc // { "${providerAddr}/32" = true; } else svcAcc;
+                in
+                if customerAddr != "" then accWithProvider // { "${customerAddr}/32" = true; } else accWithProvider;
             in
-            if customerAddr != "" then accWithProvider // { "${customerAddr}/32" = true; } else accWithProvider)
+            builtins.foldl' scanService acc (builtins.attrNames services))
           { }
           (builtins.attrNames rtAttrs);
-      pppoeHosts = builtins.attrNames pppoeHostSet;
-      allPppoePrefixes = pppoeSubnets ++ pppoeHosts;
+      providerHosts = builtins.attrNames providerHostSet;
+      allProviderPrefixes = providerSubnets ++ providerHosts;
     in
-    if allPppoePrefixes == [ ] then
+    if allProviderPrefixes == [ ] then
       rtAttrs
     else
     let
@@ -262,18 +284,18 @@ let
       isFabricP2p = iface:
         (iface.sourceKind or "") == "p2p"
         && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
-      pppoeRoutesFor = peer4:
+      providerRoutesFor = peer4:
         builtins.map
           (prefix: {
             dst = prefix;
-            proto = "pppoe-provider";
+            proto = "provider";
             via4 = peer4;
             intent = {
-              kind = "pppoe-provider-reachability";
-              source = "pppoe-provider-network";
+              kind = "provider-reachability";
+              source = "provider-network";
             };
           })
-          allPppoePrefixes;
+          allProviderPrefixes;
       augmentTarget = targetName: target:
         let
           role = target.role or "";
@@ -292,7 +314,7 @@ let
                     let
                       peer4 = peer4For (iface.addr4 or "");
                       routes = iface.routes or {};
-                      newRoutes = if peer4 == null then [] else pppoeRoutesFor peer4;
+                      newRoutes = if peer4 == null then [] else providerRoutesFor peer4;
                       ipv4 = (routes.ipv4 or []) ++ newRoutes;
                       ipv6 = routes.ipv6 or [];
                     in
@@ -309,14 +331,14 @@ let
     in
     builtins.mapAttrs augmentTarget rtAttrs;
 
-  # Apply PPPoE subnet routes BEFORE core tenant return routes so both
+  # Apply provider subnet routes BEFORE core tenant return routes so both
   # augmentations compose correctly.
-  runtimeTargetsWithPppoe = addPppoeSubnetFabricRoutes runtimeTargetsWithIntent;
+  runtimeTargetsWithProvider = addProviderSubnetFabricRoutes runtimeTargetsWithIntent;
 
   runtimeTargets =
     builtins.mapAttrs
       (_targetName: normalizeRuntimeTargetRoutesAfterPolicyComplements)
-      (addCoreTenantReturnRoutes runtimeTargetsWithPppoe);
+      (addCoreTenantReturnRoutes runtimeTargetsWithProvider);
 
 in
 {
