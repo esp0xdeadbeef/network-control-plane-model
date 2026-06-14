@@ -45,6 +45,7 @@ let
       ;
   };
   binderSourceAudit = import ../../binder-source-audit.nix { inherit helpers; };
+  builtins_ipam = import ../../ipam.nix { inherit lib; };
   firstOrNull = values: if values == [ ] then null else builtins.head values;
   stripPrefixLength = value:
     if !(isNonEmptyString value) then "" else builtins.head (lib.splitString "/" value);
@@ -384,7 +385,26 @@ let
                 ) 4;
               in builtins.concatStringsSep "." peerOctets;
           peerAddr6 = iface:
-            null;  # IPv6 peer calculation deferred; IPv4 default route is sufficient for HAT egress
+            let
+              addr = iface.addr6 or "";
+              parsed = builtins_ipam.splitCIDR addr;
+              addrParsed = if parsed != null then builtins_ipam.parseIPv6 parsed.addr else null;
+            in
+            if addrParsed == null then null
+            else
+              let
+                peerHextets = builtins.genList
+                  (idx:
+                    if idx == 7 then
+                      if lib.mod (builtins.elemAt addrParsed 7) 2 == 0 then
+                        (builtins.elemAt addrParsed 7) + 1
+                      else
+                        (builtins.elemAt addrParsed 7) - 1
+                    else
+                      builtins.elemAt addrParsed idx
+                  )
+                  8;
+              in builtins_ipam.renderIPv6 peerHextets;
           addDefaultRoute = iface:
             let
               routes = iface.routes or {};
