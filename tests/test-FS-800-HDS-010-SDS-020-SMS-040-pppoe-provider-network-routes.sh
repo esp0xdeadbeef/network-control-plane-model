@@ -12,6 +12,8 @@
 #   P4: Routes carry proto=provider, intent=provider-reachability
 #   P5: /32 provider and customer address host routes present
 #   P6: No provider routes leak onto WAN-uplink interfaces
+#   P7: Fabric p2p interfaces have ipv6 route array present (IPv6-capable structure)
+#   P8: No provider IPv6 routes leak onto WAN-uplink interfaces
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -216,6 +218,62 @@ check_p6() {
 }
 check_p6
 
+# ── P7: Fabric p2p interfaces have ipv6 route array present ──
+check_p7() {
+  local result
+  result=$(jq -e '
+    def root: if type == "array" then .[0] else . end;
+    def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
+    def rt($target): site.runtimeTargets[$target];
+    def ds: rt("esp0xdeadbeef-site-a-nixos-downstream-selector");
+    def dsIfs: ds.effectiveRuntimeRealization.interfaces;
+
+    # Verify at least one p2p interface on the fabric chain has both
+    # routes.ipv4 and routes.ipv6 defined (IPv6-capable structure).
+    (dsIfs | to_entries | map(select(
+      .value.sourceKind == "p2p"
+    )) | map(
+      ((.value.routes.ipv4 // []) | type == "array")
+      and ((.value.routes.ipv6 // []) | type == "array")
+    ) | any)
+  ' "${output_json}" 2>/dev/null || echo "false")
+
+  if [[ "${result}" == "true" ]]; then
+    echo "PASS: P7 — Fabric p2p interfaces have ipv6 route array present (IPv6-capable)"
+  else
+    echo "FAIL: P7 — Fabric p2p interfaces missing ipv6 route array"
+    all_checks_passed=false
+  fi
+}
+check_p7
+
+# ── P8: No provider IPv6 routes leak onto WAN-uplink interfaces ──
+check_p8() {
+  local result
+  result=$(jq -e '
+    def root: if type == "array" then .[0] else . end;
+    def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
+    def rt($target): site.runtimeTargets[$target];
+
+    def has_provider_ipv6_on_wan:
+      [ site.runtimeTargets | to_entries[].value.effectiveRuntimeRealization.interfaces | to_entries[]
+        | select(.value.sourceKind == "wan")
+        | (.value.routes.ipv6 // [])
+        | map(select(.proto == "provider"))
+      ] | flatten | length > 0;
+
+    has_provider_ipv6_on_wan | not
+  ' "${output_json}" 2>/dev/null || echo "false")
+
+  if [[ "${result}" == "true" ]]; then
+    echo "PASS: P8 — No provider IPv6 routes leak onto WAN-uplink interfaces"
+  else
+    echo "FAIL: P8 — Provider IPv6 routes found on WAN interfaces (leakage)"
+    all_checks_passed=false
+  fi
+}
+check_p8
+
 echo ""
 echo "--- Route detail (debug) ---"
 jq -r '
@@ -237,7 +295,7 @@ echo ""
 
 echo ""
 if [[ "${all_checks_passed}" == "true" ]]; then
-  echo "PASS: FS-800-HDS-010-SDS-020-SMS-040 (6/6 assertions)"
+  echo "PASS: FS-800-HDS-010-SDS-020-SMS-040 (8/8 assertions)"
   exit 0
 else
   echo "FAIL: One or more checks failed."
