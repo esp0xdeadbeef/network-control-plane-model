@@ -35,8 +35,7 @@
 , upstreamSelectorNodeName
 , ulaNat66Mode
 , endpointAssignmentCheckDiagnostics ? [ ]
- , emulationSubnets ? [ ]
- ,
+,
 }:
 
 let
@@ -168,11 +167,10 @@ let
             endpoints)
         adjacencies);
 
-  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets ++ emulationSubnets);
+  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets);
   fabricSubnetSources = {
     tenantCount = builtins.length tenantSubnets;
     transitCount = builtins.length transitSubnets;
-    emulationCount = builtins.length emulationSubnets;
   };
 in
 {

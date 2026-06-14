@@ -21,7 +21,6 @@
 , normalizeRuntimeTargetRoutes
 , normalizeRuntimeTargetRoutesAfterPolicyComplements
 , normalizedRuntimeTargets
-, emulationSubnets ? [ ]
 ,
 }:
 
@@ -178,16 +177,68 @@ let
       )
       rtAttrs;
 
-  # Add emulation subnet routes to fabric chain nodes (downstream-selector,
-  # policy, upstream-selector) so that renderers generate nftables forwarding
-  # rules. Core nodes already receive return routes via addCoreTenantReturnRoutes.
+  # ── PPPoE provider-network route injection ──
+  # Derive PPP network prefixes from PPPoE server providerAddress values
+  # in the inventory and add routes on fabric chain P2P interfaces so that
+  # selectors can reach the provider handoff network (TEST-NET-3, 203.0.113.0/24)
+  # through the provider-handoff access nodes.
   #
-  # Per SMS-012: "CPM shall generate selector routes, nftables allow rules, and
-  # policy-routing lane entries for emulation subnets using the same fabric-chain
-  # path as tenant/transit subnets."
-  addEmulationSubnetFabricRoutes =
+  # Per URS L229: "the reference SAT lab shall realize upstream-emulation cases
+  # with VLAN 11 through VLAN 20 as ISP-emulation handoff networks using the
+  # TEST-NET-3 documentation IPv4 range, 203.0.113.0/24."
+  addPppoeSubnetFabricRoutes =
     rtAttrs:
-    if emulationSubnets == [ ] then
+    let
+      # Collect PPP network prefixes from PPPoE server services
+      pppoeSubnetSet =
+        builtins.foldl'
+          (acc: targetName:
+            let
+              target = rtAttrs.${targetName} or { };
+              services = target.services or { };
+              pppoe = services.pppoe or { };
+              server = pppoe.server or { };
+              providerAddr = server.providerAddress or "";
+              customerAddr = server.customerAddress or "";
+              derivePppoeSubnet = addr:
+                let
+                  octets = lib.splitString "." addr;
+                in
+                if builtins.length octets >= 3 then
+                  let
+                    network = "${builtins.elemAt octets 0}.${builtins.elemAt octets 1}.${builtins.elemAt octets 2}.0/24";
+                  in
+                  acc // { ${network} = true; }
+                else
+                  acc;
+              accWithProvider =
+                if providerAddr != "" then derivePppoeSubnet providerAddr else acc;
+            in
+            if customerAddr != "" then derivePppoeSubnet customerAddr else accWithProvider)
+          { }
+          (builtins.attrNames rtAttrs);
+      pppoeSubnets = builtins.attrNames pppoeSubnetSet;
+      # Also collect /32 host routes for provider and customer addresses
+      pppoeHostSet =
+        builtins.foldl'
+          (acc: targetName:
+            let
+              target = rtAttrs.${targetName} or { };
+              services = target.services or { };
+              pppoe = services.pppoe or { };
+              server = pppoe.server or { };
+              providerAddr = server.providerAddress or "";
+              customerAddr = server.customerAddress or "";
+              accWithProvider =
+                if providerAddr != "" then acc // { "${providerAddr}/32" = true; } else acc;
+            in
+            if customerAddr != "" then accWithProvider // { "${customerAddr}/32" = true; } else accWithProvider)
+          { }
+          (builtins.attrNames rtAttrs);
+      pppoeHosts = builtins.attrNames pppoeHostSet;
+      allPppoePrefixes = pppoeSubnets ++ pppoeHosts;
+    in
+    if allPppoePrefixes == [ ] then
       rtAttrs
     else
     let
@@ -211,19 +262,18 @@ let
       isFabricP2p = iface:
         (iface.sourceKind or "") == "p2p"
         && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
-      emulationRoutesFor = peer4:
+      pppoeRoutesFor = peer4:
         builtins.map
-          (subnet: {
-            dst = subnet;
-            proto = "emulation";
+          (prefix: {
+            dst = prefix;
+            proto = "pppoe-provider";
             via4 = peer4;
             intent = {
-              kind = "emulation-reachability";
-              source = "hat-emulation-subnet";
+              kind = "pppoe-provider-reachability";
+              source = "pppoe-provider-network";
             };
-            emulationSubnet = true;
           })
-          emulationSubnets;
+          allPppoePrefixes;
       augmentTarget = targetName: target:
         let
           role = target.role or "";
@@ -242,7 +292,7 @@ let
                     let
                       peer4 = peer4For (iface.addr4 or "");
                       routes = iface.routes or {};
-                      newRoutes = if peer4 == null then [] else emulationRoutesFor peer4;
+                      newRoutes = if peer4 == null then [] else pppoeRoutesFor peer4;
                       ipv4 = (routes.ipv4 or []) ++ newRoutes;
                       ipv6 = routes.ipv6 or [];
                     in
@@ -259,14 +309,14 @@ let
     in
     builtins.mapAttrs augmentTarget rtAttrs;
 
-  # Apply emulation subnet routes BEFORE core tenant return routes so both
+  # Apply PPPoE subnet routes BEFORE core tenant return routes so both
   # augmentations compose correctly.
-  runtimeTargetsWithEmulation = addEmulationSubnetFabricRoutes runtimeTargetsWithIntent;
+  runtimeTargetsWithPppoe = addPppoeSubnetFabricRoutes runtimeTargetsWithIntent;
 
   runtimeTargets =
     builtins.mapAttrs
       (_targetName: normalizeRuntimeTargetRoutesAfterPolicyComplements)
-      (addCoreTenantReturnRoutes runtimeTargetsWithEmulation);
+      (addCoreTenantReturnRoutes runtimeTargetsWithPppoe);
 
 in
 {
