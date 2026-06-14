@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GAMP-ID: FS-800-HDS-030-SDS-030-SMS-010
+# GAMP-ID: FS-800-HDS-010-SDS-020-SMS-030
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -185,21 +185,21 @@ write_inventory_case "${tmp_dir}/fallback-enabled.nix" '
 expect_failure \
   "provider-only" \
   "${tmp_dir}/provider-only.nix" \
-  "FS-800-HDS-030-SDS-030-SMS-010: PPPoE interface 'sat-pppoe-nixos-handoff' requires exactly one client and one server before renderer handoff"
+  "FS-800-HDS-010-SDS-020-SMS-030: PPPoE interface 'sat-pppoe-nixos-handoff' requires exactly one client and one server before renderer handoff"
 
 expect_failure \
   "customer-only" \
   "${tmp_dir}/customer-only.nix" \
-  "FS-800-HDS-030-SDS-030-SMS-010: PPPoE interface 'sat-pppoe-nixos-handoff' requires exactly one client and one server before renderer handoff"
+  "FS-800-HDS-010-SDS-020-SMS-030: PPPoE interface 'sat-pppoe-nixos-handoff' requires exactly one client and one server before renderer handoff"
 
 expect_failure \
   "opaque-pppoe-like" \
   "${tmp_dir}/opaque-pppoe-like.nix" \
-  "FS-800-HDS-030-SDS-030-SMS-010: must contain only 'client' or 'server' roles"
+  "FS-800-HDS-010-SDS-020-SMS-030: must contain only 'client' or 'server' roles"
 
 expect_failure \
   "fallback-enabled" \
   "${tmp_dir}/fallback-enabled.nix" \
-  "FS-800-HDS-030-SDS-030-SMS-010: PPPoE server targets must explicitly disable DHCP4 and IPv6 RA/SLAAC fallback before renderer handoff"
+  "FS-800-HDS-010-SDS-020-SMS-030: PPPoE server targets must explicitly disable DHCP4 and IPv6 RA/SLAAC fallback before renderer handoff"
 
 echo "PASS provider-access-pppoe-negative-contract"

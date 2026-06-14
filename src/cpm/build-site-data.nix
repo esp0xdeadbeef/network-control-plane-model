@@ -196,7 +196,7 @@ let
     runtimeTargets
     ;
 
-  pppoePairingFallbackRowId = "FS-800-HDS-030-SDS-030-SMS-010";
+  pppoePairingFallbackRowId = "FS-800-HDS-010-SDS-020-SMS-030";
 
   validatePPPoEContracts =
     let
