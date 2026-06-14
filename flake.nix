@@ -113,7 +113,6 @@
             , inventory ? { }
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
-    , emulationSubnets ? [ ]
             , secretPlatformSubstrate ? "nixos"
             ,
             }:
@@ -124,7 +123,7 @@
                   (
                     buildCPM {
                       forwardingModel = input;
-                      inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets secretPlatformSubstrate;
+                      inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
                     }
                   );
 
@@ -140,13 +139,12 @@
             , inventory ? { }
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
-    , emulationSubnets ? [ ]
             , secretPlatformSubstrate ? "nixos"
             ,
             }:
             buildCPM {
                       forwardingModel = input;
-              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets secretPlatformSubstrate;
+              inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
             };
 
           getCPM = get_CPM;
@@ -158,13 +156,12 @@
             , inventory ? { }
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
-    , emulationSubnets ? [ ]
             , secretPlatformSubstrate ? "nixos"
             ,
             }:
             build {
               input = forwardingLib.buildFromCompilerInputs { inherit input; };
-              inherit inventory validateForwardingModel validateRuntimeModel emulationSubnets secretPlatformSubstrate;
+              inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
             };
 
           compileAndBuildFromPaths =
@@ -172,7 +169,6 @@
             , inventoryPath ? null
             , validateForwardingModel ? true
             , validateRuntimeModel ? false
-    , emulationSubnets ? [ ]
             , secretPlatformSubstrate ? "nixos"
             ,
             }:
