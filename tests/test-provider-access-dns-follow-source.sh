@@ -100,6 +100,9 @@ assert_follow_source_dns() {
     ' "${output}" >/dev/null
 }
 
+# ============================================================
+# Positive: NixOS site-a follow-source
+# ============================================================
 write_inventory_case \
   "${tmp_dir}/inventory-nixos-follow-source.nix" \
   "${hat_dir}/inventory-nixos.nix" \
@@ -131,6 +134,12 @@ assert_follow_source_dns \
   "fd42:dead:feed:20::1" \
   "pppoeClab"
 
+echo "PASS FS-540-HDS-010-SDS-010-SMS-025 positive: NixOS and CLAB follow-source"
+
+# ============================================================
+# Negative: missing upstreamSource
+# (pre-existing — keeps the original guard verification)
+# ============================================================
 write_inventory_case \
   "${tmp_dir}/inventory-missing-source.nix" \
   "${hat_dir}/inventory-nixos.nix" \
@@ -142,14 +151,127 @@ write_inventory_case \
   'providerTable.pppoeClab'
 
 if build_cpm "${tmp_dir}/inventory-missing-source.nix" "${tmp_dir}/missing-source.json" 2>"${tmp_dir}/missing-source.stderr"; then
-  echo "FAIL provider-access-dns-follow-source: missing upstreamSource unexpectedly evaluated" >&2
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025: missing upstreamSource unexpectedly evaluated" >&2
   exit 1
 fi
 
 if ! grep -Fq "provider-access required field 'dns.resolver.upstreamSource' must be present before CPM handoff" "${tmp_dir}/missing-source.stderr"; then
-  echo "FAIL provider-access-dns-follow-source: missing upstreamSource diagnostic did not name follow-source source" >&2
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025: missing upstreamSource diagnostic did not name follow-source requirement" >&2
   cat "${tmp_dir}/missing-source.stderr" >&2
   exit 1
 fi
 
-echo "PASS provider-access-dns-follow-source"
+echo "PASS FS-540-HDS-010-SDS-010-SMS-025 negative: missing upstreamSource rejected"
+
+# ============================================================
+# SN1: Wrong source classification
+# upstreamSource = "provider-handoff" instead of "follow-source"
+# Must REJECT with diagnostic naming the mismatched source
+# ============================================================
+write_inventory_case \
+  "${tmp_dir}/inventory-wrong-source.nix" \
+  "${hat_dir}/inventory-nixos.nix" \
+  'providerTable.pppoeNixos // {
+    dns = providerTable.pppoeNixos.dns // {
+      resolver = providerTable.pppoeNixos.dns.resolver // {
+        upstreamSource = "provider-handoff";
+      };
+    };
+  }' \
+  'providerTable.pppoeClab'
+
+if build_cpm "${tmp_dir}/inventory-wrong-source.nix" "${tmp_dir}/wrong-source.json" 2>"${tmp_dir}/wrong-source.stderr"; then
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025 SN1: wrong upstreamSource unexpectedly evaluated" >&2
+  exit 1
+fi
+
+if ! grep -Fq "provider-access DNS followSource requires resolver.upstreamSource = \"follow-source\" before CPM handoff" "${tmp_dir}/wrong-source.stderr"; then
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025 SN1: wrong upstreamSource diagnostic missing" >&2
+  cat "${tmp_dir}/wrong-source.stderr" >&2
+  exit 1
+fi
+
+echo "PASS FS-540-HDS-010-SDS-010-SMS-025 SN1: wrong upstreamSource classification rejected"
+
+# ============================================================
+# SN2: Killswitch bypass (FS-550)
+# killswitch enabled + followSource=true → must REJECT
+# The module shall emit a diagnostic identifying the killswitch bypass
+# ============================================================
+write_inventory_case \
+  "${tmp_dir}/inventory-killswitch-bypass.nix" \
+  "${hat_dir}/inventory-nixos.nix" \
+  'providerTable.pppoeNixos // {
+    dns = providerTable.pppoeNixos.dns // {
+      killswitch = true;
+    };
+  }' \
+  'providerTable.pppoeClab'
+
+if build_cpm "${tmp_dir}/inventory-killswitch-bypass.nix" "${tmp_dir}/killswitch-bypass.json" 2>"${tmp_dir}/killswitch-bypass.stderr"; then
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025 SN2: killswitch bypass unexpectedly evaluated" >&2
+  exit 1
+fi
+
+if ! grep -Fq "provider-access DNS followSource must not bypass killswitch policy (FS-550)" "${tmp_dir}/killswitch-bypass.stderr"; then
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025 SN2: killswitch bypass diagnostic missing" >&2
+  cat "${tmp_dir}/killswitch-bypass.stderr" >&2
+  exit 1
+fi
+
+echo "PASS FS-540-HDS-010-SDS-010-SMS-025 SN2: killswitch bypass rejected"
+
+# ============================================================
+# Recovery: verify that removing the violation restores the pass
+# ============================================================
+# SN1 recovery: set upstreamSource back to "follow-source"
+write_inventory_case \
+  "${tmp_dir}/inventory-sn1-recovery.nix" \
+  "${hat_dir}/inventory-nixos.nix" \
+  'providerTable.pppoeNixos // {
+    dns = providerTable.pppoeNixos.dns // {
+      resolver = providerTable.pppoeNixos.dns.resolver // {
+        upstreamSource = "follow-source";
+      };
+    };
+  }' \
+  'providerTable.pppoeClab'
+
+if ! build_cpm "${tmp_dir}/inventory-sn1-recovery.nix" "${tmp_dir}/sn1-recovery.json"; then
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025 SN1 recovery: valid upstreamSource should succeed" >&2
+  exit 1
+fi
+
+assert_follow_source_dns \
+  "${tmp_dir}/sn1-recovery.json" \
+  "site-a" \
+  "esp0xdeadbeef-site-a-nixos-access-client" \
+  "10.20.20.1" \
+  "fd42:dead:beef:20::1" \
+  "pppoeNixos"
+
+echo "PASS FS-540-HDS-010-SDS-010-SMS-025 SN1 recovery: follow-source restored"
+
+# SN2 recovery: remove killswitch
+write_inventory_case \
+  "${tmp_dir}/inventory-sn2-recovery.nix" \
+  "${hat_dir}/inventory-nixos.nix" \
+  'providerTable.pppoeNixos' \
+  'providerTable.pppoeClab'
+
+if ! build_cpm "${tmp_dir}/inventory-sn2-recovery.nix" "${tmp_dir}/sn2-recovery.json"; then
+  echo "FAIL FS-540-HDS-010-SDS-010-SMS-025 SN2 recovery: removing killswitch should succeed" >&2
+  exit 1
+fi
+
+assert_follow_source_dns \
+  "${tmp_dir}/sn2-recovery.json" \
+  "site-a" \
+  "esp0xdeadbeef-site-a-nixos-access-client" \
+  "10.20.20.1" \
+  "fd42:dead:beef:20::1" \
+  "pppoeNixos"
+
+echo "PASS FS-540-HDS-010-SDS-010-SMS-025 SN2 recovery: killswitch removed, follow-source restored"
+
+echo "PASS FS-540-HDS-010-SDS-010-SMS-025 all checks"

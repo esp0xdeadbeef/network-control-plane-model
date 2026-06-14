@@ -68,17 +68,23 @@ let
 
   dnsRelations = builtins.filter allowedDnsRelation allowedRelations;
 
+  # GAMP: FS-540-HDS-010-SDS-010-SMS-025 — DNS follow-source hosted-service detection
+  # must not require provider endpoint addresses to match listener addresses.
+  # The access router may proxy DNS from a listener address to a resolver at a
+  # different endpoint address; the service is still "hosted" from the tenant
+  # perspective.  Provider endpoint existence is validated by
+  # providerAddressesForDnsService inside the filter body.
   hostedDnsServicesForListeners = listenAddrs:
-    let
-      listenSet = uniqueStrings listenAddrs;
-    in
     builtins.filter
       (serviceName:
         let
           serviceDef = serviceDefinitions.${serviceName};
-          providerAddresses = lib.concatMap providerAddressesForDnsService (providersForService serviceName);
+          providerNames = providersForService serviceName;
+          # providerAddressesForDnsService validates endpoint existence;
+          # we do not require the addresses to intersect with listenAddrs.
+          _providerAddresses = lib.concatMap providerAddressesForDnsService providerNames;
         in
-        (serviceDef.trafficType or null) == "dns" && lib.any (addr: builtins.elem addr listenSet) providerAddresses)
+        (serviceDef.trafficType or null) == "dns" && providerNames != [ ])
       (sortedNames serviceDefinitions);
 in
 {

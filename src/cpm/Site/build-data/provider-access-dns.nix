@@ -87,10 +87,22 @@ let
           failInventory
             "${scenarioPath}.dns.resolver"
             "provider-access DNS followSource requires an explicit resolver source record before CPM handoff";
+      # GAMP: FS-540-HDS-010-SDS-010-SMS-025 — killswitch bypass detection
+      # When the DNS killswitch is enabled (FS-550), follow-source DNS records
+      # must not circumvent the killswitch by routing through provider uplinks.
+      killswitchBlock = (dns.killswitch or false) == true;
+      _killswitchBypass =
+        if !followSource || !killswitchBlock then
+          true
+        else
+          failInventory
+            "${scenarioPath}.dns.killswitch"
+            "provider-access DNS followSource must not bypass killswitch policy (FS-550); set dns.killswitch=false or remove dns.followSource before CPM handoff";
     in
     if followSource && scenarioMatchesSite scenario then
       builtins.seq _upstreamSource (
-        builtins.seq _resolver {
+        builtins.seq _resolver (
+          builtins.seq _killswitchBypass {
           kind = "provider-access-dns-upstream";
           source = "provider-access-dns";
           inherit dst upstreamSource;
@@ -105,6 +117,7 @@ let
           fallbackToCustomerResolver = false;
         }
       )
+    )
     else
       null;
 
