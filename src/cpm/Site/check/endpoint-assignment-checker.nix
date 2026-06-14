@@ -1,4 +1,4 @@
-# FS-720-HDS-030-SDS-010-SMS-010 Phase 3: endpoint-assignment checker
+# FS-720-HDS-010-SDS-025-SMS-010 Phase 3: endpoint-assignment checker
 #
 # This checker module validates endpointAssignment records after contract
 # emission, covering the three remaining SMS predicates:
@@ -16,7 +16,7 @@
 # CPM stance: Missing or conflicting data is an error, not a defaulting opportunity.
 { helpers
 , common
-, gampRowId ? "FS-720-HDS-030-SDS-010-SMS-010"
+, gampRowId ? "FS-720-HDS-010-SDS-025-SMS-010"
 ,
 }:
 

@@ -1,4 +1,4 @@
-# FS-720-HDS-030-SDS-010-SMS-010: endpointAssignment contract
+# FS-720-HDS-010-SDS-025-SMS-010: endpointAssignment contract
 #
 # This module consumes endpoint definitions from intent (ownership.endpoints)
 # and endpoint addresses from inventory, derives assignment modes, and emits
@@ -32,7 +32,7 @@ let
     ;
   inherit (common) attrsOrEmpty failInventory;
 
-  gampRowId = "FS-720-HDS-030-SDS-010-SMS-010";
+  gampRowId = "FS-720-HDS-010-SDS-025-SMS-010";
   gampBoundaryId = "FS-983";
 
   # ---------------------------------------------------------------
@@ -146,7 +146,7 @@ let
   # ---------------------------------------------------------------
   # Gateway derivation from tenant prefix
   #
-  # FS-720-HDS-030-SDS-010-SMS-010 P3/P7: The gateway MUST be a
+  # FS-720-HDS-010-SDS-025-SMS-010 P3/P7: The gateway MUST be a
   # usable host address, not the network (all-zeros) address.
   # stripCidr on e.g. "10.20.20.0/24" yields "10.20.20.0", which is
   # the network address — not routable as a gateway.
