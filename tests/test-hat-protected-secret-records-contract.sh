@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GAMP-ID: FS-800-HDS-020-SDS-020-SMS-010
+# GAMP-ID: FS-800-HDS-010-SDS-030-SMS-020
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -85,7 +85,7 @@ assert_protected_records() {
         and .plaintextMaterial == false
         and .sourceSelected == false
         and has_id("FS-800-HDS-020-SDS-020")
-        and has_id("FS-800-HDS-020-SDS-020-SMS-010")
+        and has_id("FS-800-HDS-010-SDS-030-SMS-020")
       )
       and any($declarations[]; .purpose == "pppoe-username")
       and any($declarations[]; .purpose == "pppoe-password")
@@ -98,7 +98,7 @@ assert_protected_records() {
         and .providerNeutral == true
         and .fixedSecretManagerRequired == false
         and has_id("FS-800-HDS-020-SDS-020")
-        and has_id("FS-800-HDS-020-SDS-020-SMS-010")
+        and has_id("FS-800-HDS-010-SDS-030-SMS-020")
       )
       and all($bindings[];
         .bindingKind == "declaration-source"
@@ -112,7 +112,7 @@ assert_protected_records() {
         and .policyAuthority.createsTrustBoundary == false
         and .policyAuthority.createsNetworkBehavior == false
         and has_id("FS-800-HDS-020-SDS-020")
-        and has_id("FS-800-HDS-020-SDS-020-SMS-010")
+        and has_id("FS-800-HDS-010-SDS-030-SMS-020")
       )
       and (pppoe_credentials | length) > 0
       and all(pppoe_credentials[];
