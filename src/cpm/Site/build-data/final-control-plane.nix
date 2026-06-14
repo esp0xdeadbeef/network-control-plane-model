@@ -259,8 +259,80 @@ let
           (builtins.attrNames rtAttrs);
       providerHosts = builtins.attrNames providerHostSet;
       allProviderPrefixes = providerSubnets ++ providerHosts;
+      # IPv6: collect provider IPv6 prefixes from providerAddress6 / customerAddress6
+      providerSubnetSet6 =
+        builtins.foldl'
+          (acc: targetName:
+            let
+              target = rtAttrs.${targetName} or { };
+              services = target.services or { };
+              scanService = svcAcc: svcName:
+                let
+                  svc = services.${svcName} or { };
+                  server = svc.server or { };
+                  client = svc.client or { };
+                  providerAddr6 =
+                    svc.providerAddress6 or server.providerAddress6 or "";
+                  customerAddr6 =
+                    svc.customerAddress6 or server.customerAddress6 or client.customerAddress6 or "";
+                  deriveProviderSubnet6 = addr:
+                    let
+                      parsed = ipam.splitCIDR addr;
+                      addr6Parsed = if parsed != null then ipam.parseIPv6 parsed.addr else null;
+                    in
+                    if addr6Parsed == null then svcAcc
+                    else
+                      let
+                        networkHextets = builtins.genList
+                          (i: if i < 4 then builtins.elemAt addr6Parsed i else 0)
+                          8;
+                        network = "${ipam.renderIPv6 networkHextets}/64";
+                      in svcAcc // { ${network} = true; };
+                  accWithProvider6 =
+                    if providerAddr6 != "" then deriveProviderSubnet6 providerAddr6 else svcAcc;
+                in
+                if customerAddr6 != "" then deriveProviderSubnet6 customerAddr6 else accWithProvider6;
+            in
+            builtins.foldl' scanService acc (builtins.attrNames services))
+          { }
+          (builtins.attrNames rtAttrs);
+      providerSubnets6 = builtins.attrNames providerSubnetSet6;
+      providerHostSet6 =
+        builtins.foldl'
+          (acc: targetName:
+            let
+              target = rtAttrs.${targetName} or { };
+              services = target.services or { };
+              scanService = svcAcc: svcName:
+                let
+                  svc = services.${svcName} or { };
+                  server = svc.server or { };
+                  client = svc.client or { };
+                  providerAddr6 =
+                    svc.providerAddress6 or server.providerAddress6 or "";
+                  customerAddr6 =
+                    svc.customerAddress6 or server.customerAddress6 or client.customerAddress6 or "";
+                  # Normalize to /128 host route
+                  normalize6 = addr:
+                    if addr == "" then ""
+                    else
+                      let
+                        parsed = ipam.splitCIDR addr;
+                      in
+                      if parsed == null then "${addr}/128"
+                      else "${parsed.addr}/128";
+                  accWithProvider6 =
+                    if providerAddr6 != "" then svcAcc // { "${normalize6 providerAddr6}" = true; } else svcAcc;
+                in
+                if customerAddr6 != "" then accWithProvider6 // { "${normalize6 customerAddr6}" = true; } else accWithProvider6;
+            in
+            builtins.foldl' scanService acc (builtins.attrNames services))
+          { }
+          (builtins.attrNames rtAttrs);
+      providerHosts6 = builtins.attrNames providerHostSet6;
+      allProviderPrefixes6 = providerSubnets6 ++ providerHosts6;
     in
-    if allProviderPrefixes == [ ] then
+    if allProviderPrefixes == [ ] && allProviderPrefixes6 == [ ] then
       rtAttrs
     else
     let
@@ -281,6 +353,26 @@ let
               (i: if i == 3 then builtins.toString peerInt else builtins.elemAt octets i)
               4;
           in builtins.concatStringsSep "." peerOctets;
+      peer6For = addr:
+        let
+          parsed = ipam.splitCIDR addr;
+          addrParsed = if parsed != null then ipam.parseIPv6 parsed.addr else null;
+        in
+        if addrParsed == null then null
+        else
+          let
+            peerHextets = builtins.genList
+              (idx:
+                if idx == 7 then
+                  if lib.mod (builtins.elemAt addrParsed 7) 2 == 0 then
+                    (builtins.elemAt addrParsed 7) + 1
+                  else
+                    (builtins.elemAt addrParsed 7) - 1
+                else
+                  builtins.elemAt addrParsed idx
+              )
+              8;
+          in ipam.renderIPv6 peerHextets;
       isFabricP2p = iface:
         (iface.sourceKind or "") == "p2p"
         && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
@@ -296,6 +388,18 @@ let
             };
           })
           allProviderPrefixes;
+      providerRoutesFor6 = peer6:
+        builtins.map
+          (prefix: {
+            dst = prefix;
+            proto = "provider";
+            via6 = peer6;
+            intent = {
+              kind = "provider-reachability";
+              source = "provider-network";
+            };
+          })
+          allProviderPrefixes6;
       augmentTarget = targetName: target:
         let
           role = target.role or "";
@@ -313,10 +417,12 @@ let
                   else
                     let
                       peer4 = peer4For (iface.addr4 or "");
+                      peer6 = peer6For (iface.addr6 or "");
                       routes = iface.routes or {};
-                      newRoutes = if peer4 == null then [] else providerRoutesFor peer4;
-                      ipv4 = (routes.ipv4 or []) ++ newRoutes;
-                      ipv6 = routes.ipv6 or [];
+                      newRoutes4 = if peer4 == null then [] else providerRoutesFor peer4;
+                      newRoutes6 = if peer6 == null then [] else providerRoutesFor6 peer6;
+                      ipv4 = (routes.ipv4 or []) ++ newRoutes4;
+                      ipv6 = (routes.ipv6 or []) ++ newRoutes6;
                     in
                     iface // { routes = routes // { inherit ipv4 ipv6; }; }
                 )
