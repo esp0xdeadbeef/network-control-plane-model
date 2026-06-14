@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GAMP-ID: FS-380-HDS-010-SDS-010-SMS-100
+# GAMP-ID: FS-380-HDS-020-SDS-010-SMS-100
 # GAMP-SCOPE: software-module-test
 # Focused construction test: CPM NAT fabric prefix inclusion.
 #
@@ -21,7 +21,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 
 all_checks_passed=true
 
-echo "--- FS-380-HDS-010-SDS-010-SMS-100: CPM NAT fabric prefix inclusion ---"
+echo "--- FS-380-HDS-020-SDS-010-SMS-100: CPM NAT fabric prefix inclusion ---"
 echo ""
 
 # ============================================================
@@ -429,7 +429,7 @@ nix_eval_bool \
 # ============================================================
 echo ""
 if [[ "${all_checks_passed}" == "true" ]]; then
-  echo "PASS: All FS-380-HDS-010-SDS-010-SMS-100 CPM NAT fabric prefix inclusion checks passed."
+  echo "PASS: All FS-380-HDS-020-SDS-010-SMS-100 CPM NAT fabric prefix inclusion checks passed."
   exit 0
 else
   echo "FAIL: One or more checks failed."

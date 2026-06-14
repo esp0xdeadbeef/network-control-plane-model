@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GAMP-ID: FS-380-HDS-010-SDS-010-SMS-090
+# GAMP-ID: FS-380-HDS-020-SDS-010-SMS-090
 # GAMP-SCOPE: software-module-test
 # Focused construction test: CPM explicit interface role classification.
 #
@@ -24,7 +24,7 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 all_checks_passed=true
 
-echo "--- FS-380-HDS-010-SDS-010-SMS-090: CPM explicit interface role classification ---"
+echo "--- FS-380-HDS-020-SDS-010-SMS-090: CPM explicit interface role classification ---"
 echo ""
 
 # ============================================================
@@ -343,7 +343,7 @@ nix_eval_bool \
 # ============================================================
 echo ""
 if [[ "${all_checks_passed}" == "true" ]]; then
-  echo "PASS: All FS-380-HDS-010-SDS-010-SMS-090 explicit role classification checks passed."
+  echo "PASS: All FS-380-HDS-020-SDS-010-SMS-090 explicit role classification checks passed."
   exit 0
 else
   echo "FAIL: One or more checks failed."

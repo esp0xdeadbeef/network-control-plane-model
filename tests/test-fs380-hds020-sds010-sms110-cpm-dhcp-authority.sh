@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GAMP-ID: FS-380-HDS-010-SDS-010-SMS-110
+# GAMP-ID: FS-380-HDS-020-SDS-010-SMS-110
 # GAMP-SCOPE: software-module-test
 # Focused construction test: CPM DHCP server/client authority declaration.
 #
@@ -19,7 +19,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 
 all_checks_passed=true
 
-echo "--- FS-380-HDS-010-SDS-010-SMS-110: CPM DHCP authority declaration ---"
+echo "--- FS-380-HDS-020-SDS-010-SMS-110: CPM DHCP authority declaration ---"
 echo ""
 
 nix_eval_test() {
@@ -113,7 +113,7 @@ done
 # ============================================================
 echo ""
 if [[ "${all_checks_passed}" == "true" ]]; then
-  echo "PASS: All FS-380-HDS-010-SDS-010-SMS-110 DHCP authority checks passed."
+  echo "PASS: All FS-380-HDS-020-SDS-010-SMS-110 DHCP authority checks passed."
   exit 0
 else
   echo "FAIL: One or more checks failed."
