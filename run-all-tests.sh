@@ -13,6 +13,7 @@
 #
 # Exit: 0 if all tests pass, 1 if any test fails.
 set -euo pipefail
+exec > >(tee "/tmp/network-control-plane-model-tests.out")
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -87,6 +88,7 @@ done
 # ============================================================
 echo ""
 echo "Results: ${passes} PASS, ${failures} FAIL, $((passes + failures)) total"
+printf 'PASS: %s, FAIL: %s, TOTAL: %s\n' "${passes}" "${failures}" "$((passes + failures))" >&2
 
 if [[ "${failures}" -gt 0 ]]; then
   exit 1
