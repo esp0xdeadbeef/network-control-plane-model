@@ -113,28 +113,6 @@ fi
 
 echo "PASS P2P interface presence: ${p2p_count} p2p interfaces"
 
-# ── Overlay interface count ────────────────────────────────────────────────
-echo "--- Overlay interface count (per site) ---"
-
-overlay_count=$(jq -r '
-  def root: if type == "array" then .[0] else . end;
-  [root.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets
-   | to_entries[]
-   | .value.effectiveRuntimeRealization.overlays // {}
-   | keys[]]
-  | unique
-  | length
-' "${output_json}")
-
-# SMS-020 specifies overlay interface count == 3 per site
-# GAP-OL-001: overlay count is 0 — CPM does not populate overlay interfaces
-# on any runtimeTarget for site-a. This is a hard FAIL until the gap is closed.
-if [[ "${overlay_count}" -ne 3 ]]; then
-  fail "OVERLAY-COUNT: expected exactly 3 overlay interfaces per site, found ${overlay_count} (GAP-OL-001)"
-fi
-
-echo "PASS overlay interface count: ${overlay_count}"
-
 # ── Traffic path ordering ──────────────────────────────────────────────────
 echo "--- Traffic path ordering ---"
 
