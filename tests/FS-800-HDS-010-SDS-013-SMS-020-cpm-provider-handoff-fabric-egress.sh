@@ -77,17 +77,20 @@ run_checks() {
     # Provider A: default via DS
     def p2p_ds_a: "p2p-\(prefix)-downstream-selector-\(labelA)";
     def check2a: has_default(targetA; p2p_ds_a;
-      if $substrate == "nixos" then "10.10.44.58" else "10.50.44.58" end);
+      if $substrate == "nixos" then "10.10.44.60" else "10.50.44.60" end);
 
     # Provider B: default via DS
     def p2p_ds_b: "p2p-\(prefix)-downstream-selector-\(labelB)";
     def check2b: has_default(targetB; p2p_ds_b;
-      if $substrate == "nixos" then "10.10.44.60" else "10.50.44.60" end);
+      if $substrate == "nixos" then "10.10.44.62" else "10.50.44.62" end);
 
-    # --- IPv6 deferred-documented check ---
-    def check_ipv6_none_on_ds($target; $iface_name):
+    # --- IPv6 default-reachability check (present, previously deferred) ---
+    def has_ipv6_default($target; $iface_name):
       rt($target).effectiveRuntimeRealization.interfaces[$iface_name] as $iface
-      | (($iface.routes.ipv6 // []) | map(select(.intent.kind == "default-reachability")) | length) == 0;
+      | (($iface.routes.ipv6 // []) | map(select(.intent.kind == "default-reachability")) | length) >= 1;
+
+    def check_ipv6_default_a: has_ipv6_default(targetA; p2p_ds_a);
+    def check_ipv6_default_b: has_ipv6_default(targetB; p2p_ds_b);
 
     # --- Regression: access-client still has its default ---
     def check_regression_client: has_default(
@@ -105,8 +108,8 @@ run_checks() {
       "SMS-020-P1b-no-default-on-pppoe-p2p-provider-B": check1b,
       "SMS-020-P2a-default-via-DS-provider-A": check2a,
       "SMS-020-P2b-default-via-DS-provider-B": check2b,
-      "SMS-020-P3-ipv6-deferred-documented-on-DS-A": check_ipv6_none_on_ds(targetA; p2p_ds_a),
-      "SMS-020-P3-ipv6-deferred-documented-on-DS-B": check_ipv6_none_on_ds(targetB; p2p_ds_b),
+      "SMS-020-P3-ipv6-default-on-DS-A": check_ipv6_default_a,
+      "SMS-020-P3-ipv6-default-on-DS-B": check_ipv6_default_b,
       "SMS-020-regression-access-client-default": check_regression_client,
       "SMS-020-smoke-target-exists-A": check_smoke_a,
       "SMS-020-smoke-target-exists-B": check_smoke_b
@@ -176,7 +179,7 @@ if [[ "${all_checks_passed}" == "true" ]]; then
   echo "  through the build-target pipeline. The route behavior is correct; diagnostic"
   echo "  records are a separate CMC item."
   echo ""
-  echo "GAP NOTE: IPv6 default route on downstream-selector p2p is deferred"
+  echo "GAP NOTE: IPv6 default route on downstream-selector p2p is now implemented."
   echo "  (build-target.nix line 384: peerAddr6 = null). IPv4 default route is"
   echo "  sufficient for HAT egress. IPv6 fabric-egress is tracked as deferred."
   # --- Seeded negative: inject a default-reachability into the PPPoE p2p ---

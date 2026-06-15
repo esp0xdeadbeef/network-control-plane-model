@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-network.url = "github:NixOS/nixpkgs/ac56c456ebe4901c561d3ebf1c98fbd970aea753";
 
-    network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/9579ffc72731a2a8480eda94d4259ac371e3a273";
+    network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/4ecdd4e603b6fb4af5b51616f04c8ebebbed41fb";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
 
     network-labs.url = "github:esp0xdeadbeef/network-labs/main";
@@ -423,7 +423,7 @@
                 set -euo pipefail
                 export HOME="$TMPDIR"
                 echo "check: FS-800-HDS-010-SDS-013-SMS-020 construction test"
-                test_script="${self}/tests/test-FS-800-HDS-010-SDS-013-SMS-020-cpm-provider-handoff-fabric-egress.sh"
+                test_script="${self}/tests/FS-800-HDS-010-SDS-013-SMS-020-cpm-provider-handoff-fabric-egress.sh"
                 echo "  validating test script syntax..."
                 bash -n "$test_script"
                 echo "  test script: $(wc -l < "$test_script") lines"
@@ -455,7 +455,7 @@
                   site = "site-a"; mode = "static"; family = "dual";
                   bridge = "br-client"; owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-client";
-                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
                   static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
                 };
                 "site-a-guest01" = {
@@ -463,7 +463,7 @@
                   site = "site-a"; mode = "dhcp"; family = "ipv4";
                   bridge = "br-guest"; owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-guest";
-                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
                   dhcp = { servedPrefix4 = "10.20.30.1/24"; gw4 = "10.20.30.1"; conflict = "reject-overlap"; };
                 };
               };
@@ -475,7 +475,7 @@
                   site = "site-a"; mode = "static"; family = "ipv4";
                   bridge = "br-shared"; owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-client";
-                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
                   static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
                 };
                 "site-a-guest01" = {
@@ -483,7 +483,7 @@
                   site = "site-a"; mode = "dhcp"; family = "ipv4";
                   bridge = "br-shared"; owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-guest";
-                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
                   dhcp = { servedPrefix4 = "10.20.20.1/24"; gw4 = "10.20.20.1"; conflict = "reject-overlap"; };
                 };
               };
@@ -495,7 +495,7 @@
                   site = "site-a"; mode = "static"; family = "dual";
                   owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-client";
-                  gampIds = [ "FS-720-HDS-030-SDS-010-SMS-010" "FS-983" ];
+                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
                   static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
                 };
               };
