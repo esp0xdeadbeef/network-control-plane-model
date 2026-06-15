@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-network.url = "github:NixOS/nixpkgs/ac56c456ebe4901c561d3ebf1c98fbd970aea753";
 
-    network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/4ecdd4e603b6fb4af5b51616f04c8ebebbed41fb";
+    network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/0ee8f2b4f84657232865ade4d1dc21d12a18a8de";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
 
     network-labs.url = "github:esp0xdeadbeef/network-labs/main";
