@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-all-tests.sh — Run all CPM construction tests with auto-discovery.
 #
-# Discovers all test-*.sh files under tests/, runs each in a background
+# Discovers all test-*.sh and FS-*.sh files under tests/, runs each in a background
 # subprocess, captures output, and reports PASS/FAIL per test.
 #
 # Sets NETWORK_REPO_DIRECT_TEST_OK=1 so that CPM direct tests pass the
@@ -21,7 +21,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Auto-discover tests
 # ============================================================
 tests=()
-for f in "${repo_root}/tests/test-"*.sh; do
+for f in "${repo_root}/tests/test-"*.sh "${repo_root}/tests/FS-"*.sh; do
   [[ -f "${f}" ]] || continue
   tests+=("${f}")
 done
