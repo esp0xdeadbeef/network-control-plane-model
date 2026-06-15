@@ -5,10 +5,17 @@
 # GAMP-ID: FS-270-HDS-010-SDS-010-SMS-040
 # GAMP-SCOPE: software-module-test
 # Tests CPM relationRules() returnBehavior emission:
-#   SMS-010: allow tuple → returnBehavior="symmetric" emits relation-reverse rules
-#   SMS-020: adjacent denial → no returnBehavior → no reverse rules
-#   SMS-030: wrong returnBehavior value → no reverse rules (seeded negative)
-#   SMS-040: selector handoff preserves relation identity in reverse rule
+#   SMS-010: production-shaped relation WITHOUT returnBehavior → forward only, no reverse
+#   SMS-010: relation WITH returnBehavior="symmetric" → forward + reverse rules
+#   SMS-020: deny relation WITHOUT returnBehavior → forward only, no reverse
+#   SMS-030: wrong returnBehavior value → forward only, no reverse (seeded negative)
+#   SMS-040: reverse rule has correctly swapped fromInterface/toInterface vs forward
+#
+# Hardened 2026-06-15: mock endpoints are endpoint-aware so interface-swap
+# verification actually proves correct from/to reversal. Production-shaped
+# DEFAULT fixtures lack returnBehavior (matching NFM communicationContract.relations
+# before the D18-NEW fix). If the policy.nix guard is removed, the production
+# case catches it because the `noReturn*` fixtures would produce reverse rules.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,17 +29,48 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
     repoRoot = builtins.getEnv "REPO_ROOT";
     common = import (repoRoot + "/src/cpm/firewall-intent/rules/common.nix") { };
 
-    # --- Mock endpoint resolution ---
-    mockFromIface = {
-      runtimeIfName = "tenant0";
-      backingRef = { lane = { kind = "access"; access = "client"; }; };
-    };
-    mockToIface = {
-      runtimeIfName = "policy0";
-      backingRef = { lane = { kind = "policy"; }; };
-    };
-    mockEndpointIfaces = relation: endpoint: peerEndpoint: [ mockFromIface ];
-    mockEndpointIfacesForPeerAccess = relation: endpoint: peerEndpoint: access: [ mockToIface ];
+    # --- Endpoint-aware mock interface resolution ---
+    # Returns different runtimeIfName per endpoint name, so interface-swap
+    # assertions actually prove correct from/to reversal.
+    mockEndpointIfaces = relation: endpoint: peerEndpoint:
+      let epName = (builtins.tryEval (endpoint.name or "")).value or "";
+      in
+      if epName == "client" then
+        [ { runtimeIfName = "client0";
+            backingRef = { lane = { kind = "access"; access = "client"; }; };
+          } ]
+      else if epName == "resolver" then
+        [ { runtimeIfName = "resolver0";
+            backingRef = { lane = { kind = "access"; access = "client"; }; };
+          } ]
+      else if epName == "web" then
+        [ { runtimeIfName = "web0";
+            backingRef = { lane = { kind = "access"; access = "client"; }; };
+          } ]
+      else
+        [ { runtimeIfName = "unknown0";
+            backingRef = { lane = { kind = "access"; access = "client"; }; };
+          } ];
+
+    mockEndpointIfacesForPeerAccess = relation: endpoint: peerEndpoint: access:
+      let epName = (builtins.tryEval (endpoint.name or "")).value or "";
+      in
+      if epName == "client" then
+        [ { runtimeIfName = "client0-policy";
+            backingRef = { lane = { kind = "policy"; }; };
+          } ]
+      else if epName == "resolver" then
+        [ { runtimeIfName = "resolver0-policy";
+            backingRef = { lane = { kind = "policy"; }; };
+          } ]
+      else if epName == "web" then
+        [ { runtimeIfName = "web0-policy";
+            backingRef = { lane = { kind = "policy"; }; };
+          } ]
+      else
+        [ { runtimeIfName = "unknown0-policy";
+            backingRef = { lane = { kind = "policy"; }; };
+          } ];
 
     attrsOrEmpty = value: if builtins.isAttrs value then value else { };
     listOrEmpty = value: if builtins.isList value then value else [ ];
@@ -139,95 +177,114 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
       in
       forwardRules ++ reverseRules;
 
-    # --- Test data ---
-    symmetricRelation = {
+    # ── Test data (production-shaped: no returnBehavior by default) ──────────
+
+    # Production shape: NFM communicationContract.relations items have NO returnBehavior.
+    # This is what NFM actually emitted before the D18-NEW fix.
+    productionAllow = {
       action = "allow";
       id = "allow-client-dns";
       from = { kind = "tenant"; name = "client"; };
       to = { kind = "tenant"; name = "resolver"; };
-      returnBehavior = "symmetric";
     };
 
-    noReturnRelation = {
-      action = "allow";
-      id = "allow-client-web";
+    # After NFM fix: returnBehavior="symmetric" is present on allow relations
+    symmetricAllow = productionAllow // { returnBehavior = "symmetric"; };
+
+    # Seeded negative: wrong returnBehavior value → should NOT emit reverse rules
+    wrongReturnAllow = productionAllow // { returnBehavior = "unsupported-value"; };
+
+    # Production deny: deny action WITHOUT returnBehavior
+    productionDeny = {
+      action = "deny";
+      id = "deny-client-bad";
       from = { kind = "tenant"; name = "client"; };
       to = { kind = "tenant"; name = "web"; };
     };
 
-    wrongReturnRelation = {
-      action = "allow";
-      id = "allow-client-other";
-      from = { kind = "tenant"; name = "client"; };
-      to = { kind = "tenant"; name = "other"; };
-      returnBehavior = "unknown-value";
-    };
+    # Deny with symmetric: reverse rules still emitted for deny when symmetric
+    symmetricDeny = productionDeny // { returnBehavior = "symmetric"; };
 
-    denyWithReturnRelation = {
-      action = "deny";
-      id = "deny-client-bad";
-      from = { kind = "tenant"; name = "client"; };
-      to = { kind = "tenant"; name = "bad"; };
-      returnBehavior = "symmetric";
-    };
+    # ── Execute ──────────────────────────────────────────────────────────────
 
-    # --- Execute ---
-    symmetricRules = relationRules symmetricRelation;
-    noReturnRules = relationRules noReturnRelation;
-    wrongReturnRules = relationRules wrongReturnRelation;
-    denyReturnRules = relationRules denyWithReturnRelation;
+    prodAllowRules   = relationRules productionAllow;
+    symAllowRules    = relationRules symmetricAllow;
+    wrongRetRules    = relationRules wrongReturnAllow;
+    prodDenyRules    = relationRules productionDeny;
+    symDenyRules     = relationRules symmetricDeny;
 
     # Helpers
     forwardCount = rules: builtins.length (builtins.filter (r: r.direction == "relation-forward") rules);
     reverseCount = rules: builtins.length (builtins.filter (r: r.direction == "relation-reverse") rules);
     getRule = direction: rules: builtins.head (builtins.filter (r: r.direction == direction) rules);
 
-    symForward = getRule "relation-forward" symmetricRules;
-    symReverse = getRule "relation-reverse" symmetricRules;
+    symFwd = getRule "relation-forward" symAllowRules;
+    symRev = getRule "relation-reverse" symAllowRules;
+    denFwd = getRule "relation-forward" symDenyRules;
+    denRev = getRule "relation-reverse" symDenyRules;
+
   in {
-    # SMS-010: symmetric returns forward + reverse
-    symmetricHasForward = forwardCount symmetricRules == 1;
-    symmetricHasReverse = reverseCount symmetricRules == 1;
+    # ── SMS-010: allow tuple → forward + reverse ────────────────────────────
 
-    # SMS-020: no returnBehavior → forward only, no reverse
-    noReturnHasForward = forwardCount noReturnRules == 1;
-    noReturnHasZeroReverse = reverseCount noReturnRules == 0;
+    # Production shape (no returnBehavior): forward only, NO reverse
+    prodAllowHasForward = forwardCount prodAllowRules == 1;
+    prodAllowHasZeroReverse = reverseCount prodAllowRules == 0;
 
-    # SMS-030: wrong returnBehavior → forward only, no reverse (seeded negative)
-    wrongReturnHasForward = forwardCount wrongReturnRules == 1;
-    wrongReturnHasZeroReverse = reverseCount wrongReturnRules == 0;
+    # With returnBehavior="symmetric": forward + reverse both present
+    symAllowHasForward = forwardCount symAllowRules == 1;
+    symAllowHasReverse = reverseCount symAllowRules == 1;
+    symAllowTotalCount = builtins.length symAllowRules == 2;
 
-    # Deny with symmetric still emits rules (action is deny, not skipped)
-    denySymmetricHasForward = forwardCount denyReturnRules == 1;
-    denySymmetricHasReverse = reverseCount denyReturnRules == 1;
+    # ── SMS-020: adjacent denial → no returnBehavior → forward only ──────────
 
-    # SMS-040: reverse rule structure — same relationId, swapped from/to
-    reverseRuleSameId = (symReverse.relationId or null) == "allow-client-dns";
-    reverseRuleFromSwapped = (symReverse.from or {}).name or "" == "resolver";
-    reverseRuleToSwapped = (symReverse.to or {}).name or "" == "client";
-    reverseRuleDirection = (symReverse.direction or "") == "relation-reverse";
+    prodDenyHasForward = forwardCount prodDenyRules == 1;
+    prodDenyHasZeroReverse = reverseCount prodDenyRules == 0;
 
-    # Reverse rule has relationHandoff (policyPointTraversal)
-    reverseRuleHasHandoff = builtins.isAttrs (symReverse.policyPointTraversal or null);
+    # Deny WITH symmetric still emits reverse rules (action is deny, not skipped)
+    symDenyHasForward = forwardCount symDenyRules == 1;
+    symDenyHasReverse = reverseCount symDenyRules == 1;
+
+    # ── SMS-030: wrong returnBehavior → forward only, no reverse ─────────────
+
+    wrongReturnHasForward = forwardCount wrongRetRules == 1;
+    wrongReturnHasZeroReverse = reverseCount wrongRetRules == 0;
+
+    # ── SMS-040: reverse rule structure ─────────────────────────────────────
+
+    # Same relationId propagated
+    reverseRuleSameId = (symRev.relationId or null) == "allow-client-dns";
+
+    # from/to endpoints swapped in reverse rule
+    reverseRuleFromSwapped = (symRev.from or {}).name or "" == "resolver";
+    reverseRuleToSwapped = (symRev.to or {}).name or "" == "client";
+    reverseRuleDirection = (symRev.direction or "") == "relation-reverse";
 
     # Forward rule NOT swapped
-    forwardRuleFrom = (symForward.from or {}).name or "" == "client";
-    forwardRuleTo = (symForward.to or {}).name or "" == "resolver";
-    forwardRuleDirection = (symForward.direction or "") == "relation-forward";
+    forwardRuleFrom = (symFwd.from or {}).name or "" == "client";
+    forwardRuleTo = (symFwd.to or {}).name or "" == "resolver";
+    forwardRuleDirection = (symFwd.direction or "") == "relation-forward";
 
-    # Interfaces swapped in reverse (mock from=tenant0, to=policy0 for forward)
-    forwardRuleFromIface = (symForward.fromInterface or "") == "tenant0";
-    forwardRuleToIface = (symForward.toInterface or "") == "policy0";
-    reverseRuleFromIface = (symReverse.fromInterface or "") == "tenant0";
-    reverseRuleToIface = (symReverse.toInterface or "") == "policy0";
+    # ── Interface swap verification (endpoint-aware mocks make this real) ────
+    # Forward: from=client → fromInterface=client0, to=resolver → toInterface=resolver0-policy
+    forwardRuleFromIface = (symFwd.fromInterface or "") == "client0";
+    forwardRuleToIface = (symFwd.toInterface or "") == "resolver0-policy";
 
-    # Same action propagated to reverse
-    reverseRuleAction = (symReverse.action or "") == "accept";
-    denyReverseRuleAction = (getRule "relation-reverse" denyReturnRules).action or "" == "deny";
+    # Reverse: from=resolver (swapped) → fromInterface=resolver0, to=client → toInterface=client0-policy
+    reverseRuleFromIface = (symRev.fromInterface or "") == "resolver0";
+    reverseRuleToIface = (symRev.toInterface or "") == "client0-policy";
 
-    # Total rule counts
-    symmetricTotalCount = builtins.length symmetricRules == 2;
-    noReturnTotalCount = builtins.length noReturnRules == 1;
+    # Prove interfaces actually differ between forward and reverse (the swap is real)
+    reverseFromDiffersFromForward = (symRev.fromInterface or "") != (symFwd.fromInterface or "");
+    reverseToDiffersFromForward = (symRev.toInterface or "") != (symFwd.toInterface or "");
+
+    # ── Action propagation ──────────────────────────────────────────────────
+
+    reverseRuleAction = (symRev.action or "") == "accept";
+    denyReverseRuleAction = (denRev.action or "") == "deny";
+
+    # ── Reverse rule has relationHandoff (policyPointTraversal) ──────────────
+
+    reverseRuleHasHandoff = builtins.isAttrs (symRev.policyPointTraversal or null);
   }
 ' >"${result_json}"
 
