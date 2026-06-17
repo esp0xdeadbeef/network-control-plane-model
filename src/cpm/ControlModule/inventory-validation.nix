@@ -24,6 +24,8 @@ let
       siteContract =
         if hasAttr siteKey sitesByKey then
           sitesByKey.${siteKey}
+        else if hasAttr logical.enterprise forwardingModel.enterprise then
+          builtins.trace "inventory lint: cross-scope site '${logical.enterprise}.${logical.site}' at ${targetDef.nodePath}.logicalNode — not in current evaluation scope" { nodeContracts.${logical.name} = {}; }
         else
           failInventory "${targetDef.nodePath}.logicalNode" "references unknown forwarding-model site '${logical.enterprise}.${logical.site}'";
 
