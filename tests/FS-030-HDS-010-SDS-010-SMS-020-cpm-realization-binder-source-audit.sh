@@ -33,7 +33,7 @@ flake_input_path() {
     | jq -er ".inputs[\"${input_name}\"].path"
 }
 
-example_root="$(flake_input_path network-labs)/examples/single-wan-uplink-static-egress"
+example_root="$(flake_input_path network-labs)/examples/single-wan"
 intent_path="${example_root}/intent.nix"
 inventory_source="${example_root}/inventory-nixos.nix"
 
