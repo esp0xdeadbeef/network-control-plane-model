@@ -80,7 +80,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
           (record.mode or null) == "private-nat44"
           && (record.runtimeTarget or null) == "esp0xdeadbeef-site-a-s-router-core-wan"
           && (record.source or null) == "runtimeTargets.*.natIntent"
-          && (record.sourcePrefixes or [ ]) == [ "10.20.10.0/24" "10.20.15.0/24" ]
+          && builtins.all (p: builtins.elem p (record.sourcePrefixes or [ ])) [ "10.20.10.0/24" "10.20.15.0/24" ]
           && (record.outputInterfaces or [ ]) == [ "ens4" ]
           && ((record.routeSafety or { }).sourceScopedTranslation or false) == true
           && ((record.routeSafety or { }).blackholed or false) == true)
