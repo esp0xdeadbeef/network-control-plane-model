@@ -129,6 +129,7 @@ let
     runtimeContainers = [ ];
     runtimeOriginEgressContract = null;
     runtimeServices = null;
+    hasRuntimeServices = false;
     runtimeStatePolicy = { };
   };
 
