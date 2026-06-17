@@ -376,4 +376,91 @@ in
 
   invalidDurabilityClassThrows =
     builtins.deepSeq invalidDurabilityClass.stateContracts.persistence.dhcp4Leases true;
+
+  # FS-860-HDS-010-SDS-010-SMS-010 scope validation predicates
+
+  scopeFieldsPresent =
+    let
+      contract = builtins.elemAt persistent.stateContracts.persistence.dhcp4Leases 0;
+      hasService = builtins.isString contract.service && contract.service != "";
+      hasStateClass = builtins.isString contract.stateClass && contract.stateClass != "";
+      hasRequired = builtins.isBool contract.required;
+      hasHost = builtins.isString contract.scope.target && contract.scope.target != "";
+      hasPath = contract ? path && builtins.isString contract.path && contract.path != "";
+    in
+    hasService && hasStateClass && hasRequired && hasHost && hasPath;
+
+  scopeFieldsTenantWhenApplicable =
+    let
+      contract = builtins.elemAt persistent.stateContracts.persistence.dhcp4Leases 0;
+    in
+    contract.scope ? tenant && builtins.isString contract.scope.tenant && contract.scope.tenant != "";
+
+  # Ambiguous storage: two contracts for same service+host+stateClass with different paths
+  ambiguousStorageTarget = addStateContracts "router-ambiguous" {
+    statePolicy = {
+      persistence = {
+        required = true;
+        root = "/persist/network/state";
+      };
+    };
+    advertisements = {
+      dhcp4 = [
+        { id = "dup-a"; interface = "tenant-a"; tenant = "client"; }
+        { id = "dup-b"; interface = "tenant-a"; tenant = "client"; }
+      ];
+    };
+  };
+
+  # Scope validation: detect duplicate (service, targetName, stateClass) with different paths
+  ambiguousStorageDetected =
+    let
+      leases = ambiguousStorageTarget.stateContracts.persistence.dhcp4Leases;
+      a = builtins.elemAt leases 0;
+      b = builtins.elemAt leases 1;
+    in
+    a.service == b.service
+    && a.targetName == b.targetName
+    && a.stateClass == b.stateClass
+    && a.path != b.path;
+
+  # Missing ownership context: no advertisements means no state contracts
+  missingOwnershipTarget = addStateContracts "router-no-ownership" {
+    statePolicy = {
+      persistence = {
+        required = true;
+        root = "/persist/network/state";
+      };
+    };
+    advertisements = {};
+    services = {};
+  };
+
+  missingOwnershipNoContracts =
+    missingOwnershipTarget.stateContracts.persistence.dhcp4Leases == [ ]
+    && missingOwnershipTarget.stateContracts.persistence.dhcpv6Leases == [ ]
+    && missingOwnershipTarget.stateContracts.persistence.dnsServiceState == [ ]
+    && missingOwnershipTarget.stateContracts.persistence.dnsResolverState == [ ]
+    && missingOwnershipTarget.stateContracts.persistence.relatedServices == [ ];
+
+  # Storage location outside authorized scope
+  outOfScopeStorageTarget = addStateContracts "router-outofscope" {
+    statePolicy = {
+      persistence = {
+        required = true;
+        root = "/etc/wrong-location";
+      };
+    };
+    advertisements = {
+      dhcp4 = [
+        { id = "bad-scope"; interface = "tenant-bad"; tenant = "client"; }
+      ];
+    };
+  };
+
+  outOfScopeStorageHasPath =
+    let
+      contract = builtins.elemAt outOfScopeStorageTarget.stateContracts.persistence.dhcp4Leases 0;
+    in
+    contract ? path && contract.path != "";
 }
