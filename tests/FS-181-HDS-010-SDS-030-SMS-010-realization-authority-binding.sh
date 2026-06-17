@@ -138,8 +138,8 @@ run_pipeline_check() {
   result=$(REPO_ROOT="$repo_root" nix eval --impure --raw --expr "
     let flake = builtins.getFlake (toString ./.); system = builtins.currentSystem;
         labs = flake.inputs.network-labs.outPath;
-        baseIntent = import (labs + \"/examples/single-wan-with-nebula/intent.nix\");
-        baseInventory = import (labs + \"/examples/single-wan-with-nebula/inventory-nixos.nix\");
+        baseIntent = import (labs + \"/examples/single-wan/intent.nix\");
+        baseInventory = import (labs + \"/examples/single-wan/inventory-nixos.nix\");
         runner = inventory: builtins.tryEval (
           let r = flake.lib.\${system}.compileAndBuild {
             input = baseIntent; inventory = inventory;
@@ -188,8 +188,8 @@ REPO_ROOT="$repo_root" nix eval --impure --expr '
     flake = builtins.getFlake (toString ./.);
     system = builtins.currentSystem;
     labs = flake.inputs.network-labs.outPath;
-    baseIntent = import (labs + "/examples/single-wan-with-nebula/intent.nix");
-    baseInventory = import (labs + "/examples/single-wan-with-nebula/inventory-nixos.nix");
+    baseIntent = import (labs + "/examples/single-wan/intent.nix");
+    baseInventory = import (labs + "/examples/single-wan/inventory-nixos.nix");
     result = flake.lib.${system}.compileAndBuild {
       input = baseIntent;
       inventory = baseInventory;
