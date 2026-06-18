@@ -21,6 +21,7 @@
 , normalizeRuntimeTargetRoutes
 , normalizeRuntimeTargetRoutesAfterPolicyComplements
 , normalizedRuntimeTargets
+, emulationSubnets ? [ ]
 ,
 }:
 
@@ -176,6 +177,85 @@ let
           }
       )
       rtAttrs;
+
+  # ── Emulation subnet route injection ──
+  # Per SMS-012: "CPM shall generate selector routes, nftables allow rules, and
+  # policy-routing lane entries for emulation subnets using the same fabric-chain
+  # path as tenant/transit subnets."
+  #
+  # Emulation subnets come from HAT inventory emulation declarations and are
+  # explicitly marked as non-production. URS L231 authorizes "explicit lab
+  # realization" for ISP-emulation address ranges.
+  addEmulationSubnetFabricRoutes =
+    rtAttrs:
+    if emulationSubnets == [ ] then
+      rtAttrs
+    else
+    let
+      fabricRoles = [ "downstream-selector" "policy" "upstream-selector" ];
+      # Compute peer IPv4 address from a /31 interface address.
+      peer4For = addr4:
+        let
+          octets = lib.splitString "." (builtins.head (lib.splitString "/" addr4));
+          addr = builtins.map (builtins.fromJSON) octets;
+        in
+        if builtins.length addr != 4 then null
+        else
+          let
+            lastOctet = builtins.elemAt addr 3;
+            peerLast = if lib.mod lastOctet 2 == 0 then lastOctet + 1 else lastOctet - 1;
+          in
+          "${builtins.elemAt addr 0}.${builtins.elemAt addr 1}.${builtins.elemAt addr 2}.${builtins.toString peerLast}";
+      isFabricP2p = iface:
+        (iface.sourceKind or "") == "p2p"
+        && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
+      emulationRoutesFor = peer4:
+        builtins.map
+          (subnet: {
+            dst = subnet;
+            proto = "emulation";
+            via4 = peer4;
+            intent = {
+              kind = "emulation-reachability";
+              source = "hat-emulation-subnet";
+            };
+            emulationSubnet = true;
+          })
+          emulationSubnets;
+      augmentTarget = targetName: target:
+        let
+          role = target.role or "";
+          interfaces = (target.effectiveRuntimeRealization or {}).interfaces or {};
+        in
+        if !(builtins.elem role fabricRoles) then
+          target
+        else
+          let
+            updatedInterfaces =
+              builtins.mapAttrs
+                (ifName: iface:
+                  if !(isFabricP2p iface) then
+                    iface
+                  else
+                    let
+                      peer4 = peer4For (iface.addr4 or "");
+                      routes = iface.routes or {};
+                      newRoutes = if peer4 == null then [] else emulationRoutesFor peer4;
+                      ipv4 = (routes.ipv4 or []) ++ newRoutes;
+                      ipv6 = routes.ipv6 or [];
+                    in
+                    iface // { routes = routes // { inherit ipv4 ipv6; }; }
+                )
+                interfaces;
+          in
+          target // {
+            effectiveRuntimeRealization =
+              (target.effectiveRuntimeRealization or {}) // {
+                interfaces = updatedInterfaces;
+              };
+          };
+    in
+    builtins.mapAttrs augmentTarget rtAttrs;
 
   # ── Provider-network route injection ──
   # Scan ALL runtime-target services for provider handoff addressing
@@ -437,9 +517,10 @@ let
     in
     builtins.mapAttrs augmentTarget rtAttrs;
 
-  # Apply provider subnet routes BEFORE core tenant return routes so both
-  # augmentations compose correctly.
-  runtimeTargetsWithProvider = addProviderSubnetFabricRoutes runtimeTargetsWithIntent;
+  # Apply emulation subnet routes AND provider subnet routes BEFORE core tenant
+  # return routes so all augmentations compose correctly.
+  runtimeTargetsWithEmulation = addEmulationSubnetFabricRoutes runtimeTargetsWithIntent;
+  runtimeTargetsWithProvider = addProviderSubnetFabricRoutes runtimeTargetsWithEmulation;
 
   runtimeTargets =
     builtins.mapAttrs

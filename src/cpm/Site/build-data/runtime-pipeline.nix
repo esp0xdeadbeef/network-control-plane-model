@@ -43,6 +43,7 @@
 , normalizeRuntimeTargetRoutesWith
 , enterpriseName
 , siteName
+, emulationSubnets ? [ ]
 ,
 }:
 
@@ -140,6 +141,7 @@ let
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       normalizedRuntimeTargets
+      emulationSubnets
       ;
   };
 
