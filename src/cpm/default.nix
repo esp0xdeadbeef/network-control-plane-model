@@ -4,6 +4,7 @@
 , inventory ? { }
 , validateRuntimeModel ? false
 , secretPlatformSubstrate
+, emulationSubnets ? [ ]
 }:
 
 let
@@ -49,7 +50,7 @@ let
 
   buildSiteData =
     import ./build-site-data.nix {
-      inherit lib helpers realizationIndex endpointInventoryIndex inventory enterpriseRoot ipam common;
+      inherit lib helpers realizationIndex endpointInventoryIndex inventory enterpriseRoot ipam common emulationSubnets;
     };
 
   enterpriseRoot =

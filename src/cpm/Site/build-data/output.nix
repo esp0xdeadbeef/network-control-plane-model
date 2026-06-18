@@ -35,6 +35,8 @@
 , upstreamSelectorNodeName
 , ulaNat66Mode
 , endpointAssignmentCheckDiagnostics ? [ ]
+, emulationSubnets ? [ ]
+, emulationSubnetGuards ? { }
 ,
 }:
 
@@ -167,11 +169,78 @@ let
             endpoints)
         adjacencies);
 
-  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets);
+  # ── Emulation subnet non-production guard validation ──
+  # Per SMS-012: each emulation subnet must have an explicit non-production
+  # guard (hatOnly or labScope). Subnets without guards are excluded from
+  # fabricSubnets and a CRITICAL diagnostic is emitted.
+  emulationSubnetGuardDiags =
+    let
+      subnetGuard = subnet:
+        let
+          guard = emulationSubnetGuards.${subnet} or { };
+          hatOnly = guard.hatOnly or false;
+          labScope = guard.labScope or "";
+        in
+        if hatOnly || labScope != "" then null
+        else {
+          diagnostic = "emulation-subnet-missing-production-guard";
+          subnet = subnet;
+          severity = "CRITICAL";
+          message = "Emulation subnet ${subnet} declared without non-production guard (hatOnly or labScope required)";
+        };
+    in
+    builtins.filter (x: x != null) (builtins.map subnetGuard emulationSubnets);
+  # Only include guarded emulation subnets in fabric route set.
+  guardedEmulationSubnets =
+    builtins.filter
+      (subnet:
+        let
+          guard = emulationSubnetGuards.${subnet} or { };
+          hatOnly = guard.hatOnly or false;
+          labScope = guard.labScope or "";
+        in
+        hatOnly || labScope != "")
+      emulationSubnets;
+
+  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets ++ guardedEmulationSubnets);
   fabricSubnetSources = {
     tenantCount = builtins.length tenantSubnets;
     transitCount = builtins.length transitSubnets;
+    emulationCount = builtins.length guardedEmulationSubnets;
   };
+
+  # ── Emulation provenance tag verification ──
+  # Per SMS-012: every route generated from an emulation subnet must carry
+  # emulationSubnet = true provenance tag. Scan all runtime target P2P interfaces
+  # for emulation-derived routes missing the tag.
+  emulationProvenanceDiags =
+    let
+      allTargets = builtins.attrNames runtimeTargets;
+      collectRoutes = acc: targetName:
+        let
+          target = runtimeTargets.${targetName} or { };
+          interfaces = (target.effectiveRuntimeRealization or { }).interfaces or { };
+          scanInterface = ifAcc: ifName:
+            let
+              iface = interfaces.${ifName} or { };
+              routes = iface.routes or { };
+              ipv4Routes = routes.ipv4 or [ ];
+              emulationRoutes = builtins.filter (r: (r.proto or "") == "emulation") ipv4Routes;
+            in
+            ifAcc ++ emulationRoutes;
+        in
+        builtins.foldl' scanInterface acc (builtins.attrNames interfaces);
+      allRoutes = builtins.foldl' collectRoutes [ ] allTargets;
+      untaggedRoutes = builtins.filter (r: !(r.emulationSubnet or false)) allRoutes;
+    in
+    builtins.map
+      (r: {
+        diagnostic = "emulation-subnet-untagged-artifact";
+        dst = r.dst or "unknown";
+        severity = "MEDIUM";
+        message = "Emulation-derived route to ${r.dst or "unknown"} missing provenance tag (emulationSubnet = true required)";
+      })
+      untaggedRoutes;
 in
 {
   siteId = siteId;
@@ -220,6 +289,14 @@ in
   endpointAssignmentCheck = {
     validated = endpointAssignmentCheckDiagnostics == [ ];
     diagnostics = endpointAssignmentCheckDiagnostics;
+  };
+  emulationSubnetGuard = {
+    validated = emulationSubnetGuardDiags == [ ];
+    diagnostics = emulationSubnetGuardDiags;
+  };
+  emulationProvenance = {
+    validated = emulationProvenanceDiags == [ ];
+    diagnostics = emulationProvenanceDiags;
   };
 }
 // (

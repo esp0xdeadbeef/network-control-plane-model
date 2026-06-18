@@ -8,6 +8,7 @@
 , common ? import ./Site/build-data/common.nix {
     inherit helpers ipam enterpriseRoot;
   }
+, emulationSubnets ? [ ]
 }:
 
 { enterpriseName, siteName, site }:
@@ -184,6 +185,7 @@ let
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       normalizeRuntimeTargetRoutesWith
+      emulationSubnets
       ;
   };
 
@@ -382,7 +384,7 @@ if validatePPPoEContracts then
     validateEndpointAssignments.diagnostics
     (emitOutput
     {
-      inherit lib accessAdvertisements accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
+      inherit lib accessAdvertisements emulationSubnets accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
       services = resolvedServices;
       endpointAssignmentCheckDiagnostics = validateEndpointAssignments.diagnostics;
     })
