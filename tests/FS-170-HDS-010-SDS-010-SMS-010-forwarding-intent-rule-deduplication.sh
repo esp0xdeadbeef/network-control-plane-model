@@ -124,8 +124,8 @@ labs_path="$(
 )"
 
 nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
-  "${labs_path}/examples/ipv6-pd-downstream-delegation/intent.nix" \
-  "${labs_path}/examples/ipv6-pd-downstream-delegation/inventory-nixos.nix" \
+  "${labs_path}/examples/single-wan/intent.nix" \
+  "${labs_path}/examples/single-wan/inventory-nixos.nix" \
   "${output_json}" >/dev/null
 
 jq '
