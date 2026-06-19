@@ -5,7 +5,7 @@
 # fabric chain route generation, non-production guard validation, and
 # provenance tag verification.
 #
-# SMS Acceptance Predicates (all 8):
+# SMS Acceptance Predicates (all 8 + NG2):
 #   P1 ✓ Emulation subnets included in fabricSubnets alongside tenant/transit
 #   P2 ✓ Without emulation subnets, fabricSubnets = tenant + transit only
 #   P3 ✓ Emulation subnets are additive (tenant/transit counts preserved)
@@ -13,6 +13,7 @@
 #   P5 ✓ Emulation subnet overlapping with tenant is deduplicated
 #   P6 ✓ Emulation subnet routes generated on fabric chain P2P interfaces
 #   P7 ✓ Non-production guard: diagnostic + rejection when guard missing (NG1)
+#   NG2 ✓ Conflict detection: diagnostic + exclusion when emulation subnet overlaps modeled topology
 #   P8 ✓ Provenance tagging verification: diagnostic for untagged artifacts (NG3)
 
 set -euo pipefail
@@ -245,6 +246,75 @@ nix_eval "P7g: emulationCount excludes unguarded subnets" \
   'o: o.fabricSubnetSources.emulationCount' \
   "1"
 
+# ── P7-NG2: Conflict detection (seeded negative NG2) ──
+echo ""
+echo "--- Conflict Detection (NG2) ---"
+
+# Fixture: emulation subnet 10.0.0.0/8 overlaps with tenant subnet 10.0.1.0/24
+# Strip domainsValue from BASE_ARGS (conflict test provides its own)
+CONFLICT_BASE=$(echo "${BASE_ARGS}" | grep -v 'domainsValue')
+CONFLICT_ARGS="${CONFLICT_BASE} emulationSubnets = [ \"10.0.0.0/8\" \"198.51.100.0/24\" ]; emulationSubnetGuards = { \"10.0.0.0/8\" = { hatOnly = true; }; \"198.51.100.0/24\" = { hatOnly = true; }; }; runtimeTargets = {}; domainsValue = { tenants = { t1 = { ipv4 = \"10.0.1.0/24\"; }; }; };"
+
+nix_eval "NG2a: conflict validated=false when overlap exists" \
+  "${CONFLICT_ARGS}" \
+  'o: o.emulationSubnetConflict.validated' \
+  "false"
+
+nix_eval "NG2b: conflict diagnostic count = 1 for one overlapping subnet" \
+  "${CONFLICT_ARGS}" \
+  'o: builtins.length o.emulationSubnetConflict.diagnostics' \
+  "1"
+
+nix_eval "NG2c: conflict diagnostic names the emulation subnet" \
+  "${CONFLICT_ARGS}" \
+  'o: (builtins.head o.emulationSubnetConflict.diagnostics).emulationSubnet' \
+  '"10.0.0.0/8"'
+
+nix_eval "NG2d: conflict diagnostic names conflicting modeled subnet" \
+  "${CONFLICT_ARGS}" \
+  'o: builtins.elem "10.0.1.0/24" (builtins.head o.emulationSubnetConflict.diagnostics).conflictingModeledSubnets' \
+  "true"
+
+nix_eval "NG2e: overlapping emulation subnet excluded from fabricSubnets" \
+  "${CONFLICT_ARGS}" \
+  'o: builtins.elem "10.0.0.0/8" o.fabricSubnets' \
+  "false"
+
+nix_eval "NG2f: non-conflicting emulation subnet still included" \
+  "${CONFLICT_ARGS}" \
+  'o: builtins.elem "198.51.100.0/24" o.fabricSubnets' \
+  "true"
+
+nix_eval "NG2g: emulationCount excludes conflicting subnet" \
+  "${CONFLICT_ARGS}" \
+  'o: o.fabricSubnetSources.emulationCount' \
+  "1"
+
+nix_eval "NG2h: tenant subnets unaffected by conflict exclusion" \
+  "${CONFLICT_ARGS}" \
+  'o: builtins.elem "10.0.1.0/24" o.fabricSubnets' \
+  "true"
+
+nix_eval "NG2i: no conflict when emulation subnet is non-overlapping" \
+  "${GUARDED_ARGS} runtimeTargets = {};" \
+  'o: o.emulationSubnetConflict.validated' \
+  "true"
+
+nix_eval "NG2j: transit subnet conflict detected (emulation overlaps transit)" \
+  "${CONFLICT_BASE} emulationSubnets = [ \"10.0.0.0/30\" \"198.51.100.0/24\" ]; emulationSubnetGuards = { \"10.0.0.0/30\" = { hatOnly = true; }; \"198.51.100.0/24\" = { hatOnly = true; }; }; runtimeTargets = {}; domainsValue = { tenants = { t1 = { ipv4 = \"10.20.0.0/24\"; }; }; };" \
+  'o: o.emulationSubnetConflict.validated' \
+  "false"
+
+nix_eval "NG2k: transit conflict diagnostic names emulation subnet" \
+  "${CONFLICT_BASE} emulationSubnets = [ \"10.0.0.0/30\" \"198.51.100.0/24\" ]; emulationSubnetGuards = { \"10.0.0.0/30\" = { hatOnly = true; }; \"198.51.100.0/24\" = { hatOnly = true; }; }; runtimeTargets = {}; domainsValue = { tenants = { t1 = { ipv4 = \"10.20.0.0/24\"; }; }; };" \
+  'o: (builtins.head o.emulationSubnetConflict.diagnostics).emulationSubnet' \
+  '"10.0.0.0/30"'
+
+nix_eval "NG2l: overlapping emulation excluded; non-overlapping still included" \
+  "${CONFLICT_BASE} emulationSubnets = [ \"10.0.0.0/30\" \"198.51.100.0/24\" ]; emulationSubnetGuards = { \"10.0.0.0/30\" = { hatOnly = true; }; \"198.51.100.0/24\" = { hatOnly = true; }; }; runtimeTargets = {}; domainsValue = { tenants = { t1 = { ipv4 = \"10.20.0.0/24\"; }; }; };" \
+  'o: builtins.elem "198.51.100.0/24" o.fabricSubnets' \
+  "true"
+
 # ── P8: Provenance tagging verification (seeded negative NG3) ──
 echo ""
 echo "--- Provenance Tagging Verification (NG3) ---"
@@ -321,13 +391,14 @@ echo "--- SMS Coverage Summary ---"
 echo "P1-P5: fabricSubnets enumeration (inclusion, additivity, counts, dedup) — PROVEN"
 echo "P6: fabric chain route generation (addEmulationSubnetFabricRoutes) — PROVEN"
 echo "P7: non-production guard (NG1) — diagnostic + exclusion — PROVEN"
+echo "P7-NG2: conflict detection (NG2) — diagnostic + exclusion for tenant/transit overlaps — PROVEN"
 echo "P8: provenance tagging (NG3) — untagged artifact detection — PROVEN"
-echo "8/8 SMS predicates proven."
+echo "9/9 SMS predicate groups proven (NG1, NG2, NG3 all covered)."
 echo "---"
 
 echo ""
 if [[ "${all_checks_passed}" == "true" ]]; then
-  echo "PASS: FS-260-HDS-010-SDS-010-SMS-012 (all 8 SMS predicates proven)"
+  echo "PASS: FS-260-HDS-010-SDS-010-SMS-012 (all 9 SMS predicate groups proven, NG1+NG2+NG3)"
   exit 0
 else
   echo "FAIL: One or more checks failed."

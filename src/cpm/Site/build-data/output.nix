@@ -202,11 +202,85 @@ let
         hatOnly || labScope != "")
       emulationSubnets;
 
-  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets ++ guardedEmulationSubnets);
+  # ── Emulation subnet conflict detection (NG2) ──
+  # Per SMS-012 MR6/Seeded Negative 2: if an emulation subnet overlaps with an
+  # existing tenant or transit subnet, emit diagnostic and exclude the conflicting
+  # emulation subnet.
+  pow2 = n: builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) n);
+
+  ipv4ToInt = octets:
+    builtins.elemAt octets 0 * 16777216
+    + builtins.elemAt octets 1 * 65536
+    + builtins.elemAt octets 2 * 256
+    + builtins.elemAt octets 3;
+
+  ipv4NetworkBaseInt = addrInt: prefixLen:
+    let block = pow2 (32 - prefixLen);
+    in (builtins.div addrInt block) * block;
+
+  parseSubnetCidr = cidr:
+    let
+      parts = lib.splitString "/" cidr;
+      addrStr = builtins.elemAt parts 0;
+      prefix = lib.toInt (builtins.elemAt parts 1);
+      octets = map lib.toInt (lib.splitString "." addrStr);
+    in {
+      addrInt = ipv4ToInt octets;
+      inherit prefix;
+    };
+
+  # Check if two CIDR subnets overlap (one contains the other's network base).
+  # Excludes identical CIDRs — dedupStrings already handles those.
+  subnetOverlap = cidrA: cidrB:
+    if cidrA == cidrB then false
+    else
+    let
+      pa = parseSubnetCidr cidrA;
+      pb = parseSubnetCidr cidrB;
+      baseA = ipv4NetworkBaseInt pa.addrInt pa.prefix;
+      baseB = ipv4NetworkBaseInt pb.addrInt pb.prefix;
+      # Network base of B, normalized to A's prefix == A's base?
+      containsA = ipv4NetworkBaseInt pb.addrInt pa.prefix == baseA;
+      containsB = ipv4NetworkBaseInt pa.addrInt pb.prefix == baseB;
+    in
+    containsA || containsB;
+
+  # Per-subnet conflict check against all modeled subnets (tenant + transit)
+  modeledSubnets = tenantSubnets ++ transitSubnets;
+  emulationSubnetConflictDiags =
+    let
+      checkSubnet = subnet:
+        let
+          conflicts = builtins.filter
+            (modeled: subnetOverlap subnet modeled)
+            modeledSubnets;
+        in
+        if conflicts == [ ] then null
+        else {
+          diagnostic = "emulation-subnet-conflicts-with-model";
+          emulationSubnet = subnet;
+          conflictingModeledSubnets = conflicts;
+          severity = "HIGH";
+          message = "Emulation subnet ${subnet} overlaps with modeled subnet(s): "
+            + lib.concatStringsSep ", " conflicts;
+        };
+    in
+    builtins.filter (x: x != null) (builtins.map checkSubnet guardedEmulationSubnets);
+
+  # Exclude emulation subnets that conflict with modeled topology
+  conflictingEmulationSubnets =
+    builtins.map (d: d.emulationSubnet) emulationSubnetConflictDiags;
+
+  conflictFilteredEmulationSubnets =
+    builtins.filter
+      (subnet: !(builtins.elem subnet conflictingEmulationSubnets))
+      guardedEmulationSubnets;
+
+  fabricSubnets = dedupStrings (tenantSubnets ++ transitSubnets ++ conflictFilteredEmulationSubnets);
   fabricSubnetSources = {
     tenantCount = builtins.length tenantSubnets;
     transitCount = builtins.length transitSubnets;
-    emulationCount = builtins.length guardedEmulationSubnets;
+    emulationCount = builtins.length conflictFilteredEmulationSubnets;
   };
 
   # ── Emulation provenance tag verification ──
@@ -293,6 +367,10 @@ in
   emulationSubnetGuard = {
     validated = emulationSubnetGuardDiags == [ ];
     diagnostics = emulationSubnetGuardDiags;
+  };
+  emulationSubnetConflict = {
+    validated = emulationSubnetConflictDiags == [ ];
+    diagnostics = emulationSubnetConflictDiags;
   };
   emulationProvenance = {
     validated = emulationProvenanceDiags == [ ];
