@@ -274,6 +274,100 @@ check_p8() {
 }
 check_p8
 
+# ── SN1: No default-reachability routes on PPPoE core p2p interfaces ──
+# SMS MR1 seeded negative: CPM shall NOT emit default-reachability on
+# p2p interfaces where the peer is a PPPoE client core.
+# CPM guard: removeDefaultRoutesOnPppoeCoreP2ps (build-target.nix:324)
+# strips default-reachability from PPPoE p2p links.
+# Verify on the known PPPoE p2p link: core-testnet-host-isp ↔ provider-handoff-access-a
+check_sn1() {
+  local result
+  result=$(jq -e '
+    def root: if type == "array" then .[0] else . end;
+    def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
+    def rt($target): site.runtimeTargets[$target];
+
+    # PPPoE p2p link name (from PPPoE service interface)
+    "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a" as $pppoeLink |
+
+    # Check all runtime targets for this p2p interface — it must NOT
+    # have default-reachability routes (guard strips them).
+    def has_default_on_pppoe_p2p:
+      [ site.runtimeTargets | to_entries[]
+        | (.value.effectiveRuntimeRealization.interfaces // {})
+        | to_entries[]
+        | select(.value.sourceKind == "p2p")
+        | select(.key == $pppoeLink)
+        | (.value.routes.ipv4 // [])
+        | map(select(.intent.kind == "default-reachability"))
+      ] | flatten | length > 0;
+
+    has_default_on_pppoe_p2p | not
+  ' "${output_json}" 2>/dev/null || echo "false")
+
+  if [[ "${result}" == "true" ]]; then
+    echo "PASS: SN1 — No default-reachability routes on PPPoE core p2p interface (guard active)"
+  else
+    echo "FAIL: SN1 — Default-reachability routes found on PPPoE p2p interface (guard failure)"
+    all_checks_passed=false
+  fi
+}
+check_sn1
+
+# ── SN2: Provider-handoff access nodes have fabric-chain default route ──
+# SMS MR2 seeded negative: provider internet traffic must egress through
+# fabric chain (access → downstream-selector → policy → upstream-selector).
+# CPM function addDefaultViaDownstreamSelector adds a default route via
+# the downstream-selector for PPPoE service targets.
+check_sn2() {
+  local result
+  result=$(jq -e '
+    def root: if type == "array" then .[0] else . end;
+    def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
+    def rt($target): site.runtimeTargets[$target];
+
+    # Provider-handoff access node must have a fabric-chain default
+    # route on its access-edge p2p to the downstream-selector.
+    rt("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a") as $target |
+    ($target.effectiveRuntimeRealization.interfaces // {}) as $ifaces |
+
+    def has_fabric_default:
+      ($ifaces | to_entries | map(select(
+        .value.sourceKind == "p2p"
+        and (
+          ((.value.backingRef.lane // {}) | type) == "object"
+          and ((.value.backingRef.lane.kind // "") == "access-edge")
+        )
+      )) | map(
+        (.value.routes.ipv4 // []) | map(select(
+          .dst == "0.0.0.0/0"
+          and .proto == "default"
+          and (.intent.kind // "") == "default-reachability"
+          and ((.via4 // "") != "")
+        ))
+      ) | flatten | length) > 0;
+
+    has_fabric_default
+  ' "${output_json}" 2>/dev/null || echo "false")
+
+  if [[ "${result}" == "true" ]]; then
+    echo "PASS: SN2 — Provider-handoff access node has fabric-chain default route via downstream-selector"
+  else
+    echo "FAIL: SN2 — Provider-handoff access node missing fabric-chain default route"
+    all_checks_passed=false
+  fi
+}
+check_sn2
+
+# ── MR5/MR6 note: canonical-stage-order validation and diagnostic emission ──
+# MR5 (validate canonical stage order, reject illegal edges) and MR6 (emit
+# deterministic diagnostics for illegal edges) are upstream concerns owned by
+# the NFM/compiler topology validation layer. CPM fabricRoles list
+# ["downstream-selector" "policy" "upstream-selector"] implicitly encodes the
+# canonical order, but CPM does not independently validate stage topology or
+# emit edge-level diagnostics — those are materialized by NFM.
+echo "NOTE: MR5 (canonical-stage-order) and MR6 (diagnostic emission) are upstream (NFM/compiler) — CPM implicitly encodes fabric order but does not independently validate stage topology."
+
 echo ""
 echo "--- Route detail (debug) ---"
 jq -r '
@@ -295,7 +389,7 @@ echo ""
 
 echo ""
 if [[ "${all_checks_passed}" == "true" ]]; then
-  echo "PASS: FS-800-HDS-010-SDS-020-SMS-040 (8/8 assertions)"
+  echo "PASS: FS-800-HDS-010-SDS-020-SMS-040 (10/10 assertions: P1-P8 + SN1-SN2)"
   exit 0
 else
   echo "FAIL: One or more checks failed."
