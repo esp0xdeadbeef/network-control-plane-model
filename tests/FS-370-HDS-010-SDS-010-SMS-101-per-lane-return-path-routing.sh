@@ -28,9 +28,9 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     system = builtins.currentSystem;
     labs = flake.inputs.network-labs.outPath;
 
-    # Use single-wan-with-nebula example which compiles cleanly
-    baseIntent = import (labs + "/examples/single-wan-with-nebula/intent.nix");
-    baseInventory = import (labs + "/examples/single-wan-with-nebula/inventory-nixos.nix");
+    # Use single-wan example which compiles cleanly
+    baseIntent = import (labs + "/examples/single-wan/intent.nix");
+    baseInventory = import (labs + "/examples/single-wan/inventory-nixos.nix");
 
     result = flake.lib.${system}.compileAndBuild {
       input = baseIntent;
