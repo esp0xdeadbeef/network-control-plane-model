@@ -77,12 +77,12 @@ run_checks() {
     # Provider A: default via DS
     def p2p_ds_a: "p2p-\(prefix)-downstream-selector-\(labelA)";
     def check2a: has_default(targetA; p2p_ds_a;
-      if $substrate == "nixos" then "10.10.44.60" else "10.50.44.60" end);
+      if $substrate == "nixos" then "10.10.44.50" else "10.50.44.50" end);
 
     # Provider B: default via DS
     def p2p_ds_b: "p2p-\(prefix)-downstream-selector-\(labelB)";
     def check2b: has_default(targetB; p2p_ds_b;
-      if $substrate == "nixos" then "10.10.44.62" else "10.50.44.62" end);
+      if $substrate == "nixos" then "10.10.44.52" else "10.50.44.52" end);
 
     # --- IPv6 default-reachability check (present, previously deferred) ---
     def has_ipv6_default($target; $iface_name):
