@@ -7,6 +7,7 @@
 
     network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/main";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
+    network-forwarding-model.inputs.network-labs.follows = "network-labs";
 
     network-labs.url = "github:esp0xdeadbeef/network-labs/main";
   };
