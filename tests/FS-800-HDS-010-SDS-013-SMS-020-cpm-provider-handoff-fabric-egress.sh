@@ -179,9 +179,10 @@ if [[ "${all_checks_passed}" == "true" ]]; then
   echo "  through the build-target pipeline. The route behavior is correct; diagnostic"
   echo "  records are a separate CMC item."
   echo ""
-  echo "GAP NOTE: IPv6 default route on downstream-selector p2p is now implemented."
-  echo "  (build-target.nix line 384: peerAddr6 = null). IPv4 default route is"
-  echo "  sufficient for HAT egress. IPv6 fabric-egress is tracked as deferred."
+  echo "GAP NOTE: IPv6 default route on downstream-selector p2p is IMPLEMENTED"
+  echo "  (2026-06-15, CPM commits fc36a2f, 29b72dc). peerAddr6 computed from"
+  echo "  iface.addr6 in build-target.nix:387 and final-control-plane.nix:436."
+  echo "  IPv6 default-reachability routes emitted on DS p2p interfaces."
   # --- Seeded negative: inject a default-reachability into the PPPoE p2p ---
   #  and verify the test DETECTS the violation (P1 must return false).
   echo ""
