@@ -403,14 +403,12 @@
             (builtins.toJSON (lib.compileAndBuildFromPaths {
               inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
               inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix";
-              validateForwardingModel = false;
             }));
 
           cpm_clab_json = pkgs.writeText "cpm-clab.json"
             (builtins.toJSON (lib.compileAndBuildFromPaths {
               inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
               inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-clab.nix";
-              validateForwardingModel = false;
             }));
         in
         {
