@@ -2,7 +2,9 @@
   "nodes": {
     "network-compiler": {
       "inputs": {
-        "network-labs": "network-labs",
+        "network-labs": [
+          "network-labs"
+        ],
         "nixpkgs": [
           "network-forwarding-model",
           "nixpkgs"
@@ -50,22 +52,6 @@
       }
     },
     "network-labs": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1781713514,
-        "narHash": "sha256-h5Ry2zIeAh+uOWl/lPVpH/hJDJussotyt9C5diZXyjA=",
-        "owner": "esp0xdeadbeef",
-        "repo": "network-labs",
-        "rev": "dfdd4bae546a828376db9846cdfef0ecfffb9d8c",
-        "type": "github"
-      },
-      "original": {
-        "owner": "esp0xdeadbeef",
-        "repo": "network-labs",
-        "type": "github"
-      }
-    },
-    "network-labs_2": {
       "locked": {
         "lastModified": 1781972185,
         "narHash": "sha256-70O1hp9+0Ui/K2GQXPzeaaPReFhPLQPPs9QMEHY7M9w=",
@@ -148,7 +134,7 @@
     "root": {
       "inputs": {
         "network-forwarding-model": "network-forwarding-model",
-        "network-labs": "network-labs_2",
+        "network-labs": "network-labs",
         "nixpkgs": "nixpkgs",
         "nixpkgs-network": "nixpkgs-network_3"
       }
