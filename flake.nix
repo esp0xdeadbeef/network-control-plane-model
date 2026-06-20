@@ -399,14 +399,14 @@
 
           cpm_nixos_json = pkgs.writeText "cpm-nixos.json"
             (builtins.toJSON (lib.compileAndBuildFromPaths {
-              inputPath = "${network-labs}/HAT/emulated-isp-residential-testnet/intent.nix";
-              inventoryPath = "${network-labs}/HAT/emulated-isp-residential-testnet/inventory-nixos.nix";
+              inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
+              inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix";
             }));
 
           cpm_clab_json = pkgs.writeText "cpm-clab.json"
             (builtins.toJSON (lib.compileAndBuildFromPaths {
-              inputPath = "${network-labs}/HAT/emulated-isp-residential-testnet/intent.nix";
-              inventoryPath = "${network-labs}/HAT/emulated-isp-residential-testnet/inventory-clab.nix";
+              inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
+              inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-clab.nix";
             }));
         in
         {
