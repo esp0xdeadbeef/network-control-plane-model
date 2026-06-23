@@ -202,7 +202,6 @@ let
           let
             t = attrsOrEmpty runtimeTargets.${name};
             role = t.role or "";
-            ifaces = t.interfaces or { };
           in
           role == "access" || builtins.substring 0 7 role == "access-")
         (sortedNames (attrsOrEmpty runtimeTargets));
@@ -213,9 +212,10 @@ let
           else
             let
               t = attrsOrEmpty runtimeTargets.${targetName};
-              ifaces = t.interfaces or { };
+              effective = attrsOrEmpty (t.effectiveRuntimeRealization or null);
+              ifaces = attrsOrEmpty (effective.interfaces or t.interfaces or null);
               tenantPorts = builtins.filter
-                (ifName: builtins.substring 0 7 ifName == "tenant-" || ifName == "tenant-${tenant}")
+                (ifName: ifName == "tenant-${tenant}")
                 (builtins.attrNames ifaces);
             in
             if tenantPorts != [ ] then
