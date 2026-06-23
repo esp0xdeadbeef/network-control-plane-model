@@ -113,9 +113,24 @@ let
   ensureUniqueEntries = path: entries:
     let
       attrs = builtins.listToAttrs entries;
+      names = builtins.map (entry: entry.name) entries;
+      uniqueNames = sortedNames (builtins.listToAttrs (
+        builtins.map (name: {
+          inherit name;
+          value = true;
+        }) names
+      ));
+      entriesForName = name: builtins.filter (entry: entry.name == name) entries;
+      duplicateNames = builtins.filter (name: builtins.length (entriesForName name) > 1) uniqueNames;
+      duplicateContext = builtins.map
+        (name: {
+          inherit name;
+          occurrences = builtins.map (entry: entry.value) (entriesForName name);
+        })
+        duplicateNames;
     in
     if attrCount attrs != builtins.length entries then
-      throw "input contract failure: ${path} contains duplicate identities"
+      failWithContext "input contract failure: ${path} contains duplicate identities" duplicateContext
     else
       attrs;
 
