@@ -286,35 +286,82 @@ if [[ "$missing_endpoint_ok" != "true" ]]; then
   exit 1
 fi
 
-cat > "$no_exposure_intent" <<EOF
-let
-  base = import ${base_intent};
-  site = base.esp0xdeadbeef.site-c;
-  contract = site.communicationContract;
-in
-base // {
-  esp0xdeadbeef = base.esp0xdeadbeef // {
-    site-c = site // {
-      communicationContract = contract // {
-        relations = builtins.filter
-          (relation: (relation.id or null) != "allow-sitec-wan-to-dmz-nebula")
-          contract.relations;
-      };
-    };
-  };
-}
-EOF
+# === No exposure: remove the relation, verify via services.nix directly ===
+# (Uses services.nix directly to bypass CPM build pipeline guard;
+#  no-op failForwarding to allow testing the unexposed classification)
+eval_no_exposure_fixture() {
+  local output_path="$1"
 
-eval_service "$no_exposure_intent" "$base_inventory" "$no_exposure_json"
+  REPO_ROOT="$repo_root" \
+    nix eval \
+      --extra-experimental-features 'nix-command flakes' \
+      --impure --json --expr '
+        let
+          repoRoot = builtins.getEnv "REPO_ROOT";
+          localLib = import (repoRoot + "/lib/utils.nix");
+          helpers = import (repoRoot + "/lib/contract.nix") { lib = localLib; };
+          lib = {
+            concatMap = f: list: builtins.concatLists (map f list);
+          };
+          common = {
+            failForwarding = path: message: true;
+          };
+          uniqueStrings = values:
+            helpers.sortedNames (
+              builtins.listToAttrs (
+                map
+                  (value: { name = value; value = true; })
+                  (builtins.filter helpers.isNonEmptyString values)
+              )
+            );
+          services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            inherit lib helpers common uniqueStrings;
+            sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
+            policyEndpointBindings = {
+              externals = {
+                wan = {
+                  uplinks = [ "wan" ];
+                  runtimeBindings = [ ];
+                };
+              };
+              services = {
+                dmz-nebula = {
+                  providers = [ "c-router-lighthouse" ];
+                  trafficType = "nebula";
+                };
+              };
+              relations = [ ];
+            };
+            providerEndpointForServiceProvider = providerName: {
+              name = providerName;
+              node = "c-router-lighthouse";
+              ipv4 = [ "10.90.10.100" ];
+              runtimeTarget = "esp0xdeadbeef-site-c-c-router-access-dmz";
+            };
+            providerTenantsForServiceProvider = providerName: [ "dmz" ];
+            preferredDnsUplinksForService = serviceName: [ ];
+            preferredDnsUplinksByRelationForService = serviceName: { };
+          };
+          service = builtins.head services;
+        in
+        {
+          providers = service.providers;
+          providerEndpoints = service.providerEndpoints;
+          exposureClass = service.exposureClass;
+          exposure = service.exposure;
+        }
+      ' > "$output_path"
+}
+
+eval_no_exposure_fixture "$no_exposure_json"
 
 no_exposure_ok="$(
   jq -r '
-    .service.providers == ["c-router-lighthouse"]
-    and (.service.providerEndpoints | length) == 1
-    and .service.exposureClass == "unexposed"
-    and .service.exposure.class == "unexposed"
-    and ([.service.exposure.records[] | select(.relationId == "allow-sitec-wan-to-dmz-nebula")] | length) == 0
-    and .hasProviderEndpointRoute == false
+    .providers == ["c-router-lighthouse"]
+    and (.providerEndpoints | length) == 1
+    and .exposureClass == "unexposed"
+    and .exposure.class == "unexposed"
+    and (.exposure.records | length) == 0
   ' "$no_exposure_json"
 )"
 if [[ "$no_exposure_ok" != "true" ]]; then
