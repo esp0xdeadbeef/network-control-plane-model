@@ -242,6 +242,84 @@
               output = payload;
             };
 
+          isRendererInputPayload =
+            payload:
+            builtins.isAttrs payload
+            && payload ? control_plane_model
+            && builtins.isAttrs payload.control_plane_model
+            && payload.control_plane_model ? data
+            && builtins.isAttrs payload.control_plane_model.data;
+
+          layerEntryWarningsForBoundary =
+            entryBoundary:
+            map layerEntryWarningFor (layerEntrySkippedLayers entryBoundary);
+
+          deploymentHostsForRendererInput =
+            { payload
+            , controlPlaneModel
+            , inventory
+            ,
+            }:
+            if payload ? deploymentHosts && builtins.isAttrs payload.deploymentHosts then
+              payload.deploymentHosts
+            else if
+              controlPlaneModel ? deployment
+              && builtins.isAttrs controlPlaneModel.deployment
+              && controlPlaneModel.deployment ? hosts
+              && builtins.isAttrs controlPlaneModel.deployment.hosts
+            then
+              controlPlaneModel.deployment.hosts
+            else if
+              inventory ? deployment
+              && builtins.isAttrs inventory.deployment
+              && inventory.deployment ? hosts
+              && builtins.isAttrs inventory.deployment.hosts
+            then
+              inventory.deployment.hosts
+            else
+              { };
+
+          rendererInputPassThrough =
+            { input
+            , inventory ? { }
+            ,
+            }:
+            let
+              payload = readValue input;
+              controlPlaneModel = payload.control_plane_model;
+              existingMeta =
+                if controlPlaneModel ? meta && builtins.isAttrs controlPlaneModel.meta then
+                  controlPlaneModel.meta
+                else
+                  { };
+              layerEntryMeta = {
+                repo = layerEntryCurrentRepo;
+                entryBoundary = "renderer-input";
+                skippedUpstreamLayers = layerEntrySkippedLayers "renderer-input";
+                repoSkipped = true;
+                warnings = layerEntryWarningsForBoundary "renderer-input";
+                inputTreatment = "pass-through";
+                normalizedTo = "nix-attrset";
+              };
+              normalizedControlPlaneModel = controlPlaneModel // {
+                meta = existingMeta // {
+                  layerEntry = layerEntryMeta;
+                };
+              };
+              deploymentHosts = deploymentHostsForRendererInput {
+                payload = payload;
+                controlPlaneModel = normalizedControlPlaneModel;
+                inventory = inventory;
+              };
+            in
+            exposeHostNetwork (
+              payload
+              // {
+                control_plane_model = normalizedControlPlaneModel;
+                inherit deploymentHosts;
+              }
+            );
+
           compileAndBuild =
             { input
             , inventory ? { }
@@ -263,15 +341,22 @@
             , secretPlatformSubstrate ? "nixos"
             ,
             }:
-            compileAndBuild {
+            let
               input = readValue inputPath;
               inventory =
                 if inventoryPath == null then
                   { }
                 else
                   readValue inventoryPath;
-              inherit validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
-            };
+            in
+            if isRendererInputPayload input then
+              rendererInputPassThrough {
+                inherit input inventory;
+              }
+            else
+              compileAndBuild {
+                inherit input inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
+              };
 
           clientFixtures = mkClientFixtures {
             buildFromPaths =
