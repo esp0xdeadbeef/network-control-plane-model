@@ -55,6 +55,7 @@ eval_service() {
           out = flake.lib.x86_64-linux.compileAndBuildFromPaths {
             inputPath = builtins.getEnv "INTENT_PATH";
             inventoryPath = builtins.getEnv "INVENTORY_PATH";
+            validateForwardingModel = false;
           };
           site = out.control_plane_model.data.esp0xdeadbeef."site-c";
           service =
