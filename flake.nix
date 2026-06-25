@@ -108,6 +108,59 @@
               inherit hostNetwork;
               renderedHostNetwork = hostNetwork;
             };
+
+          layerEntrySkippedForBoundary = {
+            intent-source = [ ];
+            compiler-output = [ "intent-source" ];
+            forwarding-model-input = [ "intent-source" "network-compiler" ];
+            control-plane-input = [
+              "intent-source"
+              "network-compiler"
+              "network-forwarding-model"
+            ];
+            renderer-input = [
+              "intent-source"
+              "network-compiler"
+              "network-forwarding-model"
+              "network-control-plane-model"
+            ];
+            runtime-artifact = [
+              "intent-source"
+              "network-compiler"
+              "network-forwarding-model"
+              "network-control-plane-model"
+              "renderer"
+            ];
+          };
+
+          layerEntryWarningBySkippedLayer = {
+            intent-source = "WARN_LAYER_ENTRY_SKIPS_NETWORK_LABS_INTENT_SOURCE";
+            network-compiler = "WARN_LAYER_ENTRY_SKIPS_NETWORK_COMPILER";
+            network-forwarding-model = "WARN_LAYER_ENTRY_SKIPS_NFM";
+            network-control-plane-model = "WARN_LAYER_ENTRY_SKIPS_CPM";
+            renderer = "WARN_LAYER_ENTRY_SKIPS_RENDERER";
+          };
+
+          layerEntryCurrentRepo = "network-control-plane-model";
+
+          layerEntrySkippedLayers =
+            entryBoundary:
+            layerEntrySkippedForBoundary.${entryBoundary} or
+            (throw "network-control-plane-model layer-entry warning: unknown entryBoundary '${entryBoundary}'");
+
+          layerEntryWarningFor =
+            layer:
+            {
+              code = layerEntryWarningBySkippedLayer.${layer};
+              severity = "warning";
+              skippedLayer = layer;
+              issuingRepo = layer;
+              message =
+                if layer == layerEntryCurrentRepo then
+                  "layer-entry starts below network-control-plane-model; CPM execution and validation are not covered by this scenario"
+                else
+                  "layer-entry skips ${layer}; that layer is not covered by this scenario";
+            };
         in
         rec {
           build =
@@ -152,6 +205,42 @@
           getCPM = get_CPM;
 
           readInput = readValue;
+
+          layerEntryWarnings =
+            { entryBoundary ? "intent-source" }:
+            let
+              skippedUpstreamLayers = layerEntrySkippedLayers entryBoundary;
+              repoSkipped = builtins.elem layerEntryCurrentRepo skippedUpstreamLayers;
+              warnings =
+                if repoSkipped then
+                  [ (layerEntryWarningFor layerEntryCurrentRepo) ]
+                else
+                  [ ];
+            in
+            {
+              repo = layerEntryCurrentRepo;
+              inherit entryBoundary skippedUpstreamLayers repoSkipped warnings;
+              inputTreatment =
+                if repoSkipped then
+                  "pass-through"
+                else
+                  "consume-or-normalize";
+            };
+
+          layerEntryEnvelope =
+            { input
+            , entryBoundary ? "intent-source"
+            ,
+            }:
+            let
+              payload = readValue input;
+              warningPayload = layerEntryWarnings { inherit entryBoundary; };
+            in
+            warningPayload // {
+              normalizedTo = "nix-attrset";
+              input = payload;
+              output = payload;
+            };
 
           compileAndBuild =
             { input
