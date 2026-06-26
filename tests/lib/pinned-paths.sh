@@ -42,5 +42,5 @@ _resolve_network_labs() {
 }
 
 pinned_network_labs() { _resolve_network_labs; }
-pinned_hat_dir()  { echo "$(_resolve_network_labs)/HAT/emulated-isp-residential-testnet"; }
-pinned_sat_dir()  { echo "$(_resolve_network_labs)/sat"; }
+pinned_hat_dir()  { echo "$(_resolve_network_labs)/GAMP/HAT/emulated-isp-residential-testnet"; }
+pinned_sat_dir()  { echo "$(_resolve_network_labs)/GAMP/SAT"; }
