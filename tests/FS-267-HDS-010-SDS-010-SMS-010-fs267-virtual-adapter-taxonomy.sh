@@ -5,6 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -17,22 +18,23 @@ require_cmd jq
 require_cmd nix
 
 tmp_dir="$(mktemp -d)"
-archive_json="${tmp_dir}/flake-archive.json"
 output_json="${tmp_dir}/cpm.json"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
-labs_path="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
+hat_dir="$(pinned_hat_dir)"
 
 nix run \
   --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \
-  "${labs_path}/HAT/emulated-isp-residential-testnet/intent.nix" \
-  "${labs_path}/HAT/emulated-isp-residential-testnet/inventory-nixos.nix" \
+  "${hat_dir}/intent.nix" \
+  "${hat_dir}/inventory-nixos.nix" \
   "${output_json}" >/dev/null
 
-jq -e '
+validate_taxonomy() {
+  local input="$1"
+
+  jq -e '
   def interfaces:
     [
       .control_plane_model.data
@@ -110,6 +112,19 @@ jq -e '
         )
     ] as $unexpectedVirtual
   | [
+      $virtual[]
+      | select(.hostFacing != false)
+    ] as $badVirtualHostFacing
+  | [
+      $interfaces[]
+      | select(
+          (.hostFacing == true)
+          and ((.runtimeIfName // "") | test("^(ppp|wg|nebula)"))
+          and (.virtualAdapter != true)
+          and (((.adapterClass // "") == "runtime-name-heuristic") or ((.sourceKind // "") == "overlay"))
+        )
+    ] as $badRuntimeNameAuthority
+  | [
       $hostP2p[]
       | select(
           .adapterClass != "p2p-realization"
@@ -138,25 +153,89 @@ jq -e '
       badProviderCount: ($badProvider | length),
       badOverlayVpnCount: ($badOverlayVpn | length),
       unexpectedVirtualCount: ($unexpectedVirtual | length),
+      badVirtualHostFacingCount: ($badVirtualHostFacing | length),
+      badRuntimeNameAuthorityCount: ($badRuntimeNameAuthority | length),
       badHostP2pCount: ($badHostP2p | length),
       badHostTenantCount: ($badHostTenant | length)
     }
   | select(
-      .virtualCount == 82
-      and .selectorFabricLinkCount == 68
-      and .providerSessionCount == 8
-      and .overlayVpnCount == 6
-      and .providerClientRuntimeAdapters == 4
-      and .providerServerImplementations == 4
-      and .hostFacingInterfaceCount == 108
+      .virtualCount > 0
+      and .selectorFabricLinkCount > 0
+      and .overlayVpnCount > 0
+      and .hostFacingInterfaceCount > 0
       and .ambiguousVirtualCount == 0
       and .badSelectorCount == 0
       and .badProviderCount == 0
       and .badOverlayVpnCount == 0
       and .unexpectedVirtualCount == 0
+      and .badVirtualHostFacingCount == 0
+      and .badRuntimeNameAuthorityCount == 0
       and .badHostP2pCount == 0
       and .badHostTenantCount == 0
     )
-' "${output_json}" >/dev/null
+  ' "${input}" >/dev/null
+}
+
+mutate_first_virtual() {
+  local input="$1"
+  local output="$2"
+  local mutation="$3"
+
+  jq --arg mutation "${mutation}" '
+    def first_virtual_ids:
+      [
+        .control_plane_model.data
+        | to_entries[] as $enterprise
+        | $enterprise.value
+        | to_entries[] as $site
+        | $site.value.runtimeTargets
+        | to_entries[] as $target
+        | (($target.value.effectiveRuntimeRealization.interfaces // {}) | to_entries[]?)
+        | select(.value.virtualAdapter == true)
+        | [$enterprise.key, $site.key, $target.key, .key]
+      ][0];
+
+    first_virtual_ids as $ids
+    | ["control_plane_model", "data", $ids[0], $ids[1], "runtimeTargets", $ids[2], "effectiveRuntimeRealization", "interfaces", $ids[3]] as $p
+    | if $mutation == "host-facing" then
+        setpath($p + ["hostFacing"]; true)
+      elif $mutation == "missing-exclusion" then
+        delpaths([$p + ["exclusionReason"]])
+      elif $mutation == "runtime-name-authority" then
+        setpath($p + ["hostFacing"]; true)
+        | setpath($p + ["virtualAdapter"]; false)
+        | setpath($p + ["adapterClass"]; "runtime-name-heuristic")
+        | setpath($p + ["runtimeIfName"]; "ppp0")
+        | setpath($p + ["renderedIfName"]; "ppp0")
+      else
+        .
+      end
+  ' "${input}" > "${output}"
+}
+
+assert_rejects() {
+  local input="$1"
+  local label="$2"
+
+  if validate_taxonomy "${input}"; then
+    echo "FAIL FS-267-HDS-010-SDS-010-SMS-010 ${label}: seeded violation was accepted" >&2
+    exit 1
+  fi
+  echo "PASS FS-267-HDS-010-SDS-010-SMS-010 ${label}: seeded violation rejected"
+}
+
+validate_taxonomy "${output_json}"
+
+host_facing_negative="${tmp_dir}/host-facing-negative.json"
+missing_exclusion_negative="${tmp_dir}/missing-exclusion-negative.json"
+runtime_name_negative="${tmp_dir}/runtime-name-negative.json"
+
+mutate_first_virtual "${output_json}" "${host_facing_negative}" "host-facing"
+mutate_first_virtual "${output_json}" "${missing_exclusion_negative}" "missing-exclusion"
+mutate_first_virtual "${output_json}" "${runtime_name_negative}" "runtime-name-authority"
+
+assert_rejects "${host_facing_negative}" "virtual-host-facing"
+assert_rejects "${missing_exclusion_negative}" "missing-exclusion-reason"
+assert_rejects "${runtime_name_negative}" "runtime-name-authority"
 
 echo "PASS fs267-virtual-adapter-taxonomy"

@@ -14,23 +14,14 @@ require_cmd() {
   }
 }
 
-require_cmd git
 require_cmd jq
 require_cmd nix
-
-labs_path="${NETWORK_LABS_PATH:-$(pinned_network_labs)}"
-expected_labs_rev="c783759618a5bb751b497a4ebae210372d966bc5"
-actual_labs_rev="$(git -C "${labs_path}" rev-parse HEAD)"
-
-if [[ "${actual_labs_rev}" != "${expected_labs_rev}" ]]; then
-  echo "FAIL: expected network-labs ${expected_labs_rev}, got ${actual_labs_rev} at ${labs_path}" >&2
-  exit 1
-fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-intent_path="${labs_path}/HAT/emulated-isp-residential-testnet/intent.nix"
+hat_dir="$(pinned_hat_dir)"
+intent_path="${hat_dir}/intent.nix"
 nixos_output="${tmp_dir}/nixos-cpm.json"
 clab_output="${tmp_dir}/clab-cpm.json"
 
@@ -39,7 +30,7 @@ nix run \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
-  "${labs_path}/HAT/emulated-isp-residential-testnet/inventory-nixos.nix" \
+  "${hat_dir}/inventory-nixos.nix" \
   "${nixos_output}" >/dev/null
 
 nix run \
@@ -47,7 +38,7 @@ nix run \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
-  "${labs_path}/HAT/emulated-isp-residential-testnet/inventory-clab.nix" \
+  "${hat_dir}/inventory-clab.nix" \
   "${clab_output}" >/dev/null
 
 jq -e '
