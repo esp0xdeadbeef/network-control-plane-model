@@ -26,6 +26,36 @@ locked_revisions="$(jq -r '[.nodes | to_entries[] | select(.value.locked.rev?) |
 host_class="$(uname -m)-$(uname -s | tr '[:upper:]' '[:lower:]')"
 excluded_runtime_stages="nix-build,container-image-build,vm-deployment,containerlab-deployment,boot,live-packet-validation,provider-calls,cache-misses"
 
+sanitize_bench_value() {
+  tr '\n' ' ' |
+    sed -E 's/[[:space:]]+/_/g; s/[^A-Za-z0-9_.:=,\/-]/_/g; s/_+$//' |
+    cut -c1-160
+}
+
+stderr_summary_for() {
+  local stderr_file="$1"
+  if [[ -s "${stderr_file}" ]]; then
+    sanitize_bench_value <"${stderr_file}"
+  else
+    printf 'none'
+  fi
+}
+
+emit_bench_record() {
+  local status="$1"
+  local example="$2"
+  local elapsed_ms="$3"
+  local command_label="$4"
+  local exit_code="$5"
+  local stderr_summary="$6"
+  local upstream_cardinality="$7"
+  local downstream_cardinality="$8"
+  local threshold_status="$9"
+  local diagnostic="${10}"
+
+  echo "BENCH fs940 stage=control-plane-model example=${example} status=${status} elapsed_ms=${elapsed_ms} threshold_ms=${threshold_ms} threshold_status=${threshold_status} gate=diagnostic repo_revision=${repo_revision} repo_dirty=${repo_dirty} locked_revisions=${locked_revisions} timing_method=${timing_method} host_class=${host_class} cache_state=warm-required command=${command_label} exit_code=${exit_code} stderr_summary=${stderr_summary} upstream_cardinality=${upstream_cardinality} downstream_cardinality=${downstream_cardinality} excluded_runtime_stages=${excluded_runtime_stages} diagnostic=${diagnostic}"
+}
+
 archive_json="$(mktemp)"
 forwarding_json="$(mktemp --suffix=.json)"
 trap 'rm -f "${archive_json}" "${forwarding_json}"' EXIT
@@ -39,8 +69,8 @@ if [[ -n "${CPM_BENCH_EXAMPLES:-}" ]]; then
   examples=( ${CPM_BENCH_EXAMPLES} )
 else
   examples=(
-    s-router-overlay-dns-lane-policy
-    tri-site-dual-wan-overlay-integration-static
+    s-router-public-overlay-service
+    single-wan
   )
 fi
 
@@ -50,13 +80,70 @@ for example in "${examples[@]}"; do
   intent="${labs_root}/examples/${example}/intent.nix"
   inventory="${labs_root}/examples/${example}/inventory-nixos.nix"
   if [[ ! -f "${intent}" || ! -f "${inventory}" ]]; then
-    echo "FAIL fs940-semantic-eval ${example}: missing intent or inventory" >&2
+    emit_bench_record \
+      "FAIL" \
+      "${example}" \
+      0 \
+      "input-discovery" \
+      66 \
+      "missing_intent_or_inventory" \
+      "unknown" \
+      "unknown" \
+      "not-evaluated" \
+      "diagnostic.stage-benchmark-input-missing" >&2
     failed=1
     continue
   fi
 
-  nix run --no-warn-dirty --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- "${intent}" "${inventory}" "${forwarding_json}.cpm-warmup" >/dev/null
-  nix run --no-warn-dirty --no-write-lock-file "path:$(jq -er '.inputs["network-forwarding-model"].path' "${archive_json}")#compile-and-build-forwarding-model" -- "${intent}" >"${forwarding_json}"
+  warmup_stderr="$(mktemp)"
+  nfm_stderr="$(mktemp)"
+  preflight_stderr="$(mktemp)"
+  sample_stderr="$(mktemp)"
+  trap 'rm -f "${archive_json}" "${forwarding_json}" "${warmup_stderr:-}" "${nfm_stderr:-}" "${preflight_stderr:-}" "${sample_stderr:-}"' EXIT
+
+  start_ms="$(date +%s%3N)"
+  set +e
+  nix run --no-warn-dirty --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- "${intent}" "${inventory}" "${forwarding_json}.cpm-warmup" >/dev/null 2>"${warmup_stderr}"
+  command_status=$?
+  set -e
+  if [[ "${command_status}" -ne 0 ]]; then
+    end_ms="$(date +%s%3N)"
+    emit_bench_record \
+      "FAIL" \
+      "${example}" \
+      "$((end_ms - start_ms))" \
+      "nix-run-compile-and-build-control-plane-model-warmup" \
+      "${command_status}" \
+      "$(stderr_summary_for "${warmup_stderr}")" \
+      "unknown" \
+      "unknown" \
+      "not-evaluated" \
+      "diagnostic.stage-benchmark-command-failure-recorded" >&2
+    failed=1
+    continue
+  fi
+
+  start_ms="$(date +%s%3N)"
+  set +e
+  nix run --no-warn-dirty --no-write-lock-file "path:$(jq -er '.inputs["network-forwarding-model"].path' "${archive_json}")#compile-and-build-forwarding-model" -- "${intent}" >"${forwarding_json}" 2>"${nfm_stderr}"
+  command_status=$?
+  set -e
+  if [[ "${command_status}" -ne 0 ]]; then
+    end_ms="$(date +%s%3N)"
+    emit_bench_record \
+      "FAIL" \
+      "${example}" \
+      "$((end_ms - start_ms))" \
+      "nix-run-compile-and-build-forwarding-model" \
+      "${command_status}" \
+      "$(stderr_summary_for "${nfm_stderr}")" \
+      "unknown" \
+      "unknown" \
+      "not-evaluated" \
+      "diagnostic.stage-benchmark-command-failure-recorded" >&2
+    failed=1
+    continue
+  fi
 
   upstream_cardinality="$(
     jq -r '
@@ -100,20 +187,39 @@ for example in "${examples[@]}"; do
 NIX
 )"
 
+  set +e
   env FORWARDING_JSON="${forwarding_json}" INVENTORY="${inventory}" \
     nix eval \
       --extra-experimental-features 'nix-command flakes' \
       --impure \
       --json \
       "path:${repo_root}#libBySystem.x86_64-linux" \
-      --apply "${eval_expr}" >/dev/null
+      --apply "${eval_expr}" >/dev/null 2>"${preflight_stderr}"
+  command_status=$?
+  set -e
+  if [[ "${command_status}" -ne 0 ]]; then
+    emit_bench_record \
+      "FAIL" \
+      "${example}" \
+      0 \
+      "nix-eval-libBySystem.get_CPM-preflight" \
+      "${command_status}" \
+      "$(stderr_summary_for "${preflight_stderr}")" \
+      "${upstream_cardinality}" \
+      "unknown" \
+      "not-evaluated" \
+      "diagnostic.stage-benchmark-command-failure-recorded" >&2
+    failed=1
+    continue
+  fi
 
   summary=""
   elapsed_ms=""
   sample_failed=0
   for sample_idx in $(seq 1 "${sample_count}"); do
     start_ms="$(date +%s%3N)"
-    if ! sample_summary="$(
+    set +e
+    sample_summary="$(
       env FORWARDING_JSON="${forwarding_json}" INVENTORY="${inventory}" \
         timeout "$((threshold_ms / 1000 + 20))" \
         nix eval \
@@ -121,11 +227,24 @@ NIX
           --impure \
           --json \
           "path:${repo_root}#libBySystem.x86_64-linux" \
-          --apply "${eval_expr}"
-    )"; then
+          --apply "${eval_expr}" 2>"${sample_stderr}"
+    )"
+    command_status=$?
+    set -e
+    if [[ "${command_status}" -ne 0 ]]; then
       end_ms="$(date +%s%3N)"
       sample_elapsed_ms=$((end_ms - start_ms))
-      echo "BENCH fs940 stage=control-plane-model example=${example} status=FAIL elapsed_ms=${sample_elapsed_ms} threshold_ms=${threshold_ms} repo_revision=${repo_revision} repo_dirty=${repo_dirty} locked_revisions=${locked_revisions} timing_method=${timing_method} host_class=${host_class} cache_state=warm-required command=nix-eval-libBySystem.get_CPM upstream_cardinality=unknown downstream_cardinality=unknown excluded_runtime_stages=${excluded_runtime_stages}" >&2
+      emit_bench_record \
+        "FAIL" \
+        "${example}" \
+        "${sample_elapsed_ms}" \
+        "nix-eval-libBySystem.get_CPM" \
+        "${command_status}" \
+        "$(stderr_summary_for "${sample_stderr}")" \
+        "${upstream_cardinality}" \
+        "unknown" \
+        "not-evaluated" \
+        "diagnostic.stage-benchmark-command-failure-recorded" >&2
       failed=1
       sample_failed=1
       break
@@ -142,14 +261,24 @@ NIX
   fi
 
   status=PASS
+  threshold_status=PASS
   if [ "${elapsed_ms}" -gt "${threshold_ms}" ]; then
-    status=FAIL
-    failed=1
+    threshold_status=OVER_THRESHOLD
   fi
 
   downstream_cardinality="$(jq -r '.downstream | to_entries | map("\(.key):\(.value)") | join(",")' <<<"${summary}")"
 
-  echo "BENCH fs940 stage=control-plane-model example=${example} status=${status} elapsed_ms=${elapsed_ms} threshold_ms=${threshold_ms} repo_revision=${repo_revision} repo_dirty=${repo_dirty} locked_revisions=${locked_revisions} timing_method=${timing_method} host_class=${host_class} cache_state=warm-required command=nix-eval-libBySystem.get_CPM upstream_cardinality=${upstream_cardinality} downstream_cardinality=${downstream_cardinality} excluded_runtime_stages=${excluded_runtime_stages}"
+  emit_bench_record \
+    "${status}" \
+    "${example}" \
+    "${elapsed_ms}" \
+    "nix-eval-libBySystem.get_CPM" \
+    0 \
+    "none" \
+    "${upstream_cardinality}" \
+    "${downstream_cardinality}" \
+    "${threshold_status}" \
+    "none"
 done
 
 exit "${failed}"
