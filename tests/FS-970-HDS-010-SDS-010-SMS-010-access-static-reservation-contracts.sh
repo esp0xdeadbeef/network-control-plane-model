@@ -239,4 +239,58 @@ grep -F "duplicate ipv4.hostOffset in the same network" "${tmp_dir}/duplicate-of
   exit 1
 }
 
+duplicate_id_inventory="${tmp_dir}/inventory-duplicate-id.nix"
+write_inventory "${duplicate_id_inventory}" '[
+  { id = "printer-1"; mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+  { id = "printer-1"; mac = "02:10:20:00:00:12"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 12; ipv6.hostOffset = 12; }
+]' '[
+  { id = "printer-1"; mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+  { id = "printer-1"; mac = "02:10:20:00:00:12"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 12; ipv6.hostOffset = 12; }
+]'
+
+if nix eval --impure --expr '
+  let
+    flake = builtins.getFlake "'"path:${repo_root}"'";
+    out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
+      inputPath = "'"${intent_path}"'";
+      inventoryPath = "'"${duplicate_id_inventory}"'";
+    };
+  in
+    builtins.deepSeq out true
+' >"${tmp_dir}/duplicate-id.out" 2>"${tmp_dir}/duplicate-id.err"; then
+  echo "FAIL access-static-reservation-contracts: duplicate reservation id was accepted" >&2
+  exit 1
+fi
+grep -F "duplicate reservation id in the same service target" "${tmp_dir}/duplicate-id.err" >/dev/null || {
+  echo "FAIL access-static-reservation-contracts: duplicate id diagnostic was not concise" >&2
+  cat "${tmp_dir}/duplicate-id.err" >&2
+  exit 1
+}
+
+missing_mac_inventory="${tmp_dir}/inventory-missing-mac.nix"
+write_inventory "${missing_mac_inventory}" '[
+  { id = "printer-1"; macSource = { accepted = true; disposable = true; purpose = "static-dhcp-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+]' '[
+  { id = "printer-1"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
+]'
+
+if nix eval --impure --expr '
+  let
+    flake = builtins.getFlake "'"path:${repo_root}"'";
+    out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
+      inputPath = "'"${intent_path}"'";
+      inventoryPath = "'"${missing_mac_inventory}"'";
+    };
+  in
+    builtins.deepSeq out true
+' >"${tmp_dir}/missing-mac.out" 2>"${tmp_dir}/missing-mac.err"; then
+  echo "FAIL access-static-reservation-contracts: missing MAC was accepted" >&2
+  exit 1
+fi
+grep -F "requires complete MAC address" "${tmp_dir}/missing-mac.err" >/dev/null || {
+  echo "FAIL access-static-reservation-contracts: missing MAC diagnostic was not concise" >&2
+  cat "${tmp_dir}/missing-mac.err" >&2
+  exit 1
+}
+
 echo "PASS access-static-reservation-contracts"
