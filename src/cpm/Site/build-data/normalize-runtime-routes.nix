@@ -190,11 +190,17 @@ let
 
   policyRoutingAllocationFor =
     slot:
+    let
+      tableId = 1000 + slot;
+      dynamicRulePriority = 10000 + slot;
+    in
     {
       source = "control-plane-model";
       allocation = "runtime-ifname-sorted-slot";
-      tableId = 1000 + slot;
-      priority = 10000 + slot;
+      inherit tableId dynamicRulePriority;
+      priority = dynamicRulePriority;
+      tableRulePriority = tableId;
+      mainSuppressPriority = 11000 + slot;
     };
 
   interfaceRuntimeName =
@@ -228,16 +234,6 @@ let
     in
       builtins.listToAttrs entries;
 
-  interfaceHasAccessLane =
-    iface:
-    let
-      backingLane = (attrsOrEmpty (iface.backingRef or null)).lane or null;
-      directLane = iface.lane or null;
-      lane = attrsOrEmpty (if backingLane != null then backingLane else directLane);
-      access = lane.access or null;
-    in
-      builtins.isString access && access != "";
-
   addPolicyRoutingAllocations =
     interfaces:
     let
@@ -245,10 +241,7 @@ let
     in
       builtins.mapAttrs
         (ifName: iface:
-          if interfaceHasAccessLane iface then
-            iface // { policyRoutingAllocation = allocations.${ifName}; }
-          else
-            iface)
+          iface // { policyRoutingAllocation = allocations.${ifName}; })
         interfaces;
 
   normalizeRuntimeTargetRoutesWith =
