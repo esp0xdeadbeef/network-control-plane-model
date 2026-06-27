@@ -103,7 +103,7 @@ labs_path="$(
     | jq -er '.inputs["network-labs"].path'
 )"
 
-example_dir="${labs_path}/examples/s-router-overlay-dns-lane-policy"
+example_dir="${labs_path}/examples/s-router-public-overlay-service"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
