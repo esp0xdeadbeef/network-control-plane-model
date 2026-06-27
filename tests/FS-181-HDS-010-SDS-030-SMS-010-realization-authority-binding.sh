@@ -20,10 +20,6 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 echo "--- FS-181-HDS-010-SDS-030-SMS-010: realization authority binding ---"
 echo ""
 
-# Ensure Nix state dir is writable (needed inside build sandboxes)
-export NIX_STATE_DIR="${NIX_STATE_DIR:-${TMPDIR:-/tmp}/nix-state-$$}"
-mkdir -p "$NIX_STATE_DIR"
-
 PASS=0; FAIL=0
 pass() { echo "PASS $1"; PASS=$((PASS+1)); }
 fail() { echo "FAIL $1"; FAIL=$((FAIL+1)); }
@@ -136,10 +132,10 @@ run_pipeline_check() {
   local desc="$1" inv_expr="$2"
   local result
   result=$(REPO_ROOT="$repo_root" nix eval --impure --raw --expr "
-    let flake = builtins.getFlake (toString ./.); system = builtins.currentSystem;
+    let flake = builtins.getFlake \"path:${repo_root}\"; system = builtins.currentSystem;
         labs = flake.inputs.network-labs.outPath;
-        baseIntent = import (labs + \"/examples/single-wan/intent.nix\");
-        baseInventory = import (labs + \"/examples/single-wan/inventory-nixos.nix\");
+        baseIntent = import (labs + \"/examples/single-wan-with-nebula/intent.nix\");
+        baseInventory = import (labs + \"/examples/single-wan-with-nebula/inventory-nixos.nix\");
         runner = inventory: builtins.tryEval (
           let r = flake.lib.\${system}.compileAndBuild {
             input = baseIntent; inventory = inventory;
@@ -185,11 +181,11 @@ echo ""
 
 REPO_ROOT="$repo_root" nix eval --impure --expr '
   let
-    flake = builtins.getFlake (toString ./.);
+    flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     system = builtins.currentSystem;
     labs = flake.inputs.network-labs.outPath;
-    baseIntent = import (labs + "/examples/single-wan/intent.nix");
-    baseInventory = import (labs + "/examples/single-wan/inventory-nixos.nix");
+    baseIntent = import (labs + "/examples/single-wan-with-nebula/intent.nix");
+    baseInventory = import (labs + "/examples/single-wan-with-nebula/inventory-nixos.nix");
     result = flake.lib.${system}.compileAndBuild {
       input = baseIntent;
       inventory = baseInventory;
