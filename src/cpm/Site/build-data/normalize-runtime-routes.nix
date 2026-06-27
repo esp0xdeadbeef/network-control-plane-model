@@ -188,6 +188,69 @@ let
       )
       interfaces;
 
+  policyRoutingAllocationFor =
+    slot:
+    {
+      source = "control-plane-model";
+      allocation = "runtime-ifname-sorted-slot";
+      tableId = 1000 + slot;
+      priority = 10000 + slot;
+    };
+
+  interfaceRuntimeName =
+    interfaces: ifName:
+    let
+      iface = attrsOrEmpty interfaces.${ifName};
+      runtimeIfName = iface.runtimeIfName or null;
+    in
+      if builtins.isString runtimeIfName && runtimeIfName != "" then runtimeIfName else ifName;
+
+  indexedInterfaceAllocations =
+    interfaces:
+    let
+      ifNames = builtins.attrNames interfaces;
+      sortedIfNames =
+        builtins.sort
+          (left: right: (interfaceRuntimeName interfaces left) < (interfaceRuntimeName interfaces right))
+          ifNames;
+      count = builtins.length sortedIfNames;
+      entries =
+        builtins.genList
+          (index:
+            let
+              ifName = builtins.elemAt sortedIfNames index;
+            in
+            {
+              name = ifName;
+              value = policyRoutingAllocationFor (index + 1);
+            })
+          count;
+    in
+      builtins.listToAttrs entries;
+
+  interfaceHasAccessLane =
+    iface:
+    let
+      backingLane = (attrsOrEmpty (iface.backingRef or null)).lane or null;
+      directLane = iface.lane or null;
+      lane = attrsOrEmpty (if backingLane != null then backingLane else directLane);
+      access = lane.access or null;
+    in
+      builtins.isString access && access != "";
+
+  addPolicyRoutingAllocations =
+    interfaces:
+    let
+      allocations = indexedInterfaceAllocations interfaces;
+    in
+      builtins.mapAttrs
+        (ifName: iface:
+          if interfaceHasAccessLane iface then
+            iface // { policyRoutingAllocation = allocations.${ifName}; }
+          else
+            iface)
+        interfaces;
+
   normalizeRuntimeTargetRoutesWith =
     { postInitialComplementsOnly ? false, globalAddr4Access ? { } }:
     target:
@@ -307,14 +370,14 @@ let
       target
       // {
         effectiveRuntimeRealization = effective // {
-          interfaces = appendPostInitialComplements target interfaces;
+          interfaces = addPolicyRoutingAllocations (appendPostInitialComplements target interfaces);
         };
       }
     else
       target
       // {
         effectiveRuntimeRealization = effective // {
-          interfaces = normalizedInterfaces;
+          interfaces = addPolicyRoutingAllocations normalizedInterfaces;
         };
       };
 
