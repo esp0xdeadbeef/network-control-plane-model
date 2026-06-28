@@ -244,6 +244,51 @@ let
           iface // { policyRoutingAllocation = allocations.${ifName}; })
         interfaces;
 
+  interfaceRouteSource =
+    ifName: iface:
+    if (iface.upstream or null) != null then
+      toString iface.upstream
+    else if (iface.uplink or null) != null then
+      toString iface.uplink
+    else if (iface.name or null) != null then
+      toString iface.name
+    else if (iface.interface or null) != null then
+      toString iface.interface
+    else
+      toString ifName;
+
+  normalizeRuntimeLearnedIntent =
+    family: ifName: iface: route:
+    if !builtins.isAttrs route then
+      route
+    else
+      let
+        intent = attrsOrEmpty (route.intent or null);
+        sourcePeerOrProvider = interfaceRouteSource ifName iface;
+      in
+      if (intent.kind or null) != "uplink-learned-reachability" then
+        route
+      else
+        route
+        // {
+          intent = intent // {
+            kind = "uplink-learned-reachability";
+            source = intent.source or "explicit-uplink";
+            routeSource = intent.routeSource or (intent.source or "explicit-uplink");
+            sourcePeerOrProvider = intent.sourcePeerOrProvider or sourcePeerOrProvider;
+            routePurpose =
+              intent.routePurpose or (
+                if (route.dst or null) == defaultDst family then "wan-internet" else "provider-prefix"
+              );
+            maximumScope = intent.maximumScope or "provider";
+            rejectionBehavior = intent.rejectionBehavior or "reject";
+            routeAvailabilityOnly =
+              if intent ? routeAvailabilityOnly then intent.routeAvailabilityOnly else true;
+            policyAuthority =
+              if intent ? policyAuthority then intent.policyAuthority else false;
+          };
+        };
+
   normalizeRuntimeTargetRoutesWith =
     { postInitialComplementsOnly ? false, globalAddr4Access ? { } }:
     target:
@@ -259,14 +304,14 @@ let
         else
           builtins.mapAttrs
             (
-              _ifName: iface:
+              ifName: iface:
                 let
                   routes = attrsOrEmpty (iface.routes or null);
                   dropWrongRuntimeOriginRoute = isRuntimeOriginSourceRouteOnPolicyUplink targetRole runtimeOriginPrefixes iface;
                   ipv4 = uniqueKernelDefaults 4 (
                     dropDuplicateUnlanedDefaults 4 (
                       builtins.filter (route: route != null) (
-                        builtins.map (classifyTargetRoute 4) (
+                        builtins.map (route: normalizeRuntimeLearnedIntent 4 ifName iface (classifyTargetRoute 4 route)) (
                           builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv4 or null))
                         )
                       )
@@ -275,7 +320,7 @@ let
                   ipv6 = uniqueKernelDefaults 6 (
                     dropDuplicateUnlanedDefaults 6 (
                       builtins.filter (route: route != null) (
-                        builtins.map (classifyTargetRoute 6) (
+                        builtins.map (route: normalizeRuntimeLearnedIntent 6 ifName iface (classifyTargetRoute 6 route)) (
                           builtins.filter (route: !dropWrongRuntimeOriginRoute route) (listOrEmpty (routes.ipv6 or null))
                         )
                       )
