@@ -24,8 +24,6 @@ require_cmd nix
 
 tmp_dir="$(mktemp -d)"
 archive_json="${tmp_dir}/flake-archive.json"
-source_json="${tmp_dir}/source-contracts.json"
-cpm_json="${tmp_dir}/cpm.json"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
@@ -33,30 +31,49 @@ labs_path="$(
   jq -er '.inputs["network-labs"].path' "${archive_json}"
 )"
 
-intent_path="${labs_path}/sat/intent.nix"
-inventory_path="${labs_path}/sat/inventory.nix"
+if [[ -f "${labs_path}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix" ]]; then
+  source_dir="${labs_path}/GAMP/HAT/emulated-isp-residential-testnet"
+  inventory_paths=(
+    "${source_dir}/inventory-nixos.nix"
+    "${source_dir}/inventory-clab.nix"
+    "${source_dir}/inventory-hetz.nix"
+  )
+elif [[ -f "${labs_path}/GAMP/SAT/intent.nix" ]]; then
+  source_dir="${labs_path}/GAMP/SAT"
+  inventory_paths=("${source_dir}/inventory.nix")
+else
+  echo "FAIL fs910-fs920-fs930-source-contract-projection: missing controlled GAMP/HAT or GAMP/SAT lab source under ${labs_path}" >&2
+  exit 1
+fi
 
-nix eval --impure --json --expr "
-  let
-    inventory = import ${inventory_path};
-  in
-  {
-    operationalPrivacyContracts = inventory.operationalPrivacyContracts;
-    failureHandlingContracts = inventory.failureHandlingContracts;
-    failureDiagnosticContracts = inventory.failureDiagnosticContracts;
-  }
-" >"${source_json}"
+intent_path="${source_dir}/intent.nix"
 
-nix run \
-  --no-write-lock-file \
-  --extra-experimental-features 'nix-command flakes' \
-  "${repo_root}#compile-and-build-control-plane-model" -- \
-  "${intent_path}" \
-  "${inventory_path}" \
-  "${cpm_json}" >/dev/null
+for inventory_path in "${inventory_paths[@]}"; do
+  profile_name="$(basename "${inventory_path}" .nix)"
+  source_json="${tmp_dir}/${profile_name}-source-contracts.json"
+  cpm_json="${tmp_dir}/${profile_name}-cpm.json"
 
-jq -e \
-  --slurpfile source "${source_json}" '
+  nix eval --impure --json --expr "
+    let
+      inventory = import ${inventory_path};
+    in
+    {
+      operationalPrivacyContracts = inventory.operationalPrivacyContracts;
+      failureHandlingContracts = inventory.failureHandlingContracts;
+      failureDiagnosticContracts = inventory.failureDiagnosticContracts;
+    }
+  " >"${source_json}"
+
+  nix run \
+    --no-write-lock-file \
+    --extra-experimental-features 'nix-command flakes' \
+    "${repo_root}#compile-and-build-control-plane-model" -- \
+    "${intent_path}" \
+    "${inventory_path}" \
+    "${cpm_json}" >/dev/null
+
+  jq -e \
+    --slurpfile source "${source_json}" '
     def has_all($expected; $actual):
       all($expected[]; . as $expected_value | $actual | index($expected_value) != null);
     def renderer_contracts:
@@ -135,9 +152,10 @@ jq -e \
         and (has("failureHandlingContracts") | not)
         and (has("failureDiagnosticContracts") | not)
       )
-  ' "${cpm_json}" >/dev/null || {
-    echo "FAIL fs910-fs920-fs930-source-contract-projection: CPM did not preserve locked source contracts exactly" >&2
+    ' "${cpm_json}" >/dev/null || {
+    echo "FAIL fs910-fs920-fs930-source-contract-projection: CPM did not preserve locked source contracts exactly for ${profile_name}" >&2
     exit 1
   }
+done
 
 echo "PASS fs910-fs920-fs930-source-contract-projection"
