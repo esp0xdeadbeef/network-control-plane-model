@@ -67,32 +67,41 @@ jq -e '
 
 echo "PASS PPPoE client/server binding facts"
 
-# ── DHCPv4 lease contracts ─────────────────────────────────────────────────
-echo "--- DHCPv4 lease contracts ---"
+# ── Host uplink substrate facts ────────────────────────────────────────────
+echo "--- Host uplink substrate facts ---"
 
-# DHCP bindings should be present where inventory specifies ipv4.method == "dhcp".
-# KNOWN_GAP GAP-DHCP-001: Only core-upstream-vlan4 has a DHCP binding in CPM output.
-# The inventory specifies DHCP on:
-#   s-router-nixos: management uplink (dhcp=true, method=dhcp)
-#   s-router-nixos: uplink-isp-a (dhcp=true, method=dhcp)
-#   s-router-clab: management uplink, uplink-isp-a
-# Only core-upstream-vlan4:isp-a appears in runtimeTargets.
-
-dhcp_count=$(jq -r '
+# Host uplink DHCP and VLAN facts are deployment-host inventory facts. The
+# runtime target interface may resolve to modeled upstream addressing, so do
+# not require runtimeTargets.*.interfaces.*.ipv4.method to remain "dhcp".
+dhcp_uplink_count=$(jq -r '
   def root: if type == "array" then .[0] else . end;
-  [root.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets
-   | to_entries[]
-   | .value.effectiveRuntimeRealization.interfaces
+  [root.deploymentHosts["s-router-nixos"].uplinks
    | to_entries[]
    | select(.value.ipv4.method == "dhcp")]
   | length
 ' "${output_json}")
 
-if [[ "${dhcp_count}" -lt 1 ]]; then
-  fail "DHCPv4 lease contracts: expected >= 1, found ${dhcp_count}"
+if [[ "${dhcp_uplink_count}" -lt 2 ]]; then
+  fail "host uplink DHCP facts: expected at least 2, found ${dhcp_uplink_count}"
 fi
 
-echo "PASS DHCPv4 lease contracts: ${dhcp_count} present (GAP-DHCP-001: only ${dhcp_count}, expected more from inventory)"
+jq -e '
+  def root: if type == "array" then .[0] else . end;
+  def uplink($name): root.deploymentHosts["s-router-nixos"].uplinks[$name];
+
+  uplink("management").ipv4.method == "dhcp"
+  and uplink("management").ipv4.dhcp == true
+  and uplink("management").mode == "vlan"
+  and uplink("management").vlan == 2
+  and uplink("management").bridge == "vlan2"
+  and uplink("uplink-isp-a").ipv4.method == "dhcp"
+  and uplink("uplink-isp-a").ipv4.dhcp == true
+  and uplink("uplink-isp-a").mode == "vlan"
+  and uplink("uplink-isp-a").vlan == 4
+  and uplink("uplink-isp-a").bridge == "br-uplink0"
+' "${output_json}" >/dev/null || fail "NixOS deployment host DHCP/VLAN uplink binding missing or wrong"
+
+echo "PASS host uplink substrate facts: ${dhcp_uplink_count} DHCP uplinks with VLAN/bridge bindings"
 
 # ── P2P interface presence ─────────────────────────────────────────────────
 echo "--- P2P interface presence ---"

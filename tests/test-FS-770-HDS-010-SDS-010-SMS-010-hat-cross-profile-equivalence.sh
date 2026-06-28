@@ -87,6 +87,16 @@ def drop_runtime_targets:
   elif type == "array" then map(drop_runtime_targets)
   else . end;
 
+# Endpoint assignments carry per-profile fixture address delivery and
+# validation diagnostics; FS-720 owns their exact contract.
+def drop_endpoint_assignment:
+  if type == "object" then
+    del(.endpointAssignment)
+    | del(.endpointAssignmentCheck)
+    | map_values(drop_endpoint_assignment)
+  elif type == "array" then map(drop_endpoint_assignment)
+  else . end;
+
 def normalize_data_keys:
   if type == "object" then
     with_entries(
@@ -107,7 +117,7 @@ def drop_deployment:
 
 .control_plane_model
 | {
-    data: (.data | normalize_data_keys | drop_runtime_targets | drop_deployment | normalize_bridges | drop_vlans),
+    data: (.data | normalize_data_keys | drop_runtime_targets | drop_deployment | drop_endpoint_assignment | normalize_bridges | drop_vlans),
     meta: .meta,
     version: .version,
     secretDeclarations: (.secretDeclarations // []),
