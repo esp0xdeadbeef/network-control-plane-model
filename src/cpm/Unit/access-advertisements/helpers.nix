@@ -108,7 +108,20 @@ let
   resolveAdvertisedIPv4Targets = entryPath: fieldName: routerAddress: rawValue:
     let
       configured =
-        if rawValue == null then [ "router-self" ] else requireStringList "${entryPath}.${fieldName}" rawValue;
+        if rawValue == null then
+          failInventory
+            "${entryPath}.${fieldName}"
+            "enabled resolver advertisement must explicitly define DNS discovery targets; use 'router-self' when the router interface is the advertised resolver"
+        else
+          let
+            rendered = requireStringList "${entryPath}.${fieldName}" rawValue;
+          in
+          if rendered == [ ] then
+            failInventory
+              "${entryPath}.${fieldName}"
+              "enabled resolver advertisement must define at least one DNS discovery target"
+          else
+            rendered;
     in
     builtins.genList
       (idx: resolveAdvertisedIPv4Target entryPath fieldName routerAddress idx (builtins.elemAt configured idx))
@@ -117,7 +130,20 @@ let
   resolveAdvertisedIPv6Targets = entryPath: fieldName: routerAddress: rawValue:
     let
       configured =
-        if rawValue == null then [ "router-self" ] else requireStringList "${entryPath}.${fieldName}" rawValue;
+        if rawValue == null then
+          failInventory
+            "${entryPath}.${fieldName}"
+            "enabled resolver advertisement must explicitly define DNS discovery targets; use 'router-self' when the router interface is the advertised resolver"
+        else
+          let
+            rendered = requireStringList "${entryPath}.${fieldName}" rawValue;
+          in
+          if rendered == [ ] then
+            failInventory
+              "${entryPath}.${fieldName}"
+              "enabled resolver advertisement must define at least one DNS discovery target"
+          else
+            rendered;
     in
     builtins.genList
       (idx: resolveAdvertisedIPv6Target entryPath fieldName routerAddress idx (builtins.elemAt configured idx))

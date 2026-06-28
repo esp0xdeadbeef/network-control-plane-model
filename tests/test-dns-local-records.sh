@@ -64,6 +64,16 @@ base
                 ];
               };
             };
+          globex-nyc-access-runtime =
+            base.realization.nodes.globex-nyc-access-runtime
+            // {
+              services.dns = {};
+            };
+          globex-lon-access-runtime =
+            base.realization.nodes.globex-lon-access-runtime
+            // {
+              services.dns = {};
+            };
         };
     };
 }
