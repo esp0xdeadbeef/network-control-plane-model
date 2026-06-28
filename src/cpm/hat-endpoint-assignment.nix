@@ -84,6 +84,15 @@ else
           "FS-720-HDS-030-SDS-010-SMS-010"
         ];
       }
+      // (lib.optionalAttrs (builtins.hasAttr "role" endpoint) {
+        role = endpoint.role;
+      })
+      // (lib.optionalAttrs (builtins.hasAttr "kind" endpoint) {
+        kind = endpoint.kind;
+      })
+      // (lib.optionalAttrs (builtins.hasAttr "managementEndpoint" endpoint) {
+        managementEndpoint = endpoint.managementEndpoint;
+      })
       // (if mode == "static" then {
         static = {
           address = stripCidr (firstAddress name endpoint "ipv4");
