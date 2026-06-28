@@ -25,10 +25,17 @@ let
       );
 
   deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
+  hatEndpointAssignment = import ./cpm/hat-endpoint-assignment.nix {
+    inherit inventory;
+    lib = effectiveLib;
+  };
 
   merged = {
     control_plane_model = cpm;
     inherit deploymentHosts;
-  };
+  }
+  // (effectiveLib.optionalAttrs (hatEndpointAssignment != { }) {
+    endpointAssignment = hatEndpointAssignment;
+  });
 in
 builtins.seq cpm merged

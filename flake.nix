@@ -181,10 +181,16 @@
                       inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
                     }
                   );
+              hatEndpointAssignment = import ./src/cpm/hat-endpoint-assignment.nix {
+                inherit lib inventory;
+              };
 
               result = {
                 control_plane_model = cpm;
                 deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
+              }
+              // lib.optionalAttrs (hatEndpointAssignment != { }) {
+                endpointAssignment = hatEndpointAssignment;
               };
             in
             builtins.seq cpm (exposeHostNetwork result);
