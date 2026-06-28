@@ -130,6 +130,121 @@ let
   runtimeTargetPath = target:
     "runtimeTargets.${target.placement.target or target.logicalNode.name or "access"}";
 
+  runtimeTargetScope = target:
+    target.placement.target or target.logicalNode.name or "access";
+
+  routeContractForResolverAdvertisement = target: dns: address:
+    let
+      matches =
+        builtins.filter
+          (route:
+            builtins.isAttrs route
+            && (route.dst or null) == address
+            && (route.source or null) == "router-self"
+            && (route.scope or null) == "local-access")
+          (listOrEmpty (dns.routeContracts or null));
+    in
+    if matches != [ ] then
+      builtins.head matches
+    else
+      failInventory
+        "${runtimeTargetPath target}.services.dns.routeContracts"
+        "resolver advertisement for '${address}' lacks modeled local-access DNS policy authority";
+
+  trafficClassificationForResolverAdvertisement = target: dns: address:
+    let
+      matches =
+        builtins.filter
+          (classification:
+            builtins.isAttrs classification
+            && (classification.kind or null) == "public-dns-traffic-classification"
+            && (classification.trafficClass or null) == "modeled-resolver-traffic"
+            && (classification.resolverDestination or null) == address
+            && (classification.dnsPolicy or null) == "modeled-resolver-relationship")
+          (listOrEmpty (dns.publicDnsTrafficClassifications or null));
+    in
+    if matches != [ ] then
+      builtins.head matches
+    else
+      failInventory
+        "${runtimeTargetPath target}.services.dns.publicDnsTrafficClassifications"
+        "resolver advertisement for '${address}' lacks modeled DNS traffic classification";
+
+  resolverAdvertisementRecord = target: dns: transport: requiredDiscoveryOption: addressFamily: entry: address:
+    let
+      targetScope = runtimeTargetScope target;
+      routeContract = routeContractForResolverAdvertisement target dns address;
+      trafficClassification = trafficClassificationForResolverAdvertisement target dns address;
+      tenant = entry.tenant or null;
+      sourceInterface = entry.interface or null;
+      attachmentSurface = entry.bindInterface or sourceInterface;
+    in
+    {
+      kind = "dns-resolver-advertisement";
+      source = "modeled-resolver-relationship";
+      inherit transport requiredDiscoveryOption addressFamily;
+      requesterScope = targetScope;
+      requesterRole = "tenant-client";
+      responderScope = targetScope;
+      resolverServiceRole = "access-resolver";
+      accessSpace = tenant;
+      tenant = tenant;
+      sourceInterface = sourceInterface;
+      attachmentSurface = attachmentSurface;
+      advertisedResolverIdentity = address;
+      resolverAddress = address;
+      resolverPurpose = "client-recursive-resolver-candidate";
+      dnsPolicy = "modeled-resolver-relationship";
+      advertisementGrantsRecursion = false;
+      advertisementGrantsUpstreamForwarding = false;
+      advertisementGrantsPublicDnsEgress = false;
+      policyReferences = {
+        dnsService = "${runtimeTargetPath target}.services.dns";
+        inherit routeContract trafficClassification;
+      };
+    };
+
+  resolverAdvertisementsForTarget = target:
+    let
+      advertisements = attrsOrEmpty (target.advertisements or null);
+      dns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
+      dhcp4Records =
+        lib.concatMap
+          (entry:
+            builtins.map
+              (address: resolverAdvertisementRecord target dns "dhcp4" "dhcp-option-6" "ipv4" entry address)
+              (listOrEmpty (entry.dnsServers or null)))
+          (listOrEmpty (advertisements.dhcp4 or null));
+      dhcpv6Records =
+        lib.concatMap
+          (entry:
+            builtins.map
+              (address: resolverAdvertisementRecord target dns "dhcpv6" "dhcpv6-option-23" "ipv6" entry address)
+              (listOrEmpty (entry.dnsServers or null)))
+          (listOrEmpty (advertisements.dhcpv6 or null));
+      ipv6RaRecords =
+        lib.concatMap
+          (entry:
+            builtins.map
+              (address: resolverAdvertisementRecord target dns "ipv6-ra" "ra-rdnss" "ipv6" entry address)
+              (listOrEmpty (entry.rdnss or null)))
+          (listOrEmpty (advertisements.ipv6Ra or null));
+    in
+    dhcp4Records ++ dhcpv6Records ++ ipv6RaRecords;
+
+  addResolverAdvertisementContracts = target:
+    let
+      resolverAdvertisements = resolverAdvertisementsForTarget target;
+    in
+    if resolverAdvertisements == [ ] then
+      target
+    else
+      target // {
+        advertisements =
+          attrsOrEmpty (target.advertisements or null)
+          // { inherit resolverAdvertisements; };
+      };
+
   addForwarderRoutes =
     target: forwarders:
     let
@@ -308,16 +423,18 @@ let
     // {
       services = (attrsOrEmpty (targetWithDns.services or null)) // { dns = dnsWithTrafficClassifications; };
     };
+  targetWithResolverAdvertisementContracts =
+    addResolverAdvertisementContracts targetWithDnsContracts;
 in
 if dns == { } then
   targetWithDns
 else if suppressForwarderContracts then
-  targetWithDnsContracts
+  targetWithResolverAdvertisementContracts
 else if forwarders == [ ] then
-  targetWithDnsContracts
+  targetWithResolverAdvertisementContracts
 else if (targetWithDns.role or null) != "access" then
-  targetWithDnsContracts
+  targetWithResolverAdvertisementContracts
 else
   addForwarderRoutes
-    targetWithDnsContracts
+    targetWithResolverAdvertisementContracts
     forwarders
