@@ -13,7 +13,7 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 single_wan_dir="${labs_path}/examples/single-wan"
-hat_dir="${labs_path}/HAT/emulated-isp-residential-testnet"
+hat_dir="${NETWORK_LABS_HAT_DIR:-$(pinned_hat_dir)}"
 single_output="${tmp_dir}/single-wan.json"
 hat_output="${tmp_dir}/hat.json"
 
