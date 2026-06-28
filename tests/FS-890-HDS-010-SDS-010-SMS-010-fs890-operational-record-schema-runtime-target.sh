@@ -29,8 +29,21 @@ labs_path="$(
   jq -er '.inputs["network-labs"].path' "${archive_json}"
 )"
 
-intent_path="${labs_path}/sat/intent.nix"
-inventory_path="${labs_path}/sat/inventory.nix"
+if [[ -f "${labs_path}/GAMP/SAT/intent.nix" ]]; then
+  source_dir="${labs_path}/GAMP/SAT"
+elif [[ -f "${labs_path}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix" ]]; then
+  source_dir="${labs_path}/GAMP/HAT/emulated-isp-residential-testnet"
+else
+  echo "FAIL fs890-operational-record-schema-runtime-target: missing controlled GAMP/SAT or GAMP/HAT lab source under ${labs_path}" >&2
+  exit 1
+fi
+
+intent_path="${source_dir}/intent.nix"
+if [[ -f "${source_dir}/inventory.nix" ]]; then
+  inventory_path="${source_dir}/inventory.nix"
+else
+  inventory_path="${source_dir}/inventory-nixos.nix"
+fi
 
 nix run \
   --no-write-lock-file \
