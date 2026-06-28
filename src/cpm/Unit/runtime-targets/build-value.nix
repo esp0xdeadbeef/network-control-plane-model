@@ -21,6 +21,7 @@
   runtimeServices,
   hasRuntimeServices,
   runtimeStatePolicy,
+  runtimeDiagnostics,
 }:
 {
         logicalNode = logical;
@@ -102,3 +103,4 @@
       )
       // (if hasRuntimeServices then { services = runtimeServices; } else { })
       // (if runtimeStatePolicy != { } then { statePolicy = runtimeStatePolicy; } else { })
+      // (if runtimeDiagnostics != { } then { diagnostics = runtimeDiagnostics; } else { })
