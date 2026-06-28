@@ -5,6 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+source "${repo_root}/tests/lib/pinned-paths.sh"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -17,15 +18,9 @@ require_cmd jq
 require_cmd nix
 
 tmp_dir="$(mktemp -d)"
-archive_json="${tmp_dir}/flake-archive.json"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
-labs_path="$(
-  jq -er '.inputs["network-labs"].path' "${archive_json}"
-)"
-
-hat_dir="${labs_path}/HAT/emulated-isp-residential-testnet"
+hat_dir="$(pinned_hat_dir)"
 intent_path="${hat_dir}/intent.nix"
 
 build_cpm() {
