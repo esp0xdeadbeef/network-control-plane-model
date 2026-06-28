@@ -46,6 +46,7 @@ let
   };
   binderSourceAudit = import ../../binder-source-audit.nix { inherit helpers; };
   builtins_ipam = import ../../ipam.nix { inherit lib; };
+  pppoeDefaultRouteFilter = import ./pppoe-default-route-filter.nix { inherit sortedNames; };
   firstOrNull = values: if values == [ ] then null else builtins.head values;
   stripPrefixLength = value:
     if !(isNonEmptyString value) then "" else builtins.head (lib.splitString "/" value);
@@ -335,24 +336,16 @@ let
               ) (sortedNames realizationIndex.targetDefs)
             )
           );
-          isPppoeLink = iface:
-            (iface.sourceKind or "") == "p2p"
-            && builtins.hasAttr (iface.backingRef.name or "") pppoeLinkNames;
-          stripDefaultRoutes = iface:
-            let
-              routes = iface.routes or {};
-              ipv4 = builtins.filter
-                (r: ((r.intent or {}).kind or "") != "default-reachability")
-                (routes.ipv4 or []);
-              ipv6 = builtins.filter
-                (r: ((r.intent or {}).kind or "") != "default-reachability")
-                (routes.ipv6 or []);
-            in
-            iface // { routes = routes // { inherit ipv4 ipv6; }; };
         in
-        builtins.mapAttrs (_: iface:
-          if isPppoeLink iface then stripDefaultRoutes iface else iface
-        ) ifaces;
+        pppoeDefaultRouteFilter.filter {
+          inherit
+            targetId
+            nodeName
+            nodePath
+            pppoeLinkNames
+            ifaces
+            ;
+        };
       addDefaultViaDownstreamSelector =
         ifaces:
         let
@@ -430,8 +423,17 @@ let
           builtins.mapAttrs (_: iface:
             if isDownstreamSelectorP2p iface then addDefaultRoute iface else iface
           ) ifaces;
+      pppoeDefaultRouteFilterResult =
+        removeDefaultRoutesOnPppoeCoreP2ps effectiveRuntimeInterfacesUnfiltered;
       effectiveRuntimeInterfaces =
-        addDefaultViaDownstreamSelector (removeDefaultRoutesOnPppoeCoreP2ps effectiveRuntimeInterfacesUnfiltered);
+        addDefaultViaDownstreamSelector pppoeDefaultRouteFilterResult.interfaces;
+      runtimeDiagnostics =
+        if pppoeDefaultRouteFilterResult.diagnostics == [ ] then
+          { }
+        else
+          {
+            providerHandoffFabricEgress = pppoeDefaultRouteFilterResult.diagnostics;
+          };
       placement =
         if realizedTarget then
           {
@@ -492,6 +494,7 @@ let
           runtimeContainers
           runtimeOriginEgressContract
           runtimeStatePolicy
+          runtimeDiagnostics
           ;
         effectiveRuntimeInterfaces =
           let

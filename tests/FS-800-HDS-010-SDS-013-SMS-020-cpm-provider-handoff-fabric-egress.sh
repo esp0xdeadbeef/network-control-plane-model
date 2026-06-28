@@ -117,6 +117,83 @@ run_checks() {
   ' "${output_json}"
 }
 
+run_diagnostic_negative_check() {
+  local expr="${tmp_dir}/pppoe-default-route-filter-negative.nix"
+  local result_json="${tmp_dir}/pppoe-default-route-filter-negative.json"
+
+  cat >"${expr}" <<EOF
+let
+  filter = import ${repo_root}/src/cpm/Unit/runtime-targets/pppoe-default-route-filter.nix {
+    sortedNames = attrs: builtins.sort builtins.lessThan (builtins.attrNames attrs);
+  };
+  default4 = {
+    dst = "0.0.0.0/0";
+    proto = "default";
+    via4 = "10.255.255.1";
+    intent.kind = "default-reachability";
+  };
+  default6 = {
+    dst = "::/0";
+    proto = "default";
+    via6 = "fd00::1";
+    intent.kind = "default-reachability";
+  };
+  result = filter.filter {
+    targetId = "target-a";
+    nodeName = "provider";
+    nodePath = "inventory.controlPlane.sites.esp.site-a.nodes.provider";
+    pppoeLinkNames = { pppoe-wan = true; };
+    ifaces = {
+      pppoeP2p = {
+        sourceKind = "p2p";
+        backingRef = {
+          name = "pppoe-wan";
+          lane.kind = "access";
+        };
+        routes = {
+          ipv4 = [ default4 ];
+          ipv6 = [ default6 ];
+        };
+      };
+      normalP2p = {
+        sourceKind = "p2p";
+        backingRef.name = "ordinary-lan";
+        routes.ipv4 = [ default4 ];
+        routes.ipv6 = [ ];
+      };
+    };
+  };
+in
+{
+  diagnostics = result.diagnostics;
+  pppoeIpv4Count = builtins.length result.interfaces.pppoeP2p.routes.ipv4;
+  pppoeIpv6Count = builtins.length result.interfaces.pppoeP2p.routes.ipv6;
+  normalIpv4Count = builtins.length result.interfaces.normalP2p.routes.ipv4;
+}
+EOF
+
+  nix eval --json --file "${expr}" >"${result_json}"
+  jq -e '
+    .pppoeIpv4Count == 0
+    and .pppoeIpv6Count == 0
+    and .normalIpv4Count == 1
+    and (.diagnostics | length) == 2
+    and ([.diagnostics[].addressFamily] | sort) == ["ipv4", "ipv6"]
+    and all(.diagnostics[];
+      .gampId == "FS-800-HDS-010-SDS-013-SMS-020"
+      and .code == "pppoe-p2p-default-reachability-stripped"
+      and .mode == "fail-closed"
+      and .severity == "fatal"
+      and .target == "target-a"
+      and .logicalNode == "provider"
+      and .interface == "pppoeP2p"
+      and .sourceKind == "p2p"
+      and .backingRef.name == "pppoe-wan"
+      and (.sourceLocation | startswith("inventory.controlPlane.sites.esp.site-a.nodes.provider.interfaces.pppoeP2p.routes."))
+    )
+  ' "${result_json}" >/dev/null
+}
+
 # --- NixOS substrate ---
 echo "--- FS-800-HDS-010-SDS-013-SMS-020: Testing NixOS substrate ---"
 output_nixos="${tmp_dir}/cpm-nixos.json"
@@ -172,12 +249,13 @@ if [[ "${all_checks_passed}" == "true" ]]; then
   echo ""
   echo "PASS FS-800-HDS-010-SDS-013-SMS-020 construction test (both substrates)"
   echo ""
-  echo "GAP NOTE: SMS-020 predicate 3 (fail-closed diagnostic emission) is deferred."
-  echo "  The CPM build-target.nix silently strips default-reachability from PPPoE"
-  echo "  p2p interfaces and adds fabric-lane defaults on downstream-selector p2p."
-  echo "  Explicit diagnostic records (mode=fail-closed) require threading diagnostics"
-  echo "  through the build-target pipeline. The route behavior is correct; diagnostic"
-  echo "  records are a separate CMC item."
+  echo "--- FS-800-HDS-010-SDS-013-SMS-020: Seeded negative (diagnostic emission) ---"
+  if run_diagnostic_negative_check; then
+    echo "  Seeded negative PASS: PPPoE p2p default-reachability strips emit fail-closed diagnostics"
+  else
+    echo "  Seeded negative FAIL: PPPoE p2p default-reachability strips lack required diagnostics"
+    all_checks_passed=false
+  fi
   echo ""
   echo "GAP NOTE: IPv6 default route on downstream-selector p2p is IMPLEMENTED"
   echo "  (2026-06-15, CPM commits fc36a2f, 29b72dc). peerAddr6 computed from"
@@ -230,7 +308,7 @@ if [[ "${all_checks_passed}" == "true" ]]; then
 
   if [[ "${all_checks_passed}" == "true" ]]; then
     echo ""
-    echo "PASS FS-800-HDS-010-SDS-013-SMS-020 construction test (all checks + seeded negative)"
+    echo "PASS FS-800-HDS-010-SDS-013-SMS-020 construction test (all checks + seeded negatives)"
   else
     echo ""
     echo "FAIL FS-800-HDS-010-SDS-013-SMS-020 construction test (seeded negative failed)"
