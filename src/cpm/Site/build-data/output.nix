@@ -428,6 +428,14 @@ in
     { }
 )
 // (
+  if builtins.isAttrs (siteAttrs.trafficPathValidation or null) then
+    {
+      trafficPathValidation = siteAttrs.trafficPathValidation;
+    }
+  else
+    { }
+)
+// (
   if builtins.isAttrs (siteAttrs.overlayReachability or null) then
     {
       overlayReachability = siteAttrs.overlayReachability;
