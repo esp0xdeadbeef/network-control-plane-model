@@ -1,3 +1,6 @@
+# FS-720-HDS-030-SDS-010-SMS-010: CPM endpointAssignment fixture records.
+# The container-local eth0 names below are NixOS private-network endpoint
+# interfaces, not host bridge defaults or renderer-side topology inference.
 { lib }:
 
 let

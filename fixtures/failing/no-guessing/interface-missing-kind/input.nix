@@ -1,3 +1,6 @@
+# FS-320-HDS-010-SDS-010-SMS-030 and FS-984-HDS-010-SDS-010-SMS-010:
+# negative fixture proving missing interface kind is rejected instead of inferred
+# from runtime-like names such as eth0.
 {
   enterprise = {
     acme = {
