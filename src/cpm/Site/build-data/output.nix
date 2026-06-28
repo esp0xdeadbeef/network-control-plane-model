@@ -420,6 +420,14 @@ in
     { }
 )
 // (
+  if builtins.isAttrs (siteAttrs.prefixAuthority or null) then
+    {
+      prefixAuthority = siteAttrs.prefixAuthority;
+    }
+  else
+    { }
+)
+// (
   if builtins.isAttrs (siteAttrs.overlayReachability or null) then
     {
       overlayReachability = siteAttrs.overlayReachability;
