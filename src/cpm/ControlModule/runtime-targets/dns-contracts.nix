@@ -306,7 +306,9 @@ let
       selfRefForwarders = builtins.filter (f: builtins.elem f nonLoopbackListeners) forwarders;
       safeForwarders =
         if selfRefForwarders != [ ] then
-          builtins.filter (f: !(builtins.elem f nonLoopbackListeners)) forwarders
+          builtins.trace
+            "FS-540-HDS-010-SDS-010-SMS-035: filtered self-referential DNS forwarder(s) ${builtins.toJSON selfRefForwarders}"
+            (builtins.filter (f: !(builtins.elem f nonLoopbackListeners)) forwarders)
         else
           forwarders;
       allowedUpstreamClasses =
