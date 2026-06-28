@@ -96,6 +96,14 @@ INVENTORY_PATH="${inventory_path}" \
               && (((route.lane or { }).uplink or null) == uplink)
               && (((route.intent or { }).kind or null) == "internal-reachability"))
             routes;
+        hasDnsServiceRoute = routes: destination: relationId:
+          builtins.any
+            (route:
+              (route.dst or null) == destination
+              && ((route.relationId or null) == relationId)
+              && ((route.trafficType or null) == "dns")
+              && (((route.intent or { }).kind or null) == "service-endpoint-reachability"))
+            routes;
         hasAll = expected: actual:
           builtins.all (value: builtins.elem value actual) expected;
         siteaUpstreamClient =
@@ -141,9 +149,15 @@ INVENTORY_PATH="${inventory_path}" \
               "s-router-access-client"
               "east-west";
           mgmtLaneLearnsMgmtDnsV4 =
-            hasRoute (siteaUpstreamMgmt.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.48";
+            hasDnsServiceRoute
+              (siteaUpstreamMgmt.ipv4 or [ ])
+              "10.20.10.1"
+              "allow-east-west-to-sitea-mgmt-dns";
           mgmtLaneLearnsMgmtDnsV6 =
-            hasRoute (siteaUpstreamMgmt.ipv6 or [ ]) "fd42:dead:beef:0010:0000:0000:0000:0000/64" "fd42:dead:beef:1000:0:0:0:30";
+            hasDnsServiceRoute
+              (siteaUpstreamMgmt.ipv6 or [ ])
+              "fd42:dead:beef:10::1"
+              "allow-east-west-to-sitea-mgmt-dns";
           eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV4 =
             !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.30");
           eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV6 =
