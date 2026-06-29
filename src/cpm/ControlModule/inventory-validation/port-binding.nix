@@ -69,6 +69,22 @@ else if selector.kind == "logicalInterface" then
     failInventory "${portPath}.logicalInterface" "must reference a tenant interface with logical = true"
   else
     true
+else if selector.kind == "serviceInterface" then
+  let
+    pppoe = if builtins.isAttrs (targetDef.node.services.pppoe or null) then targetDef.node.services.pppoe else { };
+    client = if builtins.isAttrs (pppoe.client or null) then pppoe.client else { };
+    server = if builtins.isAttrs (pppoe.server or null) then pppoe.server else { };
+    serviceMatches =
+      (client.interface or null) == selector.key
+      || (server.interface or null) == selector.key;
+    attach = portBinding.attach or null;
+  in
+  if !serviceMatches then
+    failInventory "${portPath}.serviceInterface" "must match services.pppoe.client.interface or services.pppoe.server.interface on logical node '${nodeName}'"
+  else if !builtins.isAttrs attach || (attach.kind or null) != "bridge" then
+    failInventory "${portPath}.attach" "PPPoE service interface ports require explicit bridge attachment before renderer handoff"
+  else
+    true
 else if !hasAttr selector.key siteContract.uplinkNameSet then
   failInventory "${portPath}.uplink" "references unknown site uplink '${selector.key}'"
 else if !nodeContract.mayAnchorExternalUplinks then

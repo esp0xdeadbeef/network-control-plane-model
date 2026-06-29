@@ -119,6 +119,7 @@ let
             portDefs = portDefs;
             byLink = buildSelectorIndex targetPath portDefs "link";
             byLogicalInterface = buildSelectorIndex targetPath portDefs "logicalInterface";
+            byServiceInterface = buildSelectorIndex targetPath portDefs "serviceInterface";
             byUplink = buildSelectorIndex targetPath portDefs "uplink";
           };
           fabricLinkBindings = fabricLinkBindings;

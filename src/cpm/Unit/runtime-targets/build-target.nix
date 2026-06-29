@@ -189,6 +189,74 @@ let
       pppoeService = if realizedTarget then pppoeServiceForTarget targetId else { };
       pppoeServer = attrsOrEmpty (pppoeService.server or null);
       pppoeClient = attrsOrEmpty (pppoeService.client or null);
+      pppoeServiceRole =
+        if pppoeServer != { } then
+          "server"
+        else if pppoeClient != { } then
+          "client"
+        else
+          null;
+      pppoeServiceConfig =
+        if pppoeServiceRole == "server" then
+          pppoeServer
+        else if pppoeServiceRole == "client" then
+          pppoeClient
+        else
+          { };
+      pppoeServiceInterface = pppoeServiceConfig.interface or null;
+      pppoeServicePortBinding =
+        if isNonEmptyString pppoeServiceInterface && hasAttr pppoeServiceInterface portBindings.byServiceInterface then
+          portBindings.byServiceInterface.${pppoeServiceInterface}
+        else
+          null;
+      pppoeHandoffInterfaceEntry =
+        if pppoeServiceRole == null || pppoeServicePortBinding == null then
+          null
+        else if hasAttr pppoeServiceInterface routeFilteredRuntimeInterfaces then
+          failInventory
+            "${targetDef.nodePath}.ports.${pppoeServicePortBinding.sourcePortName or pppoeServiceInterface}.serviceInterface"
+            "PPPoE service interface port must not collide with a forwarding-model interface"
+        else
+          let
+            sourcePortName = pppoeServicePortBinding.sourcePortName or pppoeServiceInterface;
+          in
+          {
+            name = pppoeServiceInterface;
+            value = {
+              runtimeTarget = targetId;
+              logicalNode = nodeName;
+              sourceInterface = pppoeServiceInterface;
+              sourceKind = "pppoe-handoff";
+              runtimeIfName = pppoeServicePortBinding.runtimeIfName;
+              renderedIfName = pppoeServicePortBinding.runtimeIfName;
+              addr4 = null;
+              addr6 = null;
+              routes = {
+                ipv4 = [ ];
+                ipv6 = [ ];
+              };
+              backingRef = {
+                kind = "service-interface";
+                id = "service-interface::${targetId}::${pppoeServiceInterface}";
+                name = pppoeServiceInterface;
+                service = "pppoe";
+                serviceRole = pppoeServiceRole;
+              };
+              pppoe = {
+                role = pppoeServiceRole;
+                serviceInterface = pppoeServiceInterface;
+              };
+              attach = pppoeServicePortBinding.attach;
+            }
+            // (if isNonEmptyString (pppoeServicePortBinding.adapterName or null) then { adapterName = pppoeServicePortBinding.adapterName; } else { })
+            // binderSourceAudit.make {
+              path = "${targetDef.nodePath}.ports.${sourcePortName}";
+              field = "effectiveRuntimeRealization.interfaces.${pppoeServiceInterface}";
+              binderSourceClass = "public-inventory";
+              binderSourcePath = "${targetDef.nodePath}.ports.${sourcePortName}";
+              upstreamBehaviorRef = "${targetDef.nodePath}.services.pppoe.${pppoeServiceRole}";
+            };
+          };
       pppoeSessionInterfaceEntry =
         if pppoeServer != { } then
           let
@@ -317,11 +385,16 @@ let
             }
         else
           null;
-      effectiveRuntimeInterfacesUnfiltered =
-        if pppoeSessionInterfaceEntry == null then
+      effectiveRuntimeInterfacesWithPppoeHandoff =
+        if pppoeHandoffInterfaceEntry == null then
           routeFilteredRuntimeInterfaces
         else
-          routeFilteredRuntimeInterfaces // { ${pppoeSessionInterfaceEntry.name} = pppoeSessionInterfaceEntry.value; };
+          routeFilteredRuntimeInterfaces // { ${pppoeHandoffInterfaceEntry.name} = pppoeHandoffInterfaceEntry.value; };
+      effectiveRuntimeInterfacesUnfiltered =
+        if pppoeSessionInterfaceEntry == null then
+          effectiveRuntimeInterfacesWithPppoeHandoff
+        else
+          effectiveRuntimeInterfacesWithPppoeHandoff // { ${pppoeSessionInterfaceEntry.name} = pppoeSessionInterfaceEntry.value; };
       removeDefaultRoutesOnPppoeCoreP2ps =
         ifaces:
         let

@@ -26,6 +26,11 @@ let
         kind = "logicalInterface";
         key = portAttrs.logicalInterface;
       }
+    else if isNonEmptyString (portAttrs.serviceInterface or null) then
+      {
+        kind = "serviceInterface";
+        key = portAttrs.serviceInterface;
+      }
     else if (portAttrs.external or false) == true then
       {
         kind = "uplink";
@@ -37,10 +42,10 @@ let
         key = portAttrs.uplink;
       }
     else
-      failInventory portPath "port must declare exactly one selector via link, logicalInterface, or uplink/external";
+      failInventory portPath "port must declare exactly one selector via link, logicalInterface, serviceInterface, or uplink/external";
 
   adapterNameFor = portPath: portAttrs: selector:
-    if selector.kind == "link" then
+    if selector.kind == "link" || selector.kind == "serviceInterface" then
       let
         requiredAdapterName = requireString "${portPath}.adapterName" (portAttrs.adapterName or null);
       in
@@ -49,7 +54,7 @@ let
       else
         failInventory "${portPath}.adapterName" "must match ^[a-z][a-z0-9-]*$ (example: br-isp-a)"
     else if isNonEmptyString (portAttrs.adapterName or null) then
-      failInventory "${portPath}.adapterName" "is only supported for ports that select a p2p link via .link"
+      failInventory "${portPath}.adapterName" "is only supported for ports that select a p2p link via .link or a service interface via .serviceInterface"
     else
       null;
 

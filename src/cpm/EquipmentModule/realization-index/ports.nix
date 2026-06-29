@@ -142,6 +142,7 @@ let
       value =
         {
           inherit selector runtimeIfName;
+          sourcePortName = portName;
         }
         // (if attach != null then { inherit attach; } else { })
         // (if interfaceAddr4 != null then { inherit interfaceAddr4; } else { })
