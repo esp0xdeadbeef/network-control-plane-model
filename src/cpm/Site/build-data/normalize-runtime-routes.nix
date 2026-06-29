@@ -101,6 +101,58 @@ let
     && interfaceUplinks iface != [ ]
     && ((interfaceLane iface).access or null) == null;
 
+  isUpstreamSelectorAccessUplinkInterface =
+    targetRole: iface:
+    let lane = interfaceLane iface;
+    in
+    targetRole == "upstream-selector"
+    && (lane.kind or null) == "access-uplink"
+    && (lane.access or null) != null
+    && builtins.isString (lane.uplink or null)
+    && lane.uplink != "";
+
+  upstreamSelectorPolicyDefaultComplements =
+    family: targetRole: policyIface: interfaces:
+    if !(isUpstreamSelectorAccessUplinkInterface targetRole policyIface) then
+      [ ]
+    else
+      let
+        policyLane = interfaceLane policyIface;
+        policyUplink = policyLane.uplink or null;
+        routesFor = iface: listOrEmpty ((attrsOrEmpty (iface.routes or null))."ipv${builtins.toString family}" or null);
+        coreIfaces = builtins.filter
+          (
+            iface:
+            isUpstreamSelectorCoreDefaultInterface targetRole iface
+            && builtins.elem policyUplink (interfaceUplinks iface)
+          )
+          (builtins.attrValues interfaces);
+        defaultRouteFor =
+          route:
+          if
+            !builtins.isAttrs route
+            || (route.dst or null) != defaultDst family
+            || ((route.via4 or null) == null && (route.via6 or null) == null)
+          then
+            null
+          else
+            route
+            // {
+              lane = policyLane;
+              policyOnly = true;
+              reason = "policy-table-default-reachability";
+              intent = (attrsOrEmpty (route.intent or null)) // {
+                policyTableDefaultComplement = true;
+                source = "policy-default-lane";
+              };
+            };
+      in
+      builtins.filter (route: route != null) (
+        builtins.concatLists (
+          builtins.map (coreIface: builtins.map defaultRouteFor (routesFor coreIface)) coreIfaces
+        )
+      );
+
   upstreamSelectorCorePolicyComplements =
     family: targetRole: coreIface: interfaces:
     if !(isUpstreamSelectorCoreDefaultInterface targetRole coreIface) then
@@ -448,10 +500,12 @@ let
               base4 =
                 ipv4
                 ++ runtimeOriginReturnRoutes 4 target iface ipv4
+                ++ upstreamSelectorPolicyDefaultComplements 4 targetRole iface classifiedInterfaces
                 ++ upstreamSelectorCorePolicyComplements 4 targetRole iface classifiedInterfaces;
               base6 =
                 ipv6
                 ++ runtimeOriginReturnRoutes 6 target iface ipv6
+                ++ upstreamSelectorPolicyDefaultComplements 6 targetRole iface classifiedInterfaces
                 ++ upstreamSelectorCorePolicyComplements 6 targetRole iface classifiedInterfaces;
               dropWrongRuntimeOriginComplement =
                 isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
