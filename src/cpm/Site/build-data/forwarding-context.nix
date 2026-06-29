@@ -38,6 +38,7 @@ let
   };
   routeNormalizer = import ./normalize-runtime-routes.nix {
     inherit lib common attachments;
+    tenantPrefixOwners = common.attrsOrEmpty (siteAttrs.tenantPrefixOwners or null);
     inherit (overlayData) overlayNames;
     inherit (ipv6Data) routedPrefixesByTenant;
   };

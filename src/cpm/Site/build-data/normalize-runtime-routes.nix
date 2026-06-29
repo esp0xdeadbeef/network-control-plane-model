@@ -3,6 +3,7 @@
 , overlayNames ? [ ]
 , attachments ? [ ]
 , routedPrefixesByTenant ? { }
+, tenantPrefixOwners ? { }
 ,
 }:
 
@@ -64,21 +65,109 @@ let
     postInitialOnly: routes:
     builtins.filter
       (route:
-        canGeneratePolicyTableComplement route
-        && (!postInitialOnly || isPostInitialRoute route))
+      canGeneratePolicyTableComplement route
+      && (!postInitialOnly || isPostInitialRoute route))
       routes;
 
   reverseList =
     values:
     builtins.foldl' (acc: value: [ value ] ++ acc) [ ] values;
 
+  interfaceLane =
+    iface: attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
+
+  interfaceUplinks =
+    iface:
+    let
+      backingRef = attrsOrEmpty (iface.backingRef or null);
+      lane = interfaceLane iface;
+    in
+    lib.unique (
+      listOrEmpty (backingRef.uplinks or null)
+      ++ listOrEmpty (lane.uplinks or null)
+      ++ (if builtins.isString (lane.uplink or null) && lane.uplink != "" then [ lane.uplink ] else [ ])
+    );
+
+  ownerForPrefix =
+    family: dst:
+    let
+      record = attrsOrEmpty (tenantPrefixOwners."${builtins.toString family}|${dst}" or null);
+    in
+      record.owner or null;
+
+  isUpstreamSelectorCoreDefaultInterface =
+    targetRole: iface:
+    targetRole == "upstream-selector"
+    && interfaceUplinks iface != [ ]
+    && ((interfaceLane iface).access or null) == null;
+
+  upstreamSelectorCorePolicyComplements =
+    family: targetRole: coreIface: interfaces:
+    if !(isUpstreamSelectorCoreDefaultInterface targetRole coreIface) then
+      [ ]
+    else
+      let
+        coreUplinks = interfaceUplinks coreIface;
+        routesFor = iface: listOrEmpty ((attrsOrEmpty (iface.routes or null))."ipv${builtins.toString family}" or null);
+        coreHasDefault =
+          builtins.any
+            (route: builtins.isAttrs route && (route.dst or null) == defaultDst family)
+            (routesFor coreIface);
+        policyIfaces = builtins.filter
+          (
+            iface:
+            let
+              lane = interfaceLane iface;
+              uplink = lane.uplink or null;
+            in
+            (lane.kind or null) == "access-uplink"
+            && (lane.access or null) != null
+            && builtins.isString uplink
+            && builtins.elem uplink coreUplinks
+          )
+          (builtins.attrValues interfaces);
+        complementRouteFor =
+          iface: route:
+          let
+            lane = interfaceLane iface;
+            access = lane.access or null;
+          in
+          if
+            !builtins.isAttrs route
+            || (route.policyOnly or false) == true
+            || (route.dst or null) == null
+            || (route.dst or null) == defaultDst family
+            || ownerForPrefix family route.dst != access
+          then
+            null
+          else
+            route
+            // {
+              lane = lane;
+              policyOnly = true;
+              reason = "policy-table-internal-reachability";
+              intent = (attrsOrEmpty (route.intent or null)) // {
+                policyTableComplement = true;
+                source = "policy-default-lane";
+              };
+            };
+      in
+      if !coreHasDefault then
+        [ ]
+      else
+        builtins.filter (route: route != null) (
+          builtins.concatLists (
+            builtins.map (iface: builtins.map (complementRouteFor iface) (routesFor iface)) policyIfaces
+          )
+        );
+
   routeKeySet =
     family: routes:
     builtins.foldl'
       (seen: route:
-        let key = routeKey family route;
-        in
-        if key == null then seen else seen // { ${key} = true; })
+      let key = routeKey family route;
+      in
+      if key == null then seen else seen // { ${key} = true; })
       { }
       routes;
 
@@ -127,64 +216,64 @@ let
     builtins.mapAttrs
       (
         _ifName: iface:
-          let
-            routes = attrsOrEmpty (iface.routes or null);
-            ipv4 = listOrEmpty (routes.ipv4 or null);
-            ipv6 = listOrEmpty (routes.ipv6 or null);
-            dropWrongRuntimeOriginComplement =
-              isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
-            return4 = runtimeOriginReturnRoutes 4 target iface ipv4;
-            return6 = runtimeOriginReturnRoutes 6 target iface ipv6;
-            baseRaw4 =
-              builtins.filter
-                (route: !dropWrongRuntimeOriginComplement route)
-                (ipv4 ++ return4);
-            baseRaw6 =
-              builtins.filter
-                (route: !dropWrongRuntimeOriginComplement route)
-                (ipv6 ++ return6);
-            base4 = if return4 == [ ] then baseRaw4 else uniqueRoutes 4 baseRaw4;
-            base6 = if return6 == [ ] then baseRaw6 else uniqueRoutes 6 baseRaw6;
-            postInitial4 =
-              builtins.filter
-                (route: !dropWrongRuntimeOriginComplement route)
-                (complementSourceRoutes true base4);
-            postInitial6 =
-              builtins.filter
-                (route: !dropWrongRuntimeOriginComplement route)
-                (complementSourceRoutes true base6);
-            ifaceLane = (attrsOrEmpty (iface.backingRef or null)).lane or null;
-            taggedPostInitial4 =
-              if ifaceLane != null then
-                builtins.map (route: route // { lane = ifaceLane; }) postInitial4
-              else
-                postInitial4;
-            taggedPostInitial6 =
-              if ifaceLane != null then
-                builtins.map (route: route // { lane = ifaceLane; }) postInitial6
-              else
-                postInitial6;
-            extra4 =
-              builtins.filter
-                (route: !dropWrongRuntimeOriginComplement route)
-                (policyTableComplements 4 policyDefaults4 taggedPostInitial4);
-            extra6 =
-              builtins.filter
-                (route: !dropWrongRuntimeOriginComplement route)
-                (policyTableComplements 6 policyDefaults6 taggedPostInitial6);
-            final4 = appendUniqueRoutes 4 base4 extra4;
-            final6 = appendUniqueRoutes 6 base6 extra6;
-          in
-          if return4 == [ ] && return6 == [ ] && extra4 == [ ] && extra6 == [ ] then
-            iface
-          else
-            iface
-            // {
-              routes = routes // {
-                ipv4 = final4;
-                ipv6 = final6;
-              };
-            }
+        let
+          routes = attrsOrEmpty (iface.routes or null);
+          ipv4 = listOrEmpty (routes.ipv4 or null);
+          ipv6 = listOrEmpty (routes.ipv6 or null);
+          dropWrongRuntimeOriginComplement =
+            isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
+          return4 = runtimeOriginReturnRoutes 4 target iface ipv4;
+          return6 = runtimeOriginReturnRoutes 6 target iface ipv6;
+          baseRaw4 =
+            builtins.filter
+              (route: !dropWrongRuntimeOriginComplement route)
+              (ipv4 ++ return4);
+          baseRaw6 =
+            builtins.filter
+              (route: !dropWrongRuntimeOriginComplement route)
+              (ipv6 ++ return6);
+          base4 = if return4 == [ ] then baseRaw4 else uniqueRoutes 4 baseRaw4;
+          base6 = if return6 == [ ] then baseRaw6 else uniqueRoutes 6 baseRaw6;
+          postInitial4 =
+            builtins.filter
+              (route: !dropWrongRuntimeOriginComplement route)
+              (complementSourceRoutes true base4);
+          postInitial6 =
+            builtins.filter
+              (route: !dropWrongRuntimeOriginComplement route)
+              (complementSourceRoutes true base6);
+          ifaceLane = (attrsOrEmpty (iface.backingRef or null)).lane or null;
+          taggedPostInitial4 =
+            if ifaceLane != null then
+              builtins.map (route: route // { lane = ifaceLane; }) postInitial4
+            else
+              postInitial4;
+          taggedPostInitial6 =
+            if ifaceLane != null then
+              builtins.map (route: route // { lane = ifaceLane; }) postInitial6
+            else
+              postInitial6;
+          extra4 =
+            builtins.filter
+              (route: !dropWrongRuntimeOriginComplement route)
+              (policyTableComplements 4 policyDefaults4 taggedPostInitial4);
+          extra6 =
+            builtins.filter
+              (route: !dropWrongRuntimeOriginComplement route)
+              (policyTableComplements 6 policyDefaults6 taggedPostInitial6);
+          final4 = appendUniqueRoutes 4 base4 extra4;
+          final6 = appendUniqueRoutes 6 base6 extra6;
+        in
+        if return4 == [ ] && return6 == [ ] && extra4 == [ ] && extra6 == [ ] then
+          iface
+        else
+          iface
+          // {
+            routes = routes // {
+              ipv4 = final4;
+              ipv6 = final6;
+            };
+          }
       )
       interfaces;
 
@@ -209,7 +298,7 @@ let
       iface = attrsOrEmpty interfaces.${ifName};
       runtimeIfName = iface.runtimeIfName or null;
     in
-      if builtins.isString runtimeIfName && runtimeIfName != "" then runtimeIfName else ifName;
+    if builtins.isString runtimeIfName && runtimeIfName != "" then runtimeIfName else ifName;
 
   indexedInterfaceAllocations =
     interfaces:
@@ -232,17 +321,17 @@ let
             })
           count;
     in
-      builtins.listToAttrs entries;
+    builtins.listToAttrs entries;
 
   addPolicyRoutingAllocations =
     interfaces:
     let
       allocations = indexedInterfaceAllocations interfaces;
     in
-      builtins.mapAttrs
-        (ifName: iface:
-          iface // { policyRoutingAllocation = allocations.${ifName}; })
-        interfaces;
+    builtins.mapAttrs
+      (ifName: iface:
+      iface // { policyRoutingAllocation = allocations.${ifName}; })
+      interfaces;
 
   interfaceRouteSource =
     ifName: iface:
@@ -356,8 +445,14 @@ let
               routes = attrsOrEmpty (iface.routes or null);
               ipv4 = listOrEmpty (routes.ipv4 or null);
               ipv6 = listOrEmpty (routes.ipv6 or null);
-              base4 = ipv4 ++ runtimeOriginReturnRoutes 4 target iface ipv4;
-              base6 = ipv6 ++ runtimeOriginReturnRoutes 6 target iface ipv6;
+              base4 =
+                ipv4
+                ++ runtimeOriginReturnRoutes 4 target iface ipv4
+                ++ upstreamSelectorCorePolicyComplements 4 targetRole iface classifiedInterfaces;
+              base6 =
+                ipv6
+                ++ runtimeOriginReturnRoutes 6 target iface ipv6
+                ++ upstreamSelectorCorePolicyComplements 6 targetRole iface classifiedInterfaces;
               dropWrongRuntimeOriginComplement =
                 isRuntimeOriginSourcePolicyComplementOnPolicyUplink targetRole runtimeOriginPrefixes iface;
               complementBase4 = complementSourceRoutes postInitialComplementsOnly base4;

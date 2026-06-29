@@ -1,9 +1,9 @@
 { common }:
 
-{
-  endpointBindings,
-  services ? [ ],
-  transitInterfaces,
+{ endpointBindings
+, services ? [ ]
+, transitInterfaces
+,
 }:
 
 let
@@ -13,10 +13,12 @@ let
     values:
     builtins.attrNames (
       builtins.listToAttrs (
-        map (value: {
-          name = value;
-          value = true;
-        }) (builtins.filter (value: builtins.isString value && value != "") values)
+        map
+          (value: {
+            name = value;
+            value = true;
+          })
+          (builtins.filter (value: builtins.isString value && value != "") values)
       )
     );
 
@@ -27,9 +29,11 @@ let
         value = service;
       })
       (
-        builtins.filter (
-          service: builtins.isAttrs service && builtins.isString (service.name or null) && service.name != ""
-        ) (listOrEmpty services)
+        builtins.filter
+          (
+            service: builtins.isAttrs service && builtins.isString (service.name or null) && service.name != ""
+          )
+          (listOrEmpty services)
       )
   );
 
@@ -55,16 +59,18 @@ let
     else
       uniqueStrings (
         builtins.concatLists (
-          map (
-            tenantName:
-            let
-              bindings = listOrEmpty (tenantBindings.${tenantName}.runtimeBindings or null);
-            in
-            if builtins.any (binding: ((attrsOrEmpty binding).logicalNode or null) == logicalNode) bindings then
-              [ tenantName ]
-            else
-              [ ]
-          ) (builtins.attrNames tenantBindings)
+          map
+            (
+              tenantName:
+              let
+                bindings = listOrEmpty (tenantBindings.${tenantName}.runtimeBindings or null);
+              in
+              if builtins.any (binding: ((attrsOrEmpty binding).logicalNode or null) == logicalNode) bindings then
+                [ tenantName ]
+              else
+                [ ]
+            )
+            (builtins.attrNames tenantBindings)
         )
       );
 
@@ -109,13 +115,15 @@ let
     endpoint:
     uniqueStrings (
       builtins.concatLists (
-        map (
-          serviceName:
-          if builtins.hasAttr serviceName serviceRecords then
-            listOrEmpty (serviceRecords.${serviceName}.providerTenants or null)
-          else
-            [ ]
-        ) (namesForEndpoint "service" endpoint)
+        map
+          (
+            serviceName:
+            if builtins.hasAttr serviceName serviceRecords then
+              listOrEmpty (serviceRecords.${serviceName}.providerTenants or null)
+            else
+              [ ]
+          )
+          (namesForEndpoint "service" endpoint)
       )
     );
 
@@ -128,18 +136,31 @@ in
     serviceRecords
     transitInterfaces
     ;
-  accessInterfaces = builtins.filter (
-    iface: common.laneKind iface == "access" && common.laneAccess iface != null
-  ) transitInterfaces;
-  uplinkInterfaces = builtins.filter (
-    iface: common.laneKind iface == "access-uplink" && common.laneAccess iface != null
-  ) transitInterfaces;
-  coreInterfaces = builtins.filter (
-    iface: common.uplinks iface != [ ] && common.laneKind iface == "uplink"
-  ) transitInterfaces;
-  policyInterfaces = builtins.filter (
-    iface: common.laneKind iface == "access-uplink" && common.laneUplink iface != null
-  ) transitInterfaces;
+  accessInterfaces = builtins.filter
+    (
+      iface: common.laneKind iface == "access" && common.laneAccess iface != null
+    )
+    transitInterfaces;
+  uplinkInterfaces = builtins.filter
+    (
+      iface: common.laneKind iface == "access-uplink" && common.laneAccess iface != null
+    )
+    transitInterfaces;
+  coreInterfaces = builtins.filter
+    (
+      iface:
+      common.uplinks iface != [ ]
+      && (
+        common.laneKind iface == "uplink"
+        || (common.laneKind iface == null && common.laneAccess iface == null)
+      )
+    )
+    transitInterfaces;
+  policyInterfaces = builtins.filter
+    (
+      iface: common.laneKind iface == "access-uplink" && common.laneUplink iface != null
+    )
+    transitInterfaces;
   externalUplinks =
     externalName:
     if !builtins.hasAttr externalName externalBindings then
@@ -151,10 +172,12 @@ in
       );
   serviceKnown =
     endpoint:
-    builtins.any (
-      serviceName:
-      builtins.hasAttr serviceName serviceBindings || builtins.hasAttr serviceName serviceRecords
-    ) (namesForEndpoint "service" endpoint);
+    builtins.any
+      (
+        serviceName:
+        builtins.hasAttr serviceName serviceBindings || builtins.hasAttr serviceName serviceRecords
+      )
+      (namesForEndpoint "service" endpoint);
   accessNodesForEndpoint =
     endpoint:
     uniqueStrings (
@@ -170,16 +193,18 @@ in
     endpoint:
     uniqueStrings (
       builtins.concatLists (
-        map (
-          name:
-          if !builtins.hasAttr name externalBindings then
-            [ ]
-          else
-            (
-              listOrEmpty (externalBindings.${name}.uplinks or null)
-              ++ listOrEmpty (externalBindings.${name}.overlays or null)
-            )
-        ) (namesForEndpoint "external" endpoint)
+        map
+          (
+            name:
+            if !builtins.hasAttr name externalBindings then
+              [ ]
+            else
+              (
+                listOrEmpty (externalBindings.${name}.uplinks or null)
+                ++ listOrEmpty (externalBindings.${name}.overlays or null)
+              )
+          )
+          (namesForEndpoint "external" endpoint)
       )
     );
   serviceAccessNodes =
