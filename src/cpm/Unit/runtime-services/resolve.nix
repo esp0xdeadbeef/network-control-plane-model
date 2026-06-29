@@ -53,14 +53,17 @@
         else
           builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listenAddresses;
       tenantNames = tenantAttachmentsForNode nodePath nodeName nodeAttrs;
+      tenantDerivedForwarders = policyDerivedDnsForwardersForTenants tenantNames;
+      listenerDerivedForwarders =
+        if builtins.isList (dnsService.listen or null) then
+          policyDerivedDnsForwardersForListeners dnsService.listen
+        else
+          [ ];
       derivedForwarders = orderedUniqueStrings (
-        (policyDerivedDnsForwardersForTenants tenantNames)
-        ++ (
-          if builtins.isList (dnsService.listen or null) then
-            policyDerivedDnsForwardersForListeners dnsService.listen
-          else
-          [ ]
-        )
+        if listenerDerivedForwarders != [ ] then
+          listenerDerivedForwarders
+        else
+          tenantDerivedForwarders
       );
       derivedUpstreamRecords =
         if builtins.isList (dnsService.listen or null) then
@@ -132,17 +135,26 @@
           builtins.isList (dnsService.listen or null)
           && policyDerivedDnsDirectEgressBlockedForListeners dnsService.listen
         );
+      validatePolicyDerivedDns =
+        if dnsService == { } then
+          true
+        else
+          builtins.deepSeq derivedForwarders (
+            builtins.deepSeq derivedUpstreamRecords true
+          );
     in
-    normalized
-    // lib.optionalAttrs (dnsService != { }) {
-      dns =
-        dnsService
-        // lib.optionalAttrs (mergedAllowFrom != [ ]) { allowFrom = mergedAllowFrom; }
-        // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; }
-        // lib.optionalAttrs (derivedUpstreamRecords != [ ]) { upstreamResolvers = derivedUpstreamRecords; }
-        // lib.optionalAttrs (mergedOutgoingInterfaces != [ ]) { outgoingInterfaces = mergedOutgoingInterfaces; }
-        // { roles = mergedRoles; }
-        // lib.optionalAttrs (mergedAllowedClasses != [ ]) { allowedUpstreamClasses = mergedAllowedClasses; }
-        // lib.optionalAttrs blockDirectEgress { inherit directEgressBlockedTenants; }
-        // lib.optionalAttrs blockDirectEgress { blockDirectEgress = true; };
-    }
+    builtins.seq validatePolicyDerivedDns (
+      normalized
+      // lib.optionalAttrs (dnsService != { }) {
+        dns =
+          dnsService
+          // lib.optionalAttrs (mergedAllowFrom != [ ]) { allowFrom = mergedAllowFrom; }
+          // lib.optionalAttrs (mergedForwarders != [ ]) { forwarders = mergedForwarders; }
+          // lib.optionalAttrs (derivedUpstreamRecords != [ ]) { upstreamResolvers = derivedUpstreamRecords; }
+          // lib.optionalAttrs (mergedOutgoingInterfaces != [ ]) { outgoingInterfaces = mergedOutgoingInterfaces; }
+          // { roles = mergedRoles; }
+          // lib.optionalAttrs (mergedAllowedClasses != [ ]) { allowedUpstreamClasses = mergedAllowedClasses; }
+          // lib.optionalAttrs blockDirectEgress { inherit directEgressBlockedTenants; }
+          // lib.optionalAttrs blockDirectEgress { blockDirectEgress = true; };
+      }
+    )

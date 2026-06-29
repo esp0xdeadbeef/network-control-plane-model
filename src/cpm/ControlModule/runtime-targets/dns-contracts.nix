@@ -9,6 +9,7 @@
 
 let
   inherit (common) attrsOrEmpty failInventory listOrEmpty;
+  ipam = common.ipam or { };
 
   publicResolvers = {
     "1.1.1.1" = true;
@@ -24,6 +25,84 @@ let
   };
 
   isPublicResolver = forwarder: builtins.hasAttr forwarder publicResolvers;
+  stripPrefixLength =
+    value:
+    if !(builtins.isString value) || value == "" then "" else builtins.head (lib.splitString "/" value);
+  normalizeAddress =
+    value:
+    let
+      address = stripPrefixLength value;
+      parsed6 =
+        if builtins.hasAttr "parseIPv6" ipam && builtins.match ".*:.*" address != null then
+          ipam.parseIPv6 address
+        else
+          null;
+    in
+    if parsed6 != null && builtins.hasAttr "renderIPv6" ipam then ipam.renderIPv6 parsed6 else address;
+  familyForAddress = value:
+    if builtins.match ".*:.*" (stripPrefixLength value) != null then 6 else 4;
+  hostPrefixForAddress =
+    value:
+    let
+      address = stripPrefixLength value;
+      family = familyForAddress address;
+    in
+    if address == "" then
+      null
+    else
+      {
+        inherit family;
+        prefix = "${address}/${if family == 4 then "32" else "128"}";
+      };
+  uniqueSourcePrefixes =
+    prefixes:
+    builtins.attrValues (
+      builtins.listToAttrs (
+        map
+          (prefix: {
+            name = "${builtins.toString (prefix.family or "")}|${prefix.prefix or ""}";
+            value = prefix;
+          })
+          (builtins.filter (prefix: prefix != null && (prefix.prefix or "") != "") prefixes)
+      )
+    );
+  uniqueStrings =
+    values:
+    builtins.attrNames (
+      builtins.listToAttrs (
+        map
+          (value: {
+            name = value;
+            value = true;
+          })
+          (builtins.filter (value: builtins.isString value && value != "") values)
+      )
+    );
+  mergeRuntimeOriginEgress =
+    left: right:
+    if left == null then
+      right
+    else if right == null then
+      left
+    else
+      let
+        leftAttrs = attrsOrEmpty left;
+        rightAttrs = attrsOrEmpty right;
+        sourcePrefixes = uniqueSourcePrefixes (
+          listOrEmpty (leftAttrs.sourcePrefixes or null) ++ listOrEmpty (rightAttrs.sourcePrefixes or null)
+        );
+        uplinks = uniqueStrings (listOrEmpty (leftAttrs.uplinks or null) ++ listOrEmpty (rightAttrs.uplinks or null));
+      in
+      leftAttrs
+      // rightAttrs
+      // {
+        enabled = (leftAttrs.enabled or false) || (rightAttrs.enabled or false);
+        inherit sourcePrefixes;
+      }
+      // lib.optionalAttrs (uplinks != [ ]) { inherit uplinks; }
+      // {
+        preferredSources = attrsOrEmpty (leftAttrs.preferredSources or null) // attrsOrEmpty (rightAttrs.preferredSources or null);
+      };
   forwarderFamily =
     forwarder:
     if builtins.match ".*:.*" forwarder != null then "ipv6" else "ipv4";
@@ -277,23 +356,79 @@ let
     else
       target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
 
+  dnsServiceRuntimeOriginEgressContract =
+    target: dns:
+    let
+      roles = attrsOrEmpty (dns.roles or null);
+      recursionRole = attrsOrEmpty (roles.recursion or null);
+      recursionSources = listOrEmpty (recursionRole.outgoingInterfaces or null);
+      outgoingSources = listOrEmpty (dns.outgoingInterfaces or null);
+      listenSources = listOrEmpty (dns.listen or null);
+      sourceAddresses =
+        if recursionSources != [ ] then
+          recursionSources
+        else if outgoingSources != [ ] then
+          outgoingSources
+        else
+          listenSources;
+      sourcePrefixes = uniqueSourcePrefixes (map hostPrefixForAddress sourceAddresses);
+      ipv4Sources = builtins.filter (addr: familyForAddress addr == 4) sourceAddresses;
+      ipv6Sources = builtins.filter (addr: familyForAddress addr == 6) sourceAddresses;
+      ipv4Source = if ipv4Sources == [ ] then "" else builtins.head ipv4Sources;
+      ipv6Source = if ipv6Sources == [ ] then "" else builtins.head ipv6Sources;
+      hasExplicitEgress = builtins.elem "explicit-egress-default" (listOrEmpty (dns.allowedUpstreamClasses or null));
+      hasModeledUpstream =
+        listOrEmpty (dns.forwarders or null) != [ ]
+        || listOrEmpty (dns.upstreamResolvers or null) != [ ];
+    in
+    if (target.role or null) == "access" && hasExplicitEgress && hasModeledUpstream && sourcePrefixes != [ ] then
+      {
+        enabled = true;
+        source = "dns-service";
+        preferredSources =
+          lib.optionalAttrs (ipv4Source != "") { ipv4 = stripPrefixLength ipv4Source; }
+          // lib.optionalAttrs (ipv6Source != "") { ipv6 = stripPrefixLength ipv6Source; };
+        inherit sourcePrefixes;
+      }
+    else
+      null;
+
+  addDnsServiceRuntimeOriginEgress =
+    target: dns:
+    let
+      contract = dnsServiceRuntimeOriginEgressContract target dns;
+    in
+    if contract == null then
+      target
+    else
+      target // {
+        runtimeOriginEgress = mergeRuntimeOriginEgress (target.runtimeOriginEgress or null) contract;
+      };
+
   synthesizeRouterSelfDns = target:
     let
       advertisements = attrsOrEmpty (target.advertisements or null);
       listeners = advertisedDnsListeners advertisements;
       sources = advertisedDnsSources advertisements;
+      listenerPolicyForwarders = policyDerivedDnsForwardersForListeners listeners;
+      listenerPolicyUpstreamResolvers = policyDerivedDnsUpstreamRecordsForListeners listeners;
+      listenerPolicyAllowedClasses = policyDerivedDnsAllowedClassesForListeners listeners;
+      listenerHasDnsPolicy =
+        listenerPolicyForwarders != [ ]
+        || listenerPolicyUpstreamResolvers != [ ]
+        || listenerPolicyAllowedClasses != [ ];
       existingServices = attrsOrEmpty (target.services or null);
       hasModeledDnsPolicy = existingServices ? dns;
       existingDns = attrsOrEmpty (existingServices.dns or null);
       existingForwarders = listOrEmpty (existingDns.forwarders or null);
       existingUpstreamResolvers = listOrEmpty (existingDns.upstreamResolvers or null);
-      derivedUpstreamResolvers = policyDerivedDnsUpstreamRecordsForListeners listeners;
+      derivedUpstreamResolvers = listenerPolicyUpstreamResolvers;
       upstreamResolvers =
         if existingUpstreamResolvers != [ ] then
           existingUpstreamResolvers
         else
           derivedUpstreamResolvers;
-      derivedForwarders = policyDerivedDnsForwardersForListeners listeners;
+      derivedForwarders = listenerPolicyForwarders;
       forwarders =
         if upstreamResolvers != [ ] then
           [ ]
@@ -303,19 +438,40 @@ let
           derivedForwarders;
       # GAMP: FS-540-HDS-010-SDS-010-SMS-035 — filter self-referential forwarders
       nonLoopbackListeners = builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners;
-      selfRefForwarders = builtins.filter (f: builtins.elem f nonLoopbackListeners) forwarders;
+      listenerAddressIndex = builtins.listToAttrs (
+        builtins.map
+          (addr: {
+            name = normalizeAddress addr;
+            value = true;
+          })
+          nonLoopbackListeners
+      );
+      isSelfRefForwarder = forwarder: builtins.hasAttr (normalizeAddress forwarder) listenerAddressIndex;
+      selfRefForwarders = builtins.filter isSelfRefForwarder forwarders;
+      selfFilteredForwarders = builtins.filter (f: !(isSelfRefForwarder f)) forwarders;
       safeForwarders =
         if selfRefForwarders != [ ] then
           builtins.trace
             "FS-540-HDS-010-SDS-010-SMS-035: filtered self-referential DNS forwarder(s) ${builtins.toJSON selfRefForwarders}"
-            (builtins.filter (f: !(builtins.elem f nonLoopbackListeners)) forwarders)
+            (if selfFilteredForwarders == [ ] && derivedForwarders != [ ] then derivedForwarders else selfFilteredForwarders)
         else
           forwarders;
       allowedUpstreamClasses =
         lib.unique (
           listOrEmpty (existingDns.allowedUpstreamClasses or null)
-          ++ policyDerivedDnsAllowedClassesForListeners listeners
+          ++ listenerPolicyAllowedClasses
         );
+      roles = attrsOrEmpty (existingDns.roles or null);
+      recursionRole = attrsOrEmpty (roles.recursion or null);
+      recursionOutgoingInterfaces =
+        if listOrEmpty (recursionRole.outgoingInterfaces or null) != [ ] then
+          listOrEmpty (recursionRole.outgoingInterfaces or null)
+        else if listOrEmpty (existingDns.outgoingInterfaces or null) != [ ] then
+          listOrEmpty (existingDns.outgoingInterfaces or null)
+        else if safeForwarders != [ ] then
+          builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners
+        else
+          [ ];
       localContracts = builtins.map routeContractForListener listeners;
       mergedDns =
         existingDns
@@ -334,6 +490,7 @@ let
               builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners
             else
               [ ];
+          roles = roles // { recursion = recursionRole // { outgoingInterfaces = recursionOutgoingInterfaces; }; };
           routeContracts = lib.unique (listOrEmpty (existingDns.routeContracts or null) ++ localContracts);
           policyMatrix = lib.unique (listOrEmpty (existingDns.policyMatrix or null) ++ localContracts);
         };
@@ -341,9 +498,18 @@ let
     if (target.role or null) != "access" || listeners == [ ] then
       target
     else if !hasModeledDnsPolicy then
-      failInventory
-        "${runtimeTargetPath target}.services.dns"
-        "missing modeled DNS policy for resolver advertisement; define services.dns before renderer-facing advertisement output"
+      builtins.deepSeq listenerPolicyForwarders (
+        builtins.deepSeq listenerPolicyUpstreamResolvers (
+          builtins.deepSeq listenerPolicyAllowedClasses (
+            if listenerHasDnsPolicy then
+              failInventory
+                "${runtimeTargetPath target}.services.dns"
+                "missing modeled DNS policy for resolver advertisement; define services.dns before renderer-facing advertisement output"
+            else
+              target
+          )
+        )
+      )
     else
       target
       // {
@@ -425,8 +591,10 @@ let
     // {
       services = (attrsOrEmpty (targetWithDns.services or null)) // { dns = dnsWithTrafficClassifications; };
     };
+  targetWithDnsServiceRuntimeOriginEgress =
+    addDnsServiceRuntimeOriginEgress targetWithDnsContracts dnsWithTrafficClassifications;
   targetWithResolverAdvertisementContracts =
-    addResolverAdvertisementContracts targetWithDnsContracts;
+    addResolverAdvertisementContracts targetWithDnsServiceRuntimeOriginEgress;
 in
 if dns == { } then
   targetWithDns
