@@ -95,11 +95,21 @@ let
       (listOrEmpty ((attrsOrEmpty (iface.routes or null)).${if family == 4 then "ipv4" else "ipv6"} or null));
 
   endpointRoutes =
-    family: rule: service: toIface:
+    family: rule: service: ifaceArg:
     let
+      fromIface =
+        if builtins.isAttrs ifaceArg && (ifaceArg ? fromIface || ifaceArg ? toIface) then
+          attrsOrEmpty (ifaceArg.fromIface or { })
+        else
+          ifaceArg;
+      toIface =
+        if builtins.isAttrs ifaceArg && ifaceArg ? toIface then
+          attrsOrEmpty ifaceArg.toIface
+        else
+          ifaceArg;
       viaField = if family == 4 then "via4" else "via6";
       candidates = routeCandidates family toIface;
-      peer = p2pPeerAddress family (toIface.${if family == 4 then "addr4" else "addr6"} or null);
+      peer = p2pPeerAddress family (fromIface.${if family == 4 then "addr4" else "addr6"} or null);
     in
     if peer == null && candidates == [ ] then
       [ ]

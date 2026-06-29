@@ -68,6 +68,7 @@ tests=(
   test-fs890-operational-record-schema-runtime-target.sh
   test-delegated-overlay-public-egress.sh
   test-example-overlay-dns-return-table.sh
+  FS-500-HDS-010-SDS-010-SMS-040-dns-service-p2p-gateway-onlink.sh
   test-core-overlay-delegated-egress-source-scope.sh
   test-tri-site-edge-core-dns-service-public-egress-forwarding.sh
   test-selector-fabric-links-realization.sh
