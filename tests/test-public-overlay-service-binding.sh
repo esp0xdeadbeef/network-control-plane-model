@@ -50,6 +50,10 @@ let
     policy."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv4 or [ ];
   policyDmzWanRoutes6 =
     policy."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan".routes.ipv6 or [ ];
+  policyDownstreamDmzRoutes =
+    policy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz".routes.ipv4 or [ ];
+  policyDownstreamDmzRoutes6 =
+    policy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz".routes.ipv6 or [ ];
   hasRoute = routes: destination: gateway:
     builtins.any
       (route: (route.dst or null) == destination && (route.via4 or null) == gateway)
@@ -58,17 +62,45 @@ let
     builtins.any
       (route: (route.dst or null) == destination && (route.via6 or null) == gateway)
       routes;
+  hasEndpointRoute = routes: destination:
+    builtins.any
+      (route:
+        (route.dst or null) == destination
+        && (((route.intent or { }).kind or null) == "service-endpoint-reachability"))
+      routes;
+  hasIngressServiceRoute = routes: destination: gateway: access: uplink:
+    builtins.any
+      (route:
+        (route.dst or null) == destination
+        && (route.via4 or null) == gateway
+        && (route.policyOnly or false) == true
+        && (((route.intent or { }).kind or null) == "service-endpoint-reachability")
+        && (((route.intent or { }).source or null) == "service-ingress-lane")
+        && (((route.lane or { }).access or null) == access)
+        && (((route.lane or { }).uplink or null) == uplink))
+      routes;
+  hasIngressServiceRoute6 = routes: destination: gateway: access: uplink:
+    builtins.any
+      (route:
+        (route.dst or null) == destination
+        && (route.via6 or null) == gateway
+        && (route.policyOnly or false) == true
+        && (((route.intent or { }).kind or null) == "service-endpoint-reachability")
+        && (((route.intent or { }).source or null) == "service-ingress-lane")
+        && (((route.lane or { }).access or null) == access)
+        && (((route.lane or { }).uplink or null) == uplink))
+      routes;
 in
   publicServiceRelation
   && serviceBinding.providers == [ "c-router-lighthouse" ]
   && resolvedService.providerTenants == [ "dmz" ]
-  && hasRoute coreIngressRoutes4 "10.90.10.100" "10.80.0.18"
-  && hasRoute6 coreIngressRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:12"
+  && !(hasEndpointRoute coreIngressRoutes4 "10.90.10.100")
+  && !(hasEndpointRoute coreIngressRoutes6 "fd42:dead:cafe:10::100")
   && !(hasRoute coreIngressRoutes4 "10.90.10.100" "10.80.0.4")
-  && hasRoute dmzWanRoutes "10.90.10.100" "10.80.0.18"
-  && hasRoute6 dmzWanRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:12"
-  && hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.8"
-  && hasRoute6 policyDmzWanRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:8"
+  && hasIngressServiceRoute dmzWanRoutes "10.90.10.100" "10.80.0.18" "c-router-access-dmz" "wan"
+  && hasIngressServiceRoute6 dmzWanRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:12" "c-router-access-dmz" "wan"
+  && hasIngressServiceRoute policyDownstreamDmzRoutes "10.90.10.100" "10.80.0.8" "c-router-access-dmz" "wan"
+  && hasIngressServiceRoute6 policyDownstreamDmzRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:8" "c-router-access-dmz" "wan"
   && !(hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.19")
   && !(hasRoute dmzEastWestRoutes "10.90.10.100" "10.80.0.16")
 '

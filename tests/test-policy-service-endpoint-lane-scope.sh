@@ -23,6 +23,14 @@ let
     builtins.filter
       (rule: (rule.relationId or null) == "allow-sitec-wan-to-dmz-nebula")
       rules;
+  forwardRules =
+    builtins.filter
+      (rule: (rule.direction or null) == "relation-forward")
+      serviceRules;
+  reverseRules =
+    builtins.filter
+      (rule: (rule.direction or null) == "relation-reverse")
+      serviceRules;
   expectedRuleFor = fromInterface: rule:
     (rule.action or null) == "accept"
     && (rule.trafficType or null) == "nebula"
@@ -34,10 +42,17 @@ let
     && builtins.any
       (match: (match.proto or null) == "tcp" && builtins.elem 4242 (match.dports or [ ]))
       (rule.matches or [ ]);
+  expectedReverseRule = rule:
+    (rule.action or null) == "accept"
+    && (rule.trafficType or null) == "nebula"
+    && (rule.fromInterface or null) == "downstream-dmz"
+    && (rule.toInterface or null) == "up-dmz-wan";
 in
-  builtins.length serviceRules == 2
-  && builtins.any (expectedRuleFor "up-client-wan") serviceRules
-  && builtins.any (expectedRuleFor "up-dmz-wan") serviceRules
+  builtins.length forwardRules == 2
+  && builtins.any (expectedRuleFor "up-client-wan") forwardRules
+  && builtins.any (expectedRuleFor "up-dmz-wan") forwardRules
+  && builtins.length reverseRules == 1
+  && builtins.any expectedReverseRule reverseRules
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
