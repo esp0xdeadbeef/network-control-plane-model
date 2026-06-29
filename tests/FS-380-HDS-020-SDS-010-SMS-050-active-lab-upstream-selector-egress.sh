@@ -98,6 +98,30 @@ check_inventory() {
         and (.lane.access // "") == "client-edge"
       );
 
+    def has_default_route4($iface; $via; $uplink):
+      any(route_list($iface; 4)[]?;
+        (.dst // "") == "0.0.0.0/0"
+        and (.via4 // "") == $via
+        and (.policyOnly // false) == true
+        and (.reason // "") == "policy-table-default-reachability"
+        and (.intent.policyTableDefaultComplement // false) == true
+        and (.intent.source // "") == "policy-default-lane"
+        and (.lane.access // "") == "client-edge"
+        and (.lane.uplink // "") == $uplink
+      );
+
+    def has_default_route6($iface; $via; $uplink):
+      any(route_list($iface; 6)[]?;
+        (.dst // "") == "::/0"
+        and (.via6 // "") == $via
+        and (.policyOnly // false) == true
+        and (.reason // "") == "policy-table-default-reachability"
+        and (.intent.policyTableDefaultComplement // false) == true
+        and (.intent.source // "") == "policy-default-lane"
+        and (.lane.access // "") == "client-edge"
+        and (.lane.uplink // "") == $uplink
+      );
+
     .control_plane_model.data."mini-smt"."internet-mode-verification" as $site
     | $site.runtimeTargets."mini-smt-internet-mode-verification-upstream-selector" as $upstream
     | ($upstream.effectiveRuntimeRealization.interfaces // {}) as $interfaces
@@ -147,6 +171,10 @@ check_inventory() {
           and has_return_route4($core; "10.10.0.8")
           and has_return_route6($core; "fd42:380:ff:0:0:0:0:6")
           and has_return_route6($core; "fd42:380:ff:0:0:0:0:8")
+          and has_default_route4($policy4; "10.10.0.4"; "internet-vlan4")
+          and has_default_route4($policy5; "10.10.0.4"; "internet-vlan5")
+          and has_default_route6($policy4; "fd42:380:ff:0:0:0:0:4"; "internet-vlan4")
+          and has_default_route6($policy5; "fd42:380:ff:0:0:0:0:4"; "internet-vlan5")
       }
     | select(.ok)
   ' "${output_json}" >/dev/null || {
