@@ -34,6 +34,16 @@ let
           let
             uplinkPath = "${hostPath}.uplinks.${uplinkName}";
             uplink = requireAttrs uplinkPath uplinks.${uplinkName};
+            mode =
+              if uplink ? mode then
+                requireString "${uplinkPath}.mode" (uplink.mode or null)
+              else
+                null;
+            vlan =
+              if uplink ? vlan then
+                requireInt "${uplinkPath}.vlan" (uplink.vlan or null)
+              else
+                null;
           in
           {
             name = uplinkName;
@@ -44,6 +54,8 @@ let
                 parent = requireString "${uplinkPath}.parent" (uplink.parent or null);
                 bridge = requireString "${uplinkPath}.bridge" (uplink.bridge or null);
               }
+              // (if mode != null then { mode = mode; } else { })
+              // (if vlan != null then { vlan = vlan; } else { })
               // (if builtins.isAttrs (uplink.ipv4 or null) then { ipv4 = uplink.ipv4; } else { })
               // (if builtins.isAttrs (uplink.ipv6 or null) then { ipv6 = uplink.ipv6; } else { });
           })
