@@ -19,20 +19,37 @@ nix eval --extra-experimental-features 'nix-command flakes' --impure --expr '
     };
     interfaces =
       built.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector".effectiveRuntimeRealization.interfaces;
+    policyInterfaces =
+      built.control_plane_model.data.esp0xdeadbeef."site-c".runtimeTargets."esp0xdeadbeef-site-c-c-router-policy".effectiveRuntimeRealization.interfaces;
     routesFor = ifName: interfaces.${ifName}.routes.ipv4 or [ ];
+    policyRoutesFor = ifName: policyInterfaces.${ifName}.routes.ipv4 or [ ];
     routesToDmzDns =
       ifName:
       builtins.filter
         (route: (route.dst or null) == "10.90.10.0/24")
         (routesFor ifName);
+    policyRoutesToDmzDns =
+      ifName:
+      builtins.filter
+        (route: (route.dst or null) == "10.90.10.0/24")
+        (policyRoutesFor ifName);
     viaSet = ifName: builtins.map (route: route.via4 or "") (routesToDmzDns ifName);
+    policyHasDmzEwServiceRoute =
+      builtins.any
+        (route:
+          (route.via4 or null) == "10.80.0.8"
+          && (route.policyOnly or false) == true
+          && (((route.intent or { }).kind or null) == "service-dns-reachability")
+          && (((route.intent or { }).source or null) == "service-ingress-lane")
+          && (((route.lane or { }).access or null) == "c-router-access-dmz")
+          && (((route.lane or { }).uplink or null) == "east-west"))
+        (policyRoutesToDmzDns "p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz");
     coreNebulaVia = viaSet "p2p-c-router-nebula-core-c-router-upstream-selector";
-    dmzEwVia = viaSet "p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-east-west";
   in
     if builtins.elem "172.31.254.1" coreNebulaVia then
       throw "site-c upstream-selector must not send the local dmz DNS/provider prefix back to WAN from the core-nebula ingress lane."
-    else if !(builtins.elem "10.80.0.16" dmzEwVia) then
-      throw "site-c upstream-selector must keep the 10.90.10.0/24 route via the DMZ policy lane gateway 10.80.0.16"
+    else if !policyHasDmzEwServiceRoute then
+      throw "site-c policy router must keep the 10.90.10.0/24 DNS service route on downstream-dmz with the east-west DMZ ingress lane"
     else
       true
 ' | grep -qx true

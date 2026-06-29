@@ -95,9 +95,18 @@ let
       in
       builtins.map (
         defaultRoute:
+        let
+          routeLane = attrsOrEmpty (route.lane or null);
+          defaultLane = attrsOrEmpty (defaultRoute.lane or null);
+          complementLane =
+            if routeLane == { } || (routeLane.access or null) == null then
+              defaultLane
+            else
+              routeLane;
+        in
         route
         // {
-          lane = route.lane or null;
+          lane = complementLane;
           policyOnly = true;
           reason = "policy-table-internal-reachability";
           intent = (attrsOrEmpty (route.intent or null)) // {

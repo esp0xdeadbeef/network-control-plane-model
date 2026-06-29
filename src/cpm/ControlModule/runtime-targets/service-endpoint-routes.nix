@@ -107,9 +107,14 @@ let
           attrsOrEmpty ifaceArg.toIface
         else
           ifaceArg;
+      routeIface =
+        if builtins.isAttrs ifaceArg && ifaceArg ? routeIface then
+          attrsOrEmpty ifaceArg.routeIface
+        else
+          fromIface;
       viaField = if family == 4 then "via4" else "via6";
-      candidates = routeCandidates family toIface;
-      peer = p2pPeerAddress family (fromIface.${if family == 4 then "addr4" else "addr6"} or null);
+      candidates = routeCandidates family routeIface;
+      peer = p2pPeerAddress family (routeIface.${if family == 4 then "addr4" else "addr6"} or null);
     in
     if peer == null && candidates == [ ] then
       [ ]

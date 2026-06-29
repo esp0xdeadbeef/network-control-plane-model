@@ -117,9 +117,42 @@ let
       (rule:
       (rule.action or null) == "accept"
       && (rule.trafficType or null) == "dns"
-      && ((attrsOrEmpty (rule.from or null)).kind or null) == "external"
+      && ((attrsOrEmpty (rule.from or null)).kind or null) != "service"
       && ((attrsOrEmpty (rule.to or null)).kind or null) == "service")
       (listOrEmpty rules);
+
+  ingressLaneFor =
+    iface:
+    attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
+
+  laneKindFor =
+    iface:
+    (ingressLaneFor iface).kind or null;
+
+  withIngressPolicyLane =
+    fromIface: route:
+    let
+      lane = ingressLaneFor fromIface;
+      intent = attrsOrEmpty (route.intent or null);
+    in
+    if lane == { } then
+      route
+    else
+      route // {
+        inherit lane;
+        policyOnly = true;
+        reason = route.reason or "policy-table-service-reachability";
+        intent = intent // {
+          policyTableComplement = true;
+          source = "service-ingress-lane";
+        };
+      };
+
+  tagIngressRoutes =
+    fromIface: routes: {
+      ipv4 = builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv4 or null));
+      ipv6 = builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv6 or null));
+    };
 
   serviceEndpointRoutes = import ./service-endpoint-routes.nix {
     inherit
@@ -154,13 +187,13 @@ let
               acc
             else
               let
-                fromIfName = byRuntime.${fromName}.ifName;
                 fromIface = byRuntime.${fromName}.iface;
+                toIfName = byRuntime.${toName}.ifName;
                 toIface = byRuntime.${toName}.iface;
-                extraRoutes = dropRoutesAlreadyOnInterface fromIface (routesFromInterface toIface);
-                previous = attrsOrEmpty (acc.${fromIfName} or null);
+                extraRoutes = tagIngressRoutes fromIface (routesFromInterface toIface);
+                previous = attrsOrEmpty (acc.${toIfName} or null);
               in
-              acc // { ${fromIfName} = mergeRoutes previous extraRoutes; })
+              acc // { ${toIfName} = mergeRoutes previous extraRoutes; })
           { }
           (dnsRules (forwarding.rules or [ ]));
       endpointExtraByIf =
@@ -179,17 +212,25 @@ let
               acc
             else
               let
-                fromIfName = byRuntime.${fromName}.ifName;
                 fromIface = byRuntime.${fromName}.iface;
+                fromIfName = byRuntime.${fromName}.ifName;
+                toIfName = byRuntime.${toName}.ifName;
                 toIface = byRuntime.${toName}.iface;
                 service = servicesByName.${serviceName};
-                extraRoutes = dropRoutesAlreadyOnInterface fromIface {
-                  ipv4 = endpointRoutes 4 rule service { inherit fromIface toIface; };
-                  ipv6 = endpointRoutes 6 rule service { inherit fromIface toIface; };
-                };
-                previous = attrsOrEmpty (acc.${fromIfName} or null);
+                serviceFacingRoute =
+                  (target.role or null) == "policy"
+                  || (laneKindFor fromIface == "uplink" && laneKindFor toIface == "access-uplink");
+                routeIfName =
+                  if serviceFacingRoute then toIfName else fromIfName;
+                routeIface =
+                  if serviceFacingRoute then toIface else fromIface;
+                extraRoutes = tagIngressRoutes fromIface (dropRoutesAlreadyOnInterface routeIface {
+                  ipv4 = endpointRoutes 4 rule service { inherit fromIface toIface routeIface; };
+                  ipv6 = endpointRoutes 6 rule service { inherit fromIface toIface routeIface; };
+                });
+                previous = attrsOrEmpty (acc.${routeIfName} or null);
               in
-              acc // { ${fromIfName} = mergeRoutes previous extraRoutes; })
+              acc // { ${routeIfName} = mergeRoutes previous extraRoutes; })
           extraByIf
           (externalServiceRules (forwarding.rules or [ ]));
       updatedInterfaces =
