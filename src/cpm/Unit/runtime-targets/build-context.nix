@@ -16,6 +16,7 @@ let
   defaultPortBindings = {
     byLink = { };
     byLogicalInterface = { };
+    byServiceInterface = { };
     byUplink = { };
     portDefs = { };
   };
