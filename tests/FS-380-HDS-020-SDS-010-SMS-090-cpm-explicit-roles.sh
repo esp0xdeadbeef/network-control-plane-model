@@ -157,6 +157,70 @@ nix_eval_bool \
   " \
   "false"
 
+nix_eval_bool \
+  "upstream-selector multi-uplink P2P interfaceClass.coreFacing=true" \
+  "
+    let
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { lib = import <nixpkgs/lib>; };
+      common = {
+        attrsOrEmpty = v: if builtins.isAttrs v then v else {};
+        failInventory = path: msg: builtins.throw \"\${path}: \${msg}\";
+      };
+      taxonomy = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/Unit/runtime-targets/interfaces/taxonomy.nix\") { inherit helpers common; };
+      result = taxonomy.taxonomyFor {
+        ifacePath = \"test.upstream-selector.core\";
+        ifName = \"p0\";
+        sourceKind = \"p2p\";
+        backingRef = {
+          name = \"p2p-emulated-isp-upstream-selector\";
+          lane = \"default\";
+          uplinks = [ \"internet-vlan4\" \"internet-vlan5\" ];
+        };
+        nodeRole = \"upstream-selector\";
+        targetDef = null;
+        portBinding = null;
+        fabricLinkBinding = null;
+        overlayProvisioning = {};
+      };
+    in
+      result.interfaceClass.coreFacing or false
+  " \
+  "true"
+
+nix_eval_bool \
+  "access-uplink P2P interfaceClass.exitFacing=true" \
+  "
+    let
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { lib = import <nixpkgs/lib>; };
+      common = {
+        attrsOrEmpty = v: if builtins.isAttrs v then v else {};
+        failInventory = path: msg: builtins.throw \"\${path}: \${msg}\";
+      };
+      taxonomy = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/Unit/runtime-targets/interfaces/taxonomy.nix\") { inherit helpers common; };
+      result = taxonomy.taxonomyFor {
+        ifacePath = \"test.upstream-selector.access-uplink\";
+        ifName = \"p1\";
+        sourceKind = \"p2p\";
+        backingRef = {
+          name = \"p2p-policy-upstream-selector--access-client-edge--uplink-internet-vlan4\";
+          lane = {
+            kind = \"access-uplink\";
+            access = \"client-edge\";
+            uplink = \"internet-vlan4\";
+            uplinks = [ \"internet-vlan4\" ];
+          };
+        };
+        nodeRole = \"upstream-selector\";
+        targetDef = null;
+        portBinding = null;
+        fabricLinkBinding = null;
+        overlayProvisioning = {};
+      };
+    in
+      result.interfaceClass.exitFacing or false
+  " \
+  "true"
+
 # ============================================================
 # Predicate 3: Tenant interface gets explicit.explicitLocalAdapter = true
 # ============================================================

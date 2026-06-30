@@ -305,6 +305,16 @@ let
     }:
     let
       backingRefName = backingRef.name or null;
+      lane =
+        if builtins.isAttrs (backingRef.lane or null) then
+          backingRef.lane
+        else
+          { };
+      laneKind = lane.kind or null;
+      backingUplinks =
+        (if builtins.isList (backingRef.uplinks or null) then builtins.filter builtins.isString backingRef.uplinks else [ ])
+        ++ (if builtins.isList (lane.uplinks or null) then builtins.filter builtins.isString lane.uplinks else [ ])
+        ++ (let uplink = lane.uplink or null; in if isNonEmptyString uplink then [ uplink ] else [ ]);
       pppoeSession =
         if targetDef != null then pppoeServiceForInterface ifName backingRefName targetDef else null;
       direction =
@@ -365,6 +375,25 @@ let
         explicitLocalAdapter = sourceKind == "tenant" && (taxonomy.adapterClass or null) == "tenant-role-surface";
         explicitUplink = false;
       };
+      interfaceClass = {
+        edgeFacing = sourceKind == "p2p" && laneKind == "access-edge";
+        fabricFacing = sourceKind == "p2p" && laneKind == "access";
+        exitFacing = sourceKind == "p2p" && laneKind == "access-uplink";
+        coreFacing =
+          sourceKind == "p2p"
+          && (
+            laneKind == "uplink"
+            || (
+              nodeRole == "upstream-selector"
+              && backingUplinks != [ ]
+              && laneKind != "access-edge"
+              && laneKind != "access"
+              && laneKind != "access-uplink"
+            )
+          );
+        overlay = sourceKind == "overlay";
+        coreTransit = false;
+      };
       # DHCP authority declaration per FS-380-HDS-010-SDS-010-SMS-110.
       # CPM must declare whether DHCP is permitted on each interface.
       # Defaults to false — DHCP must be opt-in from model intent.
@@ -394,7 +423,7 @@ let
           else "none";
       };
     in
-    virtualRequired { inherit ifacePath taxonomy; } // { explicit = explicitRole; inherit dhcpAuthority dnsResolver; };
+    virtualRequired { inherit ifacePath taxonomy; } // { explicit = explicitRole; inherit interfaceClass dhcpAuthority dnsResolver; };
 in
 {
   inherit taxonomyFor;

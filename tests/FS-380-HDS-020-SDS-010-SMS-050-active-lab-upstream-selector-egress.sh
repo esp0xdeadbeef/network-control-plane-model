@@ -163,6 +163,9 @@ check_inventory() {
           ($cores | length) == 1
           and ($vlan4 | length) == 1
           and ($vlan5 | length) == 1
+          and ($core.interfaceClass.coreFacing // false) == true
+          and ($policy4.interfaceClass.exitFacing // false) == true
+          and ($policy5.interfaceClass.exitFacing // false) == true
           and has_unscoped_rule($rules; $policy4.runtimeIfName; $core.runtimeIfName)
           and has_unscoped_rule($rules; $core.runtimeIfName; $policy4.runtimeIfName)
           and has_unscoped_rule($rules; $policy5.runtimeIfName; $core.runtimeIfName)
@@ -193,6 +196,7 @@ check_inventory() {
                 key,
                 value: {
                   runtimeIfName: .value.runtimeIfName,
+                  interfaceClass: .value.interfaceClass,
                   backingRef: .value.backingRef,
                   routes4: .value.routes.ipv4,
                   routes6: .value.routes.ipv6
