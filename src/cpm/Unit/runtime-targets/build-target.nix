@@ -131,6 +131,8 @@ let
                 targetHostName
                 targetId
                 realizedTarget
+                nodeRole
+                targetDef
                 ;
               uplinkValue = uplinkAttrs.${uplinkName};
             }
