@@ -19,6 +19,7 @@ let
   inherit (common) failInventory mergeRoutes;
   staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
   routeFilter = import ./default-route-filter.nix { inherit helpers common uplinkRouting; };
+  taxonomy = import ./taxonomy.nix { inherit helpers common; };
 
   explicitUplinkRoute = family: dst: {
     inherit dst;
@@ -41,6 +42,8 @@ in
   targetHostName,
   targetId,
   realizedTarget,
+  nodeRole,
+  targetDef,
 }:
 let
   uplinkPath = "${sitePath}.nodes.${nodeName}.uplinks.${uplinkName}";
@@ -114,6 +117,19 @@ let
     ipv4 = routeFilter.filterUnavailableDefaultRoutes 4 (routesRaw.ipv4 or null);
     ipv6 = routeFilter.filterUnavailableDefaultRoutes 6 (routesRaw.ipv6 or null);
   };
+  backingRef = {
+    kind = "link";
+    id = "uplink::${enterpriseName}.${siteName}::${uplinkName}";
+    name = uplinkName;
+  };
+  taxonomyFields = taxonomy.taxonomyFor {
+    ifacePath = uplinkPath;
+    ifName = uplinkName;
+    sourceKind = "wan";
+    inherit backingRef nodeRole targetDef portBinding;
+    fabricLinkBinding = null;
+    overlayProvisioning = { };
+  };
   value = {
     runtimeTarget = targetId;
     logicalNode = nodeName;
@@ -124,11 +140,7 @@ let
     addr4 = effectiveAddr4;
     addr6 = effectiveAddr6;
     inherit routes;
-    backingRef = {
-      kind = "link";
-      id = "uplink::${enterpriseName}.${siteName}::${uplinkName}";
-      name = uplinkName;
-    };
+    inherit backingRef;
     upstream = uplinkName;
     wan = {
       ipv4 = if uplinkAttrs ? ipv4 then requireStringList "${uplinkPath}.ipv4" uplinkAttrs.ipv4 else [ ];
@@ -137,7 +149,7 @@ let
     // (
       if builtins.isAttrs (uplinkAttrs.egress or null) then { egress = uplinkAttrs.egress; } else { }
     );
-  }
+  } // taxonomyFields
   // (
     if portBinding != null && builtins.isAttrs (portBinding.attach or null) then
       { attach = portBinding.attach; }

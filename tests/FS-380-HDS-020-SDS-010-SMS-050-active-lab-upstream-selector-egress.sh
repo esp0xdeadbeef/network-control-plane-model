@@ -122,9 +122,16 @@ check_inventory() {
         and (.lane.uplink // "") == $uplink
       );
 
-    .control_plane_model.data."mini-smt"."internet-mode-verification" as $site
-    | $site.runtimeTargets."mini-smt-internet-mode-verification-upstream-selector" as $upstream
-    | ($upstream.effectiveRuntimeRealization.interfaces // {}) as $interfaces
+	    .control_plane_model.data."mini-smt"."internet-mode-verification" as $site
+	    | [
+	        ($site.runtimeTargets // {}) | to_entries[]?
+	        | .value as $target
+	        | (($target.effectiveRuntimeRealization.interfaces // {}) | to_entries[]?)
+	        | select((.value.interfaceClass // null) == null)
+	        | { target: $target.role, interface: .key, sourceKind: (.value.sourceKind // null), backingRef: (.value.backingRef // null) }
+	      ] as $missingInterfaceClasses
+	    | $site.runtimeTargets."mini-smt-internet-mode-verification-upstream-selector" as $upstream
+	    | ($upstream.effectiveRuntimeRealization.interfaces // {}) as $interfaces
     | ($upstream.forwardingIntent.rules // []) as $rules
     | [
         $interfaces[]?
@@ -158,9 +165,11 @@ check_inventory() {
         coreRuntimeIfName: ($core.runtimeIfName // null),
         vlan4RuntimeIfName: ($policy4.runtimeIfName // null),
         vlan5RuntimeIfName: ($policy5.runtimeIfName // null),
-        selectorRuleCount: ($rules | length),
-        ok:
-          ($cores | length) == 1
+	        selectorRuleCount: ($rules | length),
+	        missingInterfaceClasses: $missingInterfaceClasses,
+	        ok:
+	          ($missingInterfaceClasses | length) == 0
+	          and ($cores | length) == 1
           and ($vlan4 | length) == 1
           and ($vlan5 | length) == 1
           and ($core.interfaceClass.coreFacing // false) == true
@@ -181,12 +190,19 @@ check_inventory() {
       }
     | select(.ok)
   ' "${output_json}" >/dev/null || {
-    echo "FAIL FS-380 active-lab upstream selector egress (${label}): CPM must emit upstream-selector policy/core forwarding and policy-table tenant return routes for internet-vlan4 and internet-vlan5" >&2
-    jq '
-      .control_plane_model.data."mini-smt"."internet-mode-verification" as $site
-      | $site.runtimeTargets."mini-smt-internet-mode-verification-upstream-selector" as $upstream
-      | {
-          rules: [
+	    echo "FAIL FS-380 active-lab upstream selector egress (${label}): CPM must emit explicit interfaceClass for every runtime interface plus upstream-selector policy/core forwarding and policy-table tenant return routes for internet-vlan4 and internet-vlan5" >&2
+	    jq '
+	      .control_plane_model.data."mini-smt"."internet-mode-verification" as $site
+	      | $site.runtimeTargets."mini-smt-internet-mode-verification-upstream-selector" as $upstream
+	      | {
+	          missingInterfaceClasses: [
+	            ($site.runtimeTargets // {}) | to_entries[]?
+	            | .value as $target
+	            | (($target.effectiveRuntimeRealization.interfaces // {}) | to_entries[]?)
+	            | select((.value.interfaceClass // null) == null)
+	            | { target: $target.role, interface: .key, sourceKind: (.value.sourceKind // null), backingRef: (.value.backingRef // null) }
+	          ],
+	          rules: [
             ($upstream.forwardingIntent.rules // [])[]?
             | { relationId, direction, fromInterface, toInterface, sourcePrefixes, relationCardinality }
           ],
