@@ -140,7 +140,15 @@ check_inventory() {
         and (.lane.uplink // "") == $uplink
       );
 
-	    .control_plane_model.data."mini-smt"."internet-mode-verification" as $site
+    def fs380_site:
+      .control_plane_model.data."mini-smt" as $sites
+      | ($sites."internet-mode-verification" // $sites."FS-380-HDS-020-SDS-010-SMS-050");
+
+    def fs380_target($site; $suffix):
+      $site.runtimeTargets[("mini-smt-internet-mode-verification-" + $suffix)]
+      // $site.runtimeTargets[("mini-smt-FS-380-HDS-020-SDS-010-SMS-050-" + $suffix)];
+
+	    fs380_site as $site
 	    | [
 	        ($site.runtimeTargets // {}) | to_entries[]?
 	        | .value as $target
@@ -148,7 +156,7 @@ check_inventory() {
 	        | select((.value.interfaceClass // null) == null)
 	        | { target: $target.role, interface: .key, sourceKind: (.value.sourceKind // null), backingRef: (.value.backingRef // null) }
 	      ] as $missingInterfaceClasses
-	    | $site.runtimeTargets."mini-smt-internet-mode-verification-upstream-selector" as $upstream
+	    | fs380_target($site; "upstream-selector") as $upstream
 	    | ($upstream.effectiveRuntimeRealization.interfaces // {}) as $interfaces
     | ($upstream.forwardingIntent.rules // []) as $rules
     | [
@@ -207,11 +215,19 @@ check_inventory() {
           and has_default_route6($policy5; "fd42:380:ff:0:0:0:0:4"; "internet-vlan5")
       }
     | select(.ok)
-  ' "${output_json}" >/dev/null || {
+    ' "${output_json}" >/dev/null || {
 	    echo "FAIL FS-380 active-lab upstream selector egress (${label}): CPM must emit explicit interfaceClass for every runtime interface plus upstream-selector policy/core forwarding and policy-table tenant return routes for internet-vlan4 and internet-vlan5" >&2
 	    jq '
-	      .control_plane_model.data."mini-smt"."internet-mode-verification" as $site
-	      | $site.runtimeTargets."mini-smt-internet-mode-verification-upstream-selector" as $upstream
+        def fs380_site:
+          .control_plane_model.data."mini-smt" as $sites
+          | ($sites."internet-mode-verification" // $sites."FS-380-HDS-020-SDS-010-SMS-050");
+
+        def fs380_target($site; $suffix):
+          $site.runtimeTargets[("mini-smt-internet-mode-verification-" + $suffix)]
+          // $site.runtimeTargets[("mini-smt-FS-380-HDS-020-SDS-010-SMS-050-" + $suffix)];
+
+	      fs380_site as $site
+	      | fs380_target($site; "upstream-selector") as $upstream
 	      | {
 	          missingInterfaceClasses: [
 	            ($site.runtimeTargets // {}) | to_entries[]?
