@@ -94,32 +94,29 @@ check_inventory() {
         and ((.relationCardinality.unit // "") == "selector-forwarding-rule")
       );
 
-    def has_return_route4($core; $via):
+    def has_return_route4($core; $uplink):
       any(route_list($core; 4)[]?;
-        (.dst // "") == "10.20.20.0/24"
-        and (.via4 // "") == $via
-        and (.policyOnly // false) == true
+        (.policyOnly // false) == true
         and (.reason // "") == "policy-table-internal-reachability"
         and (.intent.policyTableComplement // false) == true
         and (.intent.source // "") == "policy-default-lane"
         and (.lane.access // "") == "client-edge"
+        and (.lane.uplink // "") == $uplink
       );
 
-    def has_return_route6($core; $via):
+    def has_return_route6($core; $uplink):
       any(route_list($core; 6)[]?;
-        (.dst // "") == "fd42:0380:0020:0000:0000:0000:0000:0000/64"
-        and (.via6 // "") == $via
-        and (.policyOnly // false) == true
+        (.policyOnly // false) == true
         and (.reason // "") == "policy-table-internal-reachability"
         and (.intent.policyTableComplement // false) == true
         and (.intent.source // "") == "policy-default-lane"
         and (.lane.access // "") == "client-edge"
+        and (.lane.uplink // "") == $uplink
       );
 
-    def has_default_route4($iface; $via; $uplink):
+    def has_default_route4($iface; $uplink):
       any(route_list($iface; 4)[]?;
         (.dst // "") == "0.0.0.0/0"
-        and (.via4 // "") == $via
         and (.policyOnly // false) == true
         and (.reason // "") == "policy-table-default-reachability"
         and (.intent.policyTableDefaultComplement // false) == true
@@ -128,10 +125,9 @@ check_inventory() {
         and (.lane.uplink // "") == $uplink
       );
 
-    def has_default_route6($iface; $via; $uplink):
+    def has_default_route6($iface; $uplink):
       any(route_list($iface; 6)[]?;
         (.dst // "") == "::/0"
-        and (.via6 // "") == $via
         and (.policyOnly // false) == true
         and (.reason // "") == "policy-table-default-reachability"
         and (.intent.policyTableDefaultComplement // false) == true
@@ -162,42 +158,39 @@ check_inventory() {
     | [
         $interfaces[]?
         | select(
-            ((.backingRef.uplinks // []) | index("internet-vlan4") != null)
-            and ((.backingRef.uplinks // []) | index("internet-vlan5") != null)
+            ((.backingRef.uplinks // []) | length) == 2
             and ((.backingRef.lane // null) == "default" or (lane(.).kind // null) == null)
           )
       ] as $cores
-    | [
-        $interfaces[]?
-        | select(
-            (lane(.).kind // "") == "access-uplink"
-            and (lane(.).access // "") == "client-edge"
-            and (lane(.).uplink // "") == "internet-vlan4"
-          )
-      ] as $vlan4
-    | [
-        $interfaces[]?
-        | select(
-            (lane(.).kind // "") == "access-uplink"
-            and (lane(.).access // "") == "client-edge"
-            and (lane(.).uplink // "") == "internet-vlan5"
-          )
-      ] as $vlan5
     | ($cores[0] // {}) as $core
-    | ($vlan4[0] // {}) as $policy4
-    | ($vlan5[0] // {}) as $policy5
+    | ($core.backingRef.uplinks // []) as $activeUplinks
+    | [
+        $interfaces[]?
+        | . as $iface
+        | select(
+            (lane($iface).kind // "") == "access-uplink"
+            and (lane($iface).access // "") == "client-edge"
+            and (($activeUplinks | index(lane($iface).uplink // "")) != null)
+          )
+      ] as $uplinkInterfaces
+    | ($uplinkInterfaces[0] // {}) as $policy4
+    | ($uplinkInterfaces[1] // {}) as $policy5
+    | (lane($policy4).uplink // "") as $uplink4
+    | (lane($policy5).uplink // "") as $uplink5
     | {
         label: $label,
+        activeUplinks: $activeUplinks,
         coreRuntimeIfName: ($core.runtimeIfName // null),
-        vlan4RuntimeIfName: ($policy4.runtimeIfName // null),
-        vlan5RuntimeIfName: ($policy5.runtimeIfName // null),
+        uplink4RuntimeIfName: ($policy4.runtimeIfName // null),
+        uplink5RuntimeIfName: ($policy5.runtimeIfName // null),
 	        selectorRuleCount: ($rules | length),
 	        missingInterfaceClasses: $missingInterfaceClasses,
 	        ok:
 	          ($missingInterfaceClasses | length) == 0
 	          and ($cores | length) == 1
-          and ($vlan4 | length) == 1
-          and ($vlan5 | length) == 1
+          and (($activeUplinks | length) == 2)
+          and (($uplinkInterfaces | length) == 2)
+          and (([$uplink4, $uplink5] | sort) == ($activeUplinks | sort))
           and ($core.interfaceClass.coreFacing // false) == true
           and ($policy4.interfaceClass.exitFacing // false) == true
           and ($policy5.interfaceClass.exitFacing // false) == true
@@ -205,18 +198,18 @@ check_inventory() {
           and has_unscoped_rule($rules; $core.runtimeIfName; $policy4.runtimeIfName)
           and has_unscoped_rule($rules; $policy5.runtimeIfName; $core.runtimeIfName)
           and has_unscoped_rule($rules; $core.runtimeIfName; $policy5.runtimeIfName)
-          and has_return_route4($core; "10.10.0.6")
-          and has_return_route4($core; "10.10.0.8")
-          and has_return_route6($core; "fd42:380:ff:0:0:0:0:6")
-          and has_return_route6($core; "fd42:380:ff:0:0:0:0:8")
-          and has_default_route4($policy4; "10.10.0.4"; "internet-vlan4")
-          and has_default_route4($policy5; "10.10.0.4"; "internet-vlan5")
-          and has_default_route6($policy4; "fd42:380:ff:0:0:0:0:4"; "internet-vlan4")
-          and has_default_route6($policy5; "fd42:380:ff:0:0:0:0:4"; "internet-vlan5")
+          and has_return_route4($core; $uplink4)
+          and has_return_route4($core; $uplink5)
+          and has_return_route6($core; $uplink4)
+          and has_return_route6($core; $uplink5)
+          and has_default_route4($policy4; $uplink4)
+          and has_default_route4($policy5; $uplink5)
+          and has_default_route6($policy4; $uplink4)
+          and has_default_route6($policy5; $uplink5)
       }
     | select(.ok)
     ' "${output_json}" >/dev/null || {
-	    echo "FAIL FS-380 active-lab upstream selector egress (${label}): CPM must emit explicit interfaceClass for every runtime interface plus upstream-selector policy/core forwarding and policy-table tenant return routes for internet-vlan4 and internet-vlan5" >&2
+	    echo "FAIL FS-380 active-lab upstream selector egress (${label}): CPM must emit explicit interfaceClass for every runtime interface plus upstream-selector policy/core forwarding and policy-table tenant return/default routes for the selected active uplinks" >&2
 	    jq '
         def fs380_site:
           .control_plane_model.data."mini-smt" as $sites

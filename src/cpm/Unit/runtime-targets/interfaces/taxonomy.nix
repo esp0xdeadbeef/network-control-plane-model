@@ -364,6 +364,29 @@ let
             adapterClass = "wan-uplink";
             inherit nodeRole direction;
           }
+        else if sourceKind == "pppoe-session" then
+          baseTaxonomy {
+            adapterClass = "provider-session";
+            inherit nodeRole;
+            virtualAdapter = true;
+            hostFacing = false;
+            direction = "egress";
+            extra = {
+              exclusionReason = "provider-session-virtual-adapter";
+              service = "pppoe";
+              sessionPurpose = "provider-access";
+            };
+          }
+        else if sourceKind == "pppoe-handoff" then
+          baseTaxonomy {
+            adapterClass = "pppoe-service-handoff";
+            inherit nodeRole;
+            hostFacing = true;
+            extra = {
+              service = "pppoe";
+              handoffPurpose = "pppoe-service-interface";
+            };
+          }
         else
           baseTaxonomy {
             adapterClass = "runtime-interface";
@@ -371,7 +394,9 @@ let
           };
       explicitRole = {
         explicitWan = sourceKind == "wan" && (taxonomy.adapterClass or null) == "wan-uplink";
-        explicitTransit = sourceKind == "p2p" && (taxonomy.adapterClass or null) == "p2p-realization";
+        explicitTransit =
+          (sourceKind == "p2p" && (taxonomy.adapterClass or null) == "p2p-realization")
+          || (sourceKind == "pppoe-session" && (taxonomy.adapterClass or null) == "provider-session");
         explicitLocalAdapter = sourceKind == "tenant" && (taxonomy.adapterClass or null) == "tenant-role-surface";
         explicitUplink = false;
       };
@@ -390,9 +415,11 @@ let
               && laneKind != "access"
               && laneKind != "access-uplink"
             )
-          );
+        );
         overlay = sourceKind == "overlay";
         coreTransit = false;
+        serviceFacing = sourceKind == "pppoe-handoff";
+        providerSession = sourceKind == "pppoe-session";
       };
       # DHCP authority declaration per FS-380-HDS-010-SDS-010-SMS-110.
       # CPM must declare whether DHCP is permitted on each interface.
