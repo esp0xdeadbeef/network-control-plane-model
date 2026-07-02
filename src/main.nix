@@ -26,7 +26,7 @@ let
 
   deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
   hatEndpointAssignment = import ./cpm/hat-endpoint-assignment.nix {
-    inherit inventory;
+    inherit deploymentHosts;
     lib = effectiveLib;
   };
 

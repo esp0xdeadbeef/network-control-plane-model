@@ -197,6 +197,13 @@ let
     runtimeTargets
     ;
 
+  validatePolicyDsReturnPath =
+    import ./Site/build-data/policy-ds-return-path-guard.nix {
+      inherit lib common;
+    } {
+      inherit tenantPrefixOwners runtimeTargets;
+    };
+
   pppoePairingFallbackRowId = "FS-800-HDS-010-SDS-020-SMS-030";
 
   validatePPPoEContracts =
@@ -382,11 +389,13 @@ in
 if validatePPPoEContracts then
   builtins.deepSeq
     validateEndpointAssignments.diagnostics
-    (emitOutput
-    {
-      inherit lib accessAdvertisements emulationSubnets accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
-      services = resolvedServices;
-      endpointAssignmentCheckDiagnostics = validateEndpointAssignments.diagnostics;
-    })
+    (builtins.deepSeq
+      validatePolicyDsReturnPath
+      (emitOutput
+      {
+        inherit lib accessAdvertisements emulationSubnets accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
+        services = resolvedServices;
+        endpointAssignmentCheckDiagnostics = validateEndpointAssignments.diagnostics;
+      }))
 else
   throw "unreachable"

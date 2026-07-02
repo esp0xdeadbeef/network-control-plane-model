@@ -22,6 +22,29 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 echo "--- FS-370-HDS-010-SDS-010-SMS-101: per-lane return-path routing ---"
 echo ""
 
+expect_nix_failure() {
+  local label="$1"
+  local expected="$2"
+  local expr="$3"
+  local output
+
+  output="$(mktemp)"
+  if REPO_ROOT="${repo_root}" nix eval --impure --expr "${expr}" >"${output}" 2>&1; then
+    echo "FAIL ${label}: expected construction failure containing ${expected}" >&2
+    rm -f "${output}"
+    exit 1
+  fi
+  if ! grep -q "${expected}" "${output}"; then
+    echo "FAIL ${label}: construction failed without ${expected}" >&2
+    cat "${output}" >&2
+    rm -f "${output}"
+    exit 1
+  fi
+
+  rm -f "${output}"
+  echo "PASS ${label}"
+}
+
 REPO_ROOT="${repo_root}" nix eval --impure --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
@@ -190,5 +213,149 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     else
       throw ("SMS-101 per-lane return-path routing FAILED: " + builtins.toJSON diagnostics)
 ' >/dev/null
+
+expect_nix_failure "seeded-negative-wrong-lane" "policy-ds-return-path-wrong-lane" '
+  let
+    repoRoot = builtins.getEnv "REPO_ROOT";
+    flake = builtins.getFlake ("path:" + repoRoot);
+    system = builtins.currentSystem;
+    labs = flake.inputs.network-labs.outPath;
+    guard = import (repoRoot + "/src/cpm/Site/build-data/policy-ds-return-path-guard.nix") {
+      lib = {};
+      common = {
+        attrsOrEmpty = value: if builtins.isAttrs value then value else {};
+        listOrEmpty = value: if builtins.isList value then value else [];
+      };
+    };
+    result = flake.lib.${system}.compileAndBuild {
+      input = import (labs + "/examples/single-wan/intent.nix");
+      inventory = import (labs + "/examples/single-wan/inventory-nixos.nix");
+    };
+    site = result.control_plane_model.data.esp0xdeadbeef."site-a";
+    runtimeTargets = site.runtimeTargets;
+    policyTargetName = builtins.head (
+      builtins.filter
+        (name: (runtimeTargets.${name}.role or "") == "policy")
+        (builtins.attrNames runtimeTargets)
+    );
+    target = runtimeTargets.${policyTargetName};
+    realization = target.effectiveRuntimeRealization or {};
+    interfaces = realization.interfaces or {};
+    selectedIfName = builtins.head (
+      builtins.filter
+        (name:
+          let
+            iface = interfaces.${name};
+            lane = ((iface.backingRef or {}).lane or {});
+          in
+          (iface.sourceKind or null) == "p2p"
+          && (lane.kind or null) == "access"
+          && (lane.access or null) == "s-router-access-client")
+        (builtins.attrNames interfaces)
+    );
+    iface = interfaces.${selectedIfName};
+    routes = iface.routes or {};
+    mutateRoute = route:
+      let intent = route.intent or {};
+      in
+      if (route.dst or null) == "10.20.20.0/24"
+        && (route.policyOnly or false) == true
+        && (route.reason or null) == "policy-table-internal-reachability"
+        && (intent.source or null) == "policy-default-lane"
+      then route // { lane = (route.lane or {}) // { access = "s-router-access-admin"; }; }
+      else route;
+    mutatedIface = iface // {
+      routes = routes // {
+        ipv4 = builtins.map mutateRoute (routes.ipv4 or []);
+      };
+    };
+    mutatedTarget = target // {
+      effectiveRuntimeRealization = realization // {
+        interfaces = interfaces // builtins.listToAttrs [
+          { name = selectedIfName; value = mutatedIface; }
+        ];
+      };
+    };
+    mutatedRuntimeTargets = runtimeTargets // builtins.listToAttrs [
+      { name = policyTargetName; value = mutatedTarget; }
+    ];
+  in
+  guard {
+    tenantPrefixOwners = site.tenantPrefixOwners;
+    runtimeTargets = mutatedRuntimeTargets;
+  }
+'
+
+expect_nix_failure "seeded-negative-missing-return-path" "policy-ds-return-path-missing" '
+  let
+    repoRoot = builtins.getEnv "REPO_ROOT";
+    flake = builtins.getFlake ("path:" + repoRoot);
+    system = builtins.currentSystem;
+    labs = flake.inputs.network-labs.outPath;
+    guard = import (repoRoot + "/src/cpm/Site/build-data/policy-ds-return-path-guard.nix") {
+      lib = {};
+      common = {
+        attrsOrEmpty = value: if builtins.isAttrs value then value else {};
+        listOrEmpty = value: if builtins.isList value then value else [];
+      };
+    };
+    result = flake.lib.${system}.compileAndBuild {
+      input = import (labs + "/examples/single-wan/intent.nix");
+      inventory = import (labs + "/examples/single-wan/inventory-nixos.nix");
+    };
+    site = result.control_plane_model.data.esp0xdeadbeef."site-a";
+    runtimeTargets = site.runtimeTargets;
+    policyTargetName = builtins.head (
+      builtins.filter
+        (name: (runtimeTargets.${name}.role or "") == "policy")
+        (builtins.attrNames runtimeTargets)
+    );
+    target = runtimeTargets.${policyTargetName};
+    realization = target.effectiveRuntimeRealization or {};
+    interfaces = realization.interfaces or {};
+    selectedIfName = builtins.head (
+      builtins.filter
+        (name:
+          let
+            iface = interfaces.${name};
+            lane = ((iface.backingRef or {}).lane or {});
+          in
+          (iface.sourceKind or null) == "p2p"
+          && (lane.kind or null) == "access"
+          && (lane.access or null) == "s-router-access-client")
+        (builtins.attrNames interfaces)
+    );
+    iface = interfaces.${selectedIfName};
+    routes = iface.routes or {};
+    keepRoute = route:
+      let intent = route.intent or {};
+      in
+      !(
+        (route.dst or null) == "10.20.20.0/24"
+        && (route.policyOnly or false) == true
+        && (route.reason or null) == "policy-table-internal-reachability"
+        && (intent.source or null) == "policy-default-lane"
+      );
+    mutatedIface = iface // {
+      routes = routes // {
+        ipv4 = builtins.filter keepRoute (routes.ipv4 or []);
+      };
+    };
+    mutatedTarget = target // {
+      effectiveRuntimeRealization = realization // {
+        interfaces = interfaces // builtins.listToAttrs [
+          { name = selectedIfName; value = mutatedIface; }
+        ];
+      };
+    };
+    mutatedRuntimeTargets = runtimeTargets // builtins.listToAttrs [
+      { name = policyTargetName; value = mutatedTarget; }
+    ];
+  in
+  guard {
+    tenantPrefixOwners = site.tenantPrefixOwners;
+    runtimeTargets = mutatedRuntimeTargets;
+  }
+'
 
 echo "PASS fs370-sms101-per-lane-return-path-routing"

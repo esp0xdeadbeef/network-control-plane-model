@@ -21,7 +21,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 source "${repo_root}/tests/lib/pinned-paths.sh"
 
 labs_path="${NETWORK_LABS_PATH:-$(pinned_network_labs)}"
-hat_dir="${labs_path}/HAT/emulated-isp-residential-testnet"
+hat_dir="$(pinned_hat_dir)"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
@@ -97,15 +97,20 @@ PLATFORM_TOKENS=(
   "connection.id"
   "connection.type"
   "802-3-ethernet"
-  # Interface naming conventions as grammar
-  "eth0.10"
-  "wg0"
-  "nebula0"
-  "veth-"
   # Numeric routing table IDs as grammar
   "table 100"
   "table 200"
   "table 255"
+)
+
+# Interface naming conventions require path-aware scanning: exact values such
+# as "nebula1" are valid renderer handoff/runtime realization metadata, while
+# the same token in an authority/default/policy-source field is a platform leak.
+INTERFACE_NAME_PATTERNS_150=(
+  '^eth[0-9]+\.[0-9]+$'
+  '^wg[0-9]+$'
+  '^nebula[0-9]+$'
+  '^veth-.+'
 )
 
 # KNOWN_GAPS for SMS-150: typed realization data that carries platform-specific
@@ -134,6 +139,124 @@ for token in "${PLATFORM_TOKENS[@]}"; do
     new_violations_150=$((new_violations_150 + 1))
   fi
 done
+
+interface_scan_report="${tmp_dir}/sms150-interface-name-scan.txt"
+python3 - "${cpm_output}" >"${interface_scan_report}" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+patterns = [
+    re.compile(r"^eth[0-9]+\.[0-9]+$"),
+    re.compile(r"^wg[0-9]+$"),
+    re.compile(r"^nebula[0-9]+$"),
+    re.compile(r"^veth-.+"),
+]
+
+runtime_field_names = {
+    "runtimeIfName",
+    "renderedIfName",
+    "runtimeInterface",
+    "fromInterface",
+    "toInterface",
+    "sourceInterface",
+    "destinationInterface",
+}
+
+runtime_list_fields = {
+    "localInterfaces",
+    "transitInterfaces",
+    "uplinkInterfaces",
+    "wanInterfaces",
+    "lanInterfaces",
+    "masqueradeInterfaces",
+    "tcpMssClampInterfaces",
+}
+
+logical_identity_fields = {
+    "name",
+    "targetEndpoint",
+}
+
+
+def path_to_string(parts):
+    return ".".join(str(part) for part in parts)
+
+
+def walk(value, parts):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield from walk(child, parts + [key])
+    elif isinstance(value, list):
+        for idx, child in enumerate(value):
+            yield from walk(child, parts + [idx])
+    else:
+        yield parts, value
+
+
+def matches_interface_pattern(value):
+    return isinstance(value, str) and any(pattern.search(value) for pattern in patterns)
+
+
+def is_allowed_interface_handoff(parts):
+    string_parts = [str(part) for part in parts]
+    leaf = string_parts[-1] if string_parts else ""
+    parent = string_parts[-2] if len(string_parts) >= 2 else ""
+
+    if leaf in runtime_field_names:
+        return True
+
+    if parent in runtime_list_fields:
+        return True
+
+    if leaf == "interface" and (
+        "overlays" in string_parts or "providerProfiles" in string_parts
+    ):
+        return True
+
+    if "providerContract" in string_parts and (
+        "overlays" in string_parts or "providerProfiles" in string_parts
+    ):
+        return True
+
+    if "deploymentHosts" in string_parts:
+        return True
+
+    if leaf in logical_identity_fields or parent == "providers":
+        return True
+
+    return False
+
+
+violations = []
+allowed = 0
+
+for parts, value in walk(data, []):
+    if not matches_interface_pattern(value):
+        continue
+
+    if is_allowed_interface_handoff(parts):
+        allowed += 1
+        continue
+
+    violations.append((path_to_string(parts), value))
+
+for path_string, value in violations:
+    print(f'  NEW VIOLATION: CPM output contains platform interface token "{value}" at {path_string}')
+    print("    SMS-150 permits interface names only as typed runtime/renderer handoff or source-backed inventory realization metadata.")
+
+print(f"  Interface-name patterns scanned: 4, allowed typed occurrences: {allowed}, NEW violations: {len(violations)}")
+PY
+
+interface_name_violations_150=$(grep -c '^  NEW VIOLATION:' "${interface_scan_report}" 2>/dev/null || true)
+cat "${interface_scan_report}"
+new_violations_150=$((new_violations_150 + interface_name_violations_150))
+scanned_tokens_150=$((scanned_tokens_150 + ${#INTERFACE_NAME_PATTERNS_150[@]}))
 
 echo ""
 echo "SMS-150 KNOWN_GAPS (typed realization metadata, not platform grammar):"
