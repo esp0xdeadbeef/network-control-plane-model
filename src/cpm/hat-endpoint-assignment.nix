@@ -1,13 +1,8 @@
 { lib
-, inventory ? { }
+, deploymentHosts ? { }
 }:
 
 let
-  deploymentHosts =
-    if inventory ? deployment && inventory.deployment ? hosts then
-      inventory.deployment.hosts
-    else
-      { };
   testClientsHost = deploymentHosts."s-router-test-clients" or { };
   testClientHat = testClientsHost.hat or { };
   testClientEndpointClients = testClientHat.endpointClients or { };
