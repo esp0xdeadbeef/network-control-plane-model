@@ -45,6 +45,7 @@ let
       ;
   };
   binderSourceAudit = import ../../binder-source-audit.nix { inherit helpers; };
+  interfaceTaxonomy = import ./interfaces/taxonomy.nix { inherit helpers common; };
   builtins_ipam = import ../../ipam.nix { inherit lib; };
   pppoeDefaultRouteFilter = import ./pppoe-default-route-filter.nix { inherit sortedNames; };
   firstOrNull = values: if values == [ ] then null else builtins.head values;
@@ -211,6 +212,27 @@ let
           portBindings.byServiceInterface.${pppoeServiceInterface}
         else
           null;
+      pppoeTaxonomy =
+        { ifacePath
+        , ifName
+        , sourceKind
+        , backingRef
+        , portBinding ? null
+        ,
+        }:
+        interfaceTaxonomy.taxonomyFor {
+          inherit
+            ifacePath
+            ifName
+            sourceKind
+            backingRef
+            nodeRole
+            targetDef
+            portBinding
+            overlayProvisioning
+            ;
+          fabricLinkBinding = null;
+        };
       pppoeHandoffInterfaceEntry =
         if pppoeServiceRole == null || pppoeServicePortBinding == null then
           null
@@ -221,6 +243,20 @@ let
         else
           let
             sourcePortName = pppoeServicePortBinding.sourcePortName or pppoeServiceInterface;
+            backingRef = {
+              kind = "service-interface";
+              id = "service-interface::${targetId}::${pppoeServiceInterface}";
+              name = pppoeServiceInterface;
+              service = "pppoe";
+              serviceRole = pppoeServiceRole;
+            };
+            taxonomyFields = pppoeTaxonomy {
+              ifacePath = "${targetDef.nodePath}.ports.${sourcePortName}";
+              ifName = pppoeServiceInterface;
+              sourceKind = "pppoe-handoff";
+              inherit backingRef;
+              portBinding = pppoeServicePortBinding;
+            };
           in
           {
             name = pppoeServiceInterface;
@@ -237,19 +273,14 @@ let
                 ipv4 = [ ];
                 ipv6 = [ ];
               };
-              backingRef = {
-                kind = "service-interface";
-                id = "service-interface::${targetId}::${pppoeServiceInterface}";
-                name = pppoeServiceInterface;
-                service = "pppoe";
-                serviceRole = pppoeServiceRole;
-              };
+              inherit backingRef;
               pppoe = {
                 role = pppoeServiceRole;
                 serviceInterface = pppoeServiceInterface;
               };
               attach = pppoeServicePortBinding.attach;
             }
+            // taxonomyFields
             // (if isNonEmptyString (pppoeServicePortBinding.adapterName or null) then { adapterName = pppoeServicePortBinding.adapterName; } else { })
             // binderSourceAudit.make {
               path = "${targetDef.nodePath}.ports.${sourcePortName}";
@@ -272,6 +303,20 @@ let
           if !(isNonEmptyString runtimeInterface) then
             null
           else
+            let
+              backingRef = {
+                kind = "pppoe-session";
+                id = "pppoe-session::${targetId}::${runtimeInterface}";
+                name = pppoeServer.interface;
+                peerRuntimeTarget = peerTargetName;
+              };
+              taxonomyFields = pppoeTaxonomy {
+                ifacePath = "${targetDef.nodePath}.services.pppoe.server";
+                ifName = runtimeInterface;
+                sourceKind = "pppoe-session";
+                inherit backingRef;
+              };
+            in
             {
               name = runtimeInterface;
               value = {
@@ -295,12 +340,7 @@ let
                   ];
                   ipv6 = [ ];
                 };
-                backingRef = {
-                  kind = "pppoe-session";
-                  id = "pppoe-session::${targetId}::${runtimeInterface}";
-                  name = pppoeServer.interface;
-                  peerRuntimeTarget = peerTargetName;
-                };
+                inherit backingRef;
                 ipv4 = {
                   address = "${providerAddress}/32";
                   peer = "${customerAddress}/32";
@@ -310,7 +350,7 @@ let
                   serviceInterface = pppoeServer.interface;
                   peerRuntimeTarget = peerTargetName;
                 };
-              } // binderSourceAudit.make {
+              } // taxonomyFields // binderSourceAudit.make {
                 path = "${targetDef.nodePath}.services.pppoe.server";
                 field = "effectiveRuntimeRealization.interfaces.${runtimeInterface}";
                 binderSourceClass = "public-inventory";
@@ -330,6 +370,20 @@ let
           if !(isNonEmptyString runtimeInterface) || peerServer == { } then
             null
           else
+            let
+              backingRef = {
+                kind = "pppoe-session";
+                id = "pppoe-session::${targetId}::${runtimeInterface}";
+                name = pppoeClient.interface;
+                peerRuntimeTarget = peerTargetName;
+              };
+              taxonomyFields = pppoeTaxonomy {
+                ifacePath = "${targetDef.nodePath}.services.pppoe.client";
+                ifName = runtimeInterface;
+                sourceKind = "pppoe-session";
+                inherit backingRef;
+              };
+            in
             {
               name = runtimeInterface;
               value = {
@@ -362,12 +416,7 @@ let
                     };
                   ipv6 = [ ];
                 };
-                backingRef = {
-                  kind = "pppoe-session";
-                  id = "pppoe-session::${targetId}::${runtimeInterface}";
-                  name = pppoeClient.interface;
-                  peerRuntimeTarget = peerTargetName;
-                };
+                inherit backingRef;
                 ipv4 = {
                   address = "${customerAddress}/32";
                   peer = "${providerAddress}/32";
@@ -377,7 +426,7 @@ let
                   serviceInterface = pppoeClient.interface;
                   peerRuntimeTarget = peerTargetName;
                 };
-              } // binderSourceAudit.make {
+              } // taxonomyFields // binderSourceAudit.make {
                 path = "${targetDef.nodePath}.services.pppoe.client";
                 field = "effectiveRuntimeRealization.interfaces.${runtimeInterface}";
                 binderSourceClass = "public-inventory";

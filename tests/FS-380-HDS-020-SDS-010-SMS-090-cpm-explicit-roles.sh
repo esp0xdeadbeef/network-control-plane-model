@@ -222,6 +222,68 @@ nix_eval_bool \
   "true"
 
 # ============================================================
+# Predicate 2b: PPPoE service/session records are classified explicitly
+# ============================================================
+echo "--- Predicate 2b: PPPoE handoff/session classification ---"
+
+nix_eval_bool \
+  "PPPoE session interface explicitTransit=true" \
+  "
+    let
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { lib = import <nixpkgs/lib>; };
+      common = {
+        attrsOrEmpty = v: if builtins.isAttrs v then v else {};
+        failInventory = path: msg: builtins.throw \"\${path}: \${msg}\";
+      };
+      taxonomy = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/Unit/runtime-targets/interfaces/taxonomy.nix\") { inherit helpers common; };
+      result = taxonomy.taxonomyFor {
+        ifacePath = \"test.pppoe-session\";
+        ifName = \"ppp0\";
+        sourceKind = \"pppoe-session\";
+        backingRef = { kind = \"pppoe-session\"; name = \"pppoe0\"; };
+        nodeRole = \"access\";
+        targetDef = null;
+        portBinding = null;
+        fabricLinkBinding = null;
+        overlayProvisioning = {};
+      };
+    in
+      (result.explicit.explicitTransit or false)
+      && (result.interfaceClass.providerSession or false)
+      && ((result.interfaceClass or null) != null)
+  " \
+  "true"
+
+nix_eval_bool \
+  "PPPoE handoff interface serviceFacing=true" \
+  "
+    let
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { lib = import <nixpkgs/lib>; };
+      common = {
+        attrsOrEmpty = v: if builtins.isAttrs v then v else {};
+        failInventory = path: msg: builtins.throw \"\${path}: \${msg}\";
+      };
+      taxonomy = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/Unit/runtime-targets/interfaces/taxonomy.nix\") { inherit helpers common; };
+      result = taxonomy.taxonomyFor {
+        ifacePath = \"test.pppoe-handoff\";
+        ifName = \"pppoe0\";
+        sourceKind = \"pppoe-handoff\";
+        backingRef = { kind = \"service-interface\"; name = \"pppoe0\"; service = \"pppoe\"; serviceRole = \"client\"; };
+        nodeRole = \"access\";
+        targetDef = null;
+        portBinding = null;
+        fabricLinkBinding = null;
+        overlayProvisioning = {};
+      };
+    in
+      (result.interfaceClass.serviceFacing or false)
+      && ((result.interfaceClass or null) != null)
+      && ((result.explicit.explicitWan or false) == false)
+      && ((result.explicit.explicitLocalAdapter or false) == false)
+  " \
+  "true"
+
+# ============================================================
 # Predicate 3: Tenant interface gets explicit.explicitLocalAdapter = true
 # ============================================================
 echo "--- Predicate 3: Tenant/LAN classification ---"
