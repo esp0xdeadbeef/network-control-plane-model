@@ -48,6 +48,52 @@ let
       };
     };
 
+  makeRoute =
+    { path
+    , field
+    , binderSourceClass
+    , binderSourcePath
+    , upstreamBehaviorRef
+    , route
+    ,
+    }:
+    let
+      behaviorRef = requireNonEmptyString "${path}.traceBackRef" upstreamBehaviorRef;
+    in
+    route
+    // (make {
+      inherit path field binderSourceClass binderSourcePath;
+      upstreamBehaviorRef = behaviorRef;
+    })
+    // {
+      traceBackRef = behaviorRef;
+    };
+
+  validateRouteBinding = path: record:
+    let
+      attrs =
+        if builtins.isAttrs record then
+          record
+        else
+          failAudit path "must be an attribute set";
+      dst = attrs.dst or attrs.prefix or "<unknown>";
+      nextHop = attrs.via or attrs.via4 or attrs.via6 or "<unknown>";
+      scope = attrs.scope or path;
+      traceBackRef = attrs.traceBackRef or null;
+      _trace =
+        if builtins.isString traceBackRef && traceBackRef != "" then
+          true
+        else
+          throw "UNTRACEABLE_ROUTE scope=${scope} destination=${dst} nextHop=${nextHop}: missing traceBackRef";
+      normalized =
+        attrs
+        // {
+          upstreamBehaviorRef = attrs.upstreamBehaviorRef or traceBackRef;
+          traceBackRef = traceBackRef;
+        };
+    in
+    builtins.seq _trace (validate path normalized);
+
   validate = path: record:
     let
       attrs =
@@ -89,5 +135,5 @@ let
     builtins.seq _stage (builtins.seq _authority (builtins.seq _sourceClass (builtins.seq _upstream true)));
 in
 {
-  inherit make validate;
+  inherit make makeRoute validate validateRouteBinding;
 }

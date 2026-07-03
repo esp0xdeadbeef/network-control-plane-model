@@ -14,7 +14,7 @@
 let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireRoutes requireString;
   inherit (common) attrsOrEmpty failInventory mergeRoutes;
-  staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
+  staticUplinkRoutes = import ./uplink-static-routes.nix { inherit helpers common; };
   runtimeRoutedPrefixRoutesFor = import ./runtime-routed-prefix-routes.nix { inherit helpers common; };
   routeFilter = import ./default-route-filter.nix { inherit helpers common uplinkRouting; };
   binderSourceAudit = import ../../../binder-source-audit.nix { inherit helpers; };

@@ -2,6 +2,7 @@
 , common
 , inventoryAttrs
 , siteAttrs
+, sitePath
 , enterpriseName
 , siteName
 , uplinkNames
@@ -12,6 +13,8 @@ let
   inherit (helpers)
     isNonEmptyString
     requireList
+    requireString
+    sortedNames
     ;
 
   inherit (common)
@@ -51,6 +54,75 @@ let
   normalizeEgressMode = v:
     if v == "static" || v == "bgp" then v else "static";
 
+  modeledUplinkPrefixes =
+    uplinkName: family:
+    builtins.concatLists (
+      builtins.map
+        (nodeName:
+          let
+            node = attrsOrEmpty (siteAttrs.nodes.${nodeName} or null);
+            uplinks = attrsOrEmpty (node.uplinks or null);
+            uplink = attrsOrEmpty (uplinks.${uplinkName} or null);
+            prefixes = if builtins.isList (uplink.${family} or null) then uplink.${family} else [ ];
+          in
+          builtins.genList
+            (idx: {
+              prefix = builtins.elemAt prefixes idx;
+              behaviorRef = "${sitePath}.nodes.${nodeName}.uplinks.${uplinkName}.${family}[${toString idx}]";
+            })
+            (builtins.length prefixes))
+        (sortedNames (siteAttrs.nodes or { }))
+    );
+
+  routePrefix = routePath: route:
+    requireString "${routePath}.prefix" (route.prefix or route.dst or null);
+
+  routeVia = family: routePath: route:
+    requireString "${routePath}.via" (route.via or route.${if family == "ipv4" then "via4" else "via6"} or null);
+
+  authorizeStaticRoute = uplinkName: family: idx: routeValue:
+    let
+      routePath = "inventory.controlPlane.sites.${enterpriseName}.${siteName}.uplinks.${uplinkName}.egress.static.routes.${family}[${toString idx}]";
+      route =
+        if builtins.isAttrs routeValue then
+          routeValue
+        else
+          failInventory routePath "must be an attribute set";
+      prefix = routePrefix routePath route;
+      via = routeVia family routePath route;
+      matching =
+        builtins.filter (entry: entry.prefix == prefix) (modeledUplinkPrefixes uplinkName family);
+      _authorized =
+        if matching != [ ] then
+          true
+        else
+          failInventory routePath
+            "UNAUTHORIZED_BEHAVIOR_FROM_INVENTORY source=public-inventory record=wanEgressRoute prefix=${prefix} gateway=${via}: inventory static uplink route creates behavior absent from intent-authorized model";
+      behaviorRef = (builtins.head matching).behaviorRef;
+      explicitTrace = route.traceBackRef or route.upstreamBehaviorRef or null;
+      _trace =
+        if explicitTrace == null || explicitTrace == behaviorRef then
+          true
+        else
+          failInventory routePath
+            "UNTRACEABLE_ROUTE scope=${enterpriseName}.${siteName}.${uplinkName} destination=${prefix} nextHop=${via}: traceBackRef '${explicitTrace}' does not match authorized behavior '${behaviorRef}'";
+    in
+    builtins.seq _authorized (
+      builtins.seq _trace (
+        route
+        // {
+          traceBackRef = behaviorRef;
+          upstreamBehaviorRef = behaviorRef;
+          binderSourcePath = routePath;
+        }
+      )
+    );
+
+  authorizeStaticRoutes = uplinkName: family: routes:
+    builtins.genList
+      (idx: authorizeStaticRoute uplinkName family idx (builtins.elemAt routes idx))
+      (builtins.length routes);
+
   uplinkRouting =
     builtins.listToAttrs (
       builtins.map
@@ -64,6 +136,8 @@ let
 
             staticCfg = attrsOrEmpty (egress.static or null);
             staticRoutes = attrsOrEmpty (staticCfg.routes or null);
+            staticRoutes4 = requireList "${uplinkPath}.static.routes.ipv4" (staticRoutes.ipv4 or [ ]);
+            staticRoutes6 = requireList "${uplinkPath}.static.routes.ipv6" (staticRoutes.ipv6 or [ ]);
 
             bgpCfg = attrsOrEmpty (egress.bgp or null);
             bgpPeerAsn = bgpCfg.peerAsn or null;
@@ -91,8 +165,8 @@ let
                   {
                     static = {
                       routes = {
-                        ipv4 = requireList "${uplinkPath}.static.routes.ipv4" (staticRoutes.ipv4 or [ ]);
-                        ipv6 = requireList "${uplinkPath}.static.routes.ipv6" (staticRoutes.ipv6 or [ ]);
+                        ipv4 = authorizeStaticRoutes uplinkName "ipv4" staticRoutes4;
+                        ipv6 = authorizeStaticRoutes uplinkName "ipv6" staticRoutes6;
                       };
                     };
                   }
