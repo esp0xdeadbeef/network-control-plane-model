@@ -31,6 +31,8 @@ rm -f "${tmp_dir}/base.nix" \
   "${tmp_dir}/untraceable-route.err" \
   "${tmp_dir}/missing-audit.out" \
   "${tmp_dir}/missing-audit.err" \
+  "${tmp_dir}/missing-upstream.out" \
+  "${tmp_dir}/missing-upstream.err" \
   "${tmp_dir}/cross-stage.out" \
   "${tmp_dir}/cross-stage.err"
 
@@ -338,17 +340,103 @@ if nix eval --impure --expr '
     };
   in
     audit.validate "missing" {
+      field = "inventory.sites.site-a.interfaces.wan0";
+      expectedBinderSourceClass = "public-inventory";
+      ownerRecord = "site-a.interface.wan0";
       upstreamBehaviorRef = "forwardingModel.enterprise.acme.site.ams.nodes.router";
     }
 ' >"${tmp_dir}/missing-audit.out" 2>"${tmp_dir}/missing-audit.err"; then
   echo "FAIL cpm-realization-binder-source-audit: missing binder source audit was accepted" >&2
   exit 1
 fi
-grep -F "CPM binder source audit error" "${tmp_dir}/missing-audit.err" >/dev/null || {
-  echo "FAIL cpm-realization-binder-source-audit: missing-audit diagnostic did not name CPM audit" >&2
+grep -F "CPM_BINDER_SOURCE_AUDIT_MISSING" "${tmp_dir}/missing-audit.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-audit diagnostic did not name seeded negative" >&2
   cat "${tmp_dir}/missing-audit.err" >&2
   exit 1
 }
+grep -F "field=inventory.sites.site-a.interfaces.wan0" "${tmp_dir}/missing-audit.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-audit diagnostic did not name field path" >&2
+  cat "${tmp_dir}/missing-audit.err" >&2
+  exit 1
+}
+grep -F "expectedSourceClass=public-inventory" "${tmp_dir}/missing-audit.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-audit diagnostic did not name expected source class" >&2
+  cat "${tmp_dir}/missing-audit.err" >&2
+  exit 1
+}
+grep -F "owner=site-a.interface.wan0" "${tmp_dir}/missing-audit.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-audit diagnostic did not name owning output record" >&2
+  cat "${tmp_dir}/missing-audit.err" >&2
+  exit 1
+}
+
+if nix eval --impure --expr '
+  let
+    lib = import '"${repo_root}"'/lib/utils.nix;
+    helpers = import '"${repo_root}"'/src/cpm/cpm-contract-support.nix { inherit lib; };
+    audit = import '"${repo_root}"'/src/cpm/binder-source-audit.nix {
+      inherit helpers;
+    };
+  in
+    audit.validate "site-a.interfaces.wan0" {
+      field = "inventory.sites.site-a.interfaces.wan0";
+      ownerRecord = "site-a.interface.wan0";
+      binderSourceAudit = {
+        stage = "control-plane-model";
+        authority = "realization-binding";
+        sourceClass = "public-inventory";
+        sourcePath = "inventory.sites.site-a.interfaces.wan0";
+        field = "inventory.sites.site-a.interfaces.wan0";
+      };
+    }
+' >"${tmp_dir}/missing-upstream.out" 2>"${tmp_dir}/missing-upstream.err"; then
+  echo "FAIL cpm-realization-binder-source-audit: missing upstream behavior reference was accepted" >&2
+  exit 1
+fi
+grep -F "CPM_UPSTREAM_BEHAVIOR_REF_MISSING" "${tmp_dir}/missing-upstream.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-upstream diagnostic did not name seeded negative" >&2
+  cat "${tmp_dir}/missing-upstream.err" >&2
+  exit 1
+}
+grep -F "field=inventory.sites.site-a.interfaces.wan0" "${tmp_dir}/missing-upstream.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-upstream diagnostic did not name bound field" >&2
+  cat "${tmp_dir}/missing-upstream.err" >&2
+  exit 1
+}
+grep -F "sourceClass=public-inventory" "${tmp_dir}/missing-upstream.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-upstream diagnostic did not name binder source class" >&2
+  cat "${tmp_dir}/missing-upstream.err" >&2
+  exit 1
+}
+grep -F "missing=upstreamBehaviorRef" "${tmp_dir}/missing-upstream.err" >/dev/null || {
+  echo "FAIL cpm-realization-binder-source-audit: missing-upstream diagnostic did not name missing upstream behavior reference" >&2
+  cat "${tmp_dir}/missing-upstream.err" >&2
+  exit 1
+}
+
+if ! nix eval --impure --expr '
+  let
+    lib = import '"${repo_root}"'/lib/utils.nix;
+    helpers = import '"${repo_root}"'/src/cpm/cpm-contract-support.nix { inherit lib; };
+    audit = import '"${repo_root}"'/src/cpm/binder-source-audit.nix {
+      inherit helpers;
+    };
+  in
+    audit.validate "site-a.interfaces.wan0" {
+      upstreamBehaviorRef = "forwardingModel.enterprise.acme.site.site-a.interfaces.wan0";
+      binderSourceAudit = {
+        stage = "control-plane-model";
+        authority = "realization-binding";
+        sourceClass = "public-inventory";
+        sourcePath = "inventory.sites.site-a.interfaces.wan0";
+        field = "inventory.sites.site-a.interfaces.wan0";
+        upstreamBehaviorRef = "forwardingModel.enterprise.acme.site.site-a.interfaces.wan0";
+      };
+    }
+' | grep -qx true; then
+  echo "FAIL cpm-realization-binder-source-audit: missing-audit/upstream recovery record did not validate" >&2
+  exit 1
+fi
 
 if nix eval --impure --expr '
   let
