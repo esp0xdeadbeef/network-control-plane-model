@@ -13,7 +13,8 @@
 # 4. WAN interface prefix EXCLUDED from fabric prefixes (seeded negative)
 # 5. Overlay interface prefix EXCLUDED from fabric prefixes
 # 6. masqueradeSourcePrefixes4 includes both tenant and fabric prefixes
-# 7. No fabric prefixes emitted when NAT is not enabled
+# 7. Routed internal fabric prefixes behind the egress core are included
+# 8. No fabric prefixes emitted when NAT is not enabled
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -385,9 +386,69 @@ nix_eval_bool \
   "true"
 
 # ============================================================
-# Predicate 7: No fabric prefixes when NAT is not enabled
+# Predicate 7: Routed internal fabric prefixes behind the egress core are included
 # ============================================================
-echo "--- Predicate 7: No fabric prefixes without NAT configuration ---"
+echo "--- Predicate 7: Routed fabric prefix inclusion ---"
+
+nix_eval_bool \
+  "masqueradeSourcePrefixes4 contains routed internal p2p prefixes but excludes default and host routes" \
+  "
+    let
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      siteAttrs = {
+        domains.tenants = [
+          { name = \"tenant-a\"; ipv4 = \"10.20.10.0/24\"; }
+        ];
+      };
+      interfaceRecords = [
+        {
+          sourceKind = \"p2p\";
+          runtimeIfName = \"core-transit\";
+          addr4 = \"10.0.1.2/31\";
+          upstream = \"selector\";
+          routes.ipv4 = [
+            { dst = \"0.0.0.0/0\"; proto = \"default\"; via4 = \"10.0.1.3\"; }
+            { dst = \"10.0.1.0/31\"; proto = \"internal\"; via4 = \"10.0.1.3\"; }
+            { dst = \"10.0.1.4/31\"; proto = \"internal\"; via4 = \"10.0.1.3\"; }
+            { dst = \"10.19.0.2/32\"; proto = \"internal\"; via4 = \"10.0.1.3\"; }
+          ];
+        }
+        {
+          sourceKind = \"wan\";
+          runtimeIfName = \"uplink0\";
+          addr4 = \"198.51.100.10/32\";
+          upstream = \"uplink0\";
+          hostUplink.ipv4.address = \"198.51.100.10\";
+          routes.ipv4 = [
+            { dst = \"198.51.100.0/24\"; proto = \"connected\"; }
+          ];
+        }
+      ];
+      target = {
+        egressIntent = {
+          exit = true;
+          uplinks = [ \"uplink0\" ];
+          nat44.uplink0.mode = \"masquerade\";
+        };
+      };
+      overlayNames = [];
+      result = buildNatIntent { inherit siteAttrs interfaceRecords target overlayNames; };
+      prefixes = result.masqueradeSourcePrefixes4;
+    in
+      (builtins.elem \"10.0.1.0/31\" prefixes)
+      && (builtins.elem \"10.0.1.4/31\" prefixes)
+      && (builtins.elem \"10.0.1.2/31\" prefixes)
+      && !(builtins.elem \"0.0.0.0/0\" prefixes)
+      && !(builtins.elem \"10.19.0.2/32\" prefixes)
+      && !(builtins.elem \"198.51.100.0/24\" prefixes)
+  " \
+  "true"
+
+# ============================================================
+# Predicate 8: No fabric prefixes when NAT is not enabled
+# ============================================================
+echo "--- Predicate 8: No fabric prefixes without NAT configuration ---"
 
 nix_eval_bool \
   "masqueradeFabricPrefixes4 empty when nat44 not configured" \
