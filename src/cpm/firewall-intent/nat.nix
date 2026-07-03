@@ -93,15 +93,51 @@ let
       && !(declined iface)
     )
     interfaceRecords;
+  routeList =
+    family: iface:
+    let
+      routes = attrsOrEmpty (iface.routes or null);
+    in
+    if builtins.isList (routes.${family} or null) then routes.${family} else [ ];
+  isRoutedFabricPrefix4 =
+    route:
+    let
+      dst = if builtins.isAttrs route then route.dst or "" else "";
+    in
+    dst != "0.0.0.0/0"
+    && builtins.match ".*/32$" dst == null
+    && isPrivate4Prefix dst;
+  isRoutedFabricPrefix6 =
+    route:
+    let
+      dst = if builtins.isAttrs route then route.dst or "" else "";
+    in
+    dst != "::/0"
+    && builtins.match ".*/128$" dst == null
+    && isUla6Prefix dst;
+  routedFabricPrefixes4 = uniqueStrings (
+    map (route: route.dst) (
+      builtins.filter isRoutedFabricPrefix4 (
+        builtins.concatMap (routeList "ipv4") fabricSourceInterfaces
+      )
+    )
+  );
+  routedFabricPrefixes6 = uniqueStrings (
+    map (route: route.dst) (
+      builtins.filter isRoutedFabricPrefix6 (
+        builtins.concatMap (routeList "ipv6") fabricSourceInterfaces
+      )
+    )
+  );
   # Derive subnet prefixes from addr4, excluding /32 host routes
   masqueradeFabricPrefixes4 = uniqueStrings (
-    builtins.filter (prefix: prefix != "" && builtins.match ".*/32$" prefix == null) (
+    routedFabricPrefixes4 ++ builtins.filter (prefix: prefix != "" && builtins.match ".*/32$" prefix == null) (
       map (iface: let a = iface.addr4 or null; in if builtins.isString a then a else "") fabricSourceInterfaces
     )
   );
   # Derive subnet prefixes from addr6, excluding /128 host routes
   masqueradeFabricPrefixes6 = uniqueStrings (
-    builtins.filter (prefix: prefix != "" && builtins.match ".*/128$" prefix == null) (
+    routedFabricPrefixes6 ++ builtins.filter (prefix: prefix != "" && builtins.match ".*/128$" prefix == null) (
       map (iface: let a = iface.addr6 or null; in if builtins.isString a then a else "") fabricSourceInterfaces
     )
   );
