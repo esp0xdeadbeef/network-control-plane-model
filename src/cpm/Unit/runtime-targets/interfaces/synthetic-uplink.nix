@@ -17,7 +17,7 @@ let
     requireStringList
     ;
   inherit (common) failInventory mergeRoutes;
-  staticUplinkRoutes = import ./uplink-static-routes.nix { inherit common; };
+  staticUplinkRoutes = import ./uplink-static-routes.nix { inherit helpers common; };
   routeFilter = import ./default-route-filter.nix { inherit helpers common uplinkRouting; };
   taxonomy = import ./taxonomy.nix { inherit helpers common; };
 

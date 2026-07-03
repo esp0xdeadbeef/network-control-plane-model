@@ -17,7 +17,7 @@
 
 let
   controlPlane = import ./control-plane.nix {
-    inherit helpers common inventoryAttrs siteAttrs enterpriseName siteName uplinkNames;
+    inherit helpers common inventoryAttrs siteAttrs sitePath enterpriseName siteName uplinkNames;
   };
   overlayData = import ./overlay-provisioning.nix {
     inherit lib helpers common ipam inventoryAttrs siteAttrs sitePath enterpriseName allSiteEntries;
