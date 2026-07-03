@@ -187,6 +187,7 @@
               };
               result = {
                 control_plane_model = cpm;
+                forwardingOut = input;
                 inherit deploymentHosts;
               }
               // lib.optionalAttrs (hatEndpointAssignment != { }) {
@@ -334,8 +335,11 @@
             , secretPlatformSubstrate ? "nixos"
             ,
             }:
+            let
+              forwardingOut = forwardingLib.buildFromCompilerInputs { inherit input; };
+            in
             build {
-              input = forwardingLib.buildFromCompilerInputs { inherit input; };
+              input = forwardingOut;
               inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
             };
 
