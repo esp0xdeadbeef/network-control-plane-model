@@ -19,6 +19,25 @@ let
     in
     if stringValue == "" then failAudit path "must not be empty" else stringValue;
 
+  stringHint = value: fallback:
+    if builtins.isString value && value != "" then value else fallback;
+
+  missingBinderAudit = path: attrs:
+    let
+      fieldPath = stringHint (attrs.field or null) path;
+      expectedSourceClass = stringHint (attrs.expectedBinderSourceClass or attrs.binderSourceClass or null) "public-inventory";
+      ownerRecord = stringHint (attrs.ownerRecord or attrs.owner or attrs.scope or null) path;
+    in
+    throw "CPM_BINDER_SOURCE_AUDIT_MISSING field=${fieldPath} expectedSourceClass=${expectedSourceClass} owner=${ownerRecord}";
+
+  missingUpstreamRef = path: attrs: audit:
+    let
+      fieldPath = stringHint (audit.field or attrs.field or null) path;
+      sourceClass = stringHint (audit.sourceClass or attrs.binderSourceClass or null) "unknown";
+      ownerRecord = stringHint (attrs.ownerRecord or attrs.owner or attrs.scope or null) path;
+    in
+    throw "CPM_UPSTREAM_BEHAVIOR_REF_MISSING field=${fieldPath} sourceClass=${sourceClass} missing=upstreamBehaviorRef owner=${ownerRecord}";
+
   make =
     { path
     , field
@@ -105,12 +124,20 @@ let
         if builtins.isAttrs (attrs.binderSourceAudit or null) then
           attrs.binderSourceAudit
         else
-          failAudit "${path}.binderSourceAudit" "is required for CPM realization-binding output";
+          missingBinderAudit path attrs;
       stage = requireNonEmptyString "${path}.binderSourceAudit.stage" (audit.stage or null);
       authority = requireNonEmptyString "${path}.binderSourceAudit.authority" (audit.authority or null);
       sourceClass = requireNonEmptyString "${path}.binderSourceAudit.sourceClass" (audit.sourceClass or null);
-      upstreamTop = requireNonEmptyString "${path}.upstreamBehaviorRef" (attrs.upstreamBehaviorRef or null);
-      upstreamAudit = requireNonEmptyString "${path}.binderSourceAudit.upstreamBehaviorRef" (audit.upstreamBehaviorRef or null);
+      upstreamTop =
+        if builtins.isString (attrs.upstreamBehaviorRef or null) && attrs.upstreamBehaviorRef != "" then
+          attrs.upstreamBehaviorRef
+        else
+          missingUpstreamRef path attrs audit;
+      upstreamAudit =
+        if builtins.isString (audit.upstreamBehaviorRef or null) && audit.upstreamBehaviorRef != "" then
+          audit.upstreamBehaviorRef
+        else
+          missingUpstreamRef path attrs audit;
       _stage =
         if stage == "control-plane-model" then
           true
