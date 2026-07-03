@@ -330,14 +330,14 @@ let
       interfaces;
 
   policyRoutingAllocationFor =
-    slot:
+    allocation: slot:
     let
       tableId = 1000 + slot;
       dynamicRulePriority = 10000 + slot;
     in
     {
       source = "control-plane-model";
-      allocation = "runtime-ifname-sorted-slot";
+      inherit allocation;
       inherit tableId dynamicRulePriority;
       priority = dynamicRulePriority;
       tableRulePriority = tableId;
@@ -352,13 +352,49 @@ let
     in
     if builtins.isString runtimeIfName && runtimeIfName != "" then runtimeIfName else ifName;
 
-  indexedInterfaceAllocations =
-    interfaces:
+  interfacePolicyRoutingRank =
+    target: iface:
     let
+      targetRole = target.role or "";
+      sourceKind = iface.sourceKind or null;
+      lane = attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
+      laneKind = lane.kind or null;
+    in
+    if targetRole == "access" && sourceKind == "tenant" then
+      10
+    else if targetRole == "access" && sourceKind == "p2p" && laneKind == "access-edge" then
+      20
+    else
+      100;
+
+  allocationMethodFor =
+    target: interfaces:
+    let
+      ranks = builtins.map (ifName: interfacePolicyRoutingRank target interfaces.${ifName}) (builtins.attrNames interfaces);
+    in
+    if builtins.any (rank: rank != 100) ranks then
+      "semantic-interface-class-slot"
+    else
+      "runtime-ifname-sorted-slot";
+
+  indexedInterfaceAllocations =
+    target: interfaces:
+    let
+      allocationMethod = allocationMethodFor target interfaces;
       ifNames = builtins.attrNames interfaces;
       sortedIfNames =
         builtins.sort
-          (left: right: (interfaceRuntimeName interfaces left) < (interfaceRuntimeName interfaces right))
+          (
+            left: right:
+            let
+              leftRank = interfacePolicyRoutingRank target interfaces.${left};
+              rightRank = interfacePolicyRoutingRank target interfaces.${right};
+            in
+            if leftRank == rightRank then
+              (interfaceRuntimeName interfaces left) < (interfaceRuntimeName interfaces right)
+            else
+              leftRank < rightRank
+          )
           ifNames;
       count = builtins.length sortedIfNames;
       entries =
@@ -369,16 +405,16 @@ let
             in
             {
               name = ifName;
-              value = policyRoutingAllocationFor (index + 1);
+              value = policyRoutingAllocationFor allocationMethod (index + 1);
             })
           count;
     in
     builtins.listToAttrs entries;
 
   addPolicyRoutingAllocations =
-    interfaces:
+    target: interfaces:
     let
-      allocations = indexedInterfaceAllocations interfaces;
+      allocations = indexedInterfaceAllocations target interfaces;
     in
     builtins.mapAttrs
       (ifName: iface:
@@ -557,14 +593,14 @@ let
       target
       // {
         effectiveRuntimeRealization = effective // {
-          interfaces = addPolicyRoutingAllocations (appendPostInitialComplements target interfaces);
+          interfaces = addPolicyRoutingAllocations target (appendPostInitialComplements target interfaces);
         };
       }
     else
       target
       // {
         effectiveRuntimeRealization = effective // {
-          interfaces = addPolicyRoutingAllocations normalizedInterfaces;
+          interfaces = addPolicyRoutingAllocations target normalizedInterfaces;
         };
       };
 
