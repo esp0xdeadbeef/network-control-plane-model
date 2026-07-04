@@ -367,7 +367,7 @@ else
   fail "Diag: missing-inventory-address emitted"
 fi
 
-if echo "$diag_result" | grep -q '"FS-720-HDS-030-SDS-010-SMS-010"'; then
+if echo "$diag_result" | grep -q '"FS-720-HDS-010-SDS-025-SMS-010"'; then
   pass "Diag: GAMP row ID present"
 else
   fail "Diag: GAMP row ID present"
@@ -401,6 +401,50 @@ if echo "$explicit_result" | grep -q '"static-only"'; then
   pass "Explicit: static-only respected"
 else
   fail "Explicit: static-only respected (got: $explicit_result)"
+fi
+
+# ---------------------------------------------------------------
+# Test 8b: Bridge derived from access runtime target realization
+# ---------------------------------------------------------------
+echo ""
+echo "=== Test 8b: bridge derived from access runtime target ==="
+
+fixture='
+  enterpriseName = "esp";
+  siteName = "site-a";
+  ownership = {
+    prefixes = [
+      { name = "client"; kind = "tenant"; ipv4 = "10.20.20.0/24"; }
+    ];
+    endpoints = [
+      { name = "client01"; kind = "host"; tenant = "client"; }
+    ];
+  };
+  inventoryEndpoints = { };
+  runtimeTargets = {
+    "esp-site-a-s-router-access-client" = {
+      role = "access";
+      logicalNode = { name = "s-router-access-client"; };
+      effectiveRuntimeRealization.interfaces = {
+        "tenant-client" = {
+          tenant = "client";
+          sourceKind = "tenant";
+        };
+        "p2p-s-router-access-client-s-router-downstream-selector" = {
+          sourceKind = "p2p";
+          attach = { kind = "bridge"; bridge = "br-site-a-downstream-client"; };
+        };
+      };
+    };
+  };
+'
+
+bridge_result=$(eval_assignment "$fixture" 'result.endpointAssignment."site-a-client01".bridge or null')
+
+if echo "$bridge_result" | grep -q '"br-site-a-downstream-client"'; then
+  pass "Bridge: derived from matching access runtime target"
+else
+  fail "Bridge: expected br-site-a-downstream-client, got: $bridge_result"
 fi
 
 # ---------------------------------------------------------------

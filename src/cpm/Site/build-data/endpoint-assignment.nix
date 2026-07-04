@@ -194,6 +194,32 @@ let
   # ---------------------------------------------------------------
   findBridge = tenant:
     let
+      bridgeFromPort = port:
+        if hasAttr "attach" port && isNonEmptyString (port.attach.bridge or null) then
+          port.attach.bridge
+        else if hasAttr "hostBridge" port && isNonEmptyString (port.hostBridge or null) then
+          port.hostBridge
+        else
+          null;
+
+      targetLogicalName = target:
+        let
+          logical = target.logicalNode or null;
+        in
+        if builtins.isAttrs logical then
+          logical.name or ""
+        else if isNonEmptyString logical then
+          logical
+        else
+          "";
+
+      targetMatchesTenant = target:
+        let
+          logicalName = targetLogicalName target;
+        in
+        logicalName == "${siteName}-access-${tenant}"
+        || lib.hasSuffix "-access-${tenant}" logicalName;
+
       # Walk runtime targets to find an access node with a tenant port
       # matching this tenant. This mirrors tenantRuntime logic from
       # client-fixtures.nix.
@@ -215,21 +241,32 @@ let
               effective = attrsOrEmpty (t.effectiveRuntimeRealization or null);
               ifaces = attrsOrEmpty (effective.interfaces or t.interfaces or null);
               tenantPorts = builtins.filter
-                (ifName: ifName == "tenant-${tenant}")
+                (ifName:
+                  let
+                    iface = attrsOrEmpty ifaces.${ifName};
+                  in
+                  ifName == "tenant-${tenant}" || (iface.tenant or null) == tenant)
                 (builtins.attrNames ifaces);
             in
             if tenantPorts != [ ] then
               let
-                port = ifaces.${builtins.head tenantPorts};
-                bridge =
-                  if hasAttr "attach" port then
-                    port.attach.bridge or null
-                  else if hasAttr "hostBridge" port then
-                    port.hostBridge or null
-                  else
-                    null;
+                bridge = bridgeFromPort ifaces.${builtins.head tenantPorts};
               in
-              bridge
+              if bridge != null then
+                bridge
+              else if targetMatchesTenant t then
+                builtins.foldl'
+                  (fallback: ifName:
+                    if fallback != null then fallback
+                    else
+                      let
+                        port = attrsOrEmpty ifaces.${ifName};
+                      in
+                      bridgeFromPort port)
+                  null
+                  (sortedNames ifaces)
+              else
+                null
             else
               null)
         null

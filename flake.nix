@@ -187,6 +187,7 @@
               };
               result = {
                 control_plane_model = cpm;
+                endpointInventory = inventory;
                 forwardingOut = input;
                 inherit deploymentHosts;
               }
