@@ -106,6 +106,9 @@ let
     "allowRoute"
     "allowFirewall"
     "allowDns"
+    "allowNat"
+    "allowTranslation"
+    "allowPublicExposure"
     "allowPublicIngress"
     "allowTenantReachability"
     "allowNetworkBehavior"
@@ -318,6 +321,79 @@ let
     else
       null;
 
+  consumerIdentity = consumer:
+    if builtins.isString (consumer.name or null) && consumer.name != "" then
+      consumer.name
+    else if builtins.isString (consumer.node or null) && consumer.node != "" then
+      consumer.node
+    else
+      "";
+
+  normalizedAuthorizedConsumerScope = decl:
+    let
+      fromScope =
+        if decl != null && builtins.isList (decl.authorizedConsumerScope or null) then
+          decl.authorizedConsumerScope
+        else
+          [ ];
+      fromConsumers =
+        if decl != null && builtins.isList (decl.authorizedConsumers or null) then
+          builtins.map
+            (consumer:
+              if builtins.isString consumer then
+                consumer
+              else if builtins.isAttrs consumer then
+                consumerIdentity consumer
+              else
+                "")
+            decl.authorizedConsumers
+        else
+          [ ];
+      fromSingle =
+        if decl != null && builtins.isString (decl.authorizedConsumer or null) then
+          [ decl.authorizedConsumer ]
+        else
+          [ ];
+    in
+    builtins.filter isNonEmptyString (fromScope ++ fromConsumers ++ fromSingle);
+
+  protectedConsumerScopeDiagnosticForRecord = record:
+    let
+      decl = declLookup.${record.declarationId} or null;
+      src = sourceLookup.${record.sourceId} or null;
+      sourceClass = record.sourceClass or (if src != null then src.sourceClass or "unknown" else "unknown");
+      consumer = record.deliveryScope.consumer or { };
+      consumerName = consumerIdentity consumer;
+      authorizedConsumerScope = normalizedAuthorizedConsumerScope decl;
+      reference = if src != null then src.reference or { } else { };
+      protectedValueIdentity =
+        if builtins.isString (reference.name or null) && reference.name != "" then
+          reference.name
+        else if builtins.isString (src.id or null) && src.id != "" then
+          src.id
+        else
+          record.sourceId;
+    in
+    if sourceClass == "protected-inventory" && authorizedConsumerScope != [ ] && isNonEmptyString consumerName && !(builtins.elem consumerName authorizedConsumerScope) then
+      {
+        deliveryId = record.deliveryId;
+        declarationId = record.declarationId;
+        sourceId = record.sourceId;
+        diagnosticName = "PROTECTED_VALUE_UNAUTHORIZED_CONSUMER";
+        consumer = consumer;
+        consumerName = consumerName;
+        protectedValueIdentity = protectedValueIdentity;
+        authorizedConsumerScope = authorizedConsumerScope;
+        diagnostic = "FS-050-HDS-010-SDS-010-SMS-010 SN1: protected inventory value '${protectedValueIdentity}' requested by unauthorized consumer '${consumerName}'; authorized consumer scope is ${
+          builtins.toJSON authorizedConsumerScope
+        }";
+        gampIds = [
+          "FS-050-HDS-010-SDS-010-SMS-010"
+        ];
+      }
+    else
+      null;
+
   # Scan a delivery record for plaintext secret content (FS-840-SMS-020 SN2)
   # Rejects when a delivery record's underlying source contains plaintext
   # secret values (e.g., privateKey, psk, password) instead of only
@@ -326,29 +402,50 @@ let
   plaintextSecretDiagnosticForRecord = record:
     let
       src = sourceLookup.${record.sourceId} or null;
+      plaintextMaterialFlag = src != null && (src.plaintextMaterial or false) == true;
       # Check source for any plaintext content field with a non-empty string value
       foundFields =
-        if src != null then
-          builtins.filter (f:
-            hasAttr f src && isNonEmptyString src.${f}
-          ) plaintextSecretContentFields
-        else
-          [];
+        (lib.optionals plaintextMaterialFlag [ "plaintextMaterial" ])
+        ++ (
+          if src != null then
+            builtins.filter (f:
+              hasAttr f src && isNonEmptyString src.${f}
+            ) plaintextSecretContentFields
+          else
+            []
+        );
       sourceClass = record.sourceClass or "unknown";
+      targetInventorySurface =
+        if src != null && builtins.isString (src.targetInventorySurface or null) then
+          src.targetInventorySurface
+        else if src != null && builtins.isString (src.targetSurface or null) then
+          src.targetSurface
+        else
+          "unspecified";
+      fs050Prefix =
+        if plaintextMaterialFlag then
+          "FS-050-HDS-010-SDS-010-SMS-010 SN2: protected inventory source '${record.sourceId}' sets plaintextMaterial=true for target inventory surface '${targetInventorySurface}'. "
+        else
+          "";
     in
     if foundFields != [ ] then
       {
         deliveryId = record.deliveryId;
+        declarationId = record.declarationId;
+        sourceId = record.sourceId;
         diagnosticName = "PLAINTEXT_SECRET_IN_DELIVERY";
         credentialClass = sourceClass;
         plaintextFields = foundFields;
-        diagnostic = "FS-840-HDS-010-SDS-010-SMS-020 SN2: delivery record '${
+        targetInventorySurface = targetInventorySurface;
+        diagnostic = "${fs050Prefix}FS-840-HDS-010-SDS-010-SMS-020 SN2: delivery record '${
           record.deliveryId
         }' contains plaintext secret content field(s) ${
           builtins.concatStringsSep ", " foundFields
         } in credential class '${sourceClass}'; delivery records shall only contain secret references (paths), not plaintext values";
         gampIds = [
           "FS-840-HDS-010-SDS-010-SMS-020"
+        ] ++ lib.optionals plaintextMaterialFlag [
+          "FS-050-HDS-010-SDS-010-SMS-010"
         ];
       }
     else
@@ -412,6 +509,9 @@ let
 
   overBroadDeliveryDiagnostics =
     builtins.filter (d: d != null) (builtins.map overBroadDeliveryDiagnosticForRecord deliveryRecords);
+
+  protectedConsumerScopeDiagnostics =
+    builtins.filter (d: d != null) (builtins.map protectedConsumerScopeDiagnosticForRecord deliveryRecords);
 
   plaintextSecretDiagnostics =
     builtins.filter (d: d != null) (builtins.map plaintextSecretDiagnosticForRecord deliveryRecords);
@@ -508,8 +608,12 @@ in
   # Consumer role mismatch per FS-840-SMS-010 SN2
   # Over-broad delivery guard per FS-840-SMS-030 SN2
   secretAuthorization = {
-    inherit authorizedConsumerDiagnostics consumerRoleMismatchDiagnostics overBroadDeliveryDiagnostics;
-    allAuthorized = authorizedConsumerDiagnostics == [ ] && consumerRoleMismatchDiagnostics == [ ] && overBroadDeliveryDiagnostics == [ ];
+    inherit authorizedConsumerDiagnostics consumerRoleMismatchDiagnostics overBroadDeliveryDiagnostics protectedConsumerScopeDiagnostics;
+    allAuthorized =
+      authorizedConsumerDiagnostics == [ ]
+      && consumerRoleMismatchDiagnostics == [ ]
+      && overBroadDeliveryDiagnostics == [ ]
+      && protectedConsumerScopeDiagnostics == [ ];
   };
 
   # Plaintext secret in delivery guard per FS-840-SMS-020 SN2
