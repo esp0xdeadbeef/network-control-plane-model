@@ -18,8 +18,9 @@ require_cmd() {
 
 require_cmd jq
 
-tmp_dir="${TMPDIR:-/tmp}/fs030-cpm-binder-audit-smt-high"
-mkdir -p "${tmp_dir}"
+tmp_parent="${TMPDIR:-/tmp}"
+tmp_dir="$(mktemp -d "${tmp_parent%/}/fs030-cpm-binder-audit-smt-high.XXXXXX")"
+trap 'rm -rf "${tmp_dir}"' EXIT
 rm -f "${tmp_dir}/base.nix" \
   "${tmp_dir}/inventory-with-reservations.nix" \
   "${tmp_dir}/inventory-with-static-egress.nix" \
