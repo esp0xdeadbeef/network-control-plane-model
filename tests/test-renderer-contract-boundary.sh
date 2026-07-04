@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-FS140-FS150-FS160-RENDERER-CONTRACT-BOUNDARY-001
+# GAMP-TRACE: FS-140-HDS-010-SDS-010-SMS-010
+# GAMP-TRACE: FS-150-HDS-010-SDS-010-SMS-010
+# GAMP-TRACE: FS-160-HDS-010-SDS-010-SMS-010
 # GAMP-SCOPE: software-module-test
 set -euo pipefail
 
@@ -89,4 +92,6 @@ jq -e '
     )
 ' "${output_json}" >/dev/null
 
-echo "PASS renderer-contract-boundary"
+echo "PASS FS-140-HDS-010-SDS-010-SMS-010: scoped renderer contract boundary"
+echo "PASS FS-150-HDS-010-SDS-010-SMS-010: portable meaning contract boundary"
+echo "PASS FS-160-HDS-010-SDS-010-SMS-010: renderer limitation contract boundary"
