@@ -35,6 +35,7 @@ tests=(
   test-interface-mtu-contract.sh
   test-provider-access-no-side-channel.sh
   test-vxlan-contract-required-fields.sh
+  test-endpoint-inventory-payload.sh
   test-access-dhcpv6-advertisement-contract.sh
   test-access-ipv6-ra-slaac-flags-contract.sh
   test-fs330-stable-client-address-identity.sh

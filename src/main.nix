@@ -32,6 +32,7 @@ let
 
   merged = {
     control_plane_model = cpm;
+    endpointInventory = inventory;
     inherit deploymentHosts;
   }
   // (effectiveLib.optionalAttrs (hatEndpointAssignment != { }) {
