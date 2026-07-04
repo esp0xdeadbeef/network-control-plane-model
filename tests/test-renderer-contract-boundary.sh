@@ -23,7 +23,7 @@ nix eval --impure --no-warn-dirty --json --expr '
     input = import "${labs}/examples/single-wan-with-nebula/intent.nix";
     baseInventory = import "${labs}/examples/single-wan-with-nebula/inventory-nixos.nix";
     inventory = lib.recursiveUpdate baseInventory {
-      controlPlane.sites.esp0xdeadbeef.site-a.rendererTargets.nixos-limited = {
+      controlPlane.sites.esp0xdeadbeef.site-a.rendererTargets.nixos-dns-limited = {
         platform = "nixos";
         provider = "nebula";
         capabilityReason = "test target intentionally lacks DNS support";
@@ -34,6 +34,36 @@ nix eval --impure --no-warn-dirty --json --expr '
           nat = true;
           routing = true;
           dns = false;
+          serviceExposure = true;
+          runtimeFacts = true;
+        };
+      };
+      controlPlane.sites.esp0xdeadbeef.site-a.rendererTargets.nixos-nat-limited = {
+        platform = "nixos";
+        provider = "nebula";
+        capabilityReason = "test target intentionally lacks NAT support";
+        supports = {
+          policy = true;
+          reachability = true;
+          addressAuthority = true;
+          nat = false;
+          routing = true;
+          dns = true;
+          serviceExposure = true;
+          runtimeFacts = true;
+        };
+      };
+      controlPlane.sites.esp0xdeadbeef.site-a.rendererTargets.nixos-supported = {
+        platform = "nixos";
+        provider = "nebula";
+        capabilityReason = "test target declares support for all required capabilities";
+        supports = {
+          policy = true;
+          reachability = true;
+          addressAuthority = true;
+          nat = true;
+          routing = true;
+          dns = true;
           serviceExposure = true;
           runtimeFacts = true;
         };
@@ -50,7 +80,9 @@ jq -e '
   .scopedArtifacts.runtimeTargets["esp0xdeadbeef-site-a-s-router-core-nebula"] as $target
   | .scopedArtifacts.providerProfiles.nebula__nebula as $provider
   | .portableMeaning as $portable
-  | .rendererEmission.targets["nixos-limited"] as $decision
+  | .rendererEmission.targets["nixos-dns-limited"] as $dnsDecision
+  | .rendererEmission.targets["nixos-nat-limited"] as $natDecision
+  | .rendererEmission.targets["nixos-supported"] as $supportedDecision
   | .limitations as $limitations
   | (
       $target.emissionStage == "control-plane-model-before-renderer"
@@ -78,19 +110,37 @@ jq -e '
       and ($portable.requiredBehavior.reachability.runtimeTargetNames | index("esp0xdeadbeef-site-a-s-router-core-nebula"))
       and ($portable.requiredBehavior.dns.serviceNames | index("dns-site"))
       and ($portable.comparisonInputs.requiredCapabilities | index("dns"))
+      and $portable.requiredBehavior.translation.natRequired == true
+      and ($portable.comparisonInputs.requiredCapabilities | index("nat"))
     )
     and (
-      $decision.allowed == false
-      and $decision.action == "block-renderer-emission"
+      $dnsDecision.allowed == false
+      and $dnsDecision.action == "block-renderer-emission"
       and .rendererEmission.blocked == true
       and any($limitations[];
         .unsupportedBehavior == "dns"
         and .decision == "block-renderer-emission"
-        and .affectedScope.rendererTarget == "nixos-limited"
+        and .affectedScope.rendererTarget == "nixos-dns-limited"
         and (.requiredSourceFacts | index("services.*.dns"))
       )
     )
-' "${output_json}" >/dev/null
+    and (
+      $natDecision.allowed == false
+      and $natDecision.action == "block-renderer-emission"
+      and any($limitations[];
+        .unsupportedBehavior == "nat"
+        and .decision == "block-renderer-emission"
+        and .affectedScope.rendererTarget == "nixos-nat-limited"
+        and (.requiredSourceFacts | index("runtimeTargets.*.natIntent"))
+      )
+    )
+    and (
+      $supportedDecision.allowed == true
+      and $supportedDecision.action == "allow-renderer-emission"
+      and $supportedDecision.limitationCount == 0
+      and (any($limitations[]; .affectedScope.rendererTarget == "nixos-supported") | not)
+    )
+  ' "${output_json}" >/dev/null
 
 echo "PASS FS-140-HDS-010-SDS-010-SMS-010: scoped renderer contract boundary"
 echo "PASS FS-150-HDS-010-SDS-010-SMS-010: portable meaning contract boundary"
