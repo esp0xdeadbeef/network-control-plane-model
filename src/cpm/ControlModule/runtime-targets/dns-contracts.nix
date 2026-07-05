@@ -413,10 +413,6 @@ let
       listenerPolicyForwarders = policyDerivedDnsForwardersForListeners listeners;
       listenerPolicyUpstreamResolvers = policyDerivedDnsUpstreamRecordsForListeners listeners;
       listenerPolicyAllowedClasses = policyDerivedDnsAllowedClassesForListeners listeners;
-      listenerHasDnsPolicy =
-        listenerPolicyForwarders != [ ]
-        || listenerPolicyUpstreamResolvers != [ ]
-        || listenerPolicyAllowedClasses != [ ];
       existingServices = attrsOrEmpty (target.services or null);
       hasModeledDnsPolicy = existingServices ? dns;
       existingDns = attrsOrEmpty (existingServices.dns or null);
@@ -501,12 +497,9 @@ let
       builtins.deepSeq listenerPolicyForwarders (
         builtins.deepSeq listenerPolicyUpstreamResolvers (
           builtins.deepSeq listenerPolicyAllowedClasses (
-            if listenerHasDnsPolicy then
-              failInventory
-                "${runtimeTargetPath target}.services.dns"
-                "missing modeled DNS policy for resolver advertisement; define services.dns before renderer-facing advertisement output"
-            else
-              target
+            failInventory
+              "${runtimeTargetPath target}.services.dns"
+              "missing modeled DNS policy for resolver advertisement; define services.dns before renderer-facing advertisement output"
           )
         )
       )
