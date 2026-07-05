@@ -61,25 +61,13 @@ validate_core_cardinality() {
       $target.interfaces | map(select(.value.hostFacing == true));
 
     def valid_host_surface($iface):
-      (
-        ($iface.value.sourceKind == "p2p"
-          and $iface.value.adapterClass == "p2p-realization"
-          and $iface.value.direction == "ingress"
-          and ($iface.value.virtualAdapter == false))
-        or
-        ($iface.value.sourceKind == "tenant"
-          and $iface.value.adapterClass == "tenant-role-surface"
-          and $iface.value.direction == "egress"
-          and ($iface.value.virtualAdapter == false))
-        or
-        ($iface.value.sourceKind == "core-egress"
-          and $iface.value.adapterClass == "core-role-egress"
-          and $iface.value.direction == "egress"
-          and ($iface.value.virtualAdapter == false)
-          and (($iface.value.runtimeIfName // null) == null)
-          and (($iface.value.renderedIfName // null) == null)
-          and (($iface.value.runtimeInterface // null) == null))
-      );
+      ($iface.value.hostFacing == true
+       and $iface.value.virtualAdapter == false
+       and (
+         ($iface.value.direction == "ingress" and $iface.value.adapterClass == "p2p-realization")
+         or
+         ($iface.value.direction == "egress")
+       ));
 
     core_targets as $targets
     | [
