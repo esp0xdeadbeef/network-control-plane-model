@@ -217,8 +217,28 @@ let
     in
     builtins.length names != builtins.length values;
 
+  findDuplicates = values:
+    let
+      indexList = builtins.genList (i: i) (builtins.length values);
+      findIdx = val: builtins.filter (i: builtins.elemAt values i == val) indexList;
+      seen = {};
+      dups = builtins.foldl' (acc: i:
+        let val = builtins.elemAt values i;
+        in if builtins.hasAttr val acc then acc else
+          let indices = findIdx val;
+          in if builtins.length indices > 1 then acc // { ${val} = indices; } else acc // { ${val} = []; })
+        {} indexList;
+      dupVals = builtins.filter (v: builtins.length dups.${v} > 0) (builtins.attrNames dups);
+    in
+    if dupVals == [] then
+      { ok = true; dupValues = []; dupIndices = []; }
+    else
+      { ok = false; dupValues = dupVals; dupIndices = builtins.head (map (v: dups.${v}) dupVals); };
+
   ensureUniqueValues = path: label: values:
-    if duplicate values then failInventory path "duplicate ${label} in the same network" else true;
+    let result = findDuplicates values;
+    in if result.ok then true else
+      failInventory path "duplicate ${label} \"${builtins.head result.dupValues}\" across reservations [${toString (builtins.head result.dupIndices)}]";
 
   ensureUniqueReservationIds = path: values:
     if duplicate values then failInventory path "duplicate reservation id in the same service target" else true;

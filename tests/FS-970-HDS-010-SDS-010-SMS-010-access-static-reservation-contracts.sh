@@ -205,7 +205,7 @@ if nix eval --impure --expr '
   echo "FAIL access-static-reservation-contracts: duplicate MAC was accepted" >&2
   exit 1
 fi
-grep -F "duplicate MAC address in the same network" "${tmp_dir}/duplicate-mac.err" >/dev/null || {
+grep -qE 'duplicate MAC address "[^"]+" across reservations' "${tmp_dir}/duplicate-mac.err" || {
   echo "FAIL access-static-reservation-contracts: duplicate MAC diagnostic was not concise" >&2
   cat "${tmp_dir}/duplicate-mac.err" >&2
   exit 1
@@ -233,7 +233,7 @@ if nix eval --impure --expr '
   echo "FAIL access-static-reservation-contracts: duplicate host offset was accepted" >&2
   exit 1
 fi
-grep -F "duplicate ipv4.hostOffset in the same network" "${tmp_dir}/duplicate-offset.err" >/dev/null || {
+grep -qE 'duplicate ipv4\.hostOffset "[^"]+" across reservations' "${tmp_dir}/duplicate-offset.err" || {
   echo "FAIL access-static-reservation-contracts: duplicate offset diagnostic was not concise" >&2
   cat "${tmp_dir}/duplicate-offset.err" >&2
   exit 1
