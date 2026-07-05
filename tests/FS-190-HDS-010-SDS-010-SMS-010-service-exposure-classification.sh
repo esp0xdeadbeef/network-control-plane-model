@@ -451,4 +451,92 @@ if ! grep -Fq "service exposure scope binding requires external requester scope 
   exit 1
 fi
 
+# === SMS-020 N2: Host-placement scope inheritance rejection ===
+host_placement_intent="$(mktemp)"
+host_placement_json="$(mktemp)"
+host_placement_stderr="$(mktemp)"
+trap 'rm -f "$host_placement_intent" "$host_placement_json" "$host_placement_stderr"' EXIT
+
+eval_host_placement_fixture() {
+  local output_path="$1"
+  local stderr_path="$2"
+
+  REPO_ROOT="$repo_root" \
+    nix eval \
+      --extra-experimental-features 'nix-command flakes' \
+      --impure --json --expr '
+        let
+          repoRoot = builtins.getEnv "REPO_ROOT";
+          localLib = import (repoRoot + "/lib/utils.nix");
+          helpers = import (repoRoot + "/lib/contract.nix") { lib = localLib; };
+          lib = {
+            concatMap = f: list: builtins.concatLists (map f list);
+          };
+          common = {
+            failForwarding = path: message:
+              throw "forwarding-model update required: ${path}: ${message}";
+          };
+          uniqueStrings = values:
+            helpers.sortedNames (
+              builtins.listToAttrs (
+                map
+                  (value: { name = value; value = true; })
+                  (builtins.filter helpers.isNonEmptyString values)
+              )
+            );
+          services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            inherit lib helpers common uniqueStrings;
+            sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
+            policyEndpointBindings = {
+              externals = {
+                wan = {
+                  uplinks = [ "wan" ];
+                  runtimeBindings = [ ];
+                };
+              };
+              services = {
+                dmz-nebula = {
+                  providers = [ "c-router-lighthouse" ];
+                  trafficType = "nebula";
+                  hostPlacementExposure = "core-boundary";  # seeded: scope inherited from host placement
+                };
+              };
+              relations = [ {
+                action = "allow";
+                from = {
+                  kind = "external";
+                  uplinks = [ "wan" ];
+                };
+                id = "allow-sitec-wan-to-dmz-nebula";
+                to = {
+                  kind = "service";
+                  name = "dmz-nebula";
+                };
+                trafficType = "nebula";
+              } ];
+            };
+            providerEndpointForServiceProvider = providerName: null;
+            providerTenantsForServiceProvider = providerName: [ "dmz" ];
+            preferredDnsUplinksForService = serviceName: [ ];
+            preferredDnsUplinksByRelationForService = serviceName: { };
+          };
+          svc = builtins.head services;
+        in
+        svc
+      ' > "$output_path" 2> "$stderr_path" || true
+}
+
+if eval_host_placement_fixture "$host_placement_json" "$host_placement_stderr"; then
+  if jq -e '.hostPlacementExposure == "core-boundary"' "$host_placement_json" >/dev/null 2>&1; then
+    echo "FAIL service-exposure-classification: host-placement scope inheritance was accepted but should have been rejected" >&2
+    jq '.' "$host_placement_json" >&2
+    exit 1
+  fi
+fi
+if ! grep -Fq "exposure-scope-inherited-from-host" "$host_placement_stderr"; then
+  echo "FAIL service-exposure-classification: host-placement scope inheritance diagnostic not emitted" >&2
+  cat "$host_placement_stderr" >&2
+  exit 1
+fi
+
 echo "PASS service-exposure-classification"

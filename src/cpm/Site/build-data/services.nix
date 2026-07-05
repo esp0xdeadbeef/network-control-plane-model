@@ -220,13 +220,13 @@ builtins.map
         else
           true;
 
-      # SMS-040 N2: Host-inferred exposure rejection
+      # SMS-020 N2: Host-inferred scope rejection
       hostPlacementExposure = resolvedService.hostPlacementExposure or null;
       _hostInferred =
         if hostPlacementExposure != null then
           failForwarding
             "${sitePath}.services.${serviceName}.hostPlacementExposure"
-            "diagnostic.host-inferred-exposure: service exposure must be derived from communicationContract, not from host placement"
+            "exposure-scope-inherited-from-host: service exposure scope must be bound from communicationContract, not inherited from host placement"
         else
           true;
     in
