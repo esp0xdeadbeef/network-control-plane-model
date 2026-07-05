@@ -268,7 +268,7 @@ if compile_inventory "${duplicate_ipv6_offset_inventory}" >"${tmp_dir}/duplicate
   echo "FAIL static-reservation-offset-resolution: duplicate IPv6 host offset was accepted" >&2
   exit 1
 fi
-grep -F "duplicate ipv6.hostOffset in the same network" "${tmp_dir}/duplicate-ipv6-offset.err" >/dev/null || {
+grep -qE 'duplicate ipv6\.hostOffset "[^"]+" across reservations' "${tmp_dir}/duplicate-ipv6-offset.err" || {
   echo "FAIL static-reservation-offset-resolution: duplicate IPv6 offset diagnostic was not concise" >&2
   cat "${tmp_dir}/duplicate-ipv6-offset.err" >&2
   exit 1
