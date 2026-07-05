@@ -48,6 +48,7 @@
           communicationContract = {
             allowedRelations = [
               {
+                id = "allow-tenant-a-to-internet";
                 from = {
                   kind = "tenant";
                   name = "tenant-a";

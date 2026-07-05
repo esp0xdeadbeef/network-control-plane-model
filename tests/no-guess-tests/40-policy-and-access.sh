@@ -29,6 +29,7 @@ run_case_from_golden \
   "communicationContract references tag 'internet' with no explicit site.policy.interfaceTags mapping" \
   replace \
   '              {
+                id = "allow-tenant-a-to-wan";
                 from = {
                   kind = "tenant";
                   name = "tenant-a";
@@ -40,6 +41,7 @@ run_case_from_golden \
                 action = "allow";
               }' \
   '              {
+                id = "allow-tenant-a-to-internet";
                 from = {
                   kind = "tenant";
                   name = "tenant-a";

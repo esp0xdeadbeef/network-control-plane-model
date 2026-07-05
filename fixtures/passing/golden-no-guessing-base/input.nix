@@ -203,6 +203,7 @@
           communicationContract = {
             allowedRelations = [
               {
+                id = "allow-tenant-a-to-wan";
                 from = {
                   kind = "tenant";
                   name = "tenant-a";
@@ -558,6 +559,7 @@
           communicationContract = {
             allowedRelations = [
               {
+                id = "allow-tenant-b-to-wan";
                 from = {
                   kind = "tenant";
                   name = "tenant-b";
@@ -891,6 +893,7 @@
           communicationContract = {
             allowedRelations = [
               {
+                id = "allow-tenant-c-to-any";
                 from = {
                   kind = "tenant";
                   name = "tenant-c";
