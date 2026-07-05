@@ -131,6 +131,7 @@ let
     runtimeServices = null;
     hasRuntimeServices = false;
     runtimeStatePolicy = { };
+    runtimeDiagnostics = { };
   };
 
   forbiddenFunctions = [
