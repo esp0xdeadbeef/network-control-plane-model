@@ -56,6 +56,7 @@ base
                       (base.enterprise.acme.site.ams.communicationContract.allowedRelations or [ ])
                       ++ [
                         {
+                          id = "allow-tenant-a-to-site-dns";
                           from = {
                             kind = "tenant";
                             name = "tenant-a";
