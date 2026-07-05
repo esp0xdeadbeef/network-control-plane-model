@@ -227,6 +227,11 @@ def is_allowed_interface_handoff(parts):
     if "deploymentHosts" in string_parts:
         return True
 
+    # consumedInterfaces carries typed client-to-access realization metadata;
+    # endpoint names here are logical identities, not platform grammar.
+    if "consumedInterfaces" in string_parts:
+        return True
+
     if leaf in logical_identity_fields or parent == "providers":
         return True
 
