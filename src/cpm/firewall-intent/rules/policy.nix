@@ -146,7 +146,13 @@ let
     let
       relation = attrsOrEmpty relationRaw;
       action = if (relation.action or "allow") == "deny" then "deny" else "accept";
-      id = relationId relation;
+      id =
+        let
+          rawId = relationId relation;
+        in
+        if rawId == null then
+          throw "FS-310-HDS-010-SDS-010-SMS-030: relationRules rejected rule with null relationId. Source relation must carry non-null id or name. Source: ${builtins.toJSON relationRaw}"
+        else rawId;
 
       buildDirectionRules =
         { direction
@@ -223,7 +229,7 @@ let
         else
           [ ];
     in
-    forwardRules ++ reverseRules;
+    builtins.seq id (forwardRules ++ reverseRules);
 
   sharedDiscoveryPolicyRules = atomRaw:
     let
@@ -266,6 +272,15 @@ let
           requesters
       );
 in
+let
+  # SN2: duplicate relationId collision detection
+  relIds = builtins.filter (id: id != null) (map (r: relationId (attrsOrEmpty r)) (listOrEmpty relations));
+  idGroups = builtins.groupBy (id: id) relIds;
+  duplicateIds = builtins.filter (g: (builtins.length idGroups."${g}") > 1) (builtins.attrNames idGroups);
+in
+if duplicateIds != [ ] then
+  throw "FS-310-HDS-010-SDS-010-SMS-030: duplicate relationId collision detected. Duplicate IDs: ${builtins.concatStringsSep ", " duplicateIds}. Each relation must have a unique id."
+else
 builtins.concatLists (map relationRules (listOrEmpty relations))
 ++ builtins.concatLists (map sharedDiscoveryPolicyRules (listOrEmpty sharedServicePolicyAtoms))
 ++ common.runtimeOriginDefaultForwardRulesWith {

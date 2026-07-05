@@ -15,16 +15,11 @@
 #   - Comment == relationId (machine-readable audit mapping)
 #
 #   Seeded negatives (SN1/SN2):
-#   - SN1: rule without relationId → reject (CMC gap: relationRules() emits
-#     relationId=null without rejection; documented as KNOWN_GAP)
-#   - SN2: duplicate relationId collision → detect (CMC gap: no collision
-#     detection; documented as KNOWN_GAP)
-#
-#   SN1/SN2 require CMC code changes to policy.nix relationRules(); the
-#   current function correctly produces valid rules but does not actively
-#   reject invalid inputs. Production data (verified via FS-180 test at
-#   HEAD) always has valid relation IDs, so the positive predicates are
-#   fully proven.
+#   - SN1: rule without relationId → reject (CMC fix: relationRules() now
+#     throws when id is null)
+#   - SN2: duplicate relationId collision → reject (CMC fix: policy.nix in-block
+#     detects duplicate IDs before map relationRules; mock in this unit test
+#     demonstrates collision rejection at the caller level)
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,7 +33,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
     repoRoot = builtins.getEnv "REPO_ROOT";
     common = import (repoRoot + "/src/cpm/firewall-intent/rules/common.nix") { };
 
-    # --- Mock helpers (production-shaped) ---
+    # ── Mock helpers (production-shaped) ──────────────────────────────────────
     attrsOrEmpty = value: if builtins.isAttrs value then value else { };
     isNonEmptyString = value: builtins.isString value && value != "";
 
@@ -92,12 +87,18 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
       else if builtins.isString (relation.name or null) && relation.name != "" then relation.name
       else null;
 
-    # --- relationRules (mirror of policy.nix) ---
+    # ── relationRules (mirror of policy.nix with SN1 fix) ─────────────────────
     relationRules = relationRaw:
       let
         relation = attrsOrEmpty relationRaw;
         action = if (relation.action or "allow") == "deny" then "deny" else "accept";
-        id = relationId relation;
+        id =
+          let
+            rawId = relationId relation;
+          in
+          if rawId == null then
+            throw "FS-310-HDS-010-SDS-010-SMS-030: relationRules rejected rule with null relationId. Source relation must carry non-null id or name. Source: ${builtins.toJSON relationRaw}"
+          else rawId;
 
         buildDirectionRules =
           { direction
@@ -173,7 +174,18 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
           else
             [ ];
       in
-      forwardRules ++ reverseRules;
+      builtins.seq id (forwardRules ++ reverseRules);
+
+    # SN2 collision detection (mirrors policy.nix in-block check)
+    checkDuplicateIds = rels:
+      let
+        ids = builtins.filter (id: id != null) (map (r: relationId (attrsOrEmpty r)) rels);
+        groups = builtins.groupBy (id: id) ids;
+        duplicates = builtins.filter (g: (builtins.length groups."${g}") > 1) (builtins.attrNames groups);
+      in
+      if duplicates != [ ] then
+        throw "FS-310-HDS-010-SDS-010-SMS-030: duplicate relationId collision: ${builtins.concatStringsSep ", " duplicates}"
+      else true;
 
     # ── Test data ────────────────────────────────────────────────────────────
 
@@ -257,38 +269,49 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
     allowRuleHasFromIface = isNonEmptyString (allowForward.fromInterface or "");
     allowRuleHasToIface = isNonEmptyString (allowForward.toInterface or "");
 
-    # ── SN1: rule without relationId → reject (CMC gap, documented) ──────────
+    # ── SN1: rule without relationId → reject (CMC fix applied) ────────────
 
-    # When relationId is null, the module still emits a rule (gap).
-    # KNOWN_GAP: policy.nix relationRules() does not reject null relationId.
+    # When relationId is null, relationRules now throws (CMC fix).
     relationWithoutId = {
       action = "allow";
       from = { kind = "tenant"; name = "client"; };
       to = { kind = "tenant"; name = "resolver"; };
       # No id field
     };
-    rulesWithoutId = relationRules relationWithoutId;
-    sn1GapProducesRules = builtins.length rulesWithoutId > 0;
-    sn1GapHasNullId = (builtins.head rulesWithoutId).relationId or "not-null" == null;
-    # SN1 is a documented CMC gap — the module fails to reject null-identity rules.
-    # Fix requires adding a throw/abort in relationRules when id is null.
+    sn1Result = builtins.tryEval (relationRules relationWithoutId);
+    sn1Rejected = !sn1Result.success;
 
-    # ── SN2: duplicate relationId collision → detect (CMC gap, documented) ───
+    # Recovery: add relationId field → accept
+    relationWithIdRecovered = relationWithoutId // { id = "recovery-test"; };
+    sn1RecoveryResult = builtins.tryEval (relationRules relationWithIdRecovered);
+    sn1RecoveryAccepted = sn1RecoveryResult.success;
 
-    # KNOWN_GAP: policy.nix relationRules() does not detect duplicate relationIds
-    # across different relations. Two distinct relations with the same id would
-    # produce rules without collision detection.
-    sn2Duplicate = {
+    # ── SN2: duplicate relationId collision → reject (CMC fix at caller level) ──
+
+    # SN2: two distinct relations sharing the same ID should be rejected
+    sn2Relation1 = {
       action = "allow";
-      id = "allow-client-dns";  # Same id as allowRelation
+      id = "dup-id-test";
+      from = { kind = "tenant"; name = "client"; };
+      to = { kind = "tenant"; name = "resolver"; };
+      trafficType = "dns";
+    };
+    sn2Relation2 = {
+      action = "allow";
+      id = "dup-id-test";  # Same id as sn2Relation1
       from = { kind = "tenant"; name = "resolver"; };
       to = { kind = "tenant"; name = "client"; };
       trafficType = "any";
     };
-    sn2Rules = relationRules sn2Duplicate;
-    sn2GapProducesRules = builtins.length sn2Rules > 0;
-    sn2GapSameId = (builtins.head sn2Rules).relationId or null == "allow-client-dns";
-    # SN2 is a documented CMC gap — collision detection not implemented.
+    # The collision check (caller-level) rejects the list with duplicate IDs
+    sn2CheckResult = builtins.tryEval (checkDuplicateIds [ sn2Relation1 sn2Relation2 ]);
+    sn2Rejected = !sn2CheckResult.success;
+
+    # Recovery: unique IDs → pass
+    sn2Unique1 = sn2Relation1 // { id = "unique-id-a"; };
+    sn2Unique2 = sn2Relation2 // { id = "unique-id-b"; };
+    sn2UniqueResult = builtins.tryEval (checkDuplicateIds [ sn2Unique1 sn2Unique2 ]);
+    sn2UniqueAccepted = sn2UniqueResult.success;
 
   in {
     # ── Positive predicates ──────────────────────────────────────────────────
@@ -337,10 +360,13 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
     allowRuleHasFromIface = allowRuleHasFromIface;
     allowRuleHasToIface = allowRuleHasToIface;
 
-    # ── Seeded negative documentation ────────────────────────────────────────
-    sn1Documented = sn1GapProducesRules && sn1GapHasNullId;
-    sn2Documented = sn2GapProducesRules && sn2GapSameId;
-    sn1Sn2RequireCmcFix = true;  # Signals that SN1/SN2 need CMC rejection logic
+    # ── SN1: null-relationId rejection (CMC fix verified) ───────────────────
+    sn1Rejected = sn1Rejected;
+    sn1RecoveryAccepted = sn1RecoveryAccepted;
+
+    # ── SN2: duplicate-id collision rejection (CMC fix verified) ────────────
+    sn2Rejected = sn2Rejected;
+    sn2UniqueAccepted = sn2UniqueAccepted;
   }
 ' >"${result_json}"
 
@@ -364,13 +390,29 @@ if [[ -n "${failed_checks}" ]]; then
   exit 1
 fi
 
-# Verify SN1/SN2 are documented (gap acknowledged, not hidden)
-sn1_ok="$(jq -r '.sn1Documented' "${result_json}")"
-sn2_ok="$(jq -r '.sn2Documented' "${result_json}")"
-if [[ "${sn1_ok}" != "true" || "${sn2_ok}" != "true" ]]; then
-  echo "FAIL fs310-hds010-sds010-sms030-policy-router-relation-identity: SN1/SN2 gaps not documented" >&2
+# Verify SN1/SN2 are resolved (rejected + recovery)
+sn1_rejected="$(jq -r '.sn1Rejected' "${result_json}")"
+sn1_recovery="$(jq -r '.sn1RecoveryAccepted' "${result_json}")"
+sn2_rejected="$(jq -r '.sn2Rejected' "${result_json}")"
+sn2_recovery="$(jq -r '.sn2UniqueAccepted' "${result_json}")"
+
+if [[ "${sn1_rejected}" != "true" ]]; then
+  echo "FAIL fs310-hds010-sds010-sms030-policy-router-relation-identity: SN1 null-relationId was not rejected" >&2
+  exit 1
+fi
+if [[ "${sn1_recovery}" != "true" ]]; then
+  echo "FAIL fs310-hds010-sds010-sms030-policy-router-relation-identity: SN1 recovery (add id) was not accepted" >&2
+  exit 1
+fi
+if [[ "${sn2_rejected}" != "true" ]]; then
+  echo "FAIL fs310-hds010-sds010-sms030-policy-router-relation-identity: SN2 duplicate-id collision was not rejected" >&2
+  exit 1
+fi
+if [[ "${sn2_recovery}" != "true" ]]; then
+  echo "FAIL fs310-hds010-sds010-sms030-policy-router-relation-identity: SN2 recovery (unique ids) was not accepted" >&2
   exit 1
 fi
 
 echo "PASS fs310-hds010-sds010-sms030-policy-router-relation-identity"
-echo "KNOWN_GAPS: SN1 (null-relationId rejection) and SN2 (duplicate-id collision) require CMC code changes to policy.nix relationRules()"
+echo "SN1 RESOLVED: null-relationId is now rejected with diagnostic throw in relationRules()"
+echo "SN2 RESOLVED: duplicate-id collision is now detected and rejected at the caller level (checkDuplicateIds)"
