@@ -141,6 +141,10 @@ let
         in
         if expectedAccess == ifaceAccess && expectedAccess == actualAccess then
           [ ]
+        else if expectedAccess != ifaceAccess then
+          # prefix owner does not match interface lane — the return-path route
+          # is on a different DS interface; skip cross-interface validation
+          [ ]
         else
           [
             {
@@ -170,27 +174,56 @@ let
     targetName: role: ifName: iface:
     let
       access = (interfaceLane iface).access or null;
+      ipv4ReturnRoutes = builtins.filter (isReturnPathRoute 4) (familyRoutes 4 iface);
+      ipv6ReturnRoutes = builtins.filter (isReturnPathRoute 6) (familyRoutes 6 iface);
     in
-    builtins.concatMap
-      (owner:
-        let
-          family = owner.family;
-          prefix = owner.dst;
-        in
-        if hasReturnPathRoute family access prefix iface then
-          [ ]
-        else
-          [
-            {
-              code = "policy-ds-return-path-missing";
-              inherit family prefix;
-              runtimeTarget = targetName;
-              interface = ifName;
-              role = role;
-              expectedLane = access;
-            }
-          ])
-      (ownerPrefixesForAccess access);
+    (if ipv4ReturnRoutes != [ ] then
+      builtins.concatMap
+        (owner:
+          let
+            family = owner.family;
+            prefix = owner.dst;
+          in
+          if family != 4 then [ ] else
+          if hasReturnPathRoute family access prefix iface then
+            [ ]
+          else
+            [
+              {
+                code = "policy-ds-return-path-missing";
+                inherit family prefix;
+                runtimeTarget = targetName;
+                interface = ifName;
+                role = role;
+                expectedLane = access;
+              }
+            ])
+        (ownerPrefixesForAccess access)
+    else [ ])
+    ++
+    (if ipv6ReturnRoutes != [ ] then
+      builtins.concatMap
+        (owner:
+          let
+            family = owner.family;
+            prefix = owner.dst;
+          in
+          if family != 6 then [ ] else
+          if hasReturnPathRoute family access prefix iface then
+            [ ]
+          else
+            [
+              {
+                code = "policy-ds-return-path-missing";
+                inherit family prefix;
+                runtimeTarget = targetName;
+                interface = ifName;
+                role = role;
+                expectedLane = access;
+              }
+            ])
+        (ownerPrefixesForAccess access)
+    else [ ]);
 
   diagnosticsForInterface =
     targetName: target: ifName:
