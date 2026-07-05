@@ -629,9 +629,12 @@ let
             hasTenant = builtins.any
               (i: (i.sourceKind or "") == "tenant")
               ifaceList;
+            hasEgress = builtins.any
+              (i: (i.hostFacing or false) == true && (i.direction or "") == "egress" && (i.sourceKind or "") != "core-egress")
+              ifaceList;
             nodeRoleStr = nodeRole;
             isCore = builtins.substring 0 4 nodeRoleStr == "core";
-            needsCoreEgress = isCore && !hasTenant && builtins.length hostP2p == 1;
+            needsCoreEgress = isCore && !hasTenant && !hasEgress && builtins.length hostP2p == 1;
             p2pVal = if needsCoreEgress then builtins.head hostP2p else null;
           in
           if needsCoreEgress then
