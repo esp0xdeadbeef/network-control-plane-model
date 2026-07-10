@@ -106,6 +106,26 @@ in
         else
           true;
 
+      # SMS-020 SN1: Missing overlay identity — reject null/empty overlayName
+      _overlayIdentityPresent =
+        if isNonEmptyString overlayName then
+          true
+        else
+          failInventory authorityPath "diagnostic.missingOverlayIdentity: overlay provider profile lacks overlay identity";
+
+      # SMS-020 SN2: Borrowed unrelated overlay node pool — reject when
+      # the provider profile explicitly declares an overlayIdentity that
+      # does not match the owning overlay name.
+      declaredOverlayIdentity = authority.overlayIdentity or null;
+      _overlayPoolMatch =
+        if declaredOverlayIdentity == null then
+          true
+        else if declaredOverlayIdentity == overlayName then
+          true
+        else
+          failInventory authorityPath
+            "diagnostic.unrelatedOverlayNodePool: overlay provider profile overlayIdentity=${declaredOverlayIdentity} does not match owning overlay ${overlayName}";
+
       # SMS-010: Reject ipv4Mode/natMode conflict
       ipv4Mode =
         stringOr "${authorityPath}.ipv4Mode"
@@ -177,7 +197,9 @@ in
     builtins.seq _runtimeAuthority (
       builtins.seq _commercialPresence (
         builtins.seq _commercialPublicIngress (
-          builtins.seq _ipv4NatConflict {
+          builtins.seq _overlayIdentityPresent (
+            builtins.seq _overlayPoolMatch (
+              builtins.seq _ipv4NatConflict {
         rowIds = [
           "FS-440-HDS-010-SDS-010-SMS-010"
           "FS-440-HDS-010-SDS-010-SMS-020"
@@ -310,6 +332,8 @@ in
               [ ];
         };
       }
+      )
+      )
       )
       )
     );
