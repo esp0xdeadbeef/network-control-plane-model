@@ -154,6 +154,40 @@ nix eval \
           missingSourceScope.families.ipv6 == false
           && missingSourceScope.masqueradeSourcePrefixes6 == [ ]
           && missingSourceScope.routeSafety.coreOriginUplinkDefault.sourceScopedTranslationExceptions.nat66 == false;
+        # SMS-020 SN1: diagnostic always has complete fields (sourceScope, trafficClass,
+        # egressSurface, translatedAddressOrPrefix, addressFamily, tenantIsolationBoundary)
+        sn1_diagnosticFieldsComplete =
+          let
+            allDiagnostics = unavailableEgress.diagnostics.nat66
+              ++ missingTranslation.diagnostics.nat66
+              ++ missingSourceScope.diagnostics.nat66;
+            fieldCompleteness = map (d:
+              d ? sourceScope
+              && d ? trafficClass
+              && d ? egressSurface
+              && d ? translatedAddressOrPrefix
+              && d ? addressFamily
+              && d ? tenantIsolationBoundary
+              && d ? failClosed
+              && d ? mode
+              && d ? fallback
+            ) allDiagnostics;
+          in builtins.all (x: x) fieldCompleteness;
+        # SMS-020 SN2: no duplicate sourcePrefix with different translatedPrefix
+        sn2_noAmbiguousRecords =
+          let
+            records = unavailableEgress.translationRecords
+              ++ missingTranslation.translationRecords
+              ++ missingSourceScope.translationRecords;
+            grouped = builtins.groupBy (r: builtins.concatStringsSep "," r.sourceScope) records;
+            ambiguous = builtins.filter
+              (group:
+                let
+                  prefixes = builtins.map (r: builtins.concatStringsSep "," r.translatedAddressOrPrefix) group;
+                in builtins.length (lib.lists.unique prefixes) > 1
+              )
+              (builtins.attrValues grouped);
+          in ambiguous == [ ];
       };
       context = {
         inherit unavailableEgress missingTranslation missingSourceScope;
