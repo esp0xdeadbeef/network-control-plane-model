@@ -194,8 +194,33 @@ let
     else
       reservationPath;
 
+  # Returns the scoped reservation identifier, or null when only the
+  # path-level fallback is available (no meaningful identity).
+  reservationRequirementScoped = reservationPath: attrs:
+    if isNonEmptyString (attrs.id or null) then
+      attrs.id
+    else if isNonEmptyString (attrs.name or null) then
+      attrs.name
+    else if isNonEmptyString (attrs.hostname or null) then
+      attrs.hostname
+    else if isNonEmptyString (attrs.mac or null) then
+      attrs.mac
+    else
+      null;
+
   requirementLabelFor = reservationPath: attrs:
     "reservation requirement '${reservationRequirement reservationPath attrs}'";
+
+  # Diagnostic emission with required scope guard per SMS-030 FC2.
+  # Rejects unscoped identity diagnostics before they reach downstream emission.
+  failInventoryIdentityDiagnostic = reservationPath: attrs: message:
+    let
+      scoped = reservationRequirementScoped reservationPath attrs;
+    in
+    if scoped == null then
+      failInventory reservationPath "diagnostic.reservation-identity-diagnostic-unscoped: missing identity diagnostic cannot name the affected reservation requirement at ${reservationPath}"
+    else
+      failInventory reservationPath message;
 
   normalizeMac = path: label: value:
     let
@@ -263,7 +288,8 @@ let
         if builtins.isAttrs (attrs.macSource or null) then
           attrs.macSource
         else
-          failInventory classificationPath "${requirementLabel} requires accepted MAC source classification from ${classifierId}";
+          failInventoryIdentityDiagnostic reservationPath attrs
+            "diagnostic.reservation-identity-source-missing: ${requirementLabel} requires accepted MAC source classification from ${classifierId}";
       accepted = requireBool "${classificationPath}.accepted" (classification.accepted or null);
       purpose = requireString "${classificationPath}.purpose" (classification.purpose or null);
       sourceClass = requireString "${classificationPath}.sourceClass" (classification.sourceClass or null);
@@ -275,7 +301,8 @@ let
         if accepted then
           true
         else
-          failInventory classificationPath "${requirementLabel} must be accepted by ${classifierId} before reservation identity consumption";
+          failInventoryIdentityDiagnostic reservationPath attrs
+            "diagnostic.reservation-identity-source-missing: ${requirementLabel} must be accepted by ${classifierId} before reservation identity consumption";
       _purpose =
         if purpose == expectedPurpose then
           true
