@@ -64,17 +64,23 @@ let
             if builtins.isAttrs (inventoryNode.advertisements or null) then
               requireAttrs "${targetDef.nodePath}.advertisements" inventoryNode.advertisements
             else
-              failInventory
-                "${targetDef.nodePath}.advertisements"
-                "access runtime target '${targetId}' requires explicit advertisements realization";
+              { };
 
-          dhcp4Entries = requireAttrs "${targetDef.nodePath}.advertisements.dhcp4" (inventoryAdvertisements.dhcp4 or null);
+          dhcp4Entries =
+            if builtins.isAttrs (inventoryAdvertisements.dhcp4 or null) then
+              requireAttrs "${targetDef.nodePath}.advertisements.dhcp4" inventoryAdvertisements.dhcp4
+            else
+              { };
           dhcpv6Entries =
             if builtins.isAttrs (inventoryAdvertisements.dhcpv6 or null) then
               requireAttrs "${targetDef.nodePath}.advertisements.dhcpv6" inventoryAdvertisements.dhcpv6
             else
               { };
-          ipv6RaEntries = requireAttrs "${targetDef.nodePath}.advertisements.ipv6Ra" (inventoryAdvertisements.ipv6Ra or null);
+          ipv6RaEntries =
+            if builtins.isAttrs (inventoryAdvertisements.ipv6Ra or null) then
+              requireAttrs "${targetDef.nodePath}.advertisements.ipv6Ra" inventoryAdvertisements.ipv6Ra
+            else
+              { };
           interfaces = getRuntimeTargetInterfaces targetPath target;
           tenantInterfaceNames =
             builtins.filter
@@ -88,8 +94,12 @@ let
                 (iface.sourceKind or null) == "tenant")
               (sortedNames interfaces);
 
-          _dhcp4Coverage = requireCoverage "${targetDef.nodePath}.advertisements.dhcp4" tenantInterfaceNames dhcp4Entries;
-          _ipv6RaCoverage = requireCoverage "${targetDef.nodePath}.advertisements.ipv6Ra" tenantInterfaceNames ipv6RaEntries;
+          _dhcp4Coverage =
+            if dhcp4Entries == { } then true
+            else requireCoverage "${targetDef.nodePath}.advertisements.dhcp4" tenantInterfaceNames dhcp4Entries;
+          _ipv6RaCoverage =
+            if ipv6RaEntries == { } then true
+            else requireCoverage "${targetDef.nodePath}.advertisements.ipv6Ra" tenantInterfaceNames ipv6RaEntries;
           _dhcp4NoUnexpected =
             validateNoUnexpectedInterfaces "${targetDef.nodePath}.advertisements.dhcp4" tenantInterfaceNames dhcp4Entries;
           _dhcpv6NoUnexpected =
