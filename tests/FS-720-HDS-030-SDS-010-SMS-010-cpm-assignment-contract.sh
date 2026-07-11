@@ -448,6 +448,56 @@ else
 fi
 
 # ---------------------------------------------------------------
+# Test 8c: Bridge derived from explicit tenant attachment on generic access
+#   A single access node may be named "s-router-access" while the explicit
+#   attachment carries the tenant identity. CPM must use that source data,
+#   not require a tenant suffix in the node name.
+# ---------------------------------------------------------------
+echo ""
+echo "=== Test 8c: bridge derived from explicit tenant attachment ==="
+
+fixture='
+  enterpriseName = "esp";
+  siteName = "site-a";
+  ownership = {
+    prefixes = [
+      { name = "mgmt"; kind = "tenant"; ipv4 = "10.20.10.0/24"; }
+    ];
+    endpoints = [
+      { name = "mgmt01"; kind = "host"; tenant = "mgmt"; }
+    ];
+  };
+  inventoryEndpoints = { };
+  runtimeTargets = {
+    "esp-site-a-s-router-access" = {
+      role = "access";
+      logicalNode = { name = "s-router-access"; };
+      attachments = [
+        { kind = "tenant"; name = "mgmt"; }
+      ];
+      effectiveRuntimeRealization.interfaces = {
+        "tenant-mgmt" = {
+          tenant = "mgmt";
+          sourceKind = "tenant";
+        };
+        "p2p-s-router-access-s-router-downstream-selector" = {
+          sourceKind = "p2p";
+          attach = { kind = "bridge"; bridge = "br-site-a-downstream-access"; };
+        };
+      };
+    };
+  };
+'
+
+generic_bridge_result=$(eval_assignment "$fixture" 'result.endpointAssignment."site-a-mgmt01".bridge or null')
+
+if echo "$generic_bridge_result" | grep -q '"br-site-a-downstream-access"'; then
+  pass "Bridge: derived from explicit tenant attachment on generic access target"
+else
+  fail "Bridge: expected br-site-a-downstream-access, got: $generic_bridge_result"
+fi
+
+# ---------------------------------------------------------------
 # Test 9: Seeded negative — gateway4 must be .1 not .0 (network addr)
 #   This test proves FS-720-HDS-030-SDS-010-SMS-010 P3/P7 fix:
 #   stripCidr("10.20.20.0/24") alone yields "10.20.20.0" which is
