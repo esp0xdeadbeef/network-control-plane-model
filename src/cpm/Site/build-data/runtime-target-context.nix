@@ -144,12 +144,22 @@ let
     else
       "";
 
+  targetHasTenantAttachment = target: tenant:
+    builtins.any
+      (attachment:
+        let
+          attrs = attrsOrEmpty attachment;
+        in
+        (attrs.kind or null) == "tenant" && (attrs.name or null) == tenant)
+      (if builtins.isList (target.attachments or null) then target.attachments else [ ]);
+
   targetMatchesTenant = target: tenant:
     let
       logicalName = targetLogicalName target;
     in
     logicalName == "${siteName}-access-${tenant}"
-    || lib.hasSuffix "-access-${tenant}" logicalName;
+    || lib.hasSuffix "-access-${tenant}" logicalName
+    || targetHasTenantAttachment target tenant;
 
   fallbackTenantBridge = target: tenant:
     let

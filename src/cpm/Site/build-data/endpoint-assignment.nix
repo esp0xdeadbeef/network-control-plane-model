@@ -213,12 +213,22 @@ let
         else
           "";
 
+      targetHasTenantAttachment = target:
+        builtins.any
+          (attachment:
+            let
+              attrs = attrsOrEmpty attachment;
+            in
+            (attrs.kind or null) == "tenant" && (attrs.name or null) == tenant)
+          (if builtins.isList (target.attachments or null) then target.attachments else [ ]);
+
       targetMatchesTenant = target:
         let
           logicalName = targetLogicalName target;
         in
         logicalName == "${siteName}-access-${tenant}"
-        || lib.hasSuffix "-access-${tenant}" logicalName;
+        || lib.hasSuffix "-access-${tenant}" logicalName
+        || targetHasTenantAttachment target;
 
       # Walk runtime targets to find an access node with a tenant port
       # matching this tenant. This mirrors tenantRuntime logic from
