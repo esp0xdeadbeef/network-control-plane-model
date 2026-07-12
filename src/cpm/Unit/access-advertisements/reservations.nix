@@ -297,6 +297,7 @@ let
       source = optionalNonEmptyString "${classificationPath}.source" (classification.source or null);
       disposable = optionalBool "${classificationPath}.disposable" (classification.disposable or null);
       secretRef = optionalNonEmptyString "${classificationPath}.secretRef" (classification.secretRef or null);
+      sourceFile = optionalNonEmptyString "${classificationPath}.sourceFile" (classification.sourceFile or null);
       _accepted =
         if accepted then
           true
@@ -313,10 +314,10 @@ let
           true
         else if source == "public-inventory" then
           failInventory classificationPath "${requirementLabel} must not emit protected reservation identity material as public inventory"
-        else if source == "protected-inventory" || secretRef != null then
+        else if source == "protected-inventory" || secretRef != null || sourceFile != null then
           true
         else
-          failInventory classificationPath "${requirementLabel} requires protected inventory source='protected-inventory' or secretRef for non-public reservation identity";
+          failInventory classificationPath "${requirementLabel} requires protected inventory source='protected-inventory', secretRef, or sourceFile for non-public reservation identity";
     in
     builtins.seq _accepted (
       builtins.seq _purpose (
@@ -328,6 +329,7 @@ let
           // (if source != null then { inherit source; } else { })
           // (if disposable != null then { inherit disposable; } else { })
           // (if secretRef != null then { inherit secretRef; } else { })
+          // (if sourceFile != null then { inherit sourceFile; } else { })
         )
       )
     );
@@ -343,9 +345,29 @@ let
               reservationPath = "${entryPath}.reservations[${toString idx}]";
               attrs = requireAttrs reservationPath (builtins.elemAt reservations idx);
               requirementLabel = requirementLabelFor reservationPath attrs;
-              mac = normalizeMac "${reservationPath}.mac" requirementLabel (attrs.mac or null);
-              hostOffset = reservationHostOffset reservationPath attrs familyName;
               identitySource = requireMacSourceClassification reservationPath attrs familyName;
+              mac =
+                if isNonEmptyString (attrs.mac or null) then
+                  normalizeMac "${reservationPath}.mac" requirementLabel attrs.mac
+                else
+                  null;
+              hasRuntimeSourceFile = isNonEmptyString (identitySource.sourceFile or null);
+              scopedIdentity = reservationRequirementScoped reservationPath attrs;
+              _identityMaterial =
+                if mac != null then
+                  true
+                else if familyName == "ipv4" && (identitySource.sourceClass or "") == "protected" && hasRuntimeSourceFile then
+                  true
+                else
+                  failInventoryIdentityDiagnostic reservationPath attrs
+                    "diagnostic.reservation-identity-source-missing: ${requirementLabel} requires complete MAC address or protected runtime sourceFile";
+              _scopedRuntimeIdentity =
+                if mac != null || scopedIdentity != null then
+                  true
+                else
+                  failInventoryIdentityDiagnostic reservationPath attrs
+                    "diagnostic.reservation-identity-diagnostic-unscoped: runtime secret reservation source must name a reservation handle";
+              hostOffset = reservationHostOffset reservationPath attrs familyName;
               cidr = ipam.allocOne {
                 inherit family perNodePrefixLength;
                 prefix = subnet;
@@ -353,34 +375,41 @@ let
               };
               address = builtins.elemAt (builtins.split "/" cidr) 0;
             in
-            {
-              id =
-                if isNonEmptyString (attrs.id or null) then
-                  attrs.id
-                else if isNonEmptyString (attrs.name or null) then
-                  attrs.name
-                else
-                  mac;
-              inherit mac hostOffset address cidr identitySource;
-              source = "inventory-realization";
-            }
-            // binderSourceAudit.make {
-              path = reservationPath;
-              field =
-                "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservations";
-              binderSourceClass =
-                if (identitySource.sourceClass or "") == "protected" then
-                  "protected-inventory"
-                else
-                  "public-inventory";
-              binderSourcePath = reservationPath;
-              upstreamBehaviorRef = entryPath;
-            }
-            // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
-            // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { })
-            // (normalizeFs880NamespaceFields reservationPath attrs))
+            builtins.seq _identityMaterial (
+              builtins.seq _scopedRuntimeIdentity (
+                {
+                  id =
+                    if isNonEmptyString (attrs.id or null) then
+                      attrs.id
+                    else if isNonEmptyString (attrs.name or null) then
+                      attrs.name
+                    else
+                      if mac != null then mac else scopedIdentity;
+                  inherit hostOffset address cidr identitySource;
+                  source = "inventory-realization";
+                }
+                // (if mac != null then { inherit mac; } else { })
+                // binderSourceAudit.make {
+                  path = reservationPath;
+                  field =
+                    "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservations";
+                  binderSourceClass =
+                    if (identitySource.sourceClass or "") == "protected" then
+                      "protected-inventory"
+                    else
+                      "public-inventory";
+                  binderSourcePath = reservationPath;
+                  upstreamBehaviorRef = entryPath;
+                }
+                // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
+                // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { })
+                // (normalizeFs880NamespaceFields reservationPath attrs)
+              )
+            )
+          )
           (builtins.length reservations);
-      _uniqueMacs = ensureUniqueValues "${entryPath}.reservations" "MAC address" (map (reservation: reservation.mac) rendered);
+      _identityMaterialForced = builtins.deepSeq rendered true;
+      _uniqueMacs = ensureUniqueValues "${entryPath}.reservations" "MAC address" (map (reservation: reservation.mac) (builtins.filter (reservation: isNonEmptyString (reservation.mac or null)) rendered));
       _uniqueOffsets =
         ensureUniqueValues
           "${entryPath}.reservations"
@@ -391,7 +420,7 @@ let
           "${entryPath}.reservations"
           (map (reservation: reservation.id) rendered);
     in
-    builtins.seq _uniqueMacs (builtins.seq _uniqueOffsets (builtins.seq _uniqueIds rendered));
+    builtins.seq _identityMaterialForced (builtins.seq _uniqueMacs (builtins.seq _uniqueOffsets (builtins.seq _uniqueIds rendered)));
 in
 {
   inherit resolveReservations;

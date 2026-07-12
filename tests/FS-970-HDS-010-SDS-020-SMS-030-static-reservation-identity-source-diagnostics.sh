@@ -160,7 +160,7 @@ if compile_inventory "${missing_protected_source_inventory}" >"${tmp_dir}/missin
   echo "FAIL FS-970-HDS-010-SDS-020-SMS-030 SN1b: reservation without protected identity source material was accepted" >&2
   exit 1
 fi
-grep -F "reservation requirement 'missing-protected-source' requires protected inventory source='protected-inventory' or secretRef" \
+grep -F "reservation requirement 'missing-protected-source' requires protected inventory source='protected-inventory', secretRef, or sourceFile" \
   "${tmp_dir}/missing-protected-source.err" >/dev/null || {
     echo "FAIL FS-970-HDS-010-SDS-020-SMS-030 SN1b: missing protected-source diagnostic did not name the reservation requirement" >&2
     cat "${tmp_dir}/missing-protected-source.err" >&2
