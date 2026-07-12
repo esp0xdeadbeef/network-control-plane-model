@@ -147,13 +147,43 @@ let
       "unexposed"
       classes;
 
+  # SMS-020: Validate that an exposure record has a valid non-null ownerScope.
+  # Emits diagnostic.missing-owner-scope when kind or name is missing/null/empty.
+  validateOwnerScope =
+    record: serviceName:
+    let
+      owner = record.ownerScope or null;
+      ownerOk =
+        owner != null
+        && isNonEmptyString (owner.kind or null)
+        && isNonEmptyString (owner.name or null);
+    in
+    if !ownerOk then
+      failForwarding
+        "${sitePath}.exposure.records"
+        "diagnostic.missing-owner-scope: service ${serviceName} exposure record ownerScope is missing, null, or incomplete (kind=${builtins.toJSON (if owner != null then owner.kind or null else null)} name=${
+          builtins.toJSON (if owner != null then owner.name or null else null)
+        })"
+    else
+      true;
+
   exposureForService =
     serviceName: providerTenants:
     let
-      owningScope = {
-        kind = "service";
-        name = serviceName;
-      };
+      # SMS-020 SN1: Allow test injection of null ownerScope via service-scoped flag.
+      # When _testNullOwnerScope is true, ownerScope is set to null to verify
+      # the diagnostic.missing-owner-scope path.
+      _nullOwnerFlag = (
+        policyEndpointBindings.services.${serviceName}._testNullOwnerScope or false
+      );
+      owningScope =
+        if _nullOwnerFlag then
+          null
+        else
+          {
+            kind = "service";
+            name = serviceName;
+          };
       serviceRelations =
         builtins.filter
           (relation:
@@ -171,16 +201,18 @@ let
             let
               requesterScope = normalizeRequesterScope relation;
               exposureClass = exposureClassForRelation providerTenants relation requesterScope;
+              record = {
+                inherit exposureClass;
+                relationId = relation.id or null;
+                ownerScope = owningScope;
+                inherit requesterScope;
+                sourceKind = requesterScope.kind;
+                sourceNames = requesterScope.names;
+                trafficType = relation.trafficType or null;
+              };
             in
-            {
-              inherit exposureClass;
-              relationId = relation.id or null;
-              ownerScope = owningScope;
-              inherit requesterScope;
-              sourceKind = requesterScope.kind;
-              sourceNames = requesterScope.names;
-              trafficType = relation.trafficType or null;
-            })
+            builtins.seq (validateOwnerScope record serviceName) record
+          )
           serviceRelations;
     in
     {
