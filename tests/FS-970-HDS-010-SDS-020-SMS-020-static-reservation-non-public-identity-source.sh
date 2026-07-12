@@ -173,7 +173,7 @@ if compile_inventory "${missing_protected_source_inventory}" >"${tmp_dir}/missin
   echo "FAIL static-reservation-non-public-identity-source: protected reservation identity without protected source material was accepted" >&2
   exit 1
 fi
-grep -F "reservation requirement 'missing-protected-source' requires protected inventory source='protected-inventory' or secretRef for non-public reservation identity" \
+grep -F "reservation requirement 'missing-protected-source' requires protected inventory source='protected-inventory', secretRef, or sourceFile for non-public reservation identity" \
   "${tmp_dir}/missing-protected-source.err" >/dev/null || {
     echo "FAIL static-reservation-non-public-identity-source: missing protected-source diagnostic was not concise" >&2
     cat "${tmp_dir}/missing-protected-source.err" >&2
