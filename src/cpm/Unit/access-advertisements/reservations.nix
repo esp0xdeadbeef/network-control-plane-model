@@ -360,7 +360,7 @@ let
                   true
                 else
                   failInventoryIdentityDiagnostic reservationPath attrs
-                    "diagnostic.reservation-identity-source-missing: ${requirementLabel} requires complete MAC address or protected runtime sourceFile";
+                    "diagnostic.runtime-reservation-source-file-missing: ${requirementLabel} requires complete MAC address or protected runtime sourceFile";
               _scopedRuntimeIdentity =
                 if mac != null || scopedIdentity != null then
                   true

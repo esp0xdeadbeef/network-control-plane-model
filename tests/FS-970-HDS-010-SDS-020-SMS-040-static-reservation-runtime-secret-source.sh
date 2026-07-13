@@ -138,10 +138,45 @@ if compile_inventory "${secret_ref_only_inventory}" >"${tmp_dir}/secret-ref-only
   echo "FAIL static-reservation-runtime-secret-source: secretRef-only reservation without public MAC was accepted" >&2
   exit 1
 fi
+grep -F "diagnostic.runtime-reservation-source-file-missing" \
+  "${tmp_dir}/secret-ref-only.err" >/dev/null || {
+    echo "FAIL static-reservation-runtime-secret-source: NC2 secretRef-only did not emit diagnostic.runtime-reservation-source-file-missing" >&2
+    cat "${tmp_dir}/secret-ref-only.err" >&2
+    exit 1
+  }
 grep -F "requires complete MAC address or protected runtime sourceFile" \
   "${tmp_dir}/secret-ref-only.err" >/dev/null || {
     echo "FAIL static-reservation-runtime-secret-source: secretRef-only diagnostic was not concise" >&2
     cat "${tmp_dir}/secret-ref-only.err" >&2
+    exit 1
+  }
+
+# NC1 - missing runtime source file: protected reservation with no public MAC
+# and no macSource.sourceFile (and no secretRef) shall be rejected with
+# diagnostic.runtime-reservation-source-file-missing.
+missing_source_file_inventory="${tmp_dir}/inventory-missing-source-file.nix"
+write_inventory "${missing_source_file_inventory}" '[
+  {
+    id = "missing-source-file";
+    macSource = {
+      accepted = true;
+      disposable = false;
+      purpose = "static-dhcp-reservation";
+      sourceClass = "protected";
+      source = "protected-inventory";
+    };
+    ipv4.hostOffset = 13;
+  }
+]'
+
+if compile_inventory "${missing_source_file_inventory}" >"${tmp_dir}/missing-source-file.out" 2>"${tmp_dir}/missing-source-file.err"; then
+  echo "FAIL static-reservation-runtime-secret-source: reservation with no public MAC and no sourceFile was accepted" >&2
+  exit 1
+fi
+grep -F "diagnostic.runtime-reservation-source-file-missing" \
+  "${tmp_dir}/missing-source-file.err" >/dev/null || {
+    echo "FAIL static-reservation-runtime-secret-source: NC1 missing sourceFile did not emit diagnostic.runtime-reservation-source-file-missing" >&2
+    cat "${tmp_dir}/missing-source-file.err" >&2
     exit 1
   }
 
