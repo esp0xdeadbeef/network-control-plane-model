@@ -27,6 +27,11 @@
 #   P6 (seeded negative): a synthetic reverse accept labeled with the forward
 #       relation ID (duplicate relationId) is REJECTED by collision detection —
 #       symmetry does not license a second rule under the forward's identity.
+#   P7 (seeded negative, SMS-040 Negative case 3): an UNRECOGNIZED
+#       returnBehavior value (e.g. "asymmetric") is REJECTED by the real
+#       forwarding-validation module with a diagnostic naming the value and
+#       the affected relation ID — never silently treated as absent/one-way.
+#       Missing returnBehavior stays rejected (fail closed).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -353,5 +358,93 @@ if [[ -n "${failed_checks}" ]]; then
   jq -S . "${result_json}" >&2
   exit 1
 fi
+
+echo "PASS test-FS-180-HDS-010-SDS-010-SMS-040-bidirectional-nft-rules (P1-P6)"
+
+# ── P7 (SMS-040 Negative case 3): unrecognized returnBehavior rejected ──────
+# Exercises the REAL validation module (src/cpm/forwarding-validation/
+# communication-contract.nix), not a mirror. Unrecognized values must fail
+# with a diagnostic naming the value and relation ID; missing returnBehavior
+# stays rejected; the recognized vocabulary stays accepted.
+export CPM_REPO_ROOT="${repo_root}"
+validator_relations_file="$(mktemp)"
+trap 'rm -f "${result_json}" "${validator_relations_file}"' EXIT
+export CPM_RELATIONS_FILE="${validator_relations_file}"
+
+eval_validator() {
+  local relations_json="$1"
+  printf '%s' "$relations_json" >"${CPM_RELATIONS_FILE}"
+  nix eval --impure --json --expr '
+    let
+      repoRoot = builtins.getEnv "CPM_REPO_ROOT";
+      lib = import (repoRoot + "/lib/utils.nix");
+      helpers = import (repoRoot + "/src/cpm/cpm-contract-support.nix") { inherit lib; };
+      common = import (repoRoot + "/src/cpm/forwarding-validation/common.nix") { inherit helpers; };
+      validator = import (repoRoot + "/src/cpm/forwarding-validation/communication-contract.nix") {
+        inherit helpers common;
+      };
+      relations = builtins.fromJSON (builtins.readFile (builtins.getEnv "CPM_RELATIONS_FILE"));
+      site = {
+        communicationContract.allowedRelations = relations;
+        policy.interfaceTags = { };
+        domains = {
+          tenants = [ ];
+          externals = [ ];
+        };
+        uplinkNames = [ ];
+      };
+    in
+      validator.validate "forwardingModel.enterprise.test.site.test" site
+  '
+}
+
+assert_validator_accepts() {
+  local label="$1" relations_json="$2"
+  local output
+  output="$(eval_validator "$relations_json")"
+  [[ "$output" == "true" ]] || {
+    printf 'FAIL [P7 %s]: expected true, got %s\n' "$label" "$output" >&2
+    exit 1
+  }
+  echo "PASS [P7 ${label}]: accepted"
+}
+
+assert_validator_rejects() {
+  local label="$1" relations_json="$2" expected="$3"
+  local output status
+  set +e
+  output="$(eval_validator "$relations_json" 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf 'FAIL [P7 %s]: invalid returnBehavior was accepted: %s\n' "$label" "$output" >&2
+    exit 1
+  fi
+  if ! grep -Fq "$expected" <<<"$output"; then
+    printf 'FAIL [P7 %s]: expected diagnostic %q\n%s\n' "$label" "$expected" "$output" >&2
+    exit 1
+  fi
+  echo "PASS [P7 ${label}]: rejected with diagnostic containing \"${expected}\""
+}
+
+assert_validator_accepts "recognized symmetric" \
+  '[{"id":"rel-symmetric-web","action":"allow","from":"any","to":"any","returnBehavior":"symmetric"}]'
+assert_validator_accepts "recognized one-way" \
+  '[{"id":"rel-oneway-web","action":"allow","from":"any","to":"any","returnBehavior":"one-way"}]'
+assert_validator_accepts "recognized nested stateful-return" \
+  '[{"id":"rel-nested-stateful","action":"allow","from":"any","to":"any","publicIngressTupleAuthority":{"returnBehavior":"stateful-return"}}]'
+
+assert_validator_rejects "unrecognized asymmetric" \
+  '[{"id":"rel-bad-asymmetric","action":"allow","from":"any","to":"any","returnBehavior":"asymmetric"}]' \
+  "FS-180-HDS-010-SDS-010-SMS-040: allow relation 'rel-bad-asymmetric' has an unrecognized top-level returnBehavior 'asymmetric'"
+assert_validator_rejects "unrecognized hairpin" \
+  '[{"id":"rel-bad-hairpin","action":"allow","from":"any","to":"any","returnBehavior":"hairpin"}]' \
+  "FS-180-HDS-010-SDS-010-SMS-040: allow relation 'rel-bad-hairpin' has an unrecognized top-level returnBehavior 'hairpin'"
+assert_validator_rejects "unrecognized nested value" \
+  '[{"id":"rel-bad-nested","action":"allow","from":"any","to":"any","publicIngressTupleAuthority":{"returnBehavior":"asymmetric"}}]' \
+  "FS-180-HDS-010-SDS-010-SMS-040: allow relation 'rel-bad-nested' has an unrecognized publicIngressTupleAuthority returnBehavior 'asymmetric'"
+assert_validator_rejects "missing returnBehavior stays rejected" \
+  '[{"id":"rel-missing-return","action":"allow","from":"any","to":"any"}]' \
+  "allow relation 'rel-missing-return' is missing required returnBehavior"
 
 echo "PASS test-FS-180-HDS-010-SDS-010-SMS-040-bidirectional-nft-rules"
