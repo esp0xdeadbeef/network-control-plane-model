@@ -159,6 +159,7 @@ let
         , fromEndpoint
         , toEndpoint
         , reverseSource ? false
+        , stateful ? false
         }:
         let
           fromIfaces = endpointIfaces relation fromEndpoint toEndpoint;
@@ -207,7 +208,22 @@ let
                     policyPoint = "policy-router";
                   }
                   // (if builtins.isAttrs (relation.intent or null) then { intent = relation.intent; } else { })
-                  // (if isNonEmptyString (relation.comment or null) then { comment = relation.comment; } else { }))
+                  // (if isNonEmptyString (relation.comment or null) then { comment = relation.comment; } else { })
+                  // (
+                    # FS-180-HDS-010-SDS-010-SMS-040: a symmetric return is
+                    # bounded stateful reply traffic, never independently
+                    # initiated reverse new-flow authority. Mark the reverse
+                    # rule with an established,related connection-state
+                    # constraint so target-native realization emits a stateful
+                    # return rather than a state-unqualified reverse accept.
+                    if stateful then
+                      {
+                        connectionState = "established,related";
+                        returnRule = true;
+                      }
+                    else
+                      { }
+                  ))
                 toIfaces)
             fromIfaces
         );
@@ -225,6 +241,7 @@ let
             fromEndpoint = relation.to or null;
             toEndpoint = relation.from or null;
             reverseSource = true;
+            stateful = true;
           }
         else
           [ ];

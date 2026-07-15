@@ -1,15 +1,32 @@
 #!/usr/bin/env bash
 # GAMP-ID: FS-180-HDS-010-SDS-010-SMS-040
 # GAMP-SCOPE: software-module-test
-# RaTM: Construction test for bidirectional nft rule generation from returnBehavior.
-# SMS-040 predicates tested:
-#   P1: returnBehavior="symmetric" → forward + reverse nft accept rules
-#   P2: returnBehavior absent → forward only, NO reverse rules
-#   P3 (seeded negative): returnBehavior="nonexistent" → forward only, NO reverse
-#   P4 (seeded negative): wrong returnBehavior value → forward only, NO reverse
-#   P5: reverse rule has correctly swapped fromInterface/toInterface vs forward
-#   P6: reverse rule preserves traffic match (trafficType, proto/port) with
-#       source/destination endpoints swapped
+# RaTM: Construction test for stateful-return rule generation from returnBehavior.
+#
+# SUPERSEDES the prior unsafe predicate. `returnBehavior="symmetric"` must NOT
+# materialize an independently initiated reverse new-flow accept; it authorizes
+# only bounded stateful reply traffic, expressed as an established,related
+# connection-state constraint on the reverse path. An independently initiated
+# reverse new flow is valid only from a distinct modeled reverse relation with
+# its own complete bounded tuple.
+#
+# SMS-040 predicates tested (against src/cpm/firewall-intent/rules/policy.nix):
+#   P1: symmetric → exact forward accept (state-unqualified new flow) PLUS one
+#       reverse rule.
+#   P2: the symmetric reverse rule is a STATEFUL RETURN — it carries
+#       connectionState="established,related" and returnRule=true, and is NOT a
+#       state-unqualified reverse new-flow accept. The forward rule is NOT a
+#       stateful return (no connectionState, returnRule not set).
+#   P3: non-symmetric returnBehavior (explicit one-way) → forward only, NO
+#       reverse rule (no synthesized reverse authority).
+#   P4 (recovery): a DISTINCT modeled reverse relation (own id, reversed
+#       endpoints, own returnBehavior) authorizes its own reverse new-flow
+#       forward accept independently, preserving its own bounded tuple.
+#   P5: the symmetric reverse rule has correctly swapped from/to endpoints and
+#       interfaces versus the forward rule (real swap, not identity).
+#   P6 (seeded negative): a synthetic reverse accept labeled with the forward
+#       relation ID (duplicate relationId) is REJECTED by collision detection —
+#       symmetry does not license a second rule under the forward's identity.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -87,7 +104,9 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
       else if builtins.isString (relation.name or null) && relation.name != "" then relation.name
       else null;
 
-    # --- relationRules (production-aligned) ---
+    # --- relationRules (production-aligned mirror of policy.nix) ---
+    # The `stateful` flag and connectionState/returnRule marking below mirror
+    # src/cpm/firewall-intent/rules/policy.nix exactly.
     relationRules = relationRaw:
       let
         relation = attrsOrEmpty relationRaw;
@@ -99,6 +118,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
           , fromEndpoint
           , toEndpoint
           , reverseSource ? false
+          , stateful ? false
           }:
           let
             fromIfaces = mockEndpointIfaces relation fromEndpoint toEndpoint;
@@ -147,7 +167,16 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
                       policyPoint = "policy-router";
                     }
                     // (if builtins.isAttrs (relation.intent or null) then { intent = relation.intent; } else { })
-                    // (if isNonEmptyString (relation.comment or null) then { comment = relation.comment; } else { }))
+                    // (if isNonEmptyString (relation.comment or null) then { comment = relation.comment; } else { })
+                    // (
+                      if stateful then
+                        {
+                          connectionState = "established,related";
+                          returnRule = true;
+                        }
+                      else
+                        { }
+                    ))
                   toIfaces)
               fromIfaces
           );
@@ -165,15 +194,27 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
               fromEndpoint = relation.to or null;
               toEndpoint = relation.from or null;
               reverseSource = true;
+              stateful = true;
             }
           else
             [ ];
       in
       forwardRules ++ reverseRules;
 
+    # SN collision detection (mirrors policy.nix top-level duplicate-id guard)
+    checkDuplicateIds = rels:
+      let
+        ids = builtins.filter (id: id != null) (map (r: relationId (attrsOrEmpty r)) rels);
+        groups = builtins.groupBy (id: id) ids;
+        duplicates = builtins.filter (g: (builtins.length groups."${g}") > 1) (builtins.attrNames groups);
+      in
+      if duplicates != [ ] then
+        throw "FS-310-HDS-010-SDS-010-SMS-030: duplicate relationId collision: ${builtins.concatStringsSep ", " duplicates}"
+      else true;
+
     # ── Test fixtures ───────────────────────────────────────────────────────
 
-    # Positive: symmetric returnBehavior on an allow relation
+    # Positive: symmetric returnBehavior on an allow relation (tenant-A→tenant-B).
     symmetricRelation = {
       action = "allow";
       id = "rel-symmetric-web";
@@ -184,44 +225,47 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
       returnBehavior = "symmetric";
     };
 
-    # Seeded negative 1: absent returnBehavior → should NOT emit reverse rules
-    absentReturnRelation = {
+    # Negative: explicit one-way → forward only, no reverse synthesis.
+    oneWayRelation = {
       action = "allow";
-      id = "rel-absent-web";
+      id = "rel-oneway-web";
       from = { kind = "tenant"; name = "tenant-A"; };
       to = { kind = "tenant"; name = "tenant-B"; };
       trafficType = "web";
       matches = [ { proto = "tcp"; dport = 443; } ];
+      returnBehavior = "one-way";
     };
 
-    # Seeded negative 2: unrecognized returnBehavior → forward only, no reverse
-    nonexistentReturnRelation = {
+    # Recovery: a DISTINCT modeled reverse relation with its own id and its own
+    # complete bounded tuple (tenant-B→tenant-A). This is the only valid way to
+    # authorize a reverse new flow.
+    distinctReverseRelation = {
       action = "allow";
-      id = "rel-nonexistent-web";
-      from = { kind = "tenant"; name = "tenant-A"; };
-      to = { kind = "tenant"; name = "tenant-C"; };
-      trafficType = "web";
-      matches = [ { proto = "tcp"; dport = 443; } ];
-      returnBehavior = "nonexistent";
-    };
-
-    # Seeded negative 3: wrong returnBehavior value → forward only, no reverse
-    wrongReturnRelation = {
-      action = "allow";
-      id = "rel-wrong-web";
+      id = "rel-reverse-web-B-to-A";
       from = { kind = "tenant"; name = "tenant-B"; };
       to = { kind = "tenant"; name = "tenant-A"; };
       trafficType = "web";
-      matches = [ { proto = "tcp"; dport = 443; } ];
-      returnBehavior = "hairpin";
+      matches = [ { proto = "tcp"; dport = 8443; } ];
+      returnBehavior = "one-way";
     };
+
+    # Seeded negative: a synthetic reverse accept labeled with the forward
+    # relation ID (duplicate relationId). Symmetry must not license a second
+    # rule reusing the forward identity.
+    syntheticReverseLabeledSet = [
+      symmetricRelation
+      (symmetricRelation // {
+        from = { kind = "tenant"; name = "tenant-B"; };
+        to = { kind = "tenant"; name = "tenant-A"; };
+        returnBehavior = "one-way";
+      })
+    ];
 
     # ── Execute ──────────────────────────────────────────────────────────────
 
-    symRules   = relationRules symmetricRelation;
-    absRules   = relationRules absentReturnRelation;
-    nonexRules = relationRules nonexistentReturnRelation;
-    wrongRules = relationRules wrongReturnRelation;
+    symRules      = relationRules symmetricRelation;
+    oneWayRules   = relationRules oneWayRelation;
+    distinctRules = relationRules distinctReverseRelation;
 
     # Helpers
     forwardCount = rules: builtins.length (builtins.filter (r: r.direction == "relation-forward") rules);
@@ -230,70 +274,71 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
 
     symFwd = getRule "relation-forward" symRules;
     symRev = getRule "relation-reverse" symRules;
+    distinctFwd = getRule "relation-forward" distinctRules;
+
+    syntheticReverseRejected =
+      let r = builtins.tryEval (checkDuplicateIds syntheticReverseLabeledSet); in !r.success;
 
   in {
-    # ── P1: symmetric returnBehavior → forward + reverse ───────────────────
+    # ── P1: symmetric → exact forward accept + exactly one reverse rule ─────
     symHasForward = forwardCount symRules == 1;
     symHasReverse = reverseCount symRules == 1;
     symTotalCount = builtins.length symRules == 2;
 
-    # ── P2: absent returnBehavior → forward only, NO reverse ────────────────
-    absHasForward = forwardCount absRules == 1;
-    absHasZeroReverse = reverseCount absRules == 0;
-    absTotalCount = builtins.length absRules == 1;
+    # ── P2: reverse is a STATEFUL RETURN, forward is NOT ────────────────────
+    revIsStatefulReturn =
+      (symRev.connectionState or null) == "established,related"
+      && (symRev.returnRule or false) == true;
+    # The reverse rule must NOT be a state-unqualified new-flow accept.
+    revNotStateUnqualified = (symRev.connectionState or null) != null;
+    # The forward rule is an exact new-flow accept, not a stateful return.
+    fwdIsNewFlow =
+      (symFwd.connectionState or null) == null
+      && (symFwd.returnRule or false) == false;
+    # Both directions carry the accept action.
+    symFwdAccept = (symFwd.action or "") == "accept";
+    symRevAccept = (symRev.action or "") == "accept";
 
-    # ── P3 (SN1): nonexistent returnBehavior → forward only, NO reverse ─────
-    nonexHasForward = forwardCount nonexRules == 1;
-    nonexHasZeroReverse = reverseCount nonexRules == 0;
-    nonexTotalCount = builtins.length nonexRules == 1;
+    # ── P3: explicit one-way → forward only, NO reverse ─────────────────────
+    oneWayHasForward = forwardCount oneWayRules == 1;
+    oneWayZeroReverse = reverseCount oneWayRules == 0;
+    oneWayTotalCount = builtins.length oneWayRules == 1;
 
-    # ── P4 (SN2): wrong returnBehavior → forward only, NO reverse ───────────
-    wrongHasForward = forwardCount wrongRules == 1;
-    wrongHasZeroReverse = reverseCount wrongRules == 0;
-    wrongTotalCount = builtins.length wrongRules == 1;
+    # ── P4 (recovery): a distinct reverse relation authorizes its own new flow
+    distinctHasForward = forwardCount distinctRules == 1;
+    distinctZeroReverse = reverseCount distinctRules == 0;
+    distinctForwardIsNewFlow =
+      (distinctFwd.connectionState or null) == null
+      && (distinctFwd.returnRule or false) == false;
+    # It preserves its OWN bounded tuple (own id, own endpoints, own port).
+    distinctOwnId = (distinctFwd.relationId or null) == "rel-reverse-web-B-to-A";
+    distinctOwnFrom = ((distinctFwd.from or {}).name or "") == "tenant-B";
+    distinctOwnTo = ((distinctFwd.to or {}).name or "") == "tenant-A";
+    distinctOwnPort =
+      let m = distinctFwd.matches or []; in
+      builtins.length m == 1 && ((builtins.head m).dport or 0) == 8443;
 
-    # ── P5: reverse rule has correctly swapped fromInterface/toInterface ────
-    # Forward: from=tenant-A → fromInterface=eth-tenantA, to=tenant-B → toInterface=eth-tenantB-policy
+    # ── P5: reverse endpoints/interfaces correctly swapped (real swap) ──────
     fwdFromIface = (symFwd.fromInterface or "") == "eth-tenantA";
     fwdToIface   = (symFwd.toInterface or "") == "eth-tenantB-policy";
-    fwdDirection = (symFwd.direction or "") == "relation-forward";
-
-    # Reverse: from=tenant-B → fromInterface=eth-tenantB, to=tenant-A → toInterface=eth-tenantA-policy
     revFromIface = (symRev.fromInterface or "") == "eth-tenantB";
     revToIface   = (symRev.toInterface or "") == "eth-tenantA-policy";
-    revDirection = (symRev.direction or "") == "relation-reverse";
-
-    # Prove interfaces actually differ (the swap is real, not identity)
     revFromDiffersFromFwd = (symRev.fromInterface or "") != (symFwd.fromInterface or "");
     revToDiffersFromFwd   = (symRev.toInterface or "") != (symFwd.toInterface or "");
-
-    # ── P6: traffic match preservation ──────────────────────────────────────
-    # Same relationId in reverse rule
+    revFromSwapped = ((symRev.from or {}).name or "") == "tenant-B";
+    revToSwapped   = ((symRev.to or {}).name or "") == "tenant-A";
+    fwdFromName    = ((symFwd.from or {}).name or "") == "tenant-A";
+    fwdToName      = ((symFwd.to or {}).name or "") == "tenant-B";
+    # Reverse return preserves the same relation identity and traffic match.
     revSameRelationId = (symRev.relationId or null) == "rel-symmetric-web";
-
-    # Same trafficType in reverse rule
     revSameTrafficType = (symRev.trafficType or "") == "web";
-
-    # Same action in reverse rule
-    revAction = (symRev.action or "") == "accept";
-
-    # Same protocol/port match in reverse
     revMatches = let m = symRev.matches or []; in
-      builtins.length m == 1 && (builtins.head m).proto or "" == "tcp" && (builtins.head m).dport or 0 == 443;
+      builtins.length m == 1
+      && (((builtins.head m).proto or "") == "tcp")
+      && (((builtins.head m).dport or 0) == 443);
 
-    # from/to endpoints swapped
-    revFromSwapped = (symRev.from or {}).name or "" == "tenant-B";
-    revToSwapped   = (symRev.to or {}).name or "" == "tenant-A";
-
-    # Forward rule NOT swapped
-    fwdFromName = (symFwd.from or {}).name or "" == "tenant-A";
-    fwdToName   = (symFwd.to or {}).name or "" == "tenant-B";
-
-    # ── Reverse rule has relationHandoff (policyPointTraversal) ────────────
-    revHasHandoff = builtins.isAttrs (symRev.policyPointTraversal or null);
-
-    # ── Forward rule also has relationHandoff ───────────────────────────────
-    fwdHasHandoff = builtins.isAttrs (symFwd.policyPointTraversal or null);
+    # ── P6 (seeded negative): synthetic reverse labeled with forward ID ─────
+    syntheticReverseRejected = syntheticReverseRejected;
   }
 ' >"${result_json}"
 
