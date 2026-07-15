@@ -108,6 +108,42 @@ in
             true
           else
             fail "is missing required returnBehavior";
+        # FS-230-HDS-010-SDS-010-SMS-020: consume and preserve the explicit
+        # public-ingress translation decision. translationMode = "none" is an
+        # explicit no-translation decision that must survive validation
+        # unchanged; a translation-capable mode must bind an explicit
+        # sourcePreservation, and invalid/unrecognized/ambiguous translation
+        # fields fail closed before policy evaluation.
+        validateTranslationAuthority = relationIndex: relation:
+          let
+            relationPath = "${relationPathRoot}[${toString relationIndex}]";
+            relationId = if isNonEmptyString (relation.id or null) then relation.id else "<unknown>";
+            publicIngressAuthority = relation.publicIngressTupleAuthority or null;
+            translationPresent =
+              builtins.isAttrs publicIngressAuthority && publicIngressAuthority ? translationMode;
+            translationMode = if translationPresent then publicIngressAuthority.translationMode else null;
+            sourcePreservationPresent =
+              builtins.isAttrs publicIngressAuthority && publicIngressAuthority ? sourcePreservation;
+            sourcePreservation = if sourcePreservationPresent then publicIngressAuthority.sourcePreservation else null;
+            recognizedTranslationModes = [ "none" "napt" "nat" "nat66" "provider-port-forward" ];
+            recognizedSourcePreservations = [ "preserve-source" "provider-napt" "rewritten" ];
+            failT = message:
+              failForwarding relationPath "FS-230-HDS-010-SDS-010-SMS-020: allow relation '${relationId}' ${message}";
+          in
+          if (relation.action or "allow") != "allow" then
+            true
+          else if translationPresent && !isNonEmptyString translationMode then
+            failT "has an invalid publicIngressTupleAuthority.translationMode"
+          else if translationPresent && !builtins.elem translationMode recognizedTranslationModes then
+            failT "has an unrecognized publicIngressTupleAuthority.translationMode '${translationMode}'; recognized values: ${builtins.concatStringsSep ", " recognizedTranslationModes}"
+          else if translationPresent && translationMode != "none" && !sourcePreservationPresent then
+            failT "requests translationMode '${translationMode}' without an explicit publicIngressTupleAuthority.sourcePreservation (ambiguous source-address handling)"
+          else if sourcePreservationPresent && !isNonEmptyString sourcePreservation then
+            failT "has an invalid publicIngressTupleAuthority.sourcePreservation"
+          else if sourcePreservationPresent && !builtins.elem sourcePreservation recognizedSourcePreservations then
+            failT "has an unrecognized publicIngressTupleAuthority.sourcePreservation '${sourcePreservation}'; recognized values: ${builtins.concatStringsSep ", " recognizedSourcePreservations}"
+          else
+            true;
       in
       forceAll (
         builtins.genList
@@ -116,9 +152,13 @@ in
             in
             # FS-180-HDS-010-SDS-010-SMS-010: an incomplete or conflicting
             # allow tuple must fail before policy evaluation.
+            # FS-230-HDS-010-SDS-010-SMS-020: an invalid/ambiguous public-ingress
+            # translation decision must also fail before policy evaluation.
             builtins.seq
               (validateReturnBehavior idx relation)
-              (builtins.seq (validateRelationEndpoint idx relation "from") (validateRelationEndpoint idx relation "to")))
+              (builtins.seq
+                (validateTranslationAuthority idx relation)
+                (builtins.seq (validateRelationEndpoint idx relation "from") (validateRelationEndpoint idx relation "to"))))
           (builtins.length allowedRelations)
       );
 }
