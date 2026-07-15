@@ -138,6 +138,8 @@ in
             failT "has an unrecognized publicIngressTupleAuthority.translationMode '${translationMode}'; recognized values: ${builtins.concatStringsSep ", " recognizedTranslationModes}"
           else if translationPresent && translationMode != "none" && !sourcePreservationPresent then
             failT "requests translationMode '${translationMode}' without an explicit publicIngressTupleAuthority.sourcePreservation (ambiguous source-address handling)"
+          else if sourcePreservationPresent && !translationPresent then
+            failT "declares publicIngressTupleAuthority.sourcePreservation without publicIngressTupleAuthority.translationMode (missing translation mode field; ambiguous translation binding)"
           else if sourcePreservationPresent && !isNonEmptyString sourcePreservation then
             failT "has an invalid publicIngressTupleAuthority.sourcePreservation"
           else if sourcePreservationPresent && !builtins.elem sourcePreservation recognizedSourcePreservations then
