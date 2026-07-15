@@ -69,12 +69,43 @@ in
             forceAll (map (tenantName: validateNamedReference "tenant" tenantSet relationPath "${endpointPath}.members" tenantName) (requireStringList "${endpointPath}.members" (endpoint.members or null)))
           else
             true;
+        validateReturnBehavior = relationIndex: relation:
+          let
+            relationPath = "${relationPathRoot}[${toString relationIndex}]";
+            relationId = if isNonEmptyString (relation.id or null) then relation.id else "<unknown>";
+            topLevelPresent = relation ? returnBehavior;
+            topLevel = relation.returnBehavior or null;
+            publicIngressAuthority = relation.publicIngressTupleAuthority or null;
+            nestedPresent =
+              builtins.isAttrs publicIngressAuthority && publicIngressAuthority ? returnBehavior;
+            nested = if nestedPresent then publicIngressAuthority.returnBehavior else null;
+            validReturnBehavior = value: isNonEmptyString value;
+            fail = message:
+              failForwarding relationPath "allow relation '${relationId}' ${message}";
+          in
+          if (relation.action or "allow") != "allow" then
+            true
+          else if topLevelPresent && !validReturnBehavior topLevel then
+            fail "has an invalid top-level returnBehavior"
+          else if nestedPresent && !validReturnBehavior nested then
+            fail "has an invalid publicIngressTupleAuthority.returnBehavior"
+          else if topLevelPresent && nestedPresent && topLevel != nested then
+            fail "has conflicting returnBehavior values '${topLevel}' and '${nested}'"
+          else if topLevelPresent || nestedPresent then
+            true
+          else
+            fail "is missing required returnBehavior";
       in
       forceAll (
         builtins.genList
           (idx:
             let relation = attrsOrEmpty (builtins.elemAt allowedRelations idx);
-            in builtins.seq (validateRelationEndpoint idx relation "from") (validateRelationEndpoint idx relation "to"))
+            in
+            # FS-180-HDS-010-SDS-010-SMS-010: an incomplete or conflicting
+            # allow tuple must fail before policy evaluation.
+            builtins.seq
+              (validateReturnBehavior idx relation)
+              (builtins.seq (validateRelationEndpoint idx relation "from") (validateRelationEndpoint idx relation "to")))
           (builtins.length allowedRelations)
       );
 }
