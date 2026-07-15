@@ -92,6 +92,16 @@ assert_rejects "empty translationMode" \
 assert_rejects "translation without sourcePreservation" \
   '[{"id":"ambiguous-source","action":"allow","from":"any","to":"any","publicIngressTupleAuthority":{"returnBehavior":"stateful-return","translationMode":"napt"}}]' \
   "allow relation 'ambiguous-source' requests translationMode 'napt' without an explicit publicIngressTupleAuthority.sourcePreservation"
+# Seeded negative (SMS Negative case 1, missing mode field): sourcePreservation
+# and returnBehavior without translationMode is an ambiguous translation binding
+# and must fail closed before policy evaluation, naming the relation and the
+# missing mode field.
+assert_rejects "missing translationMode with sourcePreservation" \
+  '[{"id":"missing-mode","action":"allow","from":"any","to":"any","publicIngressTupleAuthority":{"returnBehavior":"stateful-return","sourcePreservation":"preserve-source"}}]' \
+  "allow relation 'missing-mode' declares publicIngressTupleAuthority.sourcePreservation without publicIngressTupleAuthority.translationMode (missing translation mode field; ambiguous translation binding)"
+# Recovery: the same tuple with an explicit translation mode validates.
+assert_accepts "recovery: missing mode fixed with explicit mode" \
+  '[{"id":"missing-mode","action":"allow","from":"any","to":"any","publicIngressTupleAuthority":{"returnBehavior":"stateful-return","translationMode":"none","sourcePreservation":"preserve-source"}}]'
 assert_rejects "unrecognized sourcePreservation" \
   '[{"id":"bad-preservation","action":"allow","from":"any","to":"any","publicIngressTupleAuthority":{"returnBehavior":"stateful-return","translationMode":"napt","sourcePreservation":"maybe"}}]' \
   "allow relation 'bad-preservation' has an unrecognized publicIngressTupleAuthority.sourcePreservation 'maybe'"
