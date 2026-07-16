@@ -53,13 +53,36 @@
 #     labels-only-authority, unsafe-reverse are all rejected, then the
 #     unmodified outputs are re-accepted.
 #
-# REMAINING GAP (row stays NOT OK until proven): post-DNAT selector
-# route/forward continuity for a translated public-ingress tuple (SMS
-# Construction Handoff item 8 / Negative case 5) requires the modeled
-# translated-tuple route and tuple-scoped forwarding authority at each
-# selector handoff; CPM does not yet consume a public-ingress tuple
-# authority (see FS-310-HDS-020-SDS-010-SMS-075), so that predicate cannot
-# be constructed here yet.
+# Post-DNAT selector route/forward continuity (SMS Construction Handoff item 8
+# / Negative case 5), against the REAL selector construction output plus
+# src/cpm/firewall-intent/rules/post-dnat-continuity.nix:
+#   CONT-P: the REAL selectorPairRule dedicated forward accept, placed as the
+#           upstream-selector's tuple-forwarding rule with an exact /32 target
+#           route and a next hop that is the following (policy) hop, carries
+#           the SAME translated udp/4242 tuple continuously through
+#           translation-owner -> upstream-selector -> policy; the selector hop
+#           authorizes the tuple via its dedicated-link-isolation transport
+#           authority (provenance labels alone never authorize).
+#   CONT-N5-route: removing the upstream-selector's target route breaks
+#           continuity at exactly upstream-selector (missing-target-route)
+#           while the translation owner stays independently OK.
+#   CONT-N5-tuple: removing the upstream-selector's tuple-owned forward rule
+#           breaks continuity at exactly upstream-selector
+#           (route-without-tuple-allow) even though the route is present.
+#   CONT-N5-reverse: the selector's stateful established,related return leg
+#           does NOT authorize the forward tuple (non-recovery).
+#   CONT-N5g: an incomplete translated tuple is rejected fail-closed
+#           (post-dnat-tuple-incomplete), never broadly accepted.
+#
+# REMAINING GAP (row stays NOT OK until proven): the seeded module-level
+# continuity predicate above proves the boundary against constructed
+# translated-tuple hop chains, but the INTEGRATED pinned-lab predicate — a
+# REAL translated public-ingress tuple flowing through the compiled site
+# pipeline and materializing route + tuple-scoped forward authority at each
+# selector handoff — still requires CPM to consume a public-ingress tuple
+# authority in the site pipeline (evaluatePostDnatContinuity has no site-
+# pipeline consumer yet; see FS-310-HDS-020-SDS-010-SMS-075). That integrated
+# predicate cannot be constructed here until the SMS-075 chain recovers.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -244,6 +267,229 @@ assert_fixture "R2 recovery via complete dedicated-link isolation" '
   .r2Isolation
   | (.basis == "dedicated-link-isolation") and (.admissible == true)
     and (.provenanceIsAuthority == false)
+'
+
+# --- Post-DNAT selector route/forward continuity (CH item 8 / Negative 5) ---
+# Seeded translated-tuple hop chain consuming the REAL selectorPairRule
+# output at the upstream-selector hop, evaluated by the REAL
+# post-dnat-continuity module (production-shaped 2026-07-15 tuple:
+# UDP to 192.168.3.10:4242 after DNAT on the translation owner).
+
+cat > "${tmp_dir}/continuity-fixture.nix" <<'EOF'
+let
+  repoRoot = builtins.getEnv "CPM_REPO_ROOT";
+  common = import (repoRoot + "/src/cpm/firewall-intent/rules/common.nix") { };
+  ruleBuilders = import (repoRoot + "/src/cpm/firewall-intent/rules.nix") { };
+  evaluate = ruleBuilders.evaluatePostDnatContinuity;
+
+  mkIface = args: {
+    runtimeIfName = args.name;
+    sourceKind = args.sourceKind or "p2p";
+    hostFacing = args.hostFacing or false;
+    backingRef = {
+      kind = args.kind or "link";
+      id = args.id or "";
+      lane = args.lane or { kind = "transit"; };
+    };
+  };
+
+  # Dedicated modeled selector p2p ends (ingress from translation owner,
+  # egress toward the policy hop) — the SMS-040 P1 shape.
+  selIngress = mkIface { name = "p0"; id = "link-core-upstream-selector"; };
+  selEgress = mkIface { name = "p1"; id = "link-selector-policy"; };
+
+  # The REAL selector handoff rules emitted by the SMS-040 construction.
+  selectorPair = common.selectorPairRule selIngress selEgress;
+  selectorForward = builtins.head selectorPair;
+  selectorReverse = builtins.elemAt selectorPair 1;
+
+  tuple = {
+    family = 4;
+    protocol = "udp";
+    dstAddress = "192.168.3.10";
+    dstPort = 4242;
+    translationOwner = "core";
+  };
+
+  # Translation owner: DNAT plus bounded udp/4242 forward and an exact
+  # target route toward the upstream selector — kept valid in every case.
+  coreHop = {
+    name = "core";
+    hopAddress = "10.0.0.1";
+    selectedTable = "main";
+    routes = [
+      {
+        dst = "192.168.3.10/32";
+        table = "main";
+        nextHop = "10.0.1.2";
+      }
+    ];
+    rules = [
+      {
+        action = "accept";
+        fromInterface = "ens3";
+        toInterface = "p0";
+        matches = [
+          {
+            proto = "udp";
+            family = "any";
+            dports = [ 4242 ];
+          }
+        ];
+      }
+    ];
+  };
+
+  selectorRoute = {
+    dst = "192.168.3.10/32";
+    table = "main";
+    nextHop = "10.0.2.2";
+  };
+
+  selectorHop = {
+    name = "upstream-selector";
+    hopAddress = "10.0.1.2";
+    selectedTable = "main";
+    routes = [ selectorRoute ];
+    rules = [ selectorForward ];
+  };
+
+  policyHop = {
+    name = "policy";
+    hopAddress = "10.0.2.2";
+    targetFacing = true;
+    selectedTable = "main";
+    routes = [
+      {
+        dst = "192.168.3.0/24";
+        table = "main";
+        nextHop = null;
+      }
+    ];
+    rules = [
+      {
+        action = "accept";
+        fromInterface = "p1";
+        toInterface = "br-tenant";
+        matches = [
+          {
+            proto = "udp";
+            family = "any";
+            dports = [ 4242 ];
+          }
+        ];
+      }
+    ];
+  };
+
+  working = evaluate {
+    inherit tuple;
+    hops = [ coreHop selectorHop policyHop ];
+  };
+
+  selectorRouteMissing = evaluate {
+    inherit tuple;
+    hops = [ coreHop (selectorHop // { routes = [ ]; }) policyHop ];
+  };
+
+  selectorTupleMissing = evaluate {
+    inherit tuple;
+    hops = [ coreHop (selectorHop // { rules = [ ]; }) policyHop ];
+  };
+
+  reverseOnlyNonRecovery = evaluate {
+    inherit tuple;
+    hops = [ coreHop (selectorHop // { rules = [ selectorReverse ]; }) policyHop ];
+  };
+
+  incompleteTuple = evaluate {
+    tuple = builtins.removeAttrs tuple [ "dstPort" ];
+    hops = [ coreHop selectorHop policyHop ];
+  };
+in
+{
+  selectorForwardAuthority = selectorForward.transportAuthority;
+  selectorReverseIsReturn =
+    (selectorReverse.returnRule or false)
+    && (selectorReverse.connectionState or "") == "established,related";
+  inherit
+    working
+    selectorRouteMissing
+    selectorTupleMissing
+    reverseOnlyNonRecovery
+    incompleteTuple
+    ;
+}
+EOF
+
+continuity_eval="${tmp_dir}/continuity-fixture.json"
+CPM_REPO_ROOT="${repo_root}" nix eval \
+  --json --impure \
+  --extra-experimental-features 'nix-command flakes' \
+  --file "${tmp_dir}/continuity-fixture.nix" > "${continuity_eval}"
+
+assert_continuity() {
+  local label="$1"
+  local filter="$2"
+  if jq -e "${filter}" "${continuity_eval}" >/dev/null; then
+    echo "PASS FS-270-HDS-010-SDS-010-SMS-040 ${label}"
+  else
+    echo "FAIL FS-270-HDS-010-SDS-010-SMS-040 ${label}" >&2
+    jq '.' "${continuity_eval}" >&2 || true
+    exit 1
+  fi
+}
+
+assert_continuity "CONT-P real selector forward rule carries isolation authority" '
+  .selectorForwardAuthority
+  | (.basis == "dedicated-link-isolation")
+    and (.admissible == true)
+    and (.provenanceIsAuthority == false)
+'
+assert_continuity "CONT-P translated tuple continuous through the selector handoff" '
+  .working
+  | (.continuous == true)
+    and (.firstBrokenHop == null)
+    and (.failClosed == false)
+    and ((.hopRecords | length) == 3)
+    and (.hopRecords | all(.[]; .ok == true))
+'
+assert_continuity "CONT-P selector hop emits exact route, next hop, and tuple authority" '
+  .working.hopRecords[1]
+  | (.hop == "upstream-selector")
+    and (.targetRoute.dst == "192.168.3.10/32")
+    and (.nextHop == "10.0.2.2")
+    and (.tupleForwarding.satisfied == true)
+    and (.tupleForwarding.basis == "isolated-transport-authority")
+'
+assert_continuity "CONT-N5-route missing selector route breaks at upstream-selector" '
+  .selectorRouteMissing
+  | (.continuous == false)
+    and (.firstBrokenHop == "upstream-selector")
+    and (.failClosed == true)
+    and (.diagnostic.code == "post-dnat-continuity-broken")
+    and ((.diagnostic.missing | index("missing-target-route")) != null)
+    and (.hopRecords[0] | (.hop == "core") and (.ok == true))
+'
+assert_continuity "CONT-N5-tuple selector route without tuple allow breaks at upstream-selector" '
+  .selectorTupleMissing
+  | (.continuous == false)
+    and (.firstBrokenHop == "upstream-selector")
+    and ((.diagnostic.missing | index("route-without-tuple-allow")) != null)
+    and (.hopRecords[1].preconditions.routeFound == true)
+'
+assert_continuity "CONT-N5-reverse stateful return leg never authorizes the forward tuple" '
+  (.selectorReverseIsReturn == true)
+  and (.reverseOnlyNonRecovery
+       | (.continuous == false)
+         and (.firstBrokenHop == "upstream-selector")
+         and (.hopRecords[1].tupleForwarding.satisfied == false))
+'
+assert_continuity "CONT-N5g incomplete translated tuple rejected fail-closed" '
+  .incompleteTuple
+  | (.continuous == false)
+    and (.failClosed == true)
+    and (.diagnostic.code == "post-dnat-tuple-incomplete")
 '
 
 # --- Integrated predicates on the pinned HAT lab ---------------------------
