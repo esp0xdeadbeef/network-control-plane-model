@@ -184,15 +184,21 @@ else if role == "policy" then
     };
   } // policyDiagnosticAttrs)
 else if role == "core" then
+  let
+    coreRules = buildCoreRules {
+      inherit tenantPrefixOwners transitInterfaces uplinkInterfaces dnsServicePublicEgressRules;
+    };
+  in
   {
     mode = "explicit-core-forwarding";
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     uplinkInterfaces = map (iface: iface.runtimeIfName) uplinkInterfaces;
     wanInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
     lanInterfaces = map (iface: iface.runtimeIfName) lanInterfaces;
-    rules = buildCoreRules {
-      inherit tenantPrefixOwners transitInterfaces uplinkInterfaces dnsServicePublicEgressRules;
-    };
+    rules = coreRules.rules;
+    # FS-270-HDS-010-SDS-010-SMS-010: fail-closed core-transit admission
+    # record — denied surfaces are reported, never silently forwarded.
+    transitAdmission = coreRules.transitAdmission;
   }
 else
   null
