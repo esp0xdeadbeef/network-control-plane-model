@@ -97,6 +97,7 @@ builtins.concatLists (
                         fromIface = fromIface;
                         toIface = toIface;
                         decomposed = true;
+                        sourcePrefixes = egressPrefixes;
                       }
                   ))
                   egressPrefixes)

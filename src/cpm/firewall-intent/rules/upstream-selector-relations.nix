@@ -127,6 +127,14 @@ let
             matches = relationMatches relation;
             from = attrsOrEmpty (relation.from or null);
             to = attrsOrEmpty (relation.to or null);
+            # FS-270-HDS-010-SDS-010-SMS-040: this accept is authorized by an
+            # explicitly modeled intent relation, not by interface fanout or
+            # provenance labels.
+            transportAuthority = {
+              basis = "modeled-relation";
+              provenanceIsAuthority = false;
+              admissible = true;
+            };
             relationCardinality = {
               unit = "selector-forwarding-rule";
               decomposition = "decomposed-by-selector-interface-scope";

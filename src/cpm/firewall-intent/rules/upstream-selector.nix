@@ -97,6 +97,7 @@ let
             fromIface = sourceIface;
             toIface = wanIface;
             decomposed = true;
+            sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
           })
         (wanCoreInterfacesFor sourceIface)
     ) runtimeOriginCoreInterfaces
@@ -168,6 +169,7 @@ let
               fromIface = policyIface;
               toIface = coreIface;
               decomposed = true;
+              sourcePrefixes = policySourcePrefixes;
             }) policySourcePrefixes)
           ]
         )
@@ -177,12 +179,15 @@ let
             fromInterface = coreIface.runtimeIfName;
             toInterface = policyIface.runtimeIfName;
             applyTcpMssClamp = false;
+            connectionState = "established,related";
+            returnRule = true;
           } // common.selectorRuntimeRuleAudit {
             relationId = "runtime-origin-egress";
             direction = "reverse-runtime-origin";
             fromIface = coreIface;
             toIface = policyIface;
             decomposed = true;
+            statefulReturn = true;
           }) (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
         ]
       ) extraCores)
@@ -224,6 +229,7 @@ let
                   fromIface = policyIface;
                   toIface = coreIface;
                   decomposed = true;
+                  sourcePrefixes = policySourcePrefixes;
                 })
                 policySourcePrefixes)
             ]
@@ -235,12 +241,15 @@ let
               fromInterface = coreIface.runtimeIfName;
               toInterface = policyIface.runtimeIfName;
               applyTcpMssClamp = false;
+              connectionState = "established,related";
+              returnRule = true;
             } // common.selectorRuntimeRuleAudit {
               relationId = "runtime-origin-egress";
               direction = "reverse-runtime-origin";
               fromIface = coreIface;
               toIface = policyIface;
               decomposed = true;
+              statefulReturn = true;
             })
             (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
         ]
