@@ -107,6 +107,7 @@ let
                 fromIface = exitPolicyIface;
                 toIface = coreIface;
                 decomposed = true;
+                sourcePrefixes = sourceScope.sourcePrefixes;
               }
               // (if sourceScope.sourceFiles != [ ] then { family = 6; } else { })
             ) (exitCoreInterfacesFor exitPolicyIface)
@@ -142,6 +143,7 @@ let
                     fromIface = fromEntry.iface;
                     toIface = toIface;
                     decomposed = true;
+                    sourcePrefixes = fromEntry.sourcePrefixes;
                   }
                   // (if fromEntry.sourceFiles != [ ] then { family = 6; } else { })
                 )

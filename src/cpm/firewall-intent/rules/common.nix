@@ -267,6 +267,131 @@ rec {
     in
     "selector-handoff-${direction}--${access}--${fromScope.relationPurpose}-to-${toScope.relationPurpose}--${uplinkPart}";
 
+  # FS-270-HDS-010-SDS-010-SMS-040: selector-handoff provenance fields
+  # (relationId, comment, topology scopes, non-bypass labels) prove origin but
+  # never authorize a packet accept. Every selector rule built through this
+  # audit carries a transportAuthority record DISTINCT from that provenance:
+  #   - stateful-return: the reverse leg of a modeled handoff is bounded
+  #     established,related reply traffic, never a reverse new-flow authority;
+  #   - enforceable-matches: the rule preserves modeled packet matches
+  #     (traffic class and/or address/source scope);
+  #   - dedicated-link-isolation: unclassified (trafficType = any) transport
+  #     is admissible only when both interfaces are dedicated, non-external,
+  #     non-host-facing modeled p2p links (fabric-link id, or pppoe session
+  #     with a modeled peer runtime target) — stable isolation keys bound;
+  #   - otherwise the authority is UNPROVEN: admissible = false and the
+  #     diagnostic names the unlabeled forwarding surfaces. Local interface
+  #     fanout, relation labels, and comments never recover this by
+  #     themselves.
+  selectorSurfaceExternal = iface:
+    (iface.external or false) == true
+    || ((attrsOrEmpty (iface.wan or null)).external or false) == true
+    || ((backingRef iface).external or false) == true;
+
+  selectorIsolationProof = iface:
+    let
+      ref = backingRef iface;
+      base = {
+        surface = iface.runtimeIfName;
+        sourceKind = iface.sourceKind or null;
+        hostFacing = iface.hostFacing or false;
+      };
+    in
+    if selectorSurfaceExternal iface then
+      base // {
+        admissible = false;
+        reason = "external-surface-not-selector-transport";
+      }
+    else if (iface.hostFacing or false) == true then
+      base // {
+        admissible = false;
+        reason = "host-facing-surface-not-isolated-transport";
+      }
+    else if (ref.kind or null) == "link" && builtins.isString (ref.id or null) && ref.id != "" then
+      base // {
+        admissible = true;
+        dedicated = true;
+        external = false;
+        isolationKey = {
+          kind = "fabric-link";
+          id = ref.id;
+        };
+      }
+    else if
+      (ref.kind or null) == "pppoe-session"
+      && builtins.isString (ref.peerRuntimeTarget or null)
+      && ref.peerRuntimeTarget != ""
+    then
+      base // {
+        admissible = true;
+        dedicated = true;
+        external = false;
+        isolationKey = {
+          kind = "modeled-session-peer";
+          id = ref.id or null;
+          peerRuntimeTarget = ref.peerRuntimeTarget;
+        };
+      }
+    else
+      base // {
+        admissible = false;
+        reason = "provenance-without-isolation-authority";
+      };
+
+  selectorTransportAuthority =
+    { fromIface
+    , toIface
+    , trafficType ? "any"
+    , sourcePrefixes ? [ ]
+    , statefulReturn ? false
+    ,
+    }:
+    let
+      fromProof = selectorIsolationProof fromIface;
+      toProof = selectorIsolationProof toIface;
+      enforceable =
+        (builtins.isString trafficType && trafficType != "" && trafficType != "any")
+        || sourcePrefixes != [ ];
+    in
+    if statefulReturn then
+      {
+        basis = "stateful-return";
+        provenanceIsAuthority = false;
+        admissible = true;
+        connectionState = "established,related";
+      }
+    else if enforceable then
+      {
+        basis = "enforceable-matches";
+        provenanceIsAuthority = false;
+        admissible = true;
+        matches = {
+          trafficType = trafficType;
+          sourcePrefixCount = builtins.length sourcePrefixes;
+        };
+      }
+    else if fromProof.admissible && toProof.admissible then
+      {
+        basis = "dedicated-link-isolation";
+        provenanceIsAuthority = false;
+        admissible = true;
+        from = fromProof;
+        to = toProof;
+      }
+    else
+      {
+        basis = "unproven";
+        provenanceIsAuthority = false;
+        admissible = false;
+        diagnostic = "selector-unlabeled-broad-forwarding";
+        surfaces = builtins.filter (surface: surface != null) [
+          (if fromProof.admissible then null else fromProof.surface)
+          (if toProof.admissible then null else toProof.surface)
+        ];
+        from = fromProof;
+        to = toProof;
+      };
+
   selectorRuntimeRuleAudit =
     { relationId
     , direction
@@ -274,6 +399,8 @@ rec {
     , toIface
     , trafficType ? "any"
     , decomposed ? false
+    , sourcePrefixes ? [ ]
+    , statefulReturn ? false
     ,
     }:
     {
@@ -283,6 +410,9 @@ rec {
       direction = direction;
       from = selectorScope fromIface;
       to = selectorScope toIface;
+      transportAuthority = selectorTransportAuthority {
+        inherit fromIface toIface trafficType sourcePrefixes statefulReturn;
+      };
       relationCardinality = {
         unit = "selector-forwarding-rule";
         decomposition =
@@ -299,12 +429,18 @@ rec {
       policyPoint = "selector";
     };
 
-  selectorPairAudit = direction: fromIface: toIface:
-    selectorRuntimeRuleAudit {
+  selectorPairAuditWith = auditArgs: direction: fromIface: toIface:
+    selectorRuntimeRuleAudit ({
       relationId = selectorRelationId direction fromIface toIface;
       inherit direction fromIface toIface;
-    };
+    } // auditArgs);
 
+  selectorPairAudit = selectorPairAuditWith { };
+
+  # FS-270-HDS-010-SDS-010-SMS-040: the reverse leg of a selector handoff is
+  # stateful established,related return traffic. A reverse-direction new-flow
+  # accept is never synthesized from the forward interface pair; it requires
+  # a separately modeled reverse relation with its own enforceable authority.
   selectorPairRule = fromIface: toIface: [
     ({
       action = "accept";
@@ -317,25 +453,34 @@ rec {
       fromInterface = toIface.runtimeIfName;
       toInterface = fromIface.runtimeIfName;
       applyTcpMssClamp = false;
-    } // selectorPairAudit "reverse" toIface fromIface)
+      connectionState = "established,related";
+      returnRule = true;
+    } // selectorPairAuditWith { statefulReturn = true; } "reverse" toIface fromIface)
   ];
 
-  selectorPairRuleWithRuntimeOriginScope = runtimeOriginSourcePrefixes: fromIface: toIface: [
-    (withSourcePrefixes
-      ({
-        action = "accept";
-        fromInterface = fromIface.runtimeIfName;
-        toInterface = toIface.runtimeIfName;
-        applyTcpMssClamp = true;
-      } // selectorPairAudit "forward-runtime-origin" fromIface toIface)
-      (sourcePrefixesReachableVia runtimeOriginSourcePrefixes fromIface))
-    (withSourcePrefixes
-      ({
-        action = "accept";
-        fromInterface = toIface.runtimeIfName;
-        toInterface = fromIface.runtimeIfName;
-        applyTcpMssClamp = false;
-      } // selectorPairAudit "reverse-runtime-origin" toIface fromIface)
-      (sourcePrefixesReachableVia runtimeOriginSourcePrefixes toIface))
-  ];
+  selectorPairRuleWithRuntimeOriginScope = runtimeOriginSourcePrefixes: fromIface: toIface:
+    let
+      forwardPrefixes = sourcePrefixesReachableVia runtimeOriginSourcePrefixes fromIface;
+      reversePrefixes = sourcePrefixesReachableVia runtimeOriginSourcePrefixes toIface;
+    in
+    [
+      (withSourcePrefixes
+        ({
+          action = "accept";
+          fromInterface = fromIface.runtimeIfName;
+          toInterface = toIface.runtimeIfName;
+          applyTcpMssClamp = true;
+        } // selectorPairAuditWith { sourcePrefixes = forwardPrefixes; } "forward-runtime-origin" fromIface toIface)
+        forwardPrefixes)
+      (withSourcePrefixes
+        ({
+          action = "accept";
+          fromInterface = toIface.runtimeIfName;
+          toInterface = fromIface.runtimeIfName;
+          applyTcpMssClamp = false;
+          connectionState = "established,related";
+          returnRule = true;
+        } // selectorPairAuditWith { statefulReturn = true; } "reverse-runtime-origin" toIface fromIface)
+        reversePrefixes)
+    ];
 }
