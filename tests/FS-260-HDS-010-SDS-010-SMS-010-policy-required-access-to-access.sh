@@ -129,7 +129,7 @@ result="$({
           && (rule.toInterface or null) == "edge-b"
           && !(rule ? connectionState)
           && !(rule.returnRule or false)
-          && (rule.transportAuthority.basis or null) == "modeled-relation-path-leg")
+          && (rule.transportAuthority.basis or null) == "modeled-relation")
         requiredRules);
       optionalDirect = builtins.length (matching "allow-a-to-b" "edge-a" "edge-b" optionalRules);
       denyDirect = builtins.length (matching "deny-a-to-b" "edge-a" "edge-b" denyRules);
