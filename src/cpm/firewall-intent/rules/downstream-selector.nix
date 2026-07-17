@@ -36,10 +36,12 @@ let
 
   accessInterfaceByNode =
     builtins.listToAttrs (
-      map (iface: {
-        name = common.laneAccess iface;
-        value = iface;
-      }) accessInterfaces
+      map
+        (iface: {
+          name = common.laneAccess iface;
+          value = iface;
+        })
+        accessInterfaces
     );
 
   accessIfacesForEndpoint = endpoint:
@@ -85,6 +87,39 @@ let
       )
       trafficPaths;
 
+  pathContainsPolicyEgressToAccess = relation: accessNode:
+    let
+      id = relationId relation;
+    in
+    id != null
+    && builtins.any
+      (
+        path:
+        let
+          nodePath = if builtins.isList (path.nodePath or null) then path.nodePath else [ ];
+          stagePath = if builtins.isList (path.stagePath or null) then path.stagePath else [ ];
+          nodeCount = builtins.length nodePath;
+          stageCount = builtins.length stagePath;
+          candidateIndexes =
+            builtins.genList (index: index) (
+              if nodeCount < 3 || stageCount != nodeCount then 0 else nodeCount - 2
+            );
+        in
+        builtins.isAttrs path
+        && (path.relationId or null) == id
+        && (path.requiresPolicy or false) == true
+        && builtins.any
+          (
+            index:
+            builtins.elemAt stagePath index == "policy"
+            && builtins.elemAt stagePath (index + 1) == "downstream-selector"
+            && builtins.elemAt stagePath (index + 2) == "access"
+            && builtins.elemAt nodePath (index + 2) == accessNode
+          )
+          candidateIndexes
+      )
+      trafficPaths;
+
   localRelationRules = relationRaw:
     let
       relation = attrsOrEmpty relationRaw;
@@ -98,57 +133,122 @@ let
       [ ]
     else
       builtins.concatLists (
-      map
-        (fromIface:
-          map
-            (toIface: {
-              inherit action;
-              relationId = id;
-              comment = id;
-              priority = relation.priority or null;
-              trafficType = relation.trafficType or "any";
-              inherit direction;
-              matches = relationMatches relation;
-              from = attrsOrEmpty (relation.from or null);
-              to = attrsOrEmpty (relation.to or null);
-              # FS-270-HDS-010-SDS-010-SMS-040: this accept is authorized by
-              # an explicitly modeled intent relation, not by interface
-              # fanout or provenance labels.
-              transportAuthority = {
-                basis = "modeled-relation";
-                provenanceIsAuthority = false;
-                admissible = true;
-              };
-              relationCardinality = {
-                unit = "selector-forwarding-rule";
-                decomposition = "decomposed-by-selector-interface-scope";
-                decomposed = true;
-              };
-              fromInterface = fromIface.runtimeIfName;
-              toInterface = toIface.runtimeIfName;
-              applyTcpMssClamp = false;
-            }
-            // common.relationHandoff {
-              relationId = id;
-              inherit action direction fromIface toIface;
-              policyPoint = "downstream-selector";
-            })
-            (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) toIfaces))
-        fromIfaces
+        map
+          (fromIface:
+            map
+              (toIface: {
+                inherit action;
+                relationId = id;
+                comment = id;
+                priority = relation.priority or null;
+                trafficType = relation.trafficType or "any";
+                inherit direction;
+                matches = relationMatches relation;
+                from = attrsOrEmpty (relation.from or null);
+                to = attrsOrEmpty (relation.to or null);
+                # FS-270-HDS-010-SDS-010-SMS-040: this accept is authorized by
+                # an explicitly modeled intent relation, not by interface
+                # fanout or provenance labels.
+                transportAuthority = {
+                  basis = "modeled-relation";
+                  provenanceIsAuthority = false;
+                  admissible = true;
+                };
+                relationCardinality = {
+                  unit = "selector-forwarding-rule";
+                  decomposition = "decomposed-by-selector-interface-scope";
+                  decomposed = true;
+                };
+                fromInterface = fromIface.runtimeIfName;
+                toInterface = toIface.runtimeIfName;
+                applyTcpMssClamp = false;
+              }
+              // common.relationHandoff {
+                relationId = id;
+                inherit action direction fromIface toIface;
+                policyPoint = "downstream-selector";
+              })
+              (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) toIfaces))
+          fromIfaces
       );
-in
-builtins.concatLists (
-  builtins.map
-    (accessIface:
+
+  policyEgressRules = relationRaw:
     let
-      policyIface = policyForAccess accessIface;
+      relation = attrsOrEmpty relationRaw;
+      toIfaces = accessIfacesForEndpoint (relation.to or null);
+      id = relationId relation;
+      action = if (relation.action or "allow") == "deny" then "deny" else "accept";
+      direction = "relation-forward-policy-egress";
     in
-    if policyIface == null then
+    if action != "accept" || !(relationRequiresPolicy relation) then
       [ ]
     else
-      common.selectorPairRule accessIface policyIface
-      ++ common.selectorPairRuleWithRuntimeOriginScope runtimeOriginSourcePrefixes accessIface policyIface)
-    accessInterfaces
-)
+      builtins.concatLists (
+        map
+          (
+            toIface:
+            let
+              policyIface = policyForAccess toIface;
+              accessNode = common.laneAccess toIface;
+            in
+            if
+              policyIface == null
+              || accessNode == null
+              || !(pathContainsPolicyEgressToAccess relation accessNode)
+            then
+              [ ]
+            else
+              [
+                ({
+                  inherit action;
+                  relationId = id;
+                  comment = id;
+                  priority = relation.priority or null;
+                  trafficType = relation.trafficType or "any";
+                  inherit direction;
+                  matches = relationMatches relation;
+                  from = attrsOrEmpty (relation.from or null);
+                  to = attrsOrEmpty (relation.to or null);
+                  transportAuthority = {
+                    basis = "modeled-relation-path-leg";
+                    provenanceIsAuthority = false;
+                    admissible = true;
+                  };
+                  relationCardinality = {
+                    unit = "selector-forwarding-rule";
+                    decomposition = "decomposed-by-explicit-policy-egress-path-leg";
+                    decomposed = true;
+                  };
+                  fromInterface = policyIface.runtimeIfName;
+                  toInterface = toIface.runtimeIfName;
+                  applyTcpMssClamp = false;
+                }
+                // common.relationHandoff {
+                  relationId = id;
+                  inherit action direction;
+                  fromIface = policyIface;
+                  inherit toIface;
+                  policyPoint = "downstream-selector";
+                })
+              ]
+          )
+          toIfaces
+      );
+in
+builtins.concatLists
+  (
+    builtins.map
+      (accessIface:
+        let
+          policyIface = policyForAccess accessIface;
+        in
+        if policyIface == null then
+          [ ]
+        else
+          common.selectorPairRule accessIface policyIface
+          ++ common.selectorPairRuleWithRuntimeOriginScope runtimeOriginSourcePrefixes accessIface policyIface)
+      accessInterfaces
+  )
 ++ builtins.concatLists (map localRelationRules (listOrEmpty relations))
+++ builtins.concatLists (map policyEgressRules (listOrEmpty relations))
 ++ common.runtimeOriginDefaultForwardRules runtimeOriginSourcePrefixes transitInterfaces
