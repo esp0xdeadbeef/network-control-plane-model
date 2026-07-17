@@ -106,6 +106,12 @@ let
       normalizedRuntimeTargets = routeAugmentedRuntimeTargets;
     };
 
+  addPublicIngressRoutes = import ../../ControlModule/runtime-targets/public-ingress-routes.nix {
+    inherit lib common;
+  };
+
+  runtimeTargetsWithPublicIngressRoutes = addPublicIngressRoutes runtimeTargetsWithIntent;
+
   addCoreTenantReturnRoutes =
     rtAttrs:
     lib.mapAttrs
@@ -519,7 +525,7 @@ let
 
   # Apply emulation subnet routes AND provider subnet routes BEFORE core tenant
   # return routes so all augmentations compose correctly.
-  runtimeTargetsWithEmulation = addEmulationSubnetFabricRoutes runtimeTargetsWithIntent;
+  runtimeTargetsWithEmulation = addEmulationSubnetFabricRoutes runtimeTargetsWithPublicIngressRoutes;
   runtimeTargetsWithProvider = addProviderSubnetFabricRoutes runtimeTargetsWithEmulation;
 
   runtimeTargets =

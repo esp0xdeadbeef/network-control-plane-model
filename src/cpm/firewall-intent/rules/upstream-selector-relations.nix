@@ -59,7 +59,7 @@ let
       ) transitInterfaces;
       matches = builtins.filter (
         iface: builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) wanted
-      ) (coreInterfaces ++ policyInterfaces);
+      ) coreInterfaces;
     in
     if namedExternalOverlayIngress != [ ] then
       namedExternalOverlayIngress

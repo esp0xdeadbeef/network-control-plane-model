@@ -43,7 +43,10 @@ let
         peerIsService = (attrsOrEmpty peerEndpoint).kind or null == "service";
         exact =
           if peerIsService then
-            uplinkIfacesFor [ ] uplinks
+            # A public ingress relation is bound to the access node that owns
+            # the target service.  Selecting every lane for the same uplink
+            # widens one WAN/service tuple over unrelated tenant lanes.
+            uplinkIfacesFor peerAccessNodes uplinks
           else
             uplinkIfacesFor peerAccessNodes uplinks;
         denyFallback = if isDeny then uplinkIfacesFor [ ] uplinks else [ ];

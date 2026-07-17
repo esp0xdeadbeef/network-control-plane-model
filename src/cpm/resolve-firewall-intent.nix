@@ -92,10 +92,12 @@ let
             name = entry.targetName;
             value = buildNat {
               inherit
+                policyEndpointBindings
+                services
                 siteAttrs
                 overlayNames
                 ;
-              inherit (entry) interfaceRecords target;
+              inherit (entry) interfaceRecords target targetName;
               inherit runtimeOriginSourcePrefixes;
             };
           }

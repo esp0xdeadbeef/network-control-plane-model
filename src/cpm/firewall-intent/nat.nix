@@ -20,12 +20,27 @@ let
 in
 { siteAttrs
 , overlayNames
+, services ? [ ]
+, policyEndpointBindings ? { }
 , interfaceRecords
 , target
+, targetName ? ""
 , runtimeOriginSourcePrefixes ? [ ]
 ,
 }:
 let
+  buildPublicIngress = import ./public-ingress.nix { inherit helpers; };
+  publicIngress = buildPublicIngress {
+    inherit
+      interfaceRecords
+      policyEndpointBindings
+      services
+      siteAttrs
+      target
+      targetName
+      ;
+  };
+  publicIngressNatEnabled = builtins.any (record: record.destinationTranslation) publicIngress;
   siteTenantPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.domains or null)).tenants or null);
   siteOwnershipPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null);
   siteNat44SourcePrefixes =
@@ -418,18 +433,37 @@ let
       hostMasqueradePrefixes4 = fabricNat44SourcePrefixes;
       returnRouteSubnets = fabricReturnRouteSubnets;
     };
+  allTranslationRecords = translationRecords ++ map
+    (record: {
+      family = record.family;
+      mode = record.translationMode;
+      trafficClass = "public-ingress";
+      relationId = record.relationId;
+      sourceScope = record.sourceScope;
+      ingressSurface = {
+        publicSurface = record.publicSurface;
+        ingressInterface = record.ingressInterface;
+        publicAddressBinding = record.publicAddressBinding;
+      };
+      target = record.target;
+      tuples = record.tupleRecords;
+      sourceTranslation = record.sourceTranslation;
+      returnBehavior = record.returnBehavior;
+      consumers = record.consumers;
+    }) publicIngress;
 in
 {
-  enabled = natEnabled;
+  enabled = natEnabled || publicIngressNatEnabled;
   families = {
-    ipv4 = nat4Enabled;
+    ipv4 = nat4Enabled || publicIngress != [ ];
     ipv6 = nat6Enabled;
   };
   warnings = nat66Warning;
   diagnostics = {
     nat66 = nat66Diagnostics;
   };
-  inherit translationRecords;
+  translationRecords = allTranslationRecords;
+  inherit publicIngress;
   uplinks = selectedUplinks;
   wanInterfaces = wanRuntimeNames;
   transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
