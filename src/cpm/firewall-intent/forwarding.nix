@@ -152,7 +152,17 @@ if role == "access" then
     localInterfaces = map (iface: iface.runtimeIfName) (localInterfaces ++ pppoeSessionInterfaces);
     transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
     rules = buildAccessRules {
-      inherit localInterfaces transitInterfaces runtimeOriginSourcePrefixes;
+      targetLogicalNode = (attrsOrEmpty (target.logicalNode or null)).name or null;
+      endpointBindings = attrsOrEmpty policyEndpointBindings;
+      relations = siteRelations;
+      inherit
+        localInterfaces
+        services
+        trafficPaths
+        trafficTypeMatches
+        transitInterfaces
+        runtimeOriginSourcePrefixes
+        ;
     };
   }
 else if role == "downstream-selector" || role == "upstream-selector" then

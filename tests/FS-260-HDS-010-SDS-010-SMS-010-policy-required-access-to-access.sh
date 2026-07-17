@@ -9,6 +9,7 @@ result="$({
       repoRoot = builtins.toPath (builtins.getEnv "REPO_ROOT");
       common = import (repoRoot + "/src/cpm/firewall-intent/rules/common.nix") { };
       build = import (repoRoot + "/src/cpm/firewall-intent/rules/downstream-selector.nix") { inherit common; };
+      buildAccess = import (repoRoot + "/src/cpm/firewall-intent/rules/access.nix") { inherit common; };
 
       mkIface = runtimeIfName: kind: access: {
         inherit runtimeIfName;
@@ -41,8 +42,42 @@ result="$({
       ];
 
       endpointBindings.tenants = {
-        tenant-a.runtimeBindings = [ { logicalNode = "access-a"; } ];
-        tenant-b.runtimeBindings = [ { logicalNode = "access-b"; } ];
+        tenant-a = {
+          domains = [ { ipv4 = "10.60.0.0/24"; ipv6 = "fd42:60::/64"; } ];
+          runtimeBindings = [ {
+            logicalNode = "access-a";
+            runtimeInterface = "lan-a";
+          } ];
+        };
+        tenant-b = {
+          domains = [ { ipv4 = "10.61.0.0/24"; ipv6 = "fd42:61::/64"; } ];
+          runtimeBindings = [ {
+            logicalNode = "access-b";
+            runtimeInterface = "lan-b";
+          } ];
+        };
+      };
+
+      mkLocalIface = runtimeIfName: tenant: access: {
+        inherit runtimeIfName tenant;
+        sourceInterface = "tenant-${tenant}";
+        sourceKind = "tenant";
+        adapterClass = "tenant-role-surface";
+        virtualAdapter = false;
+        hostFacing = true;
+        backingRef = {
+          kind = "attachment";
+          id = "attachment::${access}::tenant::${tenant}";
+          name = tenant;
+          lane = {
+            kind = "tenant";
+            inherit access;
+          };
+        };
+        routes = {
+          ipv4 = [ ];
+          ipv6 = [ ];
+        };
       };
 
       allowRelation = {
@@ -99,6 +134,33 @@ result="$({
         ];
       };
 
+      accessRulesFor = relation: targetLogicalNode: path:
+        buildAccess {
+          inherit endpointBindings targetLogicalNode;
+          localInterfaces = [ (mkLocalIface "lan-b" "tenant-b" "access-b") ];
+          transitInterfaces = [ (mkIface "transit-b" "access-edge" "access-b") ];
+          relations = [ relation ];
+          services = [ ];
+          trafficPaths = [ path ];
+          trafficTypeMatches = { };
+          runtimeOriginSourcePrefixes = [ ];
+        };
+
+      requiredPath = {
+        relationId = allowRelation.id;
+        requiresPolicy = true;
+        nodePath = [ "access-a" "downstream-selector" "policy" "downstream-selector" "access-b" ];
+        stagePath = [ "access" "downstream-selector" "policy" "downstream-selector" "access" ];
+      };
+
+      requiredAccessRules = accessRulesFor allowRelation "access-b" requiredPath;
+      denyAccessRules = accessRulesFor denyRelation "access-b" (requiredPath // { relationId = denyRelation.id; });
+      wrongTargetAccessRules = accessRulesFor allowRelation "access-c" requiredPath;
+      wrongFinalLegAccessRules = accessRulesFor allowRelation "access-b" (requiredPath // {
+        nodePath = [ "access-a" "downstream-selector" "policy" "upstream-selector" "core" ];
+        stagePath = [ "access" "downstream-selector" "policy" "upstream-selector" "core" ];
+      });
+
       matching = relationId: from: to: rules:
         builtins.filter
           (rule:
@@ -139,6 +201,36 @@ result="$({
       wrongPathPolicyEgress = builtins.length (builtins.filter
         (rule: (rule.direction or null) == "relation-forward-policy-egress")
         wrongPathRules);
+      requiredAccessIngress = builtins.length (builtins.filter
+        (rule:
+          (rule.relationId or null) == "allow-a-to-b"
+          && (rule.direction or null) == "relation-forward-access-ingress"
+          && (rule.fromInterface or null) == "transit-b"
+          && (rule.toInterface or null) == "lan-b"
+          && !(rule ? connectionState)
+          && !(rule.returnRule or false)
+          && (rule.transportAuthority.basis or null) == "modeled-relation"
+          && (rule.sourcePrefixes or [ ]) == [
+            { family = 4; prefix = "10.60.0.0/24"; }
+            { family = 6; prefix = "fd42:60::/64"; }
+          ])
+        requiredAccessRules);
+      genericAccessReturn = builtins.length (builtins.filter
+        (rule:
+          (rule.fromInterface or null) == "transit-b"
+          && (rule.toInterface or null) == "lan-b"
+          && (rule.connectionState or null) == "established,related"
+          && (rule.returnRule or false))
+        requiredAccessRules);
+      denyAccessIngress = builtins.length (builtins.filter
+        (rule: (rule.direction or null) == "relation-forward-access-ingress")
+        denyAccessRules);
+      wrongTargetAccessIngress = builtins.length (builtins.filter
+        (rule: (rule.direction or null) == "relation-forward-access-ingress")
+        wrongTargetAccessRules);
+      wrongFinalLegAccessIngress = builtins.length (builtins.filter
+        (rule: (rule.direction or null) == "relation-forward-access-ingress")
+        wrongFinalLegAccessRules);
     }
   '
 })"
@@ -152,10 +244,15 @@ jq -e '
   and .denyDirect == 1
   and .denyPolicyEgress == 0
   and .wrongPathPolicyEgress == 0
+  and .requiredAccessIngress == 1
+  and .genericAccessReturn == 1
+  and .denyAccessIngress == 0
+  and .wrongTargetAccessIngress == 0
+  and .wrongFinalLegAccessIngress == 0
 ' <<<"${result}" >/dev/null || {
   jq . <<<"${result}" >&2
   printf 'FAIL FS-260-HDS-010-SDS-010-SMS-010: policy-required access-to-access traffic may not bypass policy\n' >&2
   exit 1
 }
 
-printf 'PASS FS-260-HDS-010-SDS-010-SMS-010: policy-required access-to-access traffic uses selector policy handoffs without a direct selector accept\n'
+printf 'PASS FS-260-HDS-010-SDS-010-SMS-010: policy-required access-to-access traffic uses relation-bound selector and destination-access handoffs without a direct selector accept\n'

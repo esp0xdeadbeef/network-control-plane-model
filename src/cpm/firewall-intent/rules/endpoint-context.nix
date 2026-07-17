@@ -127,6 +127,64 @@ let
       )
     );
 
+  tenantNamesForEndpoint =
+    endpoint:
+    uniqueStrings (
+      namesForEndpoint "tenant" endpoint
+      ++ namesForEndpoint "tenant-set" endpoint
+      ++ serviceProviderTenants endpoint
+    );
+
+  runtimeInterfacesForEndpointAtLogicalNode =
+    endpoint: logicalNode:
+    uniqueStrings (
+      builtins.concatLists (
+        map
+          (tenantName:
+            if !builtins.hasAttr tenantName tenantBindings then
+              [ ]
+            else
+              map
+                (binding: (attrsOrEmpty binding).runtimeInterface or null)
+                (
+                  builtins.filter
+                    (binding: ((attrsOrEmpty binding).logicalNode or null) == logicalNode)
+                    (listOrEmpty (tenantBindings.${tenantName}.runtimeBindings or null))
+                ))
+          (tenantNamesForEndpoint endpoint)
+      )
+    );
+
+  sourcePrefixesForEndpoint =
+    endpoint:
+    let
+      prefixFor = family: prefix: {
+        inherit family prefix;
+      };
+      prefixesForTenant =
+        tenantName:
+        if !builtins.hasAttr tenantName tenantBindings then
+          [ ]
+        else
+          builtins.concatLists (
+            map
+              (domain:
+                (if builtins.isString (domain.ipv4 or null) then [ (prefixFor 4 domain.ipv4) ] else [ ])
+                ++ (if builtins.isString (domain.ipv6 or null) then [ (prefixFor 6 domain.ipv6) ] else [ ]))
+              (listOrEmpty (tenantBindings.${tenantName}.domains or null))
+          );
+    in
+    builtins.attrValues (
+      builtins.listToAttrs (
+        map
+          (prefix: {
+            name = "${builtins.toString prefix.family}|${prefix.prefix}";
+            value = prefix;
+          })
+          (builtins.concatLists (map prefixesForTenant (tenantNamesForEndpoint endpoint)))
+      )
+    );
+
 in
 {
   inherit
@@ -211,5 +269,11 @@ in
     endpoint:
     uniqueStrings (builtins.concatLists (map accessNodesForTenant (serviceProviderTenants endpoint)));
   serviceNamesForEndpoint = endpoint: namesForEndpoint "service" endpoint;
-  inherit accessNodesForLogicalNodeTenantAttachment runtimeLogicalNodesForExternal;
+  inherit
+    accessNodesForLogicalNodeTenantAttachment
+    runtimeLogicalNodesForExternal
+    runtimeInterfacesForEndpointAtLogicalNode
+    sourcePrefixesForEndpoint
+    tenantNamesForEndpoint
+    ;
 }
