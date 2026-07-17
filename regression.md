@@ -2,11 +2,13 @@
 
 ## FS-260 policy-required access-to-access selector traversal
 
-- state=solved
+- state=observed
 - owner: network-control-plane-model
 - scope: FS-260-HDS-010-SDS-010-SMS-010 default site fabric chain with FS-180 symmetric stateful return
 - first-bad-artifact: The 2026-07-17 `s-router-prod` pipeline preserves `allow-vlan2-to-vlan3.returnBehavior = "symmetric"` in NFM and NFM emits `nodePath = [ access-vlan2 downstream-selector policy downstream-selector access-vlan3 ]` with `requiresPolicy = true`. CPM nevertheless emits a direct downstream-selector `access-vlan2 -> access-vlan3` new-flow accept. The NixOS renderer then projects that CPM authority into destination table 1002, so the forward packet bypasses policy while the reply enters policy and is dropped without a matching conntrack entry.
 - required-fix: Downstream-selector relation projection must consume the NFM traffic-path authority. An allow relation whose path requires policy may use only the access-to-policy and policy-to-access selector handoffs; it must not emit a direct access-to-access selector rule. Deny rules and explicitly non-policy paths retain their bounded behavior.
+- cold-stage finding: After the first fix was pushed and cold-staged, the isolated NixOS live row still dropped the forward IPv4 packet. NFM correctly emitted `nodePath = [ access-source downstream-selector policy downstream-selector access-destination ]`; CPM emitted the second `policy -> access-destination` leg only as a generic `connectionState = "established,related"` selector return. The packet is still the forward half after re-entering the selector from policy and is `new` in that namespace, so the rule cannot authorize it. The first bad artifact remains CPM `forwardingIntent.rules`; the renderer and kernel route both preserve the emitted authority correctly.
+- remaining-fix: Emit a relation-bound new-flow rule for the explicit policy-to-destination-access leg while retaining the stateful-only generic reverse rule. Do not broaden all policy-to-access selector traffic and do not reinstate the direct access-to-access bypass.
 - evidence: `NETWORK_REPO_DIRECT_TEST_OK=1 bash tests/FS-260-HDS-010-SDS-010-SMS-010-policy-required-access-to-access.sh`; the focused seeded-negative proves the direct selector accept is absent only for policy-required allow paths, both selector-policy handoffs remain, and non-policy allow plus deny behavior is unchanged. `TEST_JOBS=42 NETWORK_REPO_DIRECT_TEST_OK=1 ./run-all-tests.sh` passes 222/222 tests.
 - live-boundary: Reproduce and close on isolated lab access scopes for both NixOS and CLAB; production VLAN2/VLAN3 is not a permitted fix-validation surface.
 

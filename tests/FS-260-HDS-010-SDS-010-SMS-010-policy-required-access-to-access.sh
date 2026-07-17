@@ -73,6 +73,11 @@ result="$({
                   [ "access-a" "downstream-selector" "policy" "downstream-selector" "access-b" ]
                 else
                   [ "access-a" "downstream-selector" "access-b" ];
+              stagePath =
+                if requiresPolicy then
+                  [ "access" "downstream-selector" "policy" "downstream-selector" "access" ]
+                else
+                  [ "access" "downstream-selector" "access" ];
             }
           ];
         };
@@ -80,6 +85,19 @@ result="$({
       requiredRules = rulesFor allowRelation true;
       optionalRules = rulesFor allowRelation false;
       denyRules = rulesFor denyRelation true;
+      wrongPathRules = build {
+        inherit endpointBindings;
+        transitInterfaces = interfaces;
+        relations = [ allowRelation ];
+        trafficPaths = [
+          {
+            relationId = allowRelation.id;
+            requiresPolicy = true;
+            nodePath = [ "access-a" "downstream-selector" "policy" "upstream-selector" "core" ];
+            stagePath = [ "access" "downstream-selector" "policy" "upstream-selector" "core" ];
+          }
+        ];
+      };
 
       matching = relationId: from: to: rules:
         builtins.filter
@@ -103,8 +121,24 @@ result="$({
           && (rule.connectionState or null) == "established,related"
           && (rule.returnRule or false))
         requiredRules);
+      requiredPolicyEgressForward = builtins.length (builtins.filter
+        (rule:
+          (rule.relationId or null) == "allow-a-to-b"
+          && (rule.direction or null) == "relation-forward-policy-egress"
+          && (rule.fromInterface or null) == "policy-b"
+          && (rule.toInterface or null) == "edge-b"
+          && !(rule ? connectionState)
+          && !(rule.returnRule or false)
+          && (rule.transportAuthority.basis or null) == "modeled-relation-path-leg")
+        requiredRules);
       optionalDirect = builtins.length (matching "allow-a-to-b" "edge-a" "edge-b" optionalRules);
       denyDirect = builtins.length (matching "deny-a-to-b" "edge-a" "edge-b" denyRules);
+      denyPolicyEgress = builtins.length (builtins.filter
+        (rule: (rule.direction or null) == "relation-forward-policy-egress")
+        denyRules);
+      wrongPathPolicyEgress = builtins.length (builtins.filter
+        (rule: (rule.direction or null) == "relation-forward-policy-egress")
+        wrongPathRules);
     }
   '
 })"
@@ -113,8 +147,11 @@ jq -e '
   .requiredDirect == 0
   and .requiredIngressHandoff == 1
   and .requiredEgressReturn >= 1
+  and .requiredPolicyEgressForward == 1
   and .optionalDirect == 1
   and .denyDirect == 1
+  and .denyPolicyEgress == 0
+  and .wrongPathPolicyEgress == 0
 ' <<<"${result}" >/dev/null || {
   jq . <<<"${result}" >&2
   printf 'FAIL FS-260-HDS-010-SDS-010-SMS-010: policy-required access-to-access traffic may not bypass policy\n' >&2
