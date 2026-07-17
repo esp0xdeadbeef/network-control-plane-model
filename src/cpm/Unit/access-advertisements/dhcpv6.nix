@@ -3,6 +3,7 @@
 , ipam
 , advertisementHelpers
 , advertisementContext
+, resolveReservationSource
 , resolveReservations
 ,
 }:
@@ -69,6 +70,11 @@ let
           resolveReservations 6 "ipv6" 128 entryPath interfaceName subnet (attrs.reservations or null)
         else
           [ ];
+      reservationSource =
+        if enabled then
+          resolveReservationSource "ipv6" entryPath (attrs.reservationSource or null) (attrs.reservations or null)
+        else
+          null;
       bindInterface =
         requireString
           "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
@@ -101,7 +107,9 @@ let
       inherit reservations;
       dnsServers = dnsServers;
       domain = requireString "${entryPath}.domain" (attrs.domain or null);
-    } else { }))));
+    }
+    // (if reservationSource != null then { inherit reservationSource; } else { })
+    else { }))));
 in
 {
   inherit buildExplicitDHCPv6Entry;

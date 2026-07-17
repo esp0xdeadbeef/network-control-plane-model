@@ -2,6 +2,7 @@
 , sitePath
 , advertisementHelpers
 , advertisementContext
+, resolveReservationSource
 , resolveReservations
 ,
 }:
@@ -62,6 +63,11 @@ let
       resolveReservations 4 "ipv4" 32 entryPath interfaceName subnet (attrs.reservations or null)
     else
       [ ];
+  reservationSource =
+    if enabled then
+      resolveReservationSource "ipv4" entryPath (attrs.reservationSource or null) (attrs.reservations or null)
+    else
+      null;
   bindInterface =
     requireString
       "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
@@ -98,4 +104,6 @@ builtins.seq _idMatch (builtins.seq _subnetMatch (builtins.seq _routerMatch ({
   inherit reservations;
   dnsServers = dnsServers;
   domain = requireString "${entryPath}.domain" (attrs.domain or null);
-} else { }))))
+}
+// (if reservationSource != null then { inherit reservationSource; } else { })
+else { }))))

@@ -11,14 +11,14 @@ let
   reservationModule = import ./reservations.nix {
     inherit helpers ipam advertisementHelpers binderSourceAudit;
   };
-  inherit (reservationModule) resolveReservations;
+  inherit (reservationModule) resolveReservationSource resolveReservations;
 
   dhcpv6 = import ./dhcpv6.nix {
-    inherit helpers sitePath ipam advertisementHelpers advertisementContext resolveReservations;
+    inherit helpers sitePath ipam advertisementHelpers advertisementContext resolveReservationSource resolveReservations;
   };
 
   buildExplicitDHCP4Entry = import ./dhcp4.nix {
-    inherit helpers sitePath advertisementHelpers advertisementContext resolveReservations;
+    inherit helpers sitePath advertisementHelpers advertisementContext resolveReservationSource resolveReservations;
   };
 
   buildExplicitIPv6RaEntry = import ./ipv6-ra.nix {

@@ -33,7 +33,7 @@ cp "${inventory_source}" "${tmp_dir}/base.nix"
 
 write_inventory() {
   local path="$1"
-  local dhcp4_reservations="$2"
+  local dhcp4_reservation_contract="$2"
   cat >"${path}" <<EOF
 let
   base = import ./base.nix;
@@ -56,7 +56,7 @@ base // {
               router = "router-self";
               dnsServers = [ "router-self" ];
               domain = "lan.";
-              reservations = ${dhcp4_reservations};
+              ${dhcp4_reservation_contract}
             };
           };
           dhcpv6 = { };
@@ -83,19 +83,13 @@ compile_inventory() {
 }
 
 valid_inventory="${tmp_dir}/inventory-valid-runtime-secret.nix"
-write_inventory "${valid_inventory}" '[
-  {
-    id = "printer-reservation-10";
-    macSource = {
-      accepted = true;
-      disposable = false;
-      purpose = "static-dhcp-reservation";
-      sourceClass = "protected";
-      sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
-    };
-    ipv4.hostOffset = 10;
-  }
-]'
+write_inventory "${valid_inventory}" '
+  reservationSource = {
+    schema = "gamp-protected-reservation-set-v1";
+    sourceClass = "protected";
+    sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
+  };
+'
 
 output_json="${tmp_dir}/out.json"
 compile_inventory "${valid_inventory}" >"${output_json}"
@@ -106,102 +100,142 @@ if ! OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     site = data.control_plane_model.data.esp0xdeadbeef."site-a";
     target = site.runtimeTargets."esp0xdeadbeef-site-a-s-router-access-client";
     dhcp4 = builtins.head target.advertisements.dhcp4;
-    reservation = builtins.elemAt dhcp4.reservations 0;
+    source = dhcp4.reservationSource;
   in
-    reservation.id == "printer-reservation-10"
-    && reservation.address == "10.20.20.10"
-    && !(reservation ? mac)
-    && !(reservation ? hostname)
-    && reservation.identitySource.sourceClass == "protected"
-    && reservation.identitySource.sourceFile == "/run/secrets/s-router-prod-vlan2-reservations.json"
+    dhcp4.reservations == [ ]
+    && source.schema == "gamp-protected-reservation-set-v1"
+    && source.sourceClass == "protected"
+    && source.sourceFile == "/run/secrets/s-router-prod-vlan2-reservations.json"
+    && source.binderSourceAudit.stage == "control-plane-model"
+    && source.binderSourceAudit.sourceClass == "protected-inventory"
+    && !(source ? records)
+    && !(source ? id)
+    && !(source ? address)
+    && !(source ? mac)
+    && !(source ? hostname)
 ' | grep -qx true; then
-  echo "FAIL static-reservation-runtime-secret-source: CPM did not emit a redacted runtime-secret reservation record" >&2
+  echo "FAIL static-reservation-runtime-secret-source: CPM did not emit one redacted advertisement-level protected reservation source" >&2
   exit 1
 fi
 
-secret_ref_only_inventory="${tmp_dir}/inventory-secret-ref-only.nix"
-write_inventory "${secret_ref_only_inventory}" '[
-  {
-    id = "secret-ref-only";
-    macSource = {
-      accepted = true;
-      disposable = false;
-      purpose = "static-dhcp-reservation";
-      sourceClass = "protected";
-      secretRef = "sops://inventory/reservations/secret-ref-only";
-    };
-    ipv4.hostOffset = 11;
-  }
-]'
-
-if compile_inventory "${secret_ref_only_inventory}" >"${tmp_dir}/secret-ref-only.out" 2>"${tmp_dir}/secret-ref-only.err"; then
-  echo "FAIL static-reservation-runtime-secret-source: secretRef-only reservation without public MAC was accepted" >&2
-  exit 1
-fi
-grep -F "diagnostic.runtime-reservation-source-file-missing" \
-  "${tmp_dir}/secret-ref-only.err" >/dev/null || {
-    echo "FAIL static-reservation-runtime-secret-source: NC2 secretRef-only did not emit diagnostic.runtime-reservation-source-file-missing" >&2
-    cat "${tmp_dir}/secret-ref-only.err" >&2
-    exit 1
-  }
-grep -F "requires complete MAC address or protected runtime sourceFile" \
-  "${tmp_dir}/secret-ref-only.err" >/dev/null || {
-    echo "FAIL static-reservation-runtime-secret-source: secretRef-only diagnostic was not concise" >&2
-    cat "${tmp_dir}/secret-ref-only.err" >&2
-    exit 1
-  }
-
-# NC1 - missing runtime source file: protected reservation with no public MAC
-# and no macSource.sourceFile (and no secretRef) shall be rejected with
-# diagnostic.runtime-reservation-source-file-missing.
 missing_source_file_inventory="${tmp_dir}/inventory-missing-source-file.nix"
-write_inventory "${missing_source_file_inventory}" '[
-  {
-    id = "missing-source-file";
-    macSource = {
-      accepted = true;
-      disposable = false;
-      purpose = "static-dhcp-reservation";
-      sourceClass = "protected";
-      source = "protected-inventory";
-    };
-    ipv4.hostOffset = 13;
-  }
-]'
+write_inventory "${missing_source_file_inventory}" '
+  reservationSource = {
+    schema = "gamp-protected-reservation-set-v1";
+    sourceClass = "protected";
+  };
+'
 
 if compile_inventory "${missing_source_file_inventory}" >"${tmp_dir}/missing-source-file.out" 2>"${tmp_dir}/missing-source-file.err"; then
-  echo "FAIL static-reservation-runtime-secret-source: reservation with no public MAC and no sourceFile was accepted" >&2
+  echo "FAIL static-reservation-runtime-secret-source: advertisement-level protected source without sourceFile was accepted" >&2
   exit 1
 fi
 grep -F "diagnostic.runtime-reservation-source-file-missing" \
   "${tmp_dir}/missing-source-file.err" >/dev/null || {
-    echo "FAIL static-reservation-runtime-secret-source: NC1 missing sourceFile did not emit diagnostic.runtime-reservation-source-file-missing" >&2
+    echo "FAIL static-reservation-runtime-secret-source: missing sourceFile did not emit diagnostic.runtime-reservation-source-file-missing" >&2
     cat "${tmp_dir}/missing-source-file.err" >&2
     exit 1
   }
 
-unscoped_inventory="${tmp_dir}/inventory-unscoped-runtime-secret.nix"
-write_inventory "${unscoped_inventory}" '[
-  {
-    macSource = {
-      accepted = true;
-      disposable = false;
-      purpose = "static-dhcp-reservation";
-      sourceClass = "protected";
-      sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
-    };
-    ipv4.hostOffset = 12;
-  }
-]'
+public_source_inventory="${tmp_dir}/inventory-public-source.nix"
+write_inventory "${public_source_inventory}" '
+  reservationSource = {
+    schema = "gamp-protected-reservation-set-v1";
+    sourceClass = "public-inventory";
+    sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
+  };
+'
 
-if compile_inventory "${unscoped_inventory}" >"${tmp_dir}/unscoped.out" 2>"${tmp_dir}/unscoped.err"; then
-  echo "FAIL static-reservation-runtime-secret-source: runtime secret reservation without handle was accepted" >&2
+if compile_inventory "${public_source_inventory}" >"${tmp_dir}/public-source.out" 2>"${tmp_dir}/public-source.err"; then
+  echo "FAIL static-reservation-runtime-secret-source: non-protected reservation set source was accepted" >&2
   exit 1
 fi
-grep -F "diagnostic.reservation-identity-diagnostic-unscoped" \
-  "${tmp_dir}/unscoped.err" >/dev/null || {
-    echo "FAIL static-reservation-runtime-secret-source: unscoped diagnostic was not emitted" >&2
-    cat "${tmp_dir}/unscoped.err" >&2
+grep -F "diagnostic.protected-reservation-identity-leaked" \
+  "${tmp_dir}/public-source.err" >/dev/null || {
+    echo "FAIL static-reservation-runtime-secret-source: non-protected source did not emit the protected boundary diagnostic" >&2
+    cat "${tmp_dir}/public-source.err" >&2
+    exit 1
+  }
+
+inline_records_inventory="${tmp_dir}/inventory-inline-records.nix"
+write_inventory "${inline_records_inventory}" '
+  reservationSource = {
+    schema = "gamp-protected-reservation-set-v1";
+    sourceClass = "protected";
+    sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
+    records = [ { id = "must-not-be-public"; } ];
+  };
+'
+
+if compile_inventory "${inline_records_inventory}" >"${tmp_dir}/inline-records.out" 2>"${tmp_dir}/inline-records.err"; then
+  echo "FAIL static-reservation-runtime-secret-source: public per-client records inside reservationSource were accepted" >&2
+  exit 1
+fi
+grep -F "diagnostic.protected-reservation-identity-leaked" \
+  "${tmp_dir}/inline-records.err" >/dev/null || {
+    echo "FAIL static-reservation-runtime-secret-source: inline protected record did not emit the protected boundary diagnostic" >&2
+    cat "${tmp_dir}/inline-records.err" >&2
+    exit 1
+  }
+
+conflicting_inventory="${tmp_dir}/inventory-conflicting-source-and-record.nix"
+write_inventory "${conflicting_inventory}" '
+  reservationSource = {
+    schema = "gamp-protected-reservation-set-v1";
+    sourceClass = "protected";
+    sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
+  };
+  reservations = [
+    {
+      id = "public-reservation";
+      mac = "02:00:00:00:00:10";
+      macSource = {
+        accepted = true;
+        disposable = true;
+        purpose = "static-dhcp-reservation";
+        sourceClass = "public-synthetic-lab";
+      };
+      ipv4.hostOffset = 10;
+    }
+  ];
+'
+
+if compile_inventory "${conflicting_inventory}" >"${tmp_dir}/conflicting.out" 2>"${tmp_dir}/conflicting.err"; then
+  echo "FAIL static-reservation-runtime-secret-source: reservationSource plus public per-client descriptors was accepted" >&2
+  exit 1
+fi
+grep -F "diagnostic.runtime-reservation-source-conflict" \
+  "${tmp_dir}/conflicting.err" >/dev/null || {
+    echo "FAIL static-reservation-runtime-secret-source: source/descriptor conflict diagnostic was not emitted" >&2
+    cat "${tmp_dir}/conflicting.err" >&2
+    exit 1
+  }
+
+per_record_source_inventory="${tmp_dir}/inventory-per-record-source.nix"
+write_inventory "${per_record_source_inventory}" '
+  reservations = [
+    {
+      id = "private-descriptor";
+      macSource = {
+        accepted = true;
+        disposable = false;
+        purpose = "static-dhcp-reservation";
+        sourceClass = "protected";
+        sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
+      };
+      ipv4.hostOffset = 12;
+    }
+  ];
+'
+
+if compile_inventory "${per_record_source_inventory}" >"${tmp_dir}/per-record-source.out" 2>"${tmp_dir}/per-record-source.err"; then
+  echo "FAIL static-reservation-runtime-secret-source: per-reservation protected source descriptor was accepted" >&2
+  exit 1
+fi
+grep -F "diagnostic.runtime-reservation-source-must-be-scope-level" \
+  "${tmp_dir}/per-record-source.err" >/dev/null || {
+    echo "FAIL static-reservation-runtime-secret-source: per-record protected source did not emit the scope-level diagnostic" >&2
+    cat "${tmp_dir}/per-record-source.err" >&2
     exit 1
   }
 
