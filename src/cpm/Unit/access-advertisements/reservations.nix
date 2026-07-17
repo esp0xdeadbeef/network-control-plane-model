@@ -10,6 +10,7 @@ let
   inherit (advertisementHelpers) failInventory isNonEmptyString;
 
   classifierId = "FS-720-HDS-010-SDS-030-SMS-010";
+  protectedReservationSetSchema = "gamp-protected-reservation-set-v1";
 
   requireInt = path: value:
     if builtins.isInt value then value else failInventory path "must be an integer";
@@ -318,21 +319,92 @@ let
           true
         else
           failInventory classificationPath "${requirementLabel} requires protected inventory source='protected-inventory', secretRef, or sourceFile for non-public reservation identity";
+      _scopeLevelRuntimeSource =
+        if sourceFile == null then
+          true
+        else
+          failInventory classificationPath "diagnostic.runtime-reservation-source-must-be-scope-level: protected runtime reservation sourceFile belongs on the served advertisement reservationSource, not on a public per-reservation descriptor";
     in
     builtins.seq _accepted (
       builtins.seq _purpose (
         builtins.seq _protectedIdentityBoundary (
-          {
-            classifier = classifierId;
-            inherit accepted purpose sourceClass;
-          }
-          // (if source != null then { inherit source; } else { })
-          // (if disposable != null then { inherit disposable; } else { })
-          // (if secretRef != null then { inherit secretRef; } else { })
-          // (if sourceFile != null then { inherit sourceFile; } else { })
+          builtins.seq _scopeLevelRuntimeSource (
+            {
+              classifier = classifierId;
+              inherit accepted purpose sourceClass;
+            }
+            // (if source != null then { inherit source; } else { })
+            // (if disposable != null then { inherit disposable; } else { })
+            // (if secretRef != null then { inherit secretRef; } else { })
+          )
         )
       )
     );
+
+  resolveReservationSource = familyName: entryPath: rawSource: rawReservations:
+    if rawSource == null then
+      null
+    else
+      let
+        sourcePath = "${entryPath}.reservationSource";
+        source = requireAttrs sourcePath rawSource;
+        allowedKeys = [
+          "schema"
+          "sourceClass"
+          "sourceFile"
+        ];
+        unexpectedKeys = builtins.filter (name: !(builtins.elem name allowedKeys)) (builtins.attrNames source);
+        publicReservations =
+          if rawReservations == null then [ ] else requireList "${entryPath}.reservations" rawReservations;
+        schema = requireString "${sourcePath}.schema" (source.schema or null);
+        sourceClass = requireString "${sourcePath}.sourceClass" (source.sourceClass or null);
+        sourceFile = optionalNonEmptyString "${sourcePath}.sourceFile" (source.sourceFile or null);
+        _scopeOnly =
+          if publicReservations == [ ] then
+            true
+          else
+            failInventory entryPath "diagnostic.runtime-reservation-source-conflict: a served scope may declare either public per-reservation descriptors or one opaque protected reservationSource, never both";
+        _noInlineRecords =
+          if unexpectedKeys == [ ] then
+            true
+          else
+            failInventory sourcePath "diagnostic.protected-reservation-identity-leaked: opaque protected reservationSource contains forbidden public fields: ${builtins.concatStringsSep ", " unexpectedKeys}";
+        _schema =
+          if schema == protectedReservationSetSchema then
+            true
+          else
+            failInventory "${sourcePath}.schema" "must be '${protectedReservationSetSchema}'";
+        _protected =
+          if sourceClass == "protected" then
+            true
+          else
+            failInventory "${sourcePath}.sourceClass" "diagnostic.protected-reservation-identity-leaked: complete reservation sets must use sourceClass='protected'";
+        _sourceFile =
+          if sourceFile != null then
+            true
+          else
+            failInventory "${sourcePath}.sourceFile" "diagnostic.runtime-reservation-source-file-missing: protected reservation set requires an opaque runtime sourceFile reference";
+      in
+      builtins.seq _scopeOnly (
+        builtins.seq _noInlineRecords (
+          builtins.seq _schema (
+            builtins.seq _protected (
+              builtins.seq _sourceFile (
+                {
+                  inherit schema sourceClass sourceFile;
+                }
+                // binderSourceAudit.make {
+                  path = sourcePath;
+                  field = "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservationSource";
+                  binderSourceClass = "protected-inventory";
+                  binderSourcePath = sourcePath;
+                  upstreamBehaviorRef = entryPath;
+                }
+              )
+            )
+          )
+        )
+      );
 
   resolveReservations =
     family: familyName: perNodePrefixLength: entryPath: interfaceName: subnet: rawReservations:
@@ -346,21 +418,26 @@ let
               attrs = requireAttrs reservationPath (builtins.elemAt reservations idx);
               requirementLabel = requirementLabelFor reservationPath attrs;
               identitySource = requireMacSourceClassification reservationPath attrs familyName;
+              hasPerRecordRuntimeSource =
+                builtins.isAttrs (attrs.macSource or null)
+                && isNonEmptyString (attrs.macSource.sourceFile or null);
+              _perRecordRuntimeSource =
+                if hasPerRecordRuntimeSource then
+                  failInventory reservationPath "diagnostic.runtime-reservation-source-must-be-scope-level: protected runtime reservation sourceFile belongs on the served advertisement reservationSource, not on a public per-reservation descriptor"
+                else
+                  true;
               mac =
                 if isNonEmptyString (attrs.mac or null) then
                   normalizeMac "${reservationPath}.mac" requirementLabel attrs.mac
                 else
                   null;
-              hasRuntimeSourceFile = isNonEmptyString (identitySource.sourceFile or null);
               scopedIdentity = reservationRequirementScoped reservationPath attrs;
               _identityMaterial =
                 if mac != null then
                   true
-                else if familyName == "ipv4" && (identitySource.sourceClass or "") == "protected" && hasRuntimeSourceFile then
-                  true
                 else
                   failInventoryIdentityDiagnostic reservationPath attrs
-                    "diagnostic.runtime-reservation-source-file-missing: ${requirementLabel} requires complete MAC address or protected runtime sourceFile";
+                    "diagnostic.reservation-identity-source-missing: ${requirementLabel} requires complete MAC address for a public per-reservation descriptor; protected runtime recordsets belong on advertisement.reservationSource";
               _scopedRuntimeIdentity =
                 if mac != null || scopedIdentity != null then
                   true
@@ -375,8 +452,9 @@ let
               };
               address = builtins.elemAt (builtins.split "/" cidr) 0;
             in
-            builtins.seq _identityMaterial (
-              builtins.seq _scopedRuntimeIdentity (
+            builtins.seq _perRecordRuntimeSource (
+              builtins.seq _identityMaterial (
+                builtins.seq _scopedRuntimeIdentity (
                 {
                   id =
                     if isNonEmptyString (attrs.id or null) then
@@ -404,6 +482,7 @@ let
                 // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
                 // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { })
                 // (normalizeFs880NamespaceFields reservationPath attrs)
+                )
               )
             )
           )
@@ -423,5 +502,5 @@ let
     builtins.seq _identityMaterialForced (builtins.seq _uniqueMacs (builtins.seq _uniqueOffsets (builtins.seq _uniqueIds rendered)));
 in
 {
-  inherit resolveReservations;
+  inherit resolveReservationSource resolveReservations;
 }
