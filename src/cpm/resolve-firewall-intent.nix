@@ -34,6 +34,7 @@ let
       communicationContract.relations
     else
       listOrEmpty (communicationContract.allowedRelations or null);
+  trafficPaths = listOrEmpty (siteAttrs.trafficPaths or null);
   trafficTypeMatches =
     builtins.listToAttrs (
       map
@@ -119,6 +120,7 @@ let
               services
               sharedServicePolicyAtoms
               siteRelations
+              trafficPaths
               trafficTypeMatches
               runtimeOriginSourcePrefixes
               runtimeTargets
