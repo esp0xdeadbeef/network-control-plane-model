@@ -41,12 +41,19 @@ let
     else if (endpointValue.kind or null) == "external" then
       let
         peerIsService = (attrsOrEmpty peerEndpoint).kind or null == "service";
+        hasPublicIngressAuthority =
+          builtins.isAttrs (relationValue.publicIngressTupleAuthority or null);
         exact =
-          if peerIsService then
+          if peerIsService && hasPublicIngressAuthority then
             # A public ingress relation is bound to the access node that owns
             # the target service.  Selecting every lane for the same uplink
             # widens one WAN/service tuple over unrelated tenant lanes.
             uplinkIfacesFor peerAccessNodes uplinks
+          else if peerIsService then
+            # Named non-public external fabrics (for example east-west) retain
+            # their explicit service projection over every matching fabric
+            # lane.  They do not carry public-ingress tuple authority.
+            uplinkIfacesFor [ ] uplinks
           else
             uplinkIfacesFor peerAccessNodes uplinks;
         denyFallback = if isDeny then uplinkIfacesFor [ ] uplinks else [ ];
