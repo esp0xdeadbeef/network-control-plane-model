@@ -210,7 +210,7 @@ let
                   from = attrsOrEmpty (relation.from or null);
                   to = attrsOrEmpty (relation.to or null);
                   transportAuthority = {
-                    basis = "modeled-relation-path-leg";
+                    basis = "modeled-relation";
                     provenanceIsAuthority = false;
                     admissible = true;
                   };
