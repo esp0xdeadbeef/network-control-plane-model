@@ -4,6 +4,7 @@
 , transitInterfaces
 , relations ? [ ]
 , services ? [ ]
+, trafficPaths ? [ ]
 , trafficTypeMatches ? { }
 , runtimeOriginSourcePrefixes ? [ ]
 ,
@@ -68,6 +69,22 @@ let
     else
       trafficTypeMatches.${relation.trafficType or "any"} or [ ];
 
+  relationRequiresPolicy =
+    relation:
+    let
+      id = relationId relation;
+    in
+    id != null
+    && (relation.action or "allow") != "deny"
+    && builtins.any
+      (
+        path:
+        builtins.isAttrs path
+        && (path.relationId or null) == id
+        && (path.requiresPolicy or false) == true
+      )
+      trafficPaths;
+
   localRelationRules = relationRaw:
     let
       relation = attrsOrEmpty relationRaw;
@@ -77,7 +94,10 @@ let
       id = relationId relation;
       direction = "relation-forward";
     in
-    builtins.concatLists (
+    if relationRequiresPolicy relation then
+      [ ]
+    else
+      builtins.concatLists (
       map
         (fromIface:
           map
@@ -115,7 +135,7 @@ let
             })
             (builtins.filter (toIface: toIface.runtimeIfName != fromIface.runtimeIfName) toIfaces))
         fromIfaces
-    );
+      );
 in
 builtins.concatLists (
   builtins.map

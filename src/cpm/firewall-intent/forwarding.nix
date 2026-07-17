@@ -18,6 +18,7 @@ in
   services,
   sharedServicePolicyAtoms ? [ ],
   siteRelations,
+  trafficPaths ? [ ],
   trafficTypeMatches ? { },
   target,
   interfaceRecords,
@@ -163,7 +164,7 @@ else if role == "downstream-selector" || role == "upstream-selector" then
         buildDownstreamSelectorRules {
           endpointBindings = attrsOrEmpty policyEndpointBindings;
           relations = siteRelations;
-          inherit services trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
+          inherit services trafficPaths trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
         }
       else
         buildUpstreamSelectorRules {
