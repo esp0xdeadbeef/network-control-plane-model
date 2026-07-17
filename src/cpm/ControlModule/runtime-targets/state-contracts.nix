@@ -41,7 +41,7 @@ let
   ];
 
   dhcp4LeaseContract = targetName: persistencePolicy: entry:
-    persistenceContract targetName persistencePolicy "dhcp4" (entry.id or entry.interface or "unknown") {
+    persistenceContract targetName persistencePolicy "dhcp4" (entry.id or entry.interface or "unknown") ({
       kind = "lease-state";
       interface = entry.interface or "";
       tenant = entry.tenant or "";
@@ -55,10 +55,12 @@ let
         "stale"
         "revocation"
       ];
-    };
+    } // (if builtins.isAttrs (entry.leaseState or null) then {
+      path = entry.leaseState.path or "";
+    } else { }));
 
   dhcpv6LeaseContract = targetName: persistencePolicy: entry:
-    persistenceContract targetName persistencePolicy "dhcpv6" (entry.id or entry.interface or "unknown") {
+    persistenceContract targetName persistencePolicy "dhcpv6" (entry.id or entry.interface or "unknown") ({
       kind = "lease-state";
       interface = entry.interface or "";
       tenant = entry.tenant or "";
@@ -72,7 +74,9 @@ let
         "stale"
         "revocation"
       ];
-    };
+    } // (if builtins.isAttrs (entry.leaseState or null) then {
+      path = entry.leaseState.path or "";
+    } else { }));
 
   dnsStateContracts = targetName: persistencePolicy: dns:
     if dns == { } then

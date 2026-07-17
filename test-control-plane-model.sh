@@ -46,6 +46,7 @@ tests=(
   test-static-reservation-duplicate-service-target-rejection.sh
   test-state-contract-dhcp4-explicit-input-only.sh
   test-state-contract-dhcp4-persistence.sh
+  test-fs860-hds010-sds010-sms030-explicit-dhcp-lease-state-path.sh
   test-state-contract-dhcp4-required-root-fails.sh
   test-state-contract-dhcpv6-explicit-input-only.sh
   test-state-contract-dhcpv6-persistence.sh
