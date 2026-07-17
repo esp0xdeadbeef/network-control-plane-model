@@ -52,7 +52,9 @@ let
   isExternalSurface = iface:
     (iface.external or false) == true
     || ((attrsOrEmpty (iface.wan or null)).external or false) == true
-    || ((backingRefOf iface).external or false) == true;
+    || ((backingRefOf iface).external or false) == true
+    || ((attrsOrEmpty (iface.interfaceClass or null)).providerSession or false) == true
+    || (iface.sessionPurpose or null) == "provider-access";
 
   modeledPeerRef = iface:
     let

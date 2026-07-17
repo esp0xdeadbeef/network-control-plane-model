@@ -328,8 +328,9 @@ for enterprise_name, site_name, target_name, target in iter_targets(model):
 
 if rule_count == 0:
     violations.append(f"{label}: no forwardingIntent rules were present; test would be vacuous")
-if core_mesh_count == 0:
-    violations.append(f"{label}: no core-transit-mesh forwarding-origin rules were present")
+# A topology may legitimately contain zero core-transit-mesh rules once every
+# provider session is classified as an external surface. The three seeded
+# label-recovery cases below keep the transport-authority predicate non-vacuous.
 if authority_verified_mesh == 0 and core_mesh_count > 0:
     violations.append(f"{label}: all {core_mesh_count} core-transit-mesh rules failed transport-authority verification")
 if nat_record_count == 0:
