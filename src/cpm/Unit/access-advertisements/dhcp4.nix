@@ -68,6 +68,16 @@ let
       resolveReservationSource "ipv4" entryPath (attrs.reservationSource or null) (attrs.reservations or null)
     else
       null;
+  leaseState =
+    if enabled && attrs ? leaseState then
+      let
+        state = requireAttrs "${entryPath}.leaseState" attrs.leaseState;
+      in
+      {
+        path = requireString "${entryPath}.leaseState.path" (state.path or null);
+      }
+    else
+      null;
   bindInterface =
     requireString
       "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
@@ -106,4 +116,5 @@ builtins.seq _idMatch (builtins.seq _subnetMatch (builtins.seq _routerMatch ({
   domain = requireString "${entryPath}.domain" (attrs.domain or null);
 }
 // (if reservationSource != null then { inherit reservationSource; } else { })
+// (if leaseState != null then { inherit leaseState; } else { })
 else { }))))

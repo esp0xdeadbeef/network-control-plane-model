@@ -1,5 +1,14 @@
 # regression.md
 
+## FS-860 explicit DHCP lease-state path
+
+- state=solved
+- owner: network-control-plane-model
+- scope: FS-860-HDS-010-SDS-010-SMS-030 explicit DHCP and DHCPv6 lease-state paths
+- first-bad-artifact: The 2026-07-17 `s-router-prod` candidate supplied only persistence root `/var/lib/kea`, so CPM emitted `/var/lib/kea/dhcp4/<runtime-target>/<tenant>` for VLAN2/3/7 and provided no way for inventory to select the existing lease database paths.
+- evidence: `NETWORK_REPO_DIRECT_TEST_OK=1 bash tests/test-fs860-hds010-sds010-sms030-explicit-dhcp-lease-state-path.sh`; the current `network-labs/examples/single-wan` pipeline preserves explicit IPv4 `/var/lib/kea/client.leases` and IPv6 `/var/lib/kea/client-v6.leases` paths exactly from inventory advertisements into their persistence contracts, while an empty explicit path fails at the exact inventory field.
+- note: Inventory owns an optional concrete lease storage location. CPM validates and preserves it; entries without it retain the deterministic persistence-root fallback.
+
 ## FS-350 runtime delegated-prefix derivation metadata
 
 - state=solved
