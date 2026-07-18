@@ -119,6 +119,7 @@ let
       ;
   };
   inherit (forwardingContext)
+    addPolicyRoutingAllocationsToTarget
     bgpSiteAsn
     bgpTopology
     ipv6Plan
@@ -187,6 +188,7 @@ let
       policyDerivedDnsForwardersForListeners
       policyDerivedDnsForwardersForTenants
       policyDerivedDnsUpstreamRecordsForListeners
+      addPolicyRoutingAllocationsToTarget
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       normalizeRuntimeTargetRoutesWith
