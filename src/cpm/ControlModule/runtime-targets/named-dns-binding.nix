@@ -623,6 +623,7 @@ let
         runtimeOriginEgress = {
           enabled = true;
           source = "dns-service";
+          policyRoutingRequired = true;
           inherit preferredSources sourcePrefixes uplinks;
           policyRouting = egressPolicy.policy;
         };
