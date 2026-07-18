@@ -16,6 +16,8 @@ let
   source = import (labs + "/GAMP/SMT/FS-540-HDS-010-SDS-010-SMS-030/intent.nix");
   nixosInventory = import (labs + "/GAMP/SMT/FS-540-HDS-010-SDS-010-SMS-030/inventory-nixos.nix");
   clabInventory = import (labs + "/GAMP/SMT/FS-540-HDS-010-SDS-010-SMS-030/inventory-clab.nix");
+  localRequesterEndpoints =
+    nixosInventory.endpoints.local-dns.ipv4 ++ nixosInventory.endpoints.local-dns.ipv6;
   build = inventory: flake.libBySystem.${system}.compileAndBuild {
     input = source;
     inherit inventory;
@@ -76,6 +78,9 @@ in {
     && nixosDns == clabDns
     && localDns.recursionMode == "local-only"
     && (localDns.forwarders or [ ]) == [ ]
+    && familyComplete (localDns.outgoingInterfaces or [ ])
+    && (localDns.outgoingInterfaces or [ ]) == localRequesterEndpoints
+    && (localDns.roles.recursion.outgoingInterfaces or [ ]) == localRequesterEndpoints
     && builtins.map (zone: zone.name) localDns.localForwardZones == [
       "30.54.10.in-addr.arpa."
       "lab."
