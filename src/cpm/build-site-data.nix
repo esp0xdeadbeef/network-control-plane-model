@@ -159,6 +159,7 @@ let
       allSiteEntries
       attachments
       allowedRelations
+      trafficPaths
       domains
       dnsContract
       inventoryEndpoints
@@ -176,6 +177,7 @@ let
       siteTenantsCfg
       siteIpv6Cfg
       routedPrefixesByTenant
+      tenantPrefixOwners
       dnsServiceRouteSpecs
       providerEndpointForServiceProvider
       providerTenantsForServiceProvider

@@ -13,6 +13,7 @@
 , allSiteEntries
 , attachments
 , allowedRelations
+, trafficPaths
 , domains
 , dnsContract
 , inventoryEndpoints
@@ -30,6 +31,7 @@
 , siteTenantsCfg
 , siteIpv6Cfg
 , routedPrefixesByTenant
+, tenantPrefixOwners
 , dnsServiceRouteSpecs
 , providerEndpointForServiceProvider
 , providerTenantsForServiceProvider
@@ -158,6 +160,23 @@ let
   normalizedRuntimeTargets =
     builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutesWithGlobal) dnsBoundRuntimeTargets;
 
+  addRelationPolicyRouting = import ../../ControlModule/runtime-targets/relation-policy-routing.nix {
+    inherit
+      lib
+      common
+      ipam
+      sitePath
+      tenantPrefixOwners
+      allowedRelations
+      trafficPaths
+      serviceDefinitions
+      providerTenantsForServiceProvider
+      policyNodeName
+      ;
+  };
+
+  relationPolicyRuntimeTargets = addRelationPolicyRouting normalizedRuntimeTargets;
+
   finalControlPlane = import ./final-control-plane.nix {
     inherit
       lib
@@ -182,9 +201,9 @@ let
       policyDerivedDnsUpstreamRecordsForListeners
       normalizeRuntimeTargetRoutes
       normalizeRuntimeTargetRoutesAfterPolicyComplements
-      normalizedRuntimeTargets
       emulationSubnets
       ;
+    normalizedRuntimeTargets = relationPolicyRuntimeTargets;
   };
 
 in

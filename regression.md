@@ -1,5 +1,14 @@
 # regression.md
 
+## Full-suite child exit status preservation
+
+- state=solved
+- owner: network-control-plane-model
+- first-bad-artifact: `run-all-tests.sh` executed `wait "${pid}" || true` and then read `$?`, which is the status of `true`. Every completed child was therefore counted as PASS even when its focused test exited non-zero.
+- required-fix: Capture the direct `wait` result through an `if` branch so `set -e` does not abort the collector and the original child status remains authoritative.
+- resource-boundary: Launch at most `TEST_JOBS` children at once, defaulting to the available processor count, instead of starting the complete suite simultaneously.
+- evidence: `bash tests/test-run-all-tests-child-status.sh` proves a child exiting 7 is counted as FAIL, makes the suite non-zero, and that zero concurrency is rejected. With the corrected runner and the same pushed `network-labs` pin, `origin/main` reports 165 PASS / 61 FAIL while this change reports 167 PASS / 60 FAIL; there are no current-only failures.
+
 ## FS-260 policy-required access-to-access selector traversal
 
 - state=solved
@@ -13,6 +22,19 @@
 - implemented access fix: Consume the explicit NFM destination path leg on the owning access-node and emit a relation-scoped `transit -> destination-local` new-flow rule. Preserve the generic stateful return rule, require an allow relation whose modeled path actually terminates on that access-node, retain modeled traffic matches and source prefixes, and emit nothing for deny or unrelated paths.
 - evidence: `NETWORK_REPO_DIRECT_TEST_OK=1 bash tests/FS-260-HDS-010-SDS-010-SMS-010-policy-required-access-to-access.sh`; the focused seeded-negatives prove the direct selector accept is absent only for policy-required allow paths, both relation-bound forward handoffs exist, the destination access ingress retains source prefixes, the generic reverse remains stateful, and deny, wrong-destination, and wrong-path inputs emit no new-flow ingress. `TEST_JOBS=42 NETWORK_REPO_DIRECT_TEST_OK=1 ./run-all-tests.sh` passes 222/222 tests on commit `5029a38f9feed2f97d855a7425e66b797787824e`.
 - live-boundary: Closed after a cold offline-to-new-boot stage on isolated VLANs only. `scripts/smt-live-FS-260-HDS-010-SDS-010-SMS-010.sh --live` passes NixOS and CLAB dual-stack forward/return probes, reverse-new-flow denial, and policy-interface counter deltas. Production VLAN2/VLAN3 was not used.
+
+## FS-270 dual-stack access-service policy-state route selection
+
+- state=solved
+- owner: network-control-plane-model
+- scope: FS-270-HDS-010-SDS-010-SMS-020 lateral tenant-to-service traffic with symmetric return
+- upstream-good-artifact: The pushed `network-labs` fixture compiles in NFM to `access-source -> downstream-selector -> policy -> downstream-selector -> access-destination`, carries `requiresPolicy = true`, and preserves `returnBehavior = "symmetric"` for the bounded service relation.
+- first-bad-artifact: CPM preserves the relation-scoped firewall handoffs from access to policy, policy to destination access, and destination transit to the service endpoint, but its downstream-selector runtime routing contract has no relation-scoped dual-stack route selection. Source ingress selects its generic access table, that table has no destination prefix through the source-side policy lane, and lookup can fall through to the directly connected destination-access route in the main table. The request therefore shortcuts policy while the return enters policy without matching conntrack state.
+- renderer-observation: Both renderer contracts consume CPM route and policy-routing authority. A renderer can faithfully materialize the current CPM output only by retaining the shortcut; inventing a target-local selector would create a second policy source of truth.
+- required-fix: CPM shall emit explicit IPv4 and IPv6 relation-scoped route-selection authority for each policy-required lateral service path. The selector shall bind source scope, destination provider scope, ingress access lane, selected policy-state owner, and the policy-facing routing allocation at a priority that precedes generic access and main-table selection. The selected table shall contain destination reachability through that policy lane. Deny relations, non-policy paths, unrelated services, and reverse new flows shall not gain authority.
+- seeded-negative: A directly reachable destination access prefix is present in the selector main table while the return path traverses policy. The focused predicate shall fail until both address families select the modeled policy owner before that shortcut, and shall still reject independently initiated reverse traffic and transitive egress.
+- evidence: `NETWORK_REPO_DIRECT_TEST_OK=1 bash tests/FS-270-HDS-010-SDS-010-SMS-020-access-service-policy-state-route-selection.sh` consumes the canonical pushed `network-labs` source and proves equivalent NixOS/CLAB CPM output: four relation-scoped selectors (forward/return and IPv4/IPv6), exact ingress/source/destination/policy-table binding, bounded policy routes, a retained shortcut seeded negative, no unrelated selector authority, and reverse-new-flow denial. The test was red with zero selectors before construction and is green after the CPM fix.
+- downstream-boundary: Renderer materialization and cold-staged live evidence remain downstream work; they do not reopen the corrected CPM contract.
 
 ## FS-860 explicit DHCP lease-state path
 
