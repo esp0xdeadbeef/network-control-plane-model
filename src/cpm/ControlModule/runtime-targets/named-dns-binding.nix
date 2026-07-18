@@ -4,6 +4,7 @@
 , siteDns
 , serviceDefinitions
 , allowedRelations
+, inventoryEndpoints
 ,
 }:
 
@@ -46,6 +47,16 @@ let
       builtins.head matches
     else
       failForwarding sitePath "named DNS provider '${nodeName}' must resolve to exactly one runtime target";
+
+  endpointAddressesForProvider =
+    providerName:
+    let
+      endpoint = attrsOrEmpty (inventoryEndpoints.${providerName} or null);
+    in
+    uniqueStrings (
+      listOrEmpty (endpoint.ipv4 or null)
+      ++ listOrEmpty (endpoint.ipv6 or null)
+    );
 
   service =
     serviceName:
@@ -106,6 +117,48 @@ let
         tenantInterfaces
     );
 
+  targetAddresses =
+    targetName:
+    let
+      realization = attrsOrEmpty (runtimeTargets.${targetName}.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (realization.interfaces or null);
+      loopback = attrsOrEmpty (realization.loopback or null);
+    in
+    uniqueStrings (
+      [
+        (stripPrefixLength (loopback.addr4 or loopback.ipv4 or ""))
+        (stripPrefixLength (loopback.addr6 or loopback.ipv6 or ""))
+      ]
+      ++ lib.concatMap
+        (iface: [
+          (stripPrefixLength (iface.addr4 or ""))
+          (stripPrefixLength (iface.addr6 or ""))
+        ])
+        (builtins.attrValues interfaces)
+    );
+
+  requesterTargetNameForService =
+    serviceName:
+    let
+      definition = service serviceName;
+      providers = listOrEmpty (definition.providers or null);
+      providerName =
+        if builtins.length providers == 1 then
+          builtins.head providers
+        else
+          failForwarding "${sitePath}.dns" "named DNS requester service '${serviceName}' must have exactly one provider identity";
+      nodeMatches = targetNamesForNode providerName;
+      endpointAddresses = endpointAddressesForProvider providerName;
+      endpointMatches = builtins.filter
+        (targetName: lib.any (address: builtins.elem address (targetAddresses targetName)) endpointAddresses)
+        (builtins.attrNames runtimeTargets);
+      matches = if builtins.length nodeMatches == 1 then nodeMatches else endpointMatches;
+    in
+    if builtins.length matches == 1 then
+      builtins.head matches
+    else
+      failForwarding sitePath "named DNS requester service '${serviceName}' provider '${providerName}' must resolve through one modeled node or endpoint";
+
   egressUplinksFor =
     serviceName:
     uniqueStrings (
@@ -151,9 +204,8 @@ let
       coreServiceName = upstream.name or null;
       requesterServiceName = advertised.name or null;
       coreNodeName = upstream.node or (providerNodeForService coreServiceName);
-      requesterNodeName = providerNodeForService requesterServiceName;
       coreTargetName = targetNameForNode coreNodeName;
-      requesterTargetName = targetNameForNode requesterNodeName;
+      requesterTargetName = requesterTargetNameForService requesterServiceName;
       families = listOrEmpty (binding.allowedAddressFamilies or null);
       endpoints = endpointAddresses coreTargetName families;
       requesterSources = tenantAddresses requesterTargetName;

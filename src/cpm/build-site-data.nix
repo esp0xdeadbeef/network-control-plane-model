@@ -160,6 +160,7 @@ let
       allowedRelations
       domains
       dnsContract
+      inventoryEndpoints
       links
       nodes
       serviceDefinitions
