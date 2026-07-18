@@ -88,7 +88,16 @@ let
   };
 
   bindNamedDnsServices = import ../../ControlModule/runtime-targets/named-dns-binding.nix {
-    inherit lib common sitePath allowedRelations serviceDefinitions inventoryEndpoints;
+    inherit
+      lib
+      common
+      enterpriseName
+      siteName
+      sitePath
+      allowedRelations
+      serviceDefinitions
+      inventoryEndpoints
+      ;
     siteDns = dnsContract;
   };
 

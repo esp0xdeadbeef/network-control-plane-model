@@ -81,6 +81,39 @@ let
     in
     uniqueStrings (listOrEmpty (endpoint.ipv4 or null) ++ listOrEmpty (endpoint.ipv6 or null));
 
+  tenantPrefixesFor =
+    tenantName:
+    uniqueStrings (
+      lib.concatMap
+        (
+          target:
+          let
+            realization = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+            interfaces = attrsOrEmpty (realization.interfaces or null);
+          in
+          lib.concatMap
+            (
+              iface:
+              let
+                backingRef = attrsOrEmpty (iface.backingRef or null);
+              in
+              if
+                (iface.sourceKind or null) == "tenant"
+                && (backingRef.kind or null) == "attachment"
+                && (backingRef.name or null) == tenantName
+              then
+                [
+                  (iface.addr4 or "")
+                  (iface.addr6 or "")
+                ]
+              else
+                [ ]
+            )
+            (builtins.attrValues interfaces)
+        )
+        (builtins.attrValues runtimeTargets)
+    );
+
   targetNameForService =
     serviceName:
     let
@@ -175,6 +208,7 @@ let
       relation = attrsOrEmpty (localSharing.relation or null);
       providerPolicy = attrsOrEmpty (localSharing.providerPolicy or null);
       lateralPolicy = attrsOrEmpty (localSharing.lateralPolicy or null);
+      lateralSource = lateralPolicy.source or null;
       authorityService = authority.service or null;
       requesterService = requester.service or null;
       relationId = relation.id or null;
@@ -190,6 +224,11 @@ let
       authorityEndpoints = serviceAddressesFor targets authorityService authorityTargetName;
       requesterEndpoints = serviceAddressesFor targets requesterService requesterTargetName;
       requesterPrefixes = builtins.filter (value: value != null) (map hostPrefix requesterEndpoints);
+      lateralPrefixes =
+        if builtins.isString lateralSource && lateralSource != "" then
+          tenantPrefixesFor lateralSource
+        else
+          [ ];
       missingFamilies =
         lib.optional (!lib.any (address: builtins.match ".*:.*" address == null) authorityEndpoints) "ipv4"
         ++ lib.optional (
@@ -202,6 +241,7 @@ let
         || (lateralPolicy.transitiveEgress or false)
         || (providerPolicy.action or null) != "refuse_non_local"
         || (lateralPolicy.action or null) != "refuse_non_local"
+        || lateralPrefixes == [ ]
         || builtins.length relationMatches != 1;
       localWarnings =
         lib.optional authorityLeak (warning {
@@ -225,6 +265,17 @@ let
       allWarnings = baseWarnings ++ localWarnings;
       requesterDns = dnsFor targets requesterTargetName;
       requesterUpstreams = listOrEmpty (requesterDns.upstreamResolvers or null);
+      requesterPolicies = listOrEmpty (requesterDns.requesterPolicies or null);
+      requesterLocalZones = listOrEmpty (requesterDns.localZones or null);
+      normalizedRequesterLocalZones = map
+        (
+          zone:
+          if builtins.isAttrs zone && builtins.elem (zone.name or null) namespaces then
+            zone // { type = "transparent"; }
+          else
+            zone
+        )
+        requesterLocalZones;
       requesterPatch = {
         forwarders = [ ];
         recursionMode = "local-only";
@@ -253,7 +304,18 @@ let
           transitiveEgress = false;
           missAction = "refuse";
         };
+        requesterPolicies = requesterPolicies ++ [
+          {
+            requesterService = "tenant:${toString lateralSource}";
+            sourcePrefixes = lateralPrefixes;
+            action = "refuse_non_local";
+            inherit namespaces relationId;
+          }
+        ];
         reproducibilityWarnings = allWarnings;
+      }
+      // lib.optionalAttrs (requesterLocalZones != [ ]) {
+        localZones = normalizedRequesterLocalZones;
       };
       providerDns = dnsFor targets authorityTargetName;
       providerAllowFrom = listOrEmpty (providerDns.allowFrom or null);

@@ -7,6 +7,7 @@
 , providerTenantsForServiceProvider
 , preferredDnsUplinksByRelationForService
 , preferredDnsUplinksForService
+, runtimeTargets
 , sitePath
 ,
 }:
@@ -17,6 +18,55 @@ let
 
   listOrEmpty = value: if builtins.isList value then value else [ ];
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };
+
+  runtimeDnsBindingsFor =
+    serviceName: providerName:
+    lib.concatMap
+      (
+        target:
+        let
+          dns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
+        in
+        builtins.filter
+          (
+            binding:
+            (binding.service or null) == serviceName
+            && (binding.providerNode or null) == providerName
+          )
+          (listOrEmpty (dns.serviceEndpointBindings or null))
+      )
+      (builtins.attrValues runtimeTargets);
+
+  runtimeDnsEndpointFor =
+    serviceName: providerName:
+    let
+      bindings = runtimeDnsBindingsFor serviceName providerName;
+      addresses = uniqueStrings (
+        lib.concatMap (binding: listOrEmpty (binding.addresses or null)) bindings
+      );
+    in
+    if bindings == [ ] || addresses == [ ] then
+      null
+    else
+      {
+        name = providerName;
+        ipv4 = builtins.filter (address: builtins.match ".*:.*" address == null) addresses;
+        ipv6 = builtins.filter (address: builtins.match ".*:.*" address != null) addresses;
+      };
+
+  runtimeDnsWarningsFor =
+    serviceName:
+    lib.concatMap
+      (
+        target:
+        let
+          dns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
+        in
+        builtins.filter
+          (warning: (warning.resolverService or null) == serviceName)
+          (listOrEmpty (dns.reproducibilityWarnings or null))
+      )
+      (builtins.attrValues runtimeTargets);
 
   failExposureScope = relation: field: message:
     let
@@ -243,13 +293,30 @@ builtins.map
       );
       exposure = exposureForService serviceName providerTenants;
       providerEndpoints = builtins.filter (endpoint: endpoint != null) (
-        builtins.map (providerEndpointForServiceProvider serviceName) providerNames
+        builtins.map
+          (
+            providerName:
+            let
+              runtimeEndpoint = runtimeDnsEndpointFor serviceName providerName;
+            in
+            if
+              (resolvedService.trafficType or null) == "dns"
+              && (resolvedService.addressAuthority or null) == "model-allocated-service-prefix"
+            then
+              runtimeEndpoint
+            else if runtimeEndpoint != null then
+              runtimeEndpoint
+            else
+              providerEndpointForServiceProvider serviceName providerName
+          )
+          providerNames
       );
       _missingProviderEndpoint =
         if
           (resolvedService.trafficType or null) == "dns"
           && exposure.class != "tenant-private"
           && providerEndpoints == [ ]
+          && runtimeDnsWarningsFor serviceName == [ ]
         then
           let providerName = if providerNames == [ ] then "<missing>" else builtins.head providerNames;
           in

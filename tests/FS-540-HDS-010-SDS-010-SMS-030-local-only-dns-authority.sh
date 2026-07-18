@@ -41,6 +41,11 @@ let
       localDns.upstreamResolvers
   );
   requesterPolicy = builtins.head recursiveDns.requesterPolicies;
+  lateralRequesterPolicy = builtins.head localDns.requesterPolicies;
+  localZonesByName = builtins.listToAttrs (map (zone: {
+    name = zone.name;
+    value = zone;
+  }) localDns.localZones);
   familyComplete = addresses:
     builtins.any (address: builtins.match ".*:.*" address == null) addresses
     && builtins.any (address: builtins.match ".*:.*" address != null) addresses;
@@ -88,6 +93,10 @@ in {
     && familyComplete requesterPolicy.sourcePrefixes
     && builtins.all (prefix: !(builtins.elem prefix (recursiveDns.allowFrom or [ ])))
       requesterPolicy.sourcePrefixes
+    && lateralRequesterPolicy.requesterService == "tenant:recursive-client"
+    && lateralRequesterPolicy.action == "refuse_non_local"
+    && familyComplete lateralRequesterPolicy.sourcePrefixes
+    && localZonesByName."lab.".type == "transparent"
     && coreDns.recursionMode == "iterative"
     && (coreDns.forwarders or [ ]) == [ ]
     && coreDns.egress.uplinks == [ "isp-primary" ];
