@@ -1,6 +1,8 @@
 { helpers
 , common
 , inventoryEndpoints
+, nodes
+, serviceDefinitions
 ,
 }:
 
@@ -18,8 +20,31 @@ let
       [ ]
       list;
 
+  stripPrefixLength = value:
+    if !(builtins.isString value) || value == "" then
+      ""
+    else
+      builtins.head (builtins.match "([^/]+)/.*" value);
+
+  modeledEndpointAddresses = serviceName: providerName:
+    let
+      service = attrsOrEmpty (serviceDefinitions.${serviceName} or null);
+      providerNode = service.providerNode or providerName;
+      node = attrsOrEmpty (nodes.${providerNode} or null);
+      loopback = attrsOrEmpty (node.loopback or null);
+      modelAllocated = (service.addressAuthority or null) == "model-allocated-service-prefix";
+      ipv4 = if modelAllocated then uniqueStrings [ (stripPrefixLength (loopback.ipv4 or "")) ] else [ ];
+      ipv6 = if modelAllocated then uniqueStrings [ (stripPrefixLength (loopback.ipv6 or "")) ] else [ ];
+    in
+    {
+      inherit ipv4 ipv6;
+      addresses = uniqueStrings (ipv4 ++ ipv6);
+      endpoint = if modelAllocated then node else { };
+      endpointPath = "${serviceName}.providerNode.${providerNode}.loopback";
+    };
+
   endpointAddresses =
-    providerName:
+    serviceName: providerName:
     let
       endpointPath = "inventory.endpoints.${providerName}";
       endpoint = attrsOrEmpty (inventoryEndpoints.${providerName} or null);
@@ -33,16 +58,17 @@ let
           requireStringList "${endpointPath}.ipv6" endpoint.ipv6
         else
           [ ];
+      explicit = {
+        inherit endpoint endpointPath ipv4 ipv6;
+        addresses = uniqueStrings (ipv4 ++ ipv6);
+      };
     in
-    {
-      inherit endpoint endpointPath ipv4 ipv6;
-      addresses = uniqueStrings (ipv4 ++ ipv6);
-    };
+    if explicit.addresses != [ ] then explicit else modeledEndpointAddresses serviceName providerName;
 
   providerAddressesForDnsService =
-    providerName:
+    serviceName: providerName:
     let
-      resolved = endpointAddresses providerName;
+      resolved = endpointAddresses serviceName providerName;
     in
     if resolved.endpoint == { } then
       failInventory
@@ -52,13 +78,13 @@ let
       resolved.addresses;
 
   optionalProviderAddressesForDnsService =
-    providerName:
-    (endpointAddresses providerName).addresses;
+    serviceName: providerName:
+    (endpointAddresses serviceName providerName).addresses;
 
   providerEndpointForServiceProvider =
-    providerName:
+    serviceName: providerName:
     let
-      resolved = endpointAddresses providerName;
+      resolved = endpointAddresses serviceName providerName;
     in
     if resolved.endpoint == { } || resolved.addresses == [ ] then
       null

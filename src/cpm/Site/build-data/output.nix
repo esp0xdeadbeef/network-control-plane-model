@@ -6,6 +6,7 @@
 , bgpTopology
 , communicationContract
 , coreNodeNames
+, dnsContract
 , domainsValue
 , endpointAssignment
 , forwardingSemantics
@@ -403,6 +404,7 @@ in
   else
     { }
 )
+// (lib.optionalAttrs (dnsContract != { }) { dns = dnsContract; })
 // (
   if builtins.isAttrs (siteAttrs.addressPools or null) then
     {

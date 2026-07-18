@@ -29,7 +29,7 @@ let
   };
 
   allowedClasses = import ./allowed-classes.nix {
-    inherit lib allowedRelations dnsPolicy providersForService serviceDefinitions;
+    inherit lib allowedRelations dnsPolicy context;
   };
 
   forwarders = import ./derived-services/forwarders.nix {

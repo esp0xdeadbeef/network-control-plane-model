@@ -9,7 +9,7 @@
 
 let
   inherit (helpers) hasAttr requireStringList sortedNames;
-  inherit (dnsPolicy) effectiveTrafficTypeForRelation providerAddressesForDnsService;
+  inherit (dnsPolicy) effectiveTrafficTypeForRelation;
 
   uniqueStrings =
     list:
@@ -68,23 +68,39 @@ let
 
   dnsRelations = builtins.filter allowedDnsRelation allowedRelations;
 
-  # GAMP: FS-540-HDS-010-SDS-010-SMS-025 — DNS follow-source hosted-service detection
-  # must not require provider endpoint addresses to match listener addresses.
-  # The access router may proxy DNS from a listener address to a resolver at a
-  # different endpoint address; the service is still "hosted" from the tenant
-  # perspective.  Provider endpoint existence is validated by
-  # providerAddressesForDnsService inside the filter body.
+  stripPrefixLength = value:
+    if !(builtins.isString value) || value == "" then "" else builtins.head (lib.splitString "/" value);
+
+  providerNodeAddresses = providerName:
+    let
+      node = if builtins.hasAttr providerName dnsPolicy.nodes then dnsPolicy.nodes.${providerName} else { };
+      loopback = if builtins.isAttrs (node.loopback or null) then node.loopback else { };
+      interfaces = if builtins.isAttrs (node.interfaces or null) then node.interfaces else { };
+      interfaceAddresses = lib.concatMap
+        (iface: [
+          (stripPrefixLength (iface.addr4 or ""))
+          (stripPrefixLength (iface.addr6 or ""))
+        ])
+        (builtins.attrValues interfaces);
+    in
+    uniqueStrings ([
+      (stripPrefixLength (loopback.ipv4 or ""))
+      (stripPrefixLength (loopback.ipv6 or ""))
+    ] ++ interfaceAddresses);
+
   hostedDnsServicesForListeners = listenAddrs:
+    let listenerSet = uniqueStrings listenAddrs;
+    in
     builtins.filter
       (serviceName:
         let
           serviceDef = serviceDefinitions.${serviceName};
           providerNames = providersForService serviceName;
-          # providerAddressesForDnsService validates endpoint existence;
-          # we do not require the addresses to intersect with listenAddrs.
-          _providerAddresses = lib.concatMap providerAddressesForDnsService providerNames;
+          providerAddresses = lib.concatMap providerNodeAddresses providerNames;
         in
-        (serviceDef.trafficType or null) == "dns" && providerNames != [ ])
+        (serviceDef.trafficType or null) == "dns"
+        && providerNames != [ ]
+        && lib.any (address: builtins.elem address listenerSet) providerAddresses)
       (sortedNames serviceDefinitions);
 in
 {

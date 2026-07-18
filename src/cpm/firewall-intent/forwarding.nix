@@ -85,21 +85,44 @@ let
               else
                 listOrEmpty (dns.upstreams or null);
             publicForwarders = builtins.filter isPublicResolver forwarders;
+            runtimeOrigin = attrsOrEmpty (runtimeTarget.runtimeOriginEgress or null);
+            modeledSourcePrefixes = listOrEmpty (runtimeOrigin.sourcePrefixes or null);
+            recursionMode = dns.recursionMode or null;
+            dnsEgress = attrsOrEmpty (dns.egress or null);
+            dnsUplinks =
+              if listOrEmpty (dnsEgress.uplinks or null) != [ ] then
+                listOrEmpty dnsEgress.uplinks
+              else
+                listOrEmpty (runtimeOrigin.uplinks or null);
             outgoing = listOrEmpty (dns.outgoingInterfaces or null);
             listeners = listOrEmpty (dns.listen or null);
             candidates = if outgoing != [ ] then outgoing else listeners;
           in
-          if dns == { } || publicForwarders == [ ] then
+          if dns == { } || (publicForwarders == [ ] && recursionMode != "iterative") then
             [ ]
+          else if modeledSourcePrefixes != [ ] then
+            map (source: source // { uplinks = dnsUplinks; }) modeledSourcePrefixes
           else
             map
               (address: {
                 family = addressFamily address;
                 prefix = address;
+                uplinks = dnsUplinks;
               })
               (builtins.filter (value: value != null) (map cleanAddress candidates)))
         (builtins.attrNames runtimeTargets)
     );
+
+  dnsSourceUsesUplink = source: iface:
+    let
+      allowed = listOrEmpty (source.uplinks or null);
+      names = builtins.filter (value: value != null && value != "") [
+        (iface.upstream or null)
+        iface.sourceInterfaceName
+        (backingRefName iface)
+      ];
+    in
+    allowed == [ ] || builtins.any (name: builtins.elem name allowed) names;
 
   policyEndpointDiagnostics = attrsOrEmpty ((attrsOrEmpty policyEndpointBindings).diagnostics or null);
   unresolvedDenyDiagnostics =
@@ -135,12 +158,12 @@ let
                     matches = dnsMatches;
                     fromInterface = transitIface.runtimeIfName;
                     toInterface = uplinkIface.runtimeIfName;
-                    sourcePrefixes = [ source ];
+                    sourcePrefixes = [ (builtins.removeAttrs source [ "uplinks" ]) ];
                     family = source.family;
                     comment = "allow-dns-service-egress";
                     applyTcpMssClamp = false;
                   })
-                  uplinkInterfaces)
+                  (builtins.filter (dnsSourceUsesUplink source) uplinkInterfaces))
               transitInterfaces
           ))
         publicDnsServiceSources

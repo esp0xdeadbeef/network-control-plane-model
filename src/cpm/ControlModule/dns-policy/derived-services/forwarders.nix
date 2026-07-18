@@ -3,7 +3,7 @@
 let
   inherit (dnsPolicy)
     consumerInterfaceCidrsForTenant
-    providerAddressesForDnsService
+    optionalProviderAddressesForDnsService
     relationEndpointMatchesTenant
     tenantNamesForRelationEndpoint
     tenantPrefixesForName
@@ -57,7 +57,10 @@ in
                   (builtins.filter (relation: relationEndpointMatchesTenant tenantName (relation.from or null)) dnsRelations)
               );
           in
-          lib.concatMap (serviceName: lib.concatMap providerAddressesForDnsService (providersForService serviceName)) allowedDnsServices)
+          lib.concatMap
+            (serviceName:
+              lib.concatMap (optionalProviderAddressesForDnsService serviceName) (providersForService serviceName))
+            allowedDnsServices)
         tenantNames
     );
 

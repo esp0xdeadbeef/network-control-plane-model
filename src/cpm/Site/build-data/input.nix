@@ -59,6 +59,7 @@ let
   };
 
   tenantPrefixOwners = requireAttrs "${sitePath}.tenantPrefixOwners" (siteAttrs.tenantPrefixOwners or null);
+  dnsContract = attrsOrEmpty (siteAttrs.dns or null);
 
   communicationContract =
     if builtins.isAttrs (siteAttrs.communicationContract or null) then
@@ -119,6 +120,7 @@ in
     coreNodeNames
     domains
     domainsValue
+    dnsContract
     inventoryAttrs
     inventoryEndpoints
     links

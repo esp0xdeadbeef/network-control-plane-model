@@ -16,7 +16,7 @@ let
   inherit (helpers) hasAttr isNonEmptyString requireAttrs requireString requireStringList sortedNames;
   inherit (common) attrsOrEmpty cidrContainsAddress uniqueStrings;
   providerEndpoints = import ./provider-endpoints.nix {
-    inherit helpers common inventoryEndpoints;
+    inherit helpers common inventoryEndpoints nodes serviceDefinitions;
   };
 
   relationEndpointMatchesTenant =
@@ -168,6 +168,7 @@ let
   dnsRelations = builtins.filter allowedDnsRelation allowedRelations;
 in
 {
+  inherit nodes;
   inherit (providerEndpoints) optionalProviderAddressesForDnsService providerAddressesForDnsService providerEndpointForServiceProvider;
   inherit consumerInterfaceCidrsForTenant effectiveTrafficTypeForRelation providerTenantsForServiceProvider relationEndpointMatchesTenant;
   inherit tenantNamesForRelationEndpoint tenantPrefixesForName;
