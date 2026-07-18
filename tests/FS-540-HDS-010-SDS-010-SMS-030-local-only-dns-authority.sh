@@ -95,7 +95,10 @@ in {
       requesterPolicy.sourcePrefixes
     && lateralRequesterPolicy.requesterService == "tenant:recursive-client"
     && lateralRequesterPolicy.action == "refuse_non_local"
-    && familyComplete lateralRequesterPolicy.sourcePrefixes
+    && lateralRequesterPolicy.sourcePrefixes == [
+      "10.54.30.0/24"
+      "fd42:540:30:0:0:0:0:0/64"
+    ]
     && localZonesByName."lab.".type == "transparent"
     && coreDns.recursionMode == "iterative"
     && (coreDns.forwarders or [ ]) == [ ]

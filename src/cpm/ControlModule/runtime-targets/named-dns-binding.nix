@@ -213,6 +213,42 @@ let
         tenantInterfaces
     );
 
+  tenantPrefixesFor =
+    tenantName:
+    uniqueStrings (
+      lib.concatMap
+        (
+          target:
+          let
+            interfaces = attrsOrEmpty (
+              (attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null
+            );
+          in
+          lib.concatMap
+            (
+              iface:
+              let
+                backingRef = attrsOrEmpty (iface.backingRef or null);
+              in
+              if
+                (iface.sourceKind or null) == "tenant"
+                && (backingRef.kind or null) == "attachment"
+                && (backingRef.name or null) == tenantName
+              then
+                builtins.filter (prefix: prefix != null) (
+                  map common.ipam.canonicalNetworkPrefix [
+                    (iface.addr4 or "")
+                    (iface.addr6 or "")
+                  ]
+                )
+              else
+                [ ]
+            )
+            (builtins.attrValues interfaces)
+        )
+        (builtins.attrValues runtimeTargets)
+    );
+
   targetAddresses =
     targetName:
     let
@@ -277,6 +313,59 @@ let
             [ ]
         )
         allowedRelations
+    );
+
+  directTenantRequesterPrefixesFor =
+    coreServiceName:
+    uniqueStrings (
+      lib.concatMap
+        (
+          relation:
+          let
+            from = attrsOrEmpty (relation.from or null);
+            to = attrsOrEmpty (relation.to or null);
+          in
+          if
+            (relation.action or "allow") == "allow"
+            && (relation.trafficType or null) == "dns"
+            && (from.kind or null) == "tenant"
+            && (to.kind or null) == "service"
+            && (to.name or null) == coreServiceName
+          then
+            tenantPrefixesFor (from.name or "")
+          else
+            [ ]
+        )
+        allowedRelations
+    );
+
+  bindingRequesterHostPrefixesFor =
+    coreServiceName:
+    uniqueStrings (
+      lib.concatMap
+        (
+          binding:
+          let
+            upstream = attrsOrEmpty (binding.upstreamResolver or null);
+            advertised = attrsOrEmpty (binding.advertisedResolver or null);
+          in
+          if (upstream.name or null) == coreServiceName then
+            let
+              requesterTargetName = requesterTargetNameForService (advertised.name or null);
+              requesterSources = tenantAddresses requesterTargetName;
+            in
+            builtins.filter (value: value != null) (map hostPrefix requesterSources)
+          else
+            [ ]
+        )
+        bindings
+    );
+
+  requesterAllowFromFor =
+    coreServiceName:
+    uniqueStrings (
+      directTenantRequesterPrefixesFor coreServiceName
+      ++ bindingRequesterHostPrefixesFor coreServiceName
     );
 
   mergeDns =
@@ -359,7 +448,6 @@ let
       };
       endpoints = relationEndpoint.addresses;
       requesterSources = tenantAddresses requesterTargetName;
-      requesterHostPrefixes = builtins.filter (value: value != null) (map hostPrefix requesterSources);
       uplinks = egressUplinksFor coreServiceName;
       _egress =
         if uplinks == [ ] then
@@ -426,7 +514,7 @@ let
       };
       boundCoreBase = mergeDns coreTarget {
         listen = endpoints;
-        allowFrom = uniqueStrings ((listOrEmpty (coreDns.allowFrom or null)) ++ requesterHostPrefixes);
+        allowFrom = requesterAllowFromFor coreServiceName;
         forwarders = [ ];
         outgoingInterfaces = [ ];
         recursionMode = (service coreServiceName).recursionMode or "iterative";
