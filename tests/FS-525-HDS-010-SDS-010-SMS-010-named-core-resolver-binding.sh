@@ -78,3 +78,61 @@ else
   echo "FAIL FS-525 named core resolver binding" >&2
   exit 1
 fi
+
+endpoint_alias_expr='
+let
+  flake = builtins.getFlake ("path:" + toString ./.);
+  system = builtins.currentSystem;
+  labs = flake.inputs.network-labs.outPath;
+  traceId = "FS-525-HDS-010-SDS-010-SMS-010";
+  source = import (labs + "/GAMP/SMT/FS-525-HDS-010-SDS-010-SMS-010/intent.nix");
+  inventory = import (labs + "/GAMP/SMT/FS-525-HDS-010-SDS-010-SMS-010/inventory-nixos.nix");
+  site = source.mini-smt.${traceId};
+  accessEndpoint = builtins.head (
+    builtins.filter (endpoint: endpoint.name == "access-dns") site.ownership.endpoints
+  );
+  aliasedService = service:
+    if service.name == "access-dns" then
+      service // { providers = [ "access-dns-endpoint" ]; }
+    else
+      service;
+  aliasedInput = {
+    mini-smt.${traceId} = site // {
+      communicationContract = site.communicationContract // {
+        services = map aliasedService site.communicationContract.services;
+      };
+      ownership = site.ownership // {
+        endpoints = site.ownership.endpoints ++ [
+          (accessEndpoint // { name = "access-dns-endpoint"; })
+        ];
+      };
+    };
+  };
+  aliasedInventory = inventory // {
+    endpoints = {
+      access-dns-endpoint = {
+        inherit (accessEndpoint) ipv4 ipv6;
+      };
+    };
+  };
+  built = flake.libBySystem.${system}.compileAndBuild {
+    input = aliasedInput;
+    inventory = aliasedInventory;
+  };
+  runtimeTargets = built.control_plane_model.data.mini-smt.${traceId}.runtimeTargets;
+  accessTargets = builtins.filter
+    (target: (target.logicalNode.name or null) == "access-dns")
+    (builtins.attrValues runtimeTargets);
+  accessDns = (builtins.head accessTargets).services.dns;
+in
+  builtins.length accessTargets == 1
+  && builtins.length accessDns.upstreamResolvers == 1
+  && (builtins.head accessDns.upstreamResolvers).service == "core-dns"
+'
+
+if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$endpoint_alias_expr" | grep -qx true; then
+  echo "PASS FS-525 requester provider endpoint binds to one modeled access node"
+else
+  echo "FAIL FS-525 requester provider endpoint binding" >&2
+  exit 1
+fi
