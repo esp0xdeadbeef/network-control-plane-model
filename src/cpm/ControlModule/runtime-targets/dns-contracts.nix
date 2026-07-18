@@ -448,7 +448,7 @@ let
       safeForwarders =
         if selfRefForwarders != [ ] then
           builtins.trace
-            "FS-540-HDS-010-SDS-010-SMS-035: filtered self-referential DNS forwarder(s) ${builtins.toJSON selfRefForwarders}"
+            "FS-540-HDS-010-SDS-010-SMS-035: filtered self-referential DNS forwarder input without logging address material"
             (if selfFilteredForwarders == [ ] && derivedForwarders != [ ] then derivedForwarders else selfFilteredForwarders)
         else
           forwarders;

@@ -73,6 +73,12 @@ let
     else
       failInventory path "must be a boolean";
 
+  attrsList =
+    path: value:
+    builtins.map
+      (entry: requireAttrs "${path}[*]" entry)
+      (requireList path value);
+
 in
 {
   normalizeDnsService = servicesPath: dnsValue:
@@ -156,6 +162,83 @@ in
       routeContracts = requireList "${dnsPath}.routeContracts" (dns.routeContracts or [ ]);
       policyMatrix = requireList "${dnsPath}.policyMatrix" (dns.policyMatrix or [ ]);
       upstreamResolvers = requireList "${dnsPath}.upstreamResolvers" (dns.upstreamResolvers or [ ]);
+      recursionMode =
+        if dns ? recursionMode then
+          let
+            value = requireString "${dnsPath}.recursionMode" dns.recursionMode;
+          in
+          if builtins.elem value [
+            "iterative"
+            "forwarding"
+            "local-only"
+          ] then
+            value
+          else
+            failInventory "${dnsPath}.recursionMode" "must be iterative, forwarding, or local-only"
+        else
+          null;
+      localForwardZones = builtins.map
+        (zone:
+          let
+            name = requireString "${dnsPath}.localForwardZones[*].name" (zone.name or null);
+            relationId = requireString "${dnsPath}.localForwardZones[*].relationId" (zone.relationId or null);
+            forwardTo = normalizeForwarderList "${dnsPath}.localForwardZones[*]" zone "forwardTo";
+            forwardFirst = boolOrDefault "${dnsPath}.localForwardZones[*].forwardFirst" (zone.forwardFirst or null) false;
+          in
+          if name == "" || relationId == "" || forwardTo == [ ] then
+            failInventory "${dnsPath}.localForwardZones[*]" "requires non-empty name, relationId, and forwardTo"
+          else
+            { inherit name relationId forwardTo forwardFirst; })
+        (attrsList "${dnsPath}.localForwardZones" (dns.localForwardZones or [ ]));
+      requesterPolicies = builtins.map
+        (policy:
+          let
+            requesterService = requireString "${dnsPath}.requesterPolicies[*].requesterService" (policy.requesterService or null);
+            relationId = requireString "${dnsPath}.requesterPolicies[*].relationId" (policy.relationId or null);
+            action = requireString "${dnsPath}.requesterPolicies[*].action" (policy.action or null);
+            sourcePrefixes = normalizeStringList "${dnsPath}.requesterPolicies[*]" policy "sourcePrefixes";
+            namespaces = normalizeStringList "${dnsPath}.requesterPolicies[*]" policy "namespaces";
+          in
+          if requesterService == "" || relationId == "" || sourcePrefixes == [ ] || namespaces == [ ] then
+            failInventory "${dnsPath}.requesterPolicies[*]" "requires requesterService, relationId, sourcePrefixes, and namespaces"
+          else if action != "refuse_non_local" then
+            failInventory "${dnsPath}.requesterPolicies[*].action" "must be refuse_non_local for a local-only requester"
+          else
+            { inherit requesterService relationId action sourcePrefixes namespaces; })
+        (attrsList "${dnsPath}.requesterPolicies" (dns.requesterPolicies or [ ]));
+      localOnlyPolicy =
+        if dns ? localOnlyPolicy then
+          let
+            policy = requireAttrs "${dnsPath}.localOnlyPolicy" dns.localOnlyPolicy;
+            providerService = requireString "${dnsPath}.localOnlyPolicy.providerService" (policy.providerService or null);
+            relationId = requireString "${dnsPath}.localOnlyPolicy.relationId" (policy.relationId or null);
+            namespaces = normalizeStringList "${dnsPath}.localOnlyPolicy" policy "namespaces";
+            recursion = boolOrDefault "${dnsPath}.localOnlyPolicy.recursion" (policy.recursion or null) false;
+            publicFallback = boolOrDefault "${dnsPath}.localOnlyPolicy.publicFallback" (policy.publicFallback or null) false;
+            transitiveEgress = boolOrDefault "${dnsPath}.localOnlyPolicy.transitiveEgress" (policy.transitiveEgress or null) false;
+            missAction = requireString "${dnsPath}.localOnlyPolicy.missAction" (policy.missAction or null);
+          in
+          if providerService == "" || relationId == "" || namespaces == [ ] || missAction != "refuse" then
+            failInventory "${dnsPath}.localOnlyPolicy" "requires providerService, relationId, namespaces, and missAction=refuse"
+          else if recursion || publicFallback || transitiveEgress then
+            failInventory "${dnsPath}.localOnlyPolicy" "must not grant recursion, public fallback, or transitive egress"
+          else
+            {
+              inherit
+                providerService
+                relationId
+                namespaces
+                recursion
+                publicFallback
+                transitiveEgress
+                missAction
+                ;
+            }
+        else
+          null;
+      reproducibilityWarnings = attrsList
+        "${dnsPath}.reproducibilityWarnings"
+        (dns.reproducibilityWarnings or [ ]);
       localZones = normalizeLocalZones dnsPath dns;
       localRecords = normalizeLocalRecords dnsPath dns;
       namespaceFallback = normalizeNamespaceFallback dnsPath dns;
@@ -175,6 +258,11 @@ in
           // lib.optionalAttrs (roles != { }) { inherit roles; }
           // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
           // lib.optionalAttrs (upstreamResolvers != [ ]) { inherit upstreamResolvers; }
+          // lib.optionalAttrs (recursionMode != null) { inherit recursionMode; }
+          // lib.optionalAttrs (localForwardZones != [ ]) { inherit localForwardZones; }
+          // lib.optionalAttrs (requesterPolicies != [ ]) { inherit requesterPolicies; }
+          // lib.optionalAttrs (localOnlyPolicy != null) { inherit localOnlyPolicy; }
+          // lib.optionalAttrs (dns ? reproducibilityWarnings) { inherit reproducibilityWarnings; }
           // {
           inherit
             allowedUpstreamClasses

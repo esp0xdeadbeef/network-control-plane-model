@@ -15,6 +15,10 @@ let
   listOrEmpty = value: if builtins.isList value then value else [ ];
   recursive = attrsOrEmpty (siteDns.recursive or null);
   bindings = listOrEmpty (recursive.bindings or null);
+  reproducibilityWarnings = listOrEmpty (siteDns.warnings or null);
+  fatalWarnings = builtins.filter
+    (warning: (warning.code or null) != "DNS_CORE_UPSTREAM_HARDCODED")
+    reproducibilityWarnings;
 
   stripPrefixLength =
     value:
@@ -196,6 +200,27 @@ let
       };
     };
 
+  attachWarnings =
+    targets:
+    builtins.mapAttrs
+      (
+        _targetName: target:
+        let
+          services = attrsOrEmpty (target.services or null);
+        in
+        if builtins.isAttrs (services.dns or null) then
+          target // {
+            services = services // {
+              dns = services.dns // {
+                inherit reproducibilityWarnings;
+              };
+            };
+          }
+        else
+          target
+      )
+      targets;
+
   applyBinding =
     targets: binding:
     let
@@ -297,5 +322,6 @@ let
         ${coreTargetName} = boundCore;
       }
     );
+  boundRuntimeTargets = builtins.foldl' applyBinding runtimeTargets bindings;
 in
-builtins.foldl' applyBinding runtimeTargets bindings
+attachWarnings (if fatalWarnings == [ ] then boundRuntimeTargets else runtimeTargets)

@@ -53,11 +53,11 @@
     },
     "network-labs": {
       "locked": {
-        "lastModified": 1784338314,
-        "narHash": "sha256-NT2izLR/BCxxXvNL0r9HobOzb7DuIpul2qXT65lejak=",
+        "lastModified": 1784341235,
+        "narHash": "sha256-gW0Xy3l2rMKf+CDzaVOiUb2dfE7E6eUhlG7sd1DYXio=",
         "owner": "esp0xdeadbeef",
         "repo": "network-labs",
-        "rev": "662b42002037ce27a73de14c3a4833ef5c9ab04f",
+        "rev": "c227153404a842604573e08677823123a150c424",
         "type": "github"
       },
       "original": {
