@@ -273,9 +273,10 @@ let
           }
         // lib.optionalAttrs (builtins.any (address: builtins.match ".*:.*" address != null) endpoints) {
           ipv6 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address != null) endpoints);
-        };
+      };
       boundAccess = mergeDns accessTarget {
         forwarders = endpoints;
+        recursionMode = "forwarding";
         outgoingInterfaces = requesterSources;
         upstreamResolvers = [
           {
