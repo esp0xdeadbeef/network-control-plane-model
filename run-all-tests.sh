@@ -34,12 +34,50 @@ fi
 # ============================================================
 # Run all tests asynchronously
 # ============================================================
-echo "Running ${#tests[@]} CPM tests (async)..."
+test_jobs="${TEST_JOBS:-$(nproc)}"
+if [[ ! "${test_jobs}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: TEST_JOBS must be a positive integer, got '${test_jobs}'" >&2
+  exit 2
+fi
+
+echo "Running ${#tests[@]} CPM tests (async, up to ${test_jobs} jobs)..."
 echo ""
 
 # Collect PIDs and names
 declare -A pid_to_name=()
 declare -A pid_to_log=()
+active_pids=()
+
+passes=0
+failures=0
+
+collect_pid() {
+  local pid="$1"
+  local name="${pid_to_name[${pid}]}"
+  local log_file="${pid_to_log[${pid}]}"
+  local status
+
+  # Wait for this specific PID without letting `set -e` abort the collector.
+  # The status must come from the child itself; `wait ... || true` would turn
+  # every failing child into status 0 and make the full suite false-green.
+  if wait "${pid}" 2>/dev/null; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    echo "PASS ${name}"
+    passes=$((passes + 1))
+  else
+    echo "FAIL ${name} (exit ${status})"
+    echo "--- ${name} output (last 20 lines) ---"
+    tail -20 "${log_file}" 2>/dev/null || true
+    echo "--- end ${name} ---"
+    echo ""
+    failures=$((failures + 1))
+  fi
+}
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -53,34 +91,19 @@ for test_path in "${tests[@]}"; do
   pid=$!
   pid_to_name["${pid}"]="${name}"
   pid_to_log["${pid}"]="${log_file}"
+  active_pids+=("${pid}")
+
+  if [[ "${#active_pids[@]}" -ge "${test_jobs}" ]]; then
+    collect_pid "${active_pids[0]}"
+    active_pids=("${active_pids[@]:1}")
+  fi
 done
 
 # ============================================================
 # Wait for all tests and collect results
 # ============================================================
-passes=0
-failures=0
-
-for pid in "${!pid_to_name[@]}"; do
-  name="${pid_to_name[${pid}]}"
-  log_file="${pid_to_log[${pid}]}"
-
-  # Wait for this specific PID
-  wait "${pid}" 2>/dev/null || true
-  status=$?
-
-  if [[ "${status}" -eq 0 ]]; then
-    echo "PASS ${name}"
-    passes=$((passes + 1))
-  else
-    echo "FAIL ${name} (exit ${status})"
-    # Print test output for failures (last 20 lines)
-    echo "--- ${name} output (last 20 lines) ---"
-    tail -20 "${log_file}" 2>/dev/null || true
-    echo "--- end ${name} ---"
-    echo ""
-    failures=$((failures + 1))
-  fi
+for pid in "${active_pids[@]}"; do
+  collect_pid "${pid}"
 done
 
 # ============================================================

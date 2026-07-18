@@ -193,7 +193,11 @@ let
       }
       {
         name = "routing";
-        sourceFacts = [ "routing" "runtimeTargets.*.effectiveRuntimeRealization.interfaces.*.routes" ];
+        sourceFacts = [
+          "routing"
+          "runtimeTargets.*.effectiveRuntimeRealization.interfaces.*.routes"
+          "runtimeTargets.*.effectiveRuntimeRealization.routeSelectionRules"
+        ];
       }
       {
         name = "dns";
