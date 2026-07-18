@@ -250,3 +250,105 @@ else
   echo "FAIL FS-525 relation endpoint mismatch warning" >&2
   exit 1
 fi
+
+acl_scope_expr='
+let
+  flake = builtins.getFlake ("path:" + toString ./.);
+  lib = flake.inputs.nixpkgs.lib;
+  common = {
+    attrsOrEmpty = value: if builtins.isAttrs value then value else {};
+    failForwarding = path: message: throw "${path}: ${message}";
+    ipam = import ./src/cpm/ipam.nix { inherit lib; };
+    uniqueStrings = values:
+      lib.sort builtins.lessThan (lib.unique (builtins.filter
+        (value: builtins.isString value && value != "") values));
+  };
+  bind = import ./src/cpm/ControlModule/runtime-targets/named-dns-binding.nix {
+    inherit lib common;
+    enterpriseName = "mini-smt";
+    siteName = "acl-scope";
+    sitePath = "mini-smt.acl-scope";
+    inventoryEndpoints = {};
+    serviceDefinitions = {
+      access-dns = { providers = [ "access" ]; trafficType = "dns"; };
+      core-dns = {
+        providers = [ "core" ];
+        providerNode = "core";
+        trafficType = "dns";
+        recursionMode = "iterative";
+      };
+    };
+    allowedRelations = [
+      {
+        id = "access-to-core";
+        from = { kind = "service"; name = "access-dns"; };
+        to = { kind = "service"; name = "core-dns"; };
+        trafficType = "dns";
+        action = "allow";
+      }
+      {
+        id = "client-to-core";
+        from = { kind = "tenant"; name = "client"; };
+        to = { kind = "service"; name = "core-dns"; };
+        trafficType = "dns";
+        action = "allow";
+      }
+      {
+        id = "core-to-isp-a";
+        from = { kind = "service"; name = "core-dns"; };
+        to = { kind = "external"; uplinks = [ "isp-a" ]; };
+        trafficType = "dns";
+        action = "allow";
+      }
+    ];
+    siteDns = {
+      warnings = [];
+      recursive.bindings = [
+        {
+          advertisedResolver = { kind = "service"; name = "access-dns"; };
+          upstreamResolver = { kind = "service"; name = "core-dns"; node = "core"; };
+          allowedAddressFamilies = [ "ipv4" "ipv6" ];
+          egressSurface = { kind = "external"; uplinks = [ "isp-a" ]; };
+          returnBehavior = "symmetric";
+        }
+      ];
+    };
+  };
+  targets = {
+    access = {
+      logicalNode.name = "access";
+      effectiveRuntimeRealization.interfaces.tenant = {
+        sourceKind = "tenant";
+        addr4 = "192.0.2.1/24";
+        addr6 = "2001:db8:1:2fff::1/60";
+        backingRef = { kind = "attachment"; name = "client"; };
+      };
+      services.dns = {};
+    };
+    core = {
+      logicalNode.name = "core";
+      effectiveRuntimeRealization.interfaces.terminal = {
+        sourceKind = "p2p";
+        addr4 = "198.51.100.2/31";
+        addr6 = "2001:db8:fffe::2/127";
+        backingRef = { id = "modeled-link-a"; uplinks = [ "isp-a" ]; };
+      };
+      services.dns.allowFrom = [ "203.0.113.0/24" ];
+    };
+  };
+  result = bind targets;
+in
+  result.core.services.dns.allowFrom == [
+    "192.0.2.0/24"
+    "192.0.2.1/32"
+    "2001:db8:1:2ff0:0:0:0:0/60"
+    "2001:db8:1:2fff::1/128"
+  ]
+'
+
+if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$acl_scope_expr" | grep -qx true; then
+  echo "PASS FS-525 core ACL is derived only from explicit requester relations"
+else
+  echo "FAIL FS-525 core requester ACL scope" >&2
+  exit 1
+fi

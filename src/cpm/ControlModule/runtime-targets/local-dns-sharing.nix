@@ -102,10 +102,12 @@ let
                 && (backingRef.kind or null) == "attachment"
                 && (backingRef.name or null) == tenantName
               then
-                [
-                  (iface.addr4 or "")
-                  (iface.addr6 or "")
-                ]
+                builtins.filter (prefix: prefix != null) (
+                  map common.ipam.canonicalNetworkPrefix [
+                    (iface.addr4 or "")
+                    (iface.addr6 or "")
+                  ]
+                )
               else
                 [ ]
             )
