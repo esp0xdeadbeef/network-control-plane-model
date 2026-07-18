@@ -80,6 +80,7 @@ in
   && coreDns.recursionMode == "iterative"
   && coreDns.egress.uplinks == [ "isp-primary" ]
   && core.runtimeOriginEgress.uplinks == [ "isp-primary" ]
+  && core.runtimeOriginEgress.policyRoutingRequired == true
   && core.runtimeOriginEgress.policyRouting == {
     source = "control-plane-model";
     selectedUplink = "isp-primary";
