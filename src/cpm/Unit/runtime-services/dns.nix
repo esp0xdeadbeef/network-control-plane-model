@@ -36,6 +36,15 @@ let
   namespaceContracts = import ./dns-namespace-contracts.nix { inherit lib helpers failInventory; };
   normalizeNamespaceFallback = import ./dns-namespace-fallback.nix { inherit lib helpers failInventory; };
   localRecords = import ./dns-local-records.nix { inherit lib helpers failInventory; };
+  validationAuthorityContract = import ./dns-validation-authority.nix {
+    inherit
+      lib
+      helpers
+      failInventory
+      isIpv4Address
+      isIpv6Address
+      ;
+  };
   inherit (localRecords)
     normalizeLocalRecords
     normalizeLocalZones
@@ -239,6 +248,13 @@ in
       reproducibilityWarnings = attrsList
         "${dnsPath}.reproducibilityWarnings"
         (dns.reproducibilityWarnings or [ ]);
+      validationAuthority =
+        if dns ? validationAuthority then
+          validationAuthorityContract.normalize
+            "${dnsPath}.validationAuthority"
+            dns.validationAuthority
+        else
+          null;
       localZones = normalizeLocalZones dnsPath dns;
       localRecords = normalizeLocalRecords dnsPath dns;
       namespaceFallback = normalizeNamespaceFallback dnsPath dns;
@@ -263,6 +279,7 @@ in
           // lib.optionalAttrs (requesterPolicies != [ ]) { inherit requesterPolicies; }
           // lib.optionalAttrs (localOnlyPolicy != null) { inherit localOnlyPolicy; }
           // lib.optionalAttrs (dns ? reproducibilityWarnings) { inherit reproducibilityWarnings; }
+          // lib.optionalAttrs (validationAuthority != null) { inherit validationAuthority; }
           // {
           inherit
             allowedUpstreamClasses
@@ -284,3 +301,4 @@ in
       )
     );
 }
+
