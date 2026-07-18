@@ -56,6 +56,8 @@ let
   clabBuilt = build clabInventory;
   nixosAuthority = authorityFor nixosBuilt;
   clabAuthority = authorityFor clabBuilt;
+  nixosComplete = builtins.tryEval (builtins.deepSeq nixosBuilt.control_plane_model true);
+  clabComplete = builtins.tryEval (builtins.deepSeq clabBuilt.control_plane_model true);
   badScope = builtins.tryEval (builtins.deepSeq
     (build (mutateAuthority (authority: authority // { scope = "production"; })))
     true);
@@ -67,6 +69,8 @@ let
 in
   assert nixosAuthority == sourceAuthority nixosInventory;
   assert clabAuthority == sourceAuthority clabInventory;
+  assert nixosComplete.success;
+  assert clabComplete.success;
   assert nixosAuthority == clabAuthority;
   assert nixosAuthority.scope == "harness";
   assert nixosAuthority.selectedUplink == "isp-primary";
