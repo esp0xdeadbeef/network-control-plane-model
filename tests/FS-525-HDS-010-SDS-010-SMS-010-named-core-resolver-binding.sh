@@ -60,6 +60,7 @@ in
   && !(builtins.any
     (address: builtins.elem address [ "1.1.1.1" "9.9.9.9" "2606:4700:4700::1111" "2620:fe::fe" ])
     (accessDns.forwarders or [ ]))
+  && accessDns.recursionMode == "forwarding"
   && coreDns.listen == [ core4 core6 ]
   && (coreDns.forwarders or [ ]) == [ ]
   && coreDns.recursionMode == "iterative"
