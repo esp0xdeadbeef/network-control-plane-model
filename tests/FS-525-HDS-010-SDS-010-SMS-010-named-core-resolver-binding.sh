@@ -80,6 +80,15 @@ in
   && coreDns.recursionMode == "iterative"
   && coreDns.egress.uplinks == [ "isp-primary" ]
   && core.runtimeOriginEgress.uplinks == [ "isp-primary" ]
+  && core.runtimeOriginEgress.policyRouting == {
+    source = "control-plane-model";
+    selectedUplink = "isp-primary";
+    selectedInterface = "isp-primary";
+    runtimeIfName = "wan0";
+    tableId = 1002;
+    rulePriority = 1002;
+    firewallMark = 1002;
+  }
   && coreEgressRules != [ ]
   && builtins.all (rule: rule.toInterface == "wan0") coreEgressRules
   && relation.returnBehavior == "symmetric"
@@ -327,11 +336,23 @@ let
     };
     core = {
       logicalNode.name = "core";
-      effectiveRuntimeRealization.interfaces.terminal = {
-        sourceKind = "p2p";
-        addr4 = "198.51.100.2/31";
-        addr6 = "2001:db8:fffe::2/127";
-        backingRef = { id = "modeled-link-a"; uplinks = [ "isp-a" ]; };
+      effectiveRuntimeRealization.interfaces = {
+        terminal = {
+          sourceKind = "p2p";
+          addr4 = "198.51.100.2/31";
+          addr6 = "2001:db8:fffe::2/127";
+          backingRef = { id = "modeled-link-a"; uplinks = [ "isp-a" ]; };
+        };
+        isp-a = {
+          sourceKind = "wan";
+          runtimeIfName = "wan0";
+          backingRef = { id = "uplink-a"; name = "isp-a"; };
+          policyRoutingAllocation = {
+            source = "control-plane-model";
+            tableId = 1002;
+            tableRulePriority = 1002;
+          };
+        };
       };
       services.dns.allowFrom = [ "203.0.113.0/24" ];
     };
@@ -350,5 +371,129 @@ if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "
   echo "PASS FS-525 core ACL is derived only from explicit requester relations"
 else
   echo "FAIL FS-525 core requester ACL scope" >&2
+  exit 1
+fi
+
+egress_warning_expr='
+let
+  flake = builtins.getFlake ("path:" + toString ./.);
+  lib = flake.inputs.nixpkgs.lib;
+  common = {
+    attrsOrEmpty = value: if builtins.isAttrs value then value else {};
+    failForwarding = path: message: throw "${path}: ${message}";
+    uniqueStrings = values:
+      lib.sort builtins.lessThan (lib.unique (builtins.filter
+        (value: builtins.isString value && value != "") values));
+  };
+  bindFor = selectedUplinks: includeSecondary:
+    let
+      bind = import ./src/cpm/ControlModule/runtime-targets/named-dns-binding.nix {
+        inherit lib common;
+        enterpriseName = "mini-smt";
+        siteName = "egress-warning";
+        sitePath = "mini-smt.egress-warning";
+        inventoryEndpoints = {};
+        serviceDefinitions = {
+          access-dns = { providers = [ "access" ]; trafficType = "dns"; };
+          core-dns = {
+            providers = [ "core" ];
+            providerNode = "core";
+            trafficType = "dns";
+            recursionMode = "iterative";
+          };
+        };
+        allowedRelations = [
+          {
+            id = "access-to-core";
+            from = { kind = "service"; name = "access-dns"; };
+            to = { kind = "service"; name = "core-dns"; };
+            trafficType = "dns";
+            action = "allow";
+          }
+          {
+            id = "core-to-selected-provider";
+            from = { kind = "service"; name = "core-dns"; };
+            to = { kind = "external"; uplinks = selectedUplinks; };
+            trafficType = "dns";
+            action = "allow";
+          }
+        ];
+        siteDns = {
+          warnings = [];
+          recursive.bindings = [
+            {
+              advertisedResolver = { kind = "service"; name = "access-dns"; };
+              upstreamResolver = { kind = "service"; name = "core-dns"; node = "core"; };
+              allowedAddressFamilies = [ "ipv4" "ipv6" ];
+              egressSurface = { kind = "external"; uplinks = [ "isp-a" ]; };
+              returnBehavior = "symmetric";
+            }
+          ];
+        };
+      };
+      allocation = tableId: {
+        source = "control-plane-model";
+        inherit tableId;
+        tableRulePriority = tableId;
+      };
+      targets = {
+        access = {
+          logicalNode.name = "access";
+          effectiveRuntimeRealization.interfaces.tenant = {
+            sourceKind = "tenant";
+            addr4 = "192.0.2.1/24";
+            addr6 = "2001:db8:1::1/64";
+          };
+          services.dns = {};
+        };
+        core = {
+          logicalNode.name = "core";
+          effectiveRuntimeRealization.interfaces = {
+            terminal = {
+              sourceKind = "p2p";
+              addr4 = "198.51.100.2/31";
+              addr6 = "2001:db8:fffe::2/127";
+              backingRef = { id = "modeled-link-a"; uplinks = [ "isp-a" ]; };
+            };
+            isp-a = {
+              sourceKind = "wan";
+              runtimeIfName = "wan0";
+              backingRef = { id = "uplink-a"; name = "isp-a"; };
+              policyRoutingAllocation = allocation 1002;
+            };
+          } // lib.optionalAttrs includeSecondary {
+            isp-b = {
+              sourceKind = "wan";
+              runtimeIfName = "wan1";
+              backingRef = { id = "uplink-b"; name = "isp-b"; };
+              policyRoutingAllocation = allocation 1003;
+            };
+          };
+          services.dns = {};
+        };
+      };
+    in
+    bind targets;
+  missing = bindFor [] false;
+  ambiguous = bindFor [ "isp-b" "isp-a" ] true;
+  missingWarning = builtins.head missing.core.services.dns.reproducibilityWarnings;
+  ambiguousWarning = builtins.head ambiguous.core.services.dns.reproducibilityWarnings;
+in
+  missingWarning.code == "DNS_EGRESS_SELECTION_MISSING"
+  && missingWarning.disposition == "fail-closed"
+  && missingWarning.candidateIds == []
+  && !(missing.core ? runtimeOriginEgress)
+  && !(missing.access.services.dns ? forwarders)
+  && ambiguousWarning.code == "DNS_EGRESS_SELECTION_AMBIGUOUS"
+  && ambiguousWarning.disposition == "fail-closed"
+  && ambiguousWarning.candidateIds == [ "isp-a" "isp-b" ]
+  && !(ambiguous.core ? runtimeOriginEgress)
+  && !(ambiguous.access.services.dns ? forwarders)
+'
+
+if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$egress_warning_expr" | grep -qx true; then
+  echo "PASS FS-525/FS-540 missing and ambiguous DNS egress warn redacted and fail closed"
+else
+  echo "FAIL FS-525/FS-540 DNS egress warning contract" >&2
   exit 1
 fi

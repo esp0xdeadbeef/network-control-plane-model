@@ -15,6 +15,7 @@ runtimeTargets:
 let
   inherit (common) attrsOrEmpty failForwarding uniqueStrings;
   listOrEmpty = value: if builtins.isList value then value else [ ];
+  isNonEmptyString = value: builtins.isString value && value != "";
   recursive = attrsOrEmpty (siteDns.recursive or null);
   bindings = listOrEmpty (recursive.bindings or null);
   reproducibilityWarnings = listOrEmpty (siteDns.warnings or null);
@@ -117,6 +118,86 @@ let
       ++ listOrEmpty (lane.uplinks or null)
       ++ lib.optional (builtins.isString (lane.uplink or null)) lane.uplink
     );
+
+  dnsEgressInterfaceCandidates =
+    target: selectedUplinks:
+    let
+      realization = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (realization.interfaces or null);
+      matchesSelectedUplink =
+        ifName: iface:
+        let
+          backingRef = attrsOrEmpty (iface.backingRef or null);
+          identities = uniqueStrings (
+            [
+              ifName
+              (backingRef.name or "")
+              (iface.sourceInterface or "")
+              (iface.upstream or "")
+            ]
+            ++ interfaceUplinks iface
+          );
+        in
+        (iface.sourceKind or null) == "wan"
+        && lib.any (uplink: builtins.elem uplink selectedUplinks) identities;
+    in
+    lib.filterAttrs matchesSelectedUplink interfaces;
+
+  dnsEgressPolicyFor =
+    {
+      target,
+      selectedUplinks,
+      requester,
+      resolverService,
+      resolverNode,
+      context,
+    }:
+    let
+      candidates = dnsEgressInterfaceCandidates target selectedUplinks;
+      candidateNames = builtins.attrNames candidates;
+      selectedInterfaceName = if builtins.length candidateNames == 1 then builtins.head candidateNames else null;
+      selectedInterface = if selectedInterfaceName == null then { } else candidates.${selectedInterfaceName};
+      allocation = attrsOrEmpty (selectedInterface.policyRoutingAllocation or null);
+      runtimeIfName = selectedInterface.runtimeIfName or selectedInterface.renderedIfName or "";
+      allocationIsComplete =
+        (allocation.source or null) == "control-plane-model"
+        && builtins.isInt (allocation.tableId or null)
+        && allocation.tableId > 0
+        && builtins.isInt (allocation.tableRulePriority or null)
+        && allocation.tableRulePriority > 0
+        && isNonEmptyString runtimeIfName;
+      warningArgs = {
+        inherit requester resolverService resolverNode context;
+        candidateIds = uniqueStrings (selectedUplinks ++ candidateNames);
+      };
+      diagnostic =
+        if selectedUplinks == [ ] then
+          warning (warningArgs // { code = "DNS_EGRESS_SELECTION_MISSING"; })
+        else if builtins.length selectedUplinks != 1 || builtins.length candidateNames > 1 then
+          warning (warningArgs // { code = "DNS_EGRESS_SELECTION_AMBIGUOUS"; })
+        else if builtins.length candidateNames != 1 || !allocationIsComplete then
+          warning (warningArgs // { code = "DNS_EGRESS_SELECTION_MISSING"; })
+        else
+          null;
+    in
+    {
+      inherit diagnostic;
+      policy =
+        if diagnostic != null then
+          null
+        else
+          {
+            source = "control-plane-model";
+            selectedUplink = builtins.head selectedUplinks;
+            selectedInterface = selectedInterfaceName;
+            inherit runtimeIfName;
+            tableId = allocation.tableId;
+            rulePriority = allocation.tableRulePriority;
+            # The mark is model-owned and intentionally equals the selected
+            # policy table. Renderers consume it; they do not allocate it.
+            firewallMark = allocation.tableId;
+          };
+    };
 
   relationEndpointFor =
     { targetName
@@ -449,11 +530,6 @@ let
       endpoints = relationEndpoint.addresses;
       requesterSources = tenantAddresses requesterTargetName;
       uplinks = egressUplinksFor coreServiceName;
-      _egress =
-        if uplinks == [ ] then
-          failForwarding sitePath "named core DNS service '${coreServiceName}' has no explicit DNS egress selection"
-        else
-          true;
       accessTarget = targets.${requesterTargetName};
       accessDns = attrsOrEmpty ((attrsOrEmpty (accessTarget.services or null)).dns or null);
       accessRoles = attrsOrEmpty (accessDns.roles or null);
@@ -462,6 +538,14 @@ let
       coreDns = attrsOrEmpty ((attrsOrEmpty (coreTarget.services or null)).dns or null);
       coreRoles = attrsOrEmpty (coreDns.roles or null);
       coreRecursion = attrsOrEmpty (coreRoles.recursion or null);
+      egressPolicy = dnsEgressPolicyFor {
+        target = coreTarget;
+        selectedUplinks = uplinks;
+        requester = "service:${coreServiceName}";
+        resolverService = coreServiceName;
+        resolverNode = coreNodeName;
+        context = relationId;
+      };
       sourcePrefixes = builtins.filter (value: value != null) (
         map
           (
@@ -540,19 +624,20 @@ let
           enabled = true;
           source = "dns-service";
           inherit preferredSources sourcePrefixes uplinks;
+          policyRouting = egressPolicy.policy;
         };
       };
     in
     if relationEndpoint.endpointWarning != null then
       attachWarnings targets [ relationEndpoint.endpointWarning ]
+    else if egressPolicy.diagnostic != null then
+      attachWarnings targets [ egressPolicy.diagnostic ]
     else
-      builtins.seq _egress (
-        targets
-        // {
-          ${requesterTargetName} = boundAccess;
-          ${coreTargetName} = boundCore;
-        }
-      );
+      targets
+      // {
+        ${requesterTargetName} = boundAccess;
+        ${coreTargetName} = boundCore;
+      };
   boundRuntimeTargets = builtins.foldl' applyBinding runtimeTargets bindings;
 in
 attachWarnings

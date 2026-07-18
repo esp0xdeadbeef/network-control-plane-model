@@ -42,6 +42,7 @@
 , policyDerivedDnsForwardersForListeners
 , policyDerivedDnsForwardersForTenants
 , policyDerivedDnsUpstreamRecordsForListeners
+, addPolicyRoutingAllocationsToTarget
 , normalizeRuntimeTargetRoutes
 , normalizeRuntimeTargetRoutesAfterPolicyComplements
 , normalizeRuntimeTargetRoutesWith
@@ -101,7 +102,12 @@ let
     siteDns = dnsContract;
   };
 
-  dnsBoundInitialRuntimeTargets = bindNamedDnsServices runtimeTargetContext.initialRuntimeTargets;
+  initialRuntimeTargetsWithPolicyRoutingAllocations =
+    builtins.mapAttrs
+      (_targetName: addPolicyRoutingAllocationsToTarget)
+      runtimeTargetContext.initialRuntimeTargets;
+
+  dnsBoundInitialRuntimeTargets = bindNamedDnsServices initialRuntimeTargetsWithPolicyRoutingAllocations;
 
   bindLocalDnsSharing = import ../../ControlModule/runtime-targets/local-dns-sharing.nix {
     inherit

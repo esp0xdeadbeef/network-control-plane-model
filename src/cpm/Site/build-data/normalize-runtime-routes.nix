@@ -421,6 +421,22 @@ let
       iface // { policyRoutingAllocation = allocations.${ifName}; })
       interfaces;
 
+  addPolicyRoutingAllocationsToTarget =
+    target:
+    let
+      effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (effective.interfaces or null);
+    in
+    if interfaces == { } then
+      target
+    else
+      target
+      // {
+        effectiveRuntimeRealization = effective // {
+          interfaces = addPolicyRoutingAllocations target interfaces;
+        };
+      };
+
   interfaceRouteSource =
     ifName: iface:
     if (iface.upstream or null) != null then
@@ -611,5 +627,5 @@ let
     normalizeRuntimeTargetRoutesWith { postInitialComplementsOnly = true; };
 in
 {
-  inherit normalizeRuntimeTargetRoutes normalizeRuntimeTargetRoutesAfterPolicyComplements normalizeRuntimeTargetRoutesWith uniqueRoutes;
+  inherit addPolicyRoutingAllocationsToTarget normalizeRuntimeTargetRoutes normalizeRuntimeTargetRoutesAfterPolicyComplements normalizeRuntimeTargetRoutesWith uniqueRoutes;
 }
