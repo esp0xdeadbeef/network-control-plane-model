@@ -94,6 +94,22 @@ let
 
   dnsBoundInitialRuntimeTargets = bindNamedDnsServices runtimeTargetContext.initialRuntimeTargets;
 
+  bindLocalDnsSharing = import ../../ControlModule/runtime-targets/local-dns-sharing.nix {
+    inherit
+      lib
+      common
+      enterpriseName
+      siteName
+      sitePath
+      allowedRelations
+      serviceDefinitions
+      inventoryEndpoints
+      ;
+    siteDns = dnsContract;
+  };
+
+  dnsBoundRuntimeTargets = bindLocalDnsSharing dnsBoundInitialRuntimeTargets;
+
   # Compute global {addr4 -> laneAccess} map across all targets.
   # Used to filter cross-lane complements: only complement source routes
   # whose dst belongs to the same access node as the current interface.
@@ -117,7 +133,7 @@ let
           (builtins.attrNames ifaces)
         )
       )
-      (builtins.attrValues dnsBoundInitialRuntimeTargets)
+      (builtins.attrValues dnsBoundRuntimeTargets)
     )
   );
 
@@ -125,7 +141,7 @@ let
     normalizeRuntimeTargetRoutesWith { inherit globalAddr4Access; };
 
   normalizedRuntimeTargets =
-    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutesWithGlobal) dnsBoundInitialRuntimeTargets;
+    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutesWithGlobal) dnsBoundRuntimeTargets;
 
   finalControlPlane = import ./final-control-plane.nix {
     inherit
