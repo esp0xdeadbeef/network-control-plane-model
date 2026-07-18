@@ -42,6 +42,28 @@
 }:
 
 let
+  runtimeDnsWarnings = lib.unique (
+    lib.concatMap
+      (
+        target:
+        let
+          services = if builtins.isAttrs (target.services or null) then target.services else { };
+          dns = if builtins.isAttrs (services.dns or null) then services.dns else { };
+        in
+        if builtins.isList (dns.reproducibilityWarnings or null) then
+          dns.reproducibilityWarnings
+        else
+          [ ]
+      )
+      (builtins.attrValues runtimeTargets)
+  );
+  effectiveDnsContract = dnsContract // {
+    warnings = lib.unique (
+      (if builtins.isList (dnsContract.warnings or null) then dnsContract.warnings else [ ])
+      ++ runtimeDnsWarnings
+    );
+  };
+
   ipv4ModeRecords =
     lib.filterAttrs (_name: records: records != [ ]) (ipv4InternetMode.records or { });
 
@@ -404,7 +426,7 @@ in
   else
     { }
 )
-// (lib.optionalAttrs (dnsContract != { }) { dns = dnsContract; })
+// (lib.optionalAttrs (dnsContract != { }) { dns = effectiveDnsContract; })
 // (
   if builtins.isAttrs (siteAttrs.addressPools or null) then
     {

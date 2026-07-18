@@ -56,6 +56,7 @@ let
       providerTenantsForServiceProvider
       sitePath
       ;
+    runtimeTargets = normalizedRuntimeTargets;
     inherit (dnsServiceUplinks)
       preferredDnsUplinksByRelationForService
       preferredDnsUplinksForService
