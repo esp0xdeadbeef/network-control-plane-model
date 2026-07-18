@@ -12,9 +12,12 @@
 , transitAttrs
 , allSiteEntries
 , attachments
+, allowedRelations
 , domains
+, dnsContract
 , links
 , nodes
+, serviceDefinitions
 , policyNodeName
 , bgpSiteAsn
 , bgpTopology
@@ -83,6 +86,13 @@ let
       ;
   };
 
+  bindNamedDnsServices = import ../../ControlModule/runtime-targets/named-dns-binding.nix {
+    inherit lib common sitePath allowedRelations serviceDefinitions;
+    siteDns = dnsContract;
+  };
+
+  dnsBoundInitialRuntimeTargets = bindNamedDnsServices runtimeTargetContext.initialRuntimeTargets;
+
   # Compute global {addr4 -> laneAccess} map across all targets.
   # Used to filter cross-lane complements: only complement source routes
   # whose dst belongs to the same access node as the current interface.
@@ -106,7 +116,7 @@ let
           (builtins.attrNames ifaces)
         )
       )
-      (builtins.attrValues runtimeTargetContext.initialRuntimeTargets)
+      (builtins.attrValues dnsBoundInitialRuntimeTargets)
     )
   );
 
@@ -114,7 +124,7 @@ let
     normalizeRuntimeTargetRoutesWith { inherit globalAddr4Access; };
 
   normalizedRuntimeTargets =
-    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutesWithGlobal) runtimeTargetContext.initialRuntimeTargets;
+    builtins.mapAttrs (_targetName: normalizeRuntimeTargetRoutesWithGlobal) dnsBoundInitialRuntimeTargets;
 
   finalControlPlane = import ./final-control-plane.nix {
     inherit

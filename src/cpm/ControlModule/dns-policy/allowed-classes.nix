@@ -1,18 +1,14 @@
 { lib
 , allowedRelations
 , dnsPolicy
-, providersForService
-, serviceDefinitions
+, context
 ,
 }:
 
 let
   inherit (dnsPolicy)
-    providerAddressesForDnsService
     relationEndpointMatchesTenant
     ;
-
-  uniqueStrings = list: builtins.attrNames (builtins.listToAttrs (map (value: { name = value; value = true; }) list));
 
   dnsExternalRelation =
     relation:
@@ -26,19 +22,6 @@ let
 
   dnsExternalRelations = builtins.filter dnsExternalRelation allowedRelations;
 
-  hostedDnsServicesForListeners =
-    listenAddrs:
-    let
-      listenSet = uniqueStrings listenAddrs;
-    in
-    builtins.filter
-      (serviceName:
-      let
-        serviceDef = serviceDefinitions.${serviceName};
-        providerAddresses = lib.concatMap providerAddressesForDnsService (providersForService serviceName);
-      in
-      (serviceDef.trafficType or null) == "dns" && lib.any (addr: builtins.elem addr listenSet) providerAddresses)
-      (builtins.attrNames serviceDefinitions);
 in
 {
   forTenants =
@@ -57,7 +40,7 @@ in
   forListeners =
     listenAddrs:
     let
-      hostedDnsServices = hostedDnsServicesForListeners listenAddrs;
+      hostedDnsServices = context.hostedDnsServicesForListeners listenAddrs;
       hasHostedExternalDns =
         builtins.any
           (relation:

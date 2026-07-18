@@ -20,7 +20,11 @@ let
   rules = core.forwardingIntent.rules or [ ];
   hasSource = source: rule:
     builtins.any
-      (entry: (entry.prefix or null) == source || entry == source)
+      (entry:
+        (entry.prefix or null) == source
+        || (builtins.isString (entry.prefix or null)
+          && builtins.head (flake.inputs.nixpkgs.lib.splitString "/" entry.prefix) == source)
+        || entry == source)
       (rule.sourcePrefixes or [ ]);
   dnsRuleFor = family: source:
     builtins.any

@@ -13,7 +13,7 @@
 
 let
   inherit (helpers) isNonEmptyString requireString requireStringList sortedNames;
-  inherit (common) failForwarding;
+  inherit (common) failForwarding failInventory;
 
   listOrEmpty = value: if builtins.isList value then value else [ ];
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };
@@ -242,6 +242,22 @@ builtins.map
         lib.concatMap providerTenantsForServiceProvider providerNames
       );
       exposure = exposureForService serviceName providerTenants;
+      providerEndpoints = builtins.filter (endpoint: endpoint != null) (
+        builtins.map (providerEndpointForServiceProvider serviceName) providerNames
+      );
+      _missingProviderEndpoint =
+        if
+          (resolvedService.trafficType or null) == "dns"
+          && exposure.class != "tenant-private"
+          && providerEndpoints == [ ]
+        then
+          let providerName = if providerNames == [ ] then "<missing>" else builtins.head providerNames;
+          in
+          failInventory
+            "inventory.endpoints.${providerName}"
+            "DNS service provider '${providerName}' requires explicit inventory.endpoints.${providerName}.ipv4 and/or ipv6 for policy-derived DNS upstreams"
+        else
+          true;
 
       # SMS-040 N1: Missing exposure class for any service
       _missingExposure =
@@ -263,19 +279,19 @@ builtins.map
           true;
     in
     builtins.seq _missingExposure (
-      builtins.seq _hostInferred (
+      builtins.seq _missingProviderEndpoint (
+        builtins.seq _hostInferred (
         resolvedService
           // {
       name = serviceName;
       exposureClass = exposure.class;
       inherit exposure;
-      providerEndpoints = builtins.filter (endpoint: endpoint != null) (
-        builtins.map providerEndpointForServiceProvider providerNames
-      );
+      inherit providerEndpoints;
       inherit providerTenants;
       preferredUplinks = preferredDnsUplinksForService serviceName;
       preferredUplinksByRelation = preferredDnsUplinksByRelationForService serviceName;
     }
+        )
       )
       )
   )

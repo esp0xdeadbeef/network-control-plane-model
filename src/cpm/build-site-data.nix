@@ -35,6 +35,7 @@ let
     coreNodeNames
     domains
     domainsValue
+    dnsContract
     inventoryAttrs
     inventoryEndpoints
     links
@@ -156,9 +157,12 @@ let
       transitAttrs
       allSiteEntries
       attachments
+      allowedRelations
       domains
+      dnsContract
       links
       nodes
+      serviceDefinitions
       policyNodeName
       routingMode
       bgpSiteAsn
@@ -393,7 +397,7 @@ if validatePPPoEContracts then
       validatePolicyDsReturnPath
       (emitOutput
       {
-        inherit lib accessAdvertisements emulationSubnets accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
+        inherit lib accessAdvertisements emulationSubnets accessSpaceDiscovery attachments bgpSiteAsn bgpTopology communicationContract coreNodeNames dnsContract domainsValue endpointAssignment isNonEmptyString ipv4InternetMode ipv6Plan overlayClientGuaMode overlayProvisioning policyAttrs policyEndpointBindings policyNodeName rendererContracts routedClientGuaMode routedPrefixesByTenant routingMode runtimeTargets siteAttrs siteDisplayName siteId tenantPrefixOwners trafficPaths transitAttrs uplinkCoreNames uplinkNames uplinkRouting upstreamSelectorNodeName forwardingSemantics ulaNat66Mode;
         services = resolvedServices;
         endpointAssignmentCheckDiagnostics = validateEndpointAssignments.diagnostics;
       }))

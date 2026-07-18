@@ -127,7 +127,7 @@ builtins.map
     providers = providersForService serviceName;
     providerTenants = uniqueStrings (lib.concatMap providerTenantsForServiceProvider providers);
     providerPrefixes = uniqueStrings (lib.concatMap tenantPrefixesForName providerTenants);
-    providerAddresses = uniqueStrings (lib.concatMap optionalProviderAddressesForDnsService providers);
+    providerAddresses = uniqueStrings (lib.concatMap (optionalProviderAddressesForDnsService serviceName) providers);
     consumerTenants = tenantNamesForRelationEndpoint (relationAttrs.from or null);
     consumerPrefixes = uniqueStrings (lib.concatMap tenantPrefixesForName consumerTenants);
     relationTrafficType = effectiveTrafficTypeForRelation relationAttrs { trafficType = "dns"; };

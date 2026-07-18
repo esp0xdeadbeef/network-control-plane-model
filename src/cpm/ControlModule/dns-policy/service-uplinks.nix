@@ -1,4 +1,4 @@
-{ lib, uniqueStrings, dnsServiceRouteSpecs }:
+{ lib, uniqueStrings, dnsServiceRouteSpecs, allowedRelations ? [ ] }:
 
 let
   specsForService =
@@ -13,11 +13,28 @@ let
       spec.preferredUplinks
     else
       [ ];
+
+  externalSpecsForService = serviceName:
+    builtins.map
+      (relation: {
+        relationId = relation.id or null;
+        preferredUplinks = (relation.to or { }).uplinks or [ ];
+      })
+      (builtins.filter
+        (relation:
+          (relation.action or "allow") == "allow"
+          && (relation.trafficType or null) == "dns"
+          && ((relation.from or { }).kind or null) == "service"
+          && ((relation.from or { }).name or null) == serviceName
+          && ((relation.to or { }).kind or null) == "external")
+        allowedRelations);
+
+  allSpecsForService = serviceName: (specsForService serviceName) ++ (externalSpecsForService serviceName);
 in
 {
   preferredDnsUplinksForService =
     serviceName:
-    uniqueStrings (lib.concatMap preferredUplinksForSpec (specsForService serviceName));
+    uniqueStrings (lib.concatMap preferredUplinksForSpec (allSpecsForService serviceName));
 
   preferredDnsUplinksByRelationForService =
     serviceName:
@@ -28,7 +45,7 @@ in
             name = spec.relationId or null;
             value = uniqueStrings (preferredUplinksForSpec spec);
           })
-          (specsForService serviceName)
+          (allSpecsForService serviceName)
       )
     );
 }

@@ -42,6 +42,7 @@ let
 
   dnsServiceUplinks = import ../../ControlModule/dns-policy/service-uplinks.nix {
     inherit lib uniqueStrings dnsServiceRouteSpecs;
+    allowedRelations = (siteAttrs.communicationContract or { }).allowedRelations or [ ];
   };
 
   resolvedServices = import ./services.nix {
