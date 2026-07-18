@@ -269,6 +269,8 @@ let
       requesterUpstreams = listOrEmpty (requesterDns.upstreamResolvers or null);
       requesterPolicies = listOrEmpty (requesterDns.requesterPolicies or null);
       requesterLocalZones = listOrEmpty (requesterDns.localZones or null);
+      requesterRoles = attrsOrEmpty (requesterDns.roles or null);
+      requesterRecursionRole = attrsOrEmpty (requesterRoles.recursion or null);
       normalizedRequesterLocalZones = map
         (
           zone:
@@ -281,6 +283,12 @@ let
       requesterPatch = {
         forwarders = [ ];
         recursionMode = "local-only";
+        outgoingInterfaces = requesterEndpoints;
+        roles = requesterRoles // {
+          recursion = requesterRecursionRole // {
+            outgoingInterfaces = requesterEndpoints;
+          };
+        };
         localForwardZones = map (namespace: {
           name = namespace;
           forwardTo = authorityEndpoints;
