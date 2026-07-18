@@ -44,6 +44,11 @@ let
                 requireInt "${uplinkPath}.vlan" (uplink.vlan or null)
               else
                 null;
+            parent =
+              if mode == "isolated" && !(uplink ? parent) then
+                null
+              else
+                requireString "${uplinkPath}.parent" (uplink.parent or null);
           in
           {
             name = uplinkName;
@@ -51,9 +56,9 @@ let
               {
                 uplinkName = uplinkName;
                 name = uplinkName;
-                parent = requireString "${uplinkPath}.parent" (uplink.parent or null);
                 bridge = requireString "${uplinkPath}.bridge" (uplink.bridge or null);
               }
+              // (if parent != null then { parent = parent; } else { })
               // (if mode != null then { mode = mode; } else { })
               // (if vlan != null then { vlan = vlan; } else { })
               // (if builtins.isAttrs (uplink.ipv4 or null) then { ipv4 = uplink.ipv4; } else { })
