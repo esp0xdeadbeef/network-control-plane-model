@@ -53,6 +53,7 @@ let
     normalizeLeaseNameScopes
     normalizeNamespaceAuthority
     normalizeNamespaceDiagnostics
+    normalizeProtectedReservationPublications
     normalizeRecordPublications
     ;
 
@@ -262,6 +263,7 @@ in
       namespaceDiagnostics = normalizeNamespaceDiagnostics dnsPath dns;
       leaseNameScopes = normalizeLeaseNameScopes dnsPath dns namespaceAuthority namespaceFallback namespaceDiagnostics;
       recordPublications = normalizeRecordPublications dnsPath dns;
+      protectedReservationPublications = normalizeProtectedReservationPublications dnsPath dns;
     in
     builtins.seq _forwarderConflict (
       builtins.seq _killSwitchNoPublicFallback (
@@ -296,9 +298,9 @@ in
           // lib.optionalAttrs (namespaceAuthority != [ ]) { inherit namespaceAuthority; }
           // lib.optionalAttrs (leaseNameScopes != [ ]) { inherit leaseNameScopes; }
           // lib.optionalAttrs (recordPublications != [ ]) { inherit recordPublications; }
+          // lib.optionalAttrs (protectedReservationPublications != [ ]) { inherit protectedReservationPublications; }
           // lib.optionalAttrs (namespaceDiagnostics != [ ]) { inherit namespaceDiagnostics; }
         )
       )
     );
 }
-

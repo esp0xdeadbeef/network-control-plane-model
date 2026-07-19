@@ -103,6 +103,83 @@ let
       in
       if normalized == [ ] then failInventory path "must contain at least one entry" else normalized;
 
+  normalizeNamePublication = familyName: entryPath: tenantName: rawPublication:
+    if rawPublication == null then
+      null
+    else
+      let
+        publicationPath = "${entryPath}.reservationSource.namePublication";
+        publication = requireAttrs publicationPath rawPublication;
+        allowedKeys = [
+          "namespace"
+          "ownerScope"
+          "requesterScopes"
+          "recordClasses"
+          "fallbackBehavior"
+          "publicationDenialDiagnostic"
+        ];
+        unexpectedKeys = builtins.filter (name: !(builtins.elem name allowedKeys)) (builtins.attrNames publication);
+        requireNonEmptyString = path: value:
+          let normalized = optionalNonEmptyString path value;
+          in if normalized == null then failInventory path "must be set" else normalized;
+        requireStringList = path: value:
+          let normalized = optionalStringList path value;
+          in if normalized == null then failInventory path "must be set" else normalized;
+        namespace = requireNonEmptyString "${publicationPath}.namespace" (publication.namespace or null);
+        ownerScope = requireNonEmptyString "${publicationPath}.ownerScope" (publication.ownerScope or null);
+        requesterScopes = requireStringList "${publicationPath}.requesterScopes" (publication.requesterScopes or null);
+        recordClasses = requireStringList "${publicationPath}.recordClasses" (publication.recordClasses or null);
+        fallbackBehavior = requireEnum "${publicationPath}.fallbackBehavior" [ "local-only" ] (publication.fallbackBehavior or null);
+        publicationDenialDiagnostic = requireNonEmptyString
+          "${publicationPath}.publicationDenialDiagnostic"
+          (publication.publicationDenialDiagnostic or null);
+        invalidRecordClasses = builtins.filter
+          (recordClass: !(builtins.elem recordClass [ "A" "AAAA" "PTR" ]))
+          recordClasses;
+        _knownFields =
+          if unexpectedKeys == [ ] then
+            true
+          else
+            failInventory publicationPath "diagnostic.protected-reservation-name-publication-field-invalid: unsupported fields: ${builtins.concatStringsSep ", " unexpectedKeys}";
+        _owner =
+          if ownerScope == tenantName then
+            true
+          else
+            failInventory "${publicationPath}.ownerScope" "diagnostic.protected-reservation-name-owner-mismatch: must match served tenant '${tenantName}'";
+        _requesters =
+          if builtins.elem "*" requesterScopes then
+            failInventory "${publicationPath}.requesterScopes" "diagnostic.protected-reservation-name-scope-wildcard: wildcard requester scope is forbidden"
+          else if builtins.elem ownerScope requesterScopes then
+            true
+          else
+            failInventory "${publicationPath}.requesterScopes" "must include ownerScope '${ownerScope}'";
+        _recordClasses =
+          if invalidRecordClasses != [ ] then
+            failInventory "${publicationPath}.recordClasses" "must contain only A, AAAA, or PTR"
+          else if duplicate recordClasses then
+            failInventory "${publicationPath}.recordClasses" "must not contain duplicates"
+          else
+            true;
+      in
+      builtins.seq _knownFields (
+        builtins.seq _owner (
+          builtins.seq _requesters (
+            builtins.seq _recordClasses {
+              inherit
+                namespace
+                ownerScope
+                requesterScopes
+                recordClasses
+                fallbackBehavior
+                publicationDenialDiagnostic
+                ;
+              source = "protected-reservation-set";
+              sourceFamily = familyName;
+            }
+          )
+        )
+      );
+
   requireEnum = path: allowed: value:
     let rendered = requireString path value;
     in
@@ -341,7 +418,7 @@ let
       )
     );
 
-  resolveReservationSource = familyName: entryPath: rawSource: rawReservations:
+  resolveReservationSource = familyName: entryPath: tenantName: rawSource: rawReservations:
     if rawSource == null then
       null
     else
@@ -352,6 +429,7 @@ let
           "schema"
           "sourceClass"
           "sourceFile"
+          "namePublication"
         ];
         unexpectedKeys = builtins.filter (name: !(builtins.elem name allowedKeys)) (builtins.attrNames source);
         publicReservations =
@@ -359,6 +437,7 @@ let
         schema = requireString "${sourcePath}.schema" (source.schema or null);
         sourceClass = requireString "${sourcePath}.sourceClass" (source.sourceClass or null);
         sourceFile = optionalNonEmptyString "${sourcePath}.sourceFile" (source.sourceFile or null);
+        namePublication = normalizeNamePublication familyName entryPath tenantName (source.namePublication or null);
         _scopeOnly =
           if publicReservations == [ ] then
             true
@@ -393,6 +472,7 @@ let
                 {
                   inherit schema sourceClass sourceFile;
                 }
+                // (if namePublication != null then { inherit namePublication; } else { })
                 // binderSourceAudit.make {
                   path = sourcePath;
                   field = "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservationSource";

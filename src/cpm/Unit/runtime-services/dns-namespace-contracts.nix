@@ -237,6 +237,65 @@ let
         })
       (requireList path (dns.recordPublications or [ ]));
 
+  normalizeProtectedReservationPublications = dnsPath: dns:
+    let path = "${dnsPath}.protectedReservationPublications";
+    in
+    builtins.map
+      (entry:
+        let
+          entryPath = "${path}[*]";
+          attrs = requireAttrs entryPath entry;
+          source = requireAttrs "${entryPath}.source" (attrs.source or null);
+          schema = requireString "${entryPath}.source.schema" (source.schema or null);
+          sourceClass = requireString "${entryPath}.source.sourceClass" (source.sourceClass or null);
+          sourceFile = requireString "${entryPath}.source.sourceFile" (source.sourceFile or null);
+          ownerScope = requireString "${entryPath}.ownerScope" (attrs.ownerScope or null);
+          requesterScopes = normalizeStringList "${entryPath}.requesterScopes" (attrs.requesterScopes or null);
+          recordClasses = normalizeStringList "${entryPath}.recordClasses" (attrs.recordClasses or null);
+          invalidRecordClasses = builtins.filter
+            (recordClass: !(builtins.elem recordClass [ "A" "AAAA" "PTR" ]))
+            recordClasses;
+          _schema =
+            if schema == "gamp-protected-reservation-set-v1" then true
+            else failInventory "${entryPath}.source.schema" "must be gamp-protected-reservation-set-v1";
+          _sourceClass =
+            if sourceClass == "protected" then true
+            else failInventory "${entryPath}.source.sourceClass" "diagnostic.protected-reservation-identity-leaked";
+          _sourcePath =
+            if lib.hasPrefix "/run/secrets/" sourceFile then true
+            else failInventory "${entryPath}.source.sourceFile" "diagnostic.runtime-reservation-source-path-invalid";
+          _requesters =
+            if builtins.elem "*" requesterScopes then
+              failInventory "${entryPath}.requesterScopes" "diagnostic.protected-reservation-name-scope-wildcard"
+            else if builtins.elem ownerScope requesterScopes then true
+            else failInventory "${entryPath}.requesterScopes" "must include ownerScope";
+          _recordClasses =
+            if invalidRecordClasses == [ ] then true
+            else failInventory "${entryPath}.recordClasses" "must contain only A, AAAA, or PTR";
+          fallbackBehavior = requireEnum
+            "${entryPath}.fallbackBehavior"
+            [ "local-only" ]
+            (attrs.fallbackBehavior or null);
+        in
+        builtins.seq _schema (
+          builtins.seq _sourceClass (
+            builtins.seq _sourcePath (
+              builtins.seq _requesters (
+                builtins.seq _recordClasses {
+                  source = { inherit schema sourceClass sourceFile; };
+                  scopeId = requireString "${entryPath}.scopeId" (attrs.scopeId or null);
+                  namespace = requireString "${entryPath}.namespace" (attrs.namespace or null);
+                  inherit ownerScope requesterScopes recordClasses fallbackBehavior;
+                  publicationDenialDiagnostic = requireString
+                    "${entryPath}.publicationDenialDiagnostic"
+                    (attrs.publicationDenialDiagnostic or null);
+                }
+              )
+            )
+          )
+        ))
+      (requireList path (dns.protectedReservationPublications or [ ]));
+
   normalizeNamespaceDiagnostics = dnsPath: dns:
     let path = "${dnsPath}.namespaceDiagnostics";
     in
@@ -271,6 +330,7 @@ in
     normalizeLeaseNameScopes
     normalizeNamespaceAuthority
     normalizeNamespaceDiagnostics
+    normalizeProtectedReservationPublications
     normalizeRecordPublications
     ;
 }

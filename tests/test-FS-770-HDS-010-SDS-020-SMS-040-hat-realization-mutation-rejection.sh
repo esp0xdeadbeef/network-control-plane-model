@@ -28,8 +28,6 @@ fail() { echo "FAIL $1"; FAIL=$((FAIL+1)); }
 
 cd "$repo_root"
 
-LABS_REF="github:esp0xdeadbeef/network-labs/7a9e1575aa78c2e8c24ea01cf2f0b9057d8ced01"
-
 ###############################################################################
 # check_cpm: compile inventory through CPM, return PASS or FAIL
 ###############################################################################
@@ -40,7 +38,7 @@ check_cpm() {
   cat > "$tmp_nix" << NIXEND
     let cpm = builtins.getFlake (toString ${repo_root});
         system = builtins.currentSystem;
-        labs = builtins.getFlake "${LABS_REF}";
+        labs = cpm.inputs.network-labs;
         baseIntent = import (labs.outPath + "/examples/single-wan/intent.nix");
         baseInventory = import (labs.outPath + "/examples/single-wan/inventory-nixos.nix");
         inventory = (${inv_expr});
@@ -67,7 +65,7 @@ extract_surface() {
   cat > "$tmp_nix" << NIXEND
     let cpm = builtins.getFlake (toString ${repo_root});
         system = builtins.currentSystem;
-        labs = builtins.getFlake "${LABS_REF}";
+        labs = cpm.inputs.network-labs;
         baseIntent = import (labs.outPath + "/examples/single-wan/intent.nix");
         baseInventory = import (labs.outPath + "/examples/single-wan/inventory-nixos.nix");
         inventory = (${inv_expr});
