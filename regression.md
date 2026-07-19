@@ -1,5 +1,16 @@
 # regression.md
 
+## FS-230 ingress-only forwarding must consume egress authority
+
+- state=solved
+- owner: network-control-plane-model
+- scope: FS-230-HDS-010-SDS-010-SMS-040 protected IPv6 public ingress without outbound authority
+- upstream-good-artifact: NFM now distinguishes the physical uplink anchor from egress permission: the ingress-only site retains `anchorsExternalUplinks=true`, while site exits are empty and both core/upstream-selector `egressIntent` records are disabled.
+- first-bad-artifact: CPM treats an empty selected-uplink set as “all WAN interfaces”, emits a broad core `upstream -> wan0` selector handoff, and builds a `runtime-origin-egress` selector pair even though no relation targets an external domain. The five exact relation-owned protected IPv6 ingress rules are present independently.
+- required-fix: Gate generic core uplink forwarding, runtime-origin egress, and selector egress pairs on explicit NFM egress authority. Preserve the relation-owned external-to-service UDP/4242 path and its stateful return; do not remove the physical ingress anchor or invent an outbound relation.
+- implemented-fix: Core uplink interfaces are eligible for generic exit forwarding only when `egressIntent.exit=true`; upstream-selector generic pairs, runtime-origin paths, and default-egress rules require explicit selector egress authority. Relation-owned external-service ingress rules remain independent and continue across all five nodes.
+- evidence: `NETWORK_REPO_DIRECT_TEST_OK=1 tests/FS-230-HDS-010-SDS-010-SMS-040-nebula-ipv6-public-ingress.sh` proves disabled core/selector egress emits no generic exit while an explicit-egress sibling still emits its pair. The complete five-node row contains exactly five protected UDP/4242 runtime-destination rules, no generic internal-to-WAN accept, no `runtime-origin-egress`, and no masquerade interface.
+
 ## Full-suite child exit status preservation
 
 - state=solved

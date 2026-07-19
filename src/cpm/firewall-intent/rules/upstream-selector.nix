@@ -8,6 +8,7 @@
   trafficTypeMatches ? { },
   overlayNames ? [ ],
   siteRuntimeOriginSourcePrefixes ? [ ],
+  egressEnabled ? true,
 }:
 
 let
@@ -79,27 +80,28 @@ let
   runtimeOriginRules = builtins.concatLists (
     map (
       sourceIface:
-      map
-        (wanIface:
-          {
-            action = "accept";
-            intent = {
-              kind = "runtime-origin-egress";
-              source = "loopback-runtime-identity";
-            };
-            fromInterface = sourceIface.runtimeIfName;
-            toInterface = wanIface.runtimeIfName;
-            sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
-            applyTcpMssClamp = false;
-          } // common.selectorRuntimeRuleAudit {
-            relationId = "runtime-origin-egress";
-            direction = "core-runtime-origin-egress";
-            fromIface = sourceIface;
-            toIface = wanIface;
-            decomposed = true;
-            sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
-          })
-        (wanCoreInterfacesFor sourceIface)
+      map (
+        wanIface:
+        {
+          action = "accept";
+          intent = {
+            kind = "runtime-origin-egress";
+            source = "loopback-runtime-identity";
+          };
+          fromInterface = sourceIface.runtimeIfName;
+          toInterface = wanIface.runtimeIfName;
+          sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
+          applyTcpMssClamp = false;
+        }
+        // common.selectorRuntimeRuleAudit {
+          relationId = "runtime-origin-egress";
+          direction = "core-runtime-origin-egress";
+          fromIface = sourceIface;
+          toIface = wanIface;
+          decomposed = true;
+          sourcePrefixes = runtimeOriginSourcePrefixes sourceIface;
+        }
+      ) (wanCoreInterfacesFor sourceIface)
     ) runtimeOriginCoreInterfaces
   );
 
@@ -120,11 +122,9 @@ let
   # on that core cover the tenant's source prefixes.
   # Internet egress cores are identified structurally: core interfaces that
   # serve non-overlay uplinks (not solely transport/overlay cores).
-  internetEgressCoreInterfaces =
-    builtins.filter (
-      coreIface:
-      !(isOverlayCoreInterface coreIface)
-    ) coreInterfaces;
+  internetEgressCoreInterfaces = builtins.filter (
+    coreIface: !(isOverlayCoreInterface coreIface)
+  ) coreInterfaces;
 
   additionalCoresForPolicy =
     policyIface:
@@ -132,8 +132,7 @@ let
       primaryCore = coreForPolicy policyIface;
     in
     builtins.filter (
-      coreIface:
-      primaryCore == null || coreIface.runtimeIfName != primaryCore.runtimeIfName
+      coreIface: primaryCore == null || coreIface.runtimeIfName != primaryCore.runtimeIfName
     ) internetEgressCoreInterfaces;
 
   # Generate pair rules for additional cores (internetModes-based coverage)
@@ -143,54 +142,63 @@ let
       let
         extraCores = additionalCoresForPolicy policyIface;
       in
-      builtins.concatLists (map (coreIface:
-        let
-          policySourcePrefixes = common.sourcePrefixesAllowedToInterface
-            (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface)
-            coreIface;
-        in
-        common.selectorPairRule policyIface coreIface
-        ++ (
-          if policySourcePrefixes == [ ] then [ ]
-          else [
-            (common.withSourcePrefixes ({
-              action = "accept";
-              intent = {
-                kind = "runtime-origin-egress";
-                source = "loopback-runtime-identity";
-                stage = "upstream-selector-policy-core-egress";
-              };
-              fromInterface = policyIface.runtimeIfName;
-              toInterface = coreIface.runtimeIfName;
-              applyTcpMssClamp = true;
-            } // common.selectorRuntimeRuleAudit {
-              relationId = "runtime-origin-egress";
-              direction = "forward-runtime-origin";
-              fromIface = policyIface;
-              toIface = coreIface;
-              decomposed = true;
-              sourcePrefixes = policySourcePrefixes;
-            }) policySourcePrefixes)
+      builtins.concatLists (
+        map (
+          coreIface:
+          let
+            policySourcePrefixes = common.sourcePrefixesAllowedToInterface (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface) coreIface;
+          in
+          common.selectorPairRule policyIface coreIface
+          ++ (
+            if policySourcePrefixes == [ ] then
+              [ ]
+            else
+              [
+                (common.withSourcePrefixes (
+                  {
+                    action = "accept";
+                    intent = {
+                      kind = "runtime-origin-egress";
+                      source = "loopback-runtime-identity";
+                      stage = "upstream-selector-policy-core-egress";
+                    };
+                    fromInterface = policyIface.runtimeIfName;
+                    toInterface = coreIface.runtimeIfName;
+                    applyTcpMssClamp = true;
+                  }
+                  // common.selectorRuntimeRuleAudit {
+                    relationId = "runtime-origin-egress";
+                    direction = "forward-runtime-origin";
+                    fromIface = policyIface;
+                    toIface = coreIface;
+                    decomposed = true;
+                    sourcePrefixes = policySourcePrefixes;
+                  }
+                ) policySourcePrefixes)
+              ]
+          )
+          ++ [
+            (common.withSourcePrefixes (
+              {
+                action = "accept";
+                fromInterface = coreIface.runtimeIfName;
+                toInterface = policyIface.runtimeIfName;
+                applyTcpMssClamp = false;
+                connectionState = "established,related";
+                returnRule = true;
+              }
+              // common.selectorRuntimeRuleAudit {
+                relationId = "runtime-origin-egress";
+                direction = "reverse-runtime-origin";
+                fromIface = coreIface;
+                toIface = policyIface;
+                decomposed = true;
+                statefulReturn = true;
+              }
+            ) (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
           ]
-        )
-        ++ [
-          (common.withSourcePrefixes ({
-            action = "accept";
-            fromInterface = coreIface.runtimeIfName;
-            toInterface = policyIface.runtimeIfName;
-            applyTcpMssClamp = false;
-            connectionState = "established,related";
-            returnRule = true;
-          } // common.selectorRuntimeRuleAudit {
-            relationId = "runtime-origin-egress";
-            direction = "reverse-runtime-origin";
-            fromIface = coreIface;
-            toIface = policyIface;
-            decomposed = true;
-            statefulReturn = true;
-          }) (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
-        ]
-      ) extraCores)
+        ) extraCores
+      )
     ) policyInterfaces
   );
 
@@ -212,8 +220,8 @@ let
             [ ]
           else
             [
-              (common.withSourcePrefixes
-                ({
+              (common.withSourcePrefixes (
+                {
                   action = "accept";
                   intent = {
                     kind = "runtime-origin-egress";
@@ -223,44 +231,51 @@ let
                   fromInterface = policyIface.runtimeIfName;
                   toInterface = coreIface.runtimeIfName;
                   applyTcpMssClamp = true;
-                } // common.selectorRuntimeRuleAudit {
+                }
+                // common.selectorRuntimeRuleAudit {
                   relationId = "runtime-origin-egress";
                   direction = "forward-runtime-origin";
                   fromIface = policyIface;
                   toIface = coreIface;
                   decomposed = true;
                   sourcePrefixes = policySourcePrefixes;
-                })
-                policySourcePrefixes)
+                }
+              ) policySourcePrefixes)
             ]
         )
         ++ [
-          (common.withSourcePrefixes
-            ({
+          (common.withSourcePrefixes (
+            {
               action = "accept";
               fromInterface = coreIface.runtimeIfName;
               toInterface = policyIface.runtimeIfName;
               applyTcpMssClamp = false;
               connectionState = "established,related";
               returnRule = true;
-            } // common.selectorRuntimeRuleAudit {
+            }
+            // common.selectorRuntimeRuleAudit {
               relationId = "runtime-origin-egress";
               direction = "reverse-runtime-origin";
               fromIface = coreIface;
               toIface = policyIface;
               decomposed = true;
               statefulReturn = true;
-            })
-            (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
+            }
+          ) (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
         ]
     ) policyInterfaces
   );
+  genericEgressRules =
+    if egressEnabled then
+      selectorPairRules
+      ++ additionalSelectorPairRules
+      ++ relationRules.runtimeRoutedPrefixPublicEgressRules
+      ++ runtimeOriginRules
+      ++ common.runtimeOriginDefaultForwardRules siteRuntimeOriginSourcePrefixes policyInterfaces
+    else
+      [ ];
 in
-selectorPairRules
-++ additionalSelectorPairRules
+genericEgressRules
 ++ builtins.concatLists (map relationRules.externalTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.overlayUnderlayTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.externalServiceTransitRule (listOrEmpty relations))
-++ relationRules.runtimeRoutedPrefixPublicEgressRules
-++ runtimeOriginRules
-++ common.runtimeOriginDefaultForwardRules siteRuntimeOriginSourcePrefixes policyInterfaces
