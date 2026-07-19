@@ -53,6 +53,11 @@ let
         if builtins.isBool value then value else failInventory path "must be a boolean";
       requirePositiveInt = path: value:
         if builtins.isInt value && value > 0 then value else failInventory path "must be a positive integer";
+      requireEnum = path: allowed: value:
+        if builtins.isString value && builtins.elem value allowed then
+          value
+        else
+          failInventory path "must be one of: ${builtins.concatStringsSep ", " allowed}";
       normalizeCredentials = servicePath: service:
         if service ? credentials then
           let
@@ -92,6 +97,51 @@ let
           }
         else
           { };
+      normalizePPPoEIpv6 = clientPath: value:
+        let
+          ipv6Path = "${clientPath}.ipv6";
+          ipv6 = requireAttrs ipv6Path value;
+          allowedFields = [
+            "mode"
+            "defaultRoute"
+            "iaid"
+            "prefixDelegationRequestId"
+            "duidMode"
+            "resolverMode"
+            "ipv4Mode"
+            "routerSolicitation"
+            "fallbackPolicy"
+          ];
+          unexpectedFields = builtins.filter
+            (name: !(builtins.elem name allowedFields))
+            (sortedNames ipv6);
+          _unexpected =
+            if unexpectedFields == [ ] then
+              true
+            else
+              failInventory ipv6Path "contains unsupported PPPoE IPv6/PD fields";
+          routerSolicitation = requireBool
+            "${ipv6Path}.routerSolicitation"
+            (ipv6.routerSolicitation or null);
+          _routerSolicitation =
+            if routerSolicitation == false then
+              true
+            else
+              failInventory "${ipv6Path}.routerSolicitation" "must be false for DHCPv6-PD-only mode";
+        in
+        builtins.seq _unexpected (builtins.seq _routerSolicitation {
+          mode = requireEnum "${ipv6Path}.mode" [ "dhcpv6-pd" ] (ipv6.mode or null);
+          defaultRoute = requireBool "${ipv6Path}.defaultRoute" (ipv6.defaultRoute or null);
+          iaid = requirePositiveInt "${ipv6Path}.iaid" (ipv6.iaid or null);
+          prefixDelegationRequestId = requirePositiveInt
+            "${ipv6Path}.prefixDelegationRequestId"
+            (ipv6.prefixDelegationRequestId or null);
+          duidMode = requireEnum "${ipv6Path}.duidMode" [ "persistent" ] (ipv6.duidMode or null);
+          resolverMode = requireEnum "${ipv6Path}.resolverMode" [ "disabled" ] (ipv6.resolverMode or null);
+          ipv4Mode = requireEnum "${ipv6Path}.ipv4Mode" [ "disabled" ] (ipv6.ipv4Mode or null);
+          inherit routerSolicitation;
+          fallbackPolicy = requireEnum "${ipv6Path}.fallbackPolicy" [ "none" ] (ipv6.fallbackPolicy or null);
+        });
       normalizePPPoEClient = pppoePath: client:
         let
           clientPath = "${pppoePath}.client";
@@ -103,7 +153,11 @@ let
           defaultRoute = requireBool "${clientPath}.defaultRoute" (clientAttrs.defaultRoute or null);
           usePeerDns = requireBool "${clientPath}.usePeerDns" (clientAttrs.usePeerDns or null);
           mtu = requirePositiveInt "${clientPath}.mtu" (clientAttrs.mtu or null);
-        } // normalizeCredentials clientPath clientAttrs;
+        }
+        // lib.optionalAttrs (clientAttrs ? ipv6) {
+          ipv6 = normalizePPPoEIpv6 clientPath clientAttrs.ipv6;
+        }
+        // normalizeCredentials clientPath clientAttrs;
       normalizePPPoEServer = pppoePath: server:
         let
           serverPath = "${pppoePath}.server";
