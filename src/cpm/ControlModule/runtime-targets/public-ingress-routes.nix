@@ -1,7 +1,7 @@
 { lib, common }:
 
 let
-  inherit (common) attrsOrEmpty listOrEmpty;
+  inherit (common) attrsOrEmpty listOrEmpty ipam;
   isNonEmptyString = value: builtins.isString value && value != "";
 
   laneFor = iface: attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
@@ -26,6 +26,27 @@ let
           index: builtins.toString (if index == 3 then peerLast else builtins.elemAt numbers index)
         ) 4
       );
+
+  p2pPeer6 =
+    cidr:
+    let
+      parsed = if builtins.isString cidr then ipam.splitCIDR cidr else null;
+      address = if parsed != null && parsed.prefixLen == 127 then ipam.parseIPv6 parsed.addr else null;
+      peer =
+        if address == null then
+          null
+        else
+          builtins.genList (
+            index:
+            if index != 7 then
+              builtins.elemAt address index
+            else if lib.mod (builtins.elemAt address index) 2 == 0 then
+              (builtins.elemAt address index) + 1
+            else
+              (builtins.elemAt address index) - 1
+          ) 8;
+    in
+    if peer == null then null else ipam.renderIPv6 peer;
 
   routeFor =
     {
@@ -279,11 +300,43 @@ let
             hasProtectedRoute = builtins.any (
               route: (route.sourceFile or null) == runtimeDestination.sourceFile
             ) (listOrEmpty (routes.ipv6 or null));
+            via6 =
+              if (candidate.sourceKind or null) == "tenant" then null else p2pPeer6 (candidate.addr6 or null);
+            providerTenants = listOrEmpty ((attrsOrEmpty (record.target or null)).providerTenants or null);
+            providerTenant =
+              if builtins.length providerTenants == 1 then
+                builtins.head providerTenants
+              else
+                throw "public ingress relation '${record.relationId}' provider tenant is missing or ambiguous";
+            protectedRoute = {
+              family = 6;
+              sourceFile = runtimeDestination.sourceFile;
+              prefixName = runtimeDestination.prefixName or null;
+              delegatedPrefixLength = runtimeDestination.delegatedPrefixLength;
+              perTenantPrefixLength = runtimeDestination.perTenantPrefixLength;
+              slot = runtimeDestination.slot;
+              tenant = providerTenant;
+              proto = "internal";
+              intent = {
+                kind = "runtime-routed-prefix-return";
+                source = "public-ingress-runtime-destination";
+                accessNode = (attrsOrEmpty (record.target or null)).accessNode or null;
+              };
+            }
+            // (if via6 == null then { } else { inherit via6; });
+            candidateWithRoute = candidate // {
+              routes = routes // {
+                ipv6 = listOrEmpty (routes.ipv6 or null) ++ [ protectedRoute ];
+              };
+            };
+            candidateName = interfaceNameFor interfaces candidate;
           in
-          if !hasProtectedRoute then
-            throw "public ingress relation '${record.relationId}' has no protected runtime IPv6 route on '${targetName}'"
-          else
+          if (candidate.sourceKind or null) != "tenant" && via6 == null then
+            throw "public ingress relation '${record.relationId}' runtime IPv6 route on '${targetName}' has no exact next hop"
+          else if hasProtectedRoute then
             interfaces
+          else
+            interfaces // { ${candidateName} = candidateWithRoute; }
         else if hasRuntimeDestination then
           interfaces
         else if targetCandidates == [ ] || !isNonEmptyString targetAddress then

@@ -95,7 +95,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
       sourceKind = "p2p";
       inherit runtimeIfName;
       backingRef.lane = lane;
-      routes.ipv6 = [ runtimePrefix ];
+      addr6 = "fd00:1000::2/127";
     };
     runtimeTargets = {
       core = core // { natIntent.publicIngress = [ record ]; };
@@ -156,6 +156,11 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     exactRuleFor = name: builtins.head (builtins.filter
       (rule: (rule.relationId or null) == relation.id)
       (rulesFor name));
+    protectedRoutesFor = name: builtins.concatMap
+      (iface: builtins.filter
+        (route: (route.sourceFile or null) == sourceFile)
+        (iface.routes.ipv6 or [ ]))
+      (builtins.attrValues augmented.${name}.effectiveRuntimeRealization.interfaces);
     checks = {
       oneRecord = builtins.length records == 1;
       family = record.family == 6;
@@ -188,7 +193,11 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
           && rule.sourcePreservation == "preserve-source"
           && rule.destinationTranslation == false)
         [ "core" "upstream" "policy" "downstream" "access" ];
+      allFiveRoutes = builtins.all
+        (name: builtins.length (protectedRoutesFor name) == 1)
+        [ "core" "upstream" "policy" "downstream" "access" ];
       unrelatedAccessUntouched = rulesFor "unrelated-access" == [ ];
+      unrelatedAccessHasNoProtectedRoute = protectedRoutesFor "unrelated-access" == [ ];
     };
     missingSource = builtins.tryEval (builtins.deepSeq (build {
       siteAttrs.communicationContract.relations = [ relation ];
