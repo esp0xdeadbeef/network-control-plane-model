@@ -162,7 +162,11 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
           in
           rule.matches == [ { family = "ipv6"; proto = "udp"; dports = [ 4242 ]; } ]
           && rule.destinationPrefixes == [ ]
-          && rule.destinationRuntimeAddresses == [ record.runtimeDestination ])
+          && rule.destinationRuntimeAddresses == [ record.runtimeDestination ]
+          && rule.returnBehavior == "stateful-return"
+          && rule.translationMode == "none"
+          && rule.sourcePreservation == "preserve-source"
+          && rule.destinationTranslation == false)
         [ "core" "upstream" "policy" "downstream" "access" ];
     };
     missingSource = builtins.tryEval (builtins.deepSeq (build {
