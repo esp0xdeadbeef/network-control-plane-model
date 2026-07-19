@@ -252,6 +252,10 @@ let
           ownerScope = requireString "${entryPath}.ownerScope" (attrs.ownerScope or null);
           requesterScopes = normalizeStringList "${entryPath}.requesterScopes" (attrs.requesterScopes or null);
           recordClasses = normalizeStringList "${entryPath}.recordClasses" (attrs.recordClasses or null);
+          materializerFamily = requireEnum
+            "${entryPath}.materializerFamily"
+            [ "ipv4" "ipv6" ]
+            (attrs.materializerFamily or null);
           invalidRecordClasses = builtins.filter
             (recordClass: !(builtins.elem recordClass [ "A" "AAAA" "PTR" ]))
             recordClasses;
@@ -285,7 +289,7 @@ let
                   source = { inherit schema sourceClass sourceFile; };
                   scopeId = requireString "${entryPath}.scopeId" (attrs.scopeId or null);
                   namespace = requireString "${entryPath}.namespace" (attrs.namespace or null);
-                  inherit ownerScope requesterScopes recordClasses fallbackBehavior;
+                  inherit ownerScope requesterScopes recordClasses materializerFamily fallbackBehavior;
                   publicationDenialDiagnostic = requireString
                     "${entryPath}.publicationDenialDiagnostic"
                     (attrs.publicationDenialDiagnostic or null);

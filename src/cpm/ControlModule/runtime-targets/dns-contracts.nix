@@ -233,7 +233,7 @@ let
                   recordClasses = publication.recordClasses;
                   fallbackBehavior = publication.fallbackBehavior;
                   publicationDenialDiagnostic = publication.publicationDenialDiagnostic;
-                  advertisementFamily = family;
+                  materializerFamily = family;
                 })
             entries
         );
@@ -244,7 +244,7 @@ let
         builtins.map
           (publication: {
             name = "${publication.source.sourceFile}|${publication.scopeId}|${publication.namespace}";
-            value = builtins.removeAttrs publication [ "advertisementFamily" ];
+            value = publication;
           })
           raw
       );
