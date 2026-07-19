@@ -29,27 +29,43 @@ in
 let
   role = target.role or null;
   egressIntent = attrsOrEmpty (target.egressIntent or null);
+  hasExplicitEgressIntent =
+    (egressIntent.explicit or false) == true
+    && (egressIntent ? exit || egressIntent ? eligible || egressIntent ? upstreamSelection);
+  egressExitEnabled = !hasExplicitEgressIntent || (egressIntent.exit or false) == true;
+  egressSelectorEnabled =
+    !hasExplicitEgressIntent
+    || (egressIntent.eligible or false) == true
+    || (egressIntent.upstreamSelection or false) == true;
   selectedUplinks =
     listOrEmpty (egressIntent.uplinks or null) ++ listOrEmpty (egressIntent.wanInterfaces or null);
   backingRefName = iface: ((attrsOrEmpty (iface.backingRef or null)).name or null);
   selectedUplinkFor =
     iface:
-    selectedUplinks == [ ]
+    (!hasExplicitEgressIntent && selectedUplinks == [ ])
     || builtins.elem (iface.upstream or "") selectedUplinks
     || builtins.elem iface.sourceInterfaceName selectedUplinks
     || builtins.elem (backingRefName iface) selectedUplinks;
   localInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
-  transitInterfaces = builtins.filter (iface: iface.sourceKind == "p2p" || iface.sourceKind == "pppoe-session") interfaceRecords;
-  pppoeSessionInterfaces = builtins.filter (iface: iface.sourceKind == "pppoe-session") interfaceRecords;
+  transitInterfaces = builtins.filter (
+    iface: iface.sourceKind == "p2p" || iface.sourceKind == "pppoe-session"
+  ) interfaceRecords;
+  pppoeSessionInterfaces = builtins.filter (
+    iface: iface.sourceKind == "pppoe-session"
+  ) interfaceRecords;
   wanInterfaces = builtins.filter (iface: iface.sourceKind == "wan") interfaceRecords;
   lanInterfaces = builtins.filter (iface: iface.sourceKind == "tenant") interfaceRecords;
   uplinkInterfaces = builtins.filter (
     iface:
-    (iface.sourceKind == "wan" && selectedUplinkFor iface)
-    || (iface.sourceKind == "overlay" && selectedUplinks != [ ] && selectedUplinkFor iface)
+    egressExitEnabled
+    && (
+      (iface.sourceKind == "wan" && selectedUplinkFor iface)
+      || (iface.sourceKind == "overlay" && selectedUplinkFor iface)
+    )
   ) interfaceRecords;
 
-  isPublicResolver = forwarder:
+  isPublicResolver =
+    forwarder:
     builtins.elem forwarder [
       "1.1.1.1"
       "1.0.0.1"
@@ -63,57 +79,56 @@ let
       "2620:fe::fe"
     ];
 
-  addressFamily = value:
-    if builtins.isString value && builtins.match ".*:.*" value != null then 6 else 4;
+  addressFamily =
+    value: if builtins.isString value && builtins.match ".*:.*" value != null then 6 else 4;
 
-  cleanAddress = value:
+  cleanAddress =
+    value:
     if !(builtins.isString value) || value == "" || value == "127.0.0.1" || value == "::1" then
       null
     else
       value;
 
-  publicDnsServiceSources =
-    builtins.concatLists (
-      map
-        (targetName:
-          let
-            runtimeTarget = runtimeTargets.${targetName};
-            dns = attrsOrEmpty ((attrsOrEmpty (runtimeTarget.services or null)).dns or null);
-            forwarders =
-              if builtins.isList (dns.forwarders or null) then
-                dns.forwarders
-              else
-                listOrEmpty (dns.upstreams or null);
-            publicForwarders = builtins.filter isPublicResolver forwarders;
-            runtimeOrigin = attrsOrEmpty (runtimeTarget.runtimeOriginEgress or null);
-            modeledSourcePrefixes = listOrEmpty (runtimeOrigin.sourcePrefixes or null);
-            recursionMode = dns.recursionMode or null;
-            dnsEgress = attrsOrEmpty (dns.egress or null);
-            dnsUplinks =
-              if listOrEmpty (dnsEgress.uplinks or null) != [ ] then
-                listOrEmpty dnsEgress.uplinks
-              else
-                listOrEmpty (runtimeOrigin.uplinks or null);
-            outgoing = listOrEmpty (dns.outgoingInterfaces or null);
-            listeners = listOrEmpty (dns.listen or null);
-            candidates = if outgoing != [ ] then outgoing else listeners;
-          in
-          if dns == { } || (publicForwarders == [ ] && recursionMode != "iterative") then
-            [ ]
-          else if modeledSourcePrefixes != [ ] then
-            map (source: source // { uplinks = dnsUplinks; }) modeledSourcePrefixes
+  publicDnsServiceSources = builtins.concatLists (
+    map (
+      targetName:
+      let
+        runtimeTarget = runtimeTargets.${targetName};
+        dns = attrsOrEmpty ((attrsOrEmpty (runtimeTarget.services or null)).dns or null);
+        forwarders =
+          if builtins.isList (dns.forwarders or null) then
+            dns.forwarders
           else
-            map
-              (address: {
-                family = addressFamily address;
-                prefix = address;
-                uplinks = dnsUplinks;
-              })
-              (builtins.filter (value: value != null) (map cleanAddress candidates)))
-        (builtins.attrNames runtimeTargets)
-    );
+            listOrEmpty (dns.upstreams or null);
+        publicForwarders = builtins.filter isPublicResolver forwarders;
+        runtimeOrigin = attrsOrEmpty (runtimeTarget.runtimeOriginEgress or null);
+        modeledSourcePrefixes = listOrEmpty (runtimeOrigin.sourcePrefixes or null);
+        recursionMode = dns.recursionMode or null;
+        dnsEgress = attrsOrEmpty (dns.egress or null);
+        dnsUplinks =
+          if listOrEmpty (dnsEgress.uplinks or null) != [ ] then
+            listOrEmpty dnsEgress.uplinks
+          else
+            listOrEmpty (runtimeOrigin.uplinks or null);
+        outgoing = listOrEmpty (dns.outgoingInterfaces or null);
+        listeners = listOrEmpty (dns.listen or null);
+        candidates = if outgoing != [ ] then outgoing else listeners;
+      in
+      if dns == { } || (publicForwarders == [ ] && recursionMode != "iterative") then
+        [ ]
+      else if modeledSourcePrefixes != [ ] then
+        map (source: source // { uplinks = dnsUplinks; }) modeledSourcePrefixes
+      else
+        map (address: {
+          family = addressFamily address;
+          prefix = address;
+          uplinks = dnsUplinks;
+        }) (builtins.filter (value: value != null) (map cleanAddress candidates))
+    ) (builtins.attrNames runtimeTargets)
+  );
 
-  dnsSourceUsesUplink = source: iface:
+  dnsSourceUsesUplink =
+    source: iface:
     let
       allowed = listOrEmpty (source.uplinks or null);
       names = builtins.filter (value: value != null && value != "") [
@@ -124,9 +139,10 @@ let
     in
     allowed == [ ] || builtins.any (name: builtins.elem name allowed) names;
 
-  policyEndpointDiagnostics = attrsOrEmpty ((attrsOrEmpty policyEndpointBindings).diagnostics or null);
-  unresolvedDenyDiagnostics =
-    listOrEmpty (policyEndpointDiagnostics.unresolvedDenyEndpoints or null);
+  policyEndpointDiagnostics = attrsOrEmpty (
+    (attrsOrEmpty policyEndpointBindings).diagnostics or null
+  );
+  unresolvedDenyDiagnostics = listOrEmpty (policyEndpointDiagnostics.unresolvedDenyEndpoints or null);
   policyDiagnosticAttrs =
     if unresolvedDenyDiagnostics == [ ] then
       { }
@@ -142,31 +158,29 @@ let
       dnsMatches = trafficTypeMatches.dns or [ ];
     in
     builtins.concatLists (
-      map
-        (source:
-          builtins.concatLists (
-            map
-              (transitIface:
-                map
-                  (uplinkIface: {
-                    action = "accept";
-                    intent = {
-                      kind = "dns-service-public-egress";
-                      source = "dns-service";
-                    };
-                    trafficType = "dns";
-                    matches = dnsMatches;
-                    fromInterface = transitIface.runtimeIfName;
-                    toInterface = uplinkIface.runtimeIfName;
-                    sourcePrefixes = [ (builtins.removeAttrs source [ "uplinks" ]) ];
-                    family = source.family;
-                    comment = "allow-dns-service-egress";
-                    applyTcpMssClamp = false;
-                  })
-                  (builtins.filter (dnsSourceUsesUplink source) uplinkInterfaces))
-              transitInterfaces
-          ))
-        publicDnsServiceSources
+      map (
+        source:
+        builtins.concatLists (
+          map (
+            transitIface:
+            map (uplinkIface: {
+              action = "accept";
+              intent = {
+                kind = "dns-service-public-egress";
+                source = "dns-service";
+              };
+              trafficType = "dns";
+              matches = dnsMatches;
+              fromInterface = transitIface.runtimeIfName;
+              toInterface = uplinkIface.runtimeIfName;
+              sourcePrefixes = [ (builtins.removeAttrs source [ "uplinks" ]) ];
+              family = source.family;
+              comment = "allow-dns-service-egress";
+              applyTcpMssClamp = false;
+            }) (builtins.filter (dnsSourceUsesUplink source) uplinkInterfaces)
+          ) transitInterfaces
+        )
+      ) publicDnsServiceSources
     );
 in
 if role == "access" then
@@ -189,38 +203,67 @@ if role == "access" then
     };
   }
 else if role == "downstream-selector" || role == "upstream-selector" then
-  ({
-    mode = "explicit-selector-forwarding";
-    transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
-    rules =
-      if role == "downstream-selector" then
-        buildDownstreamSelectorRules {
-          endpointBindings = attrsOrEmpty policyEndpointBindings;
-          relations = siteRelations;
-          inherit services trafficPaths trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
-        }
-      else
-        buildUpstreamSelectorRules {
-          endpointBindings = attrsOrEmpty policyEndpointBindings;
-          relations = siteRelations;
-          inherit overlayNames services trafficTypeMatches transitInterfaces;
-          siteRuntimeOriginSourcePrefixes = runtimeOriginSourcePrefixes;
-        };
-  } // policyDiagnosticAttrs)
+  (
+    {
+      mode = "explicit-selector-forwarding";
+      transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
+      rules =
+        if role == "downstream-selector" then
+          buildDownstreamSelectorRules {
+            endpointBindings = attrsOrEmpty policyEndpointBindings;
+            relations = siteRelations;
+            inherit
+              services
+              trafficPaths
+              trafficTypeMatches
+              transitInterfaces
+              runtimeOriginSourcePrefixes
+              ;
+          }
+        else
+          buildUpstreamSelectorRules {
+            endpointBindings = attrsOrEmpty policyEndpointBindings;
+            relations = siteRelations;
+            egressEnabled = egressSelectorEnabled;
+            inherit
+              overlayNames
+              services
+              trafficTypeMatches
+              transitInterfaces
+              ;
+            siteRuntimeOriginSourcePrefixes = runtimeOriginSourcePrefixes;
+          };
+    }
+    // policyDiagnosticAttrs
+  )
 else if role == "policy" then
-  ({
-    mode = "explicit-policy-forwarding";
-    transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
-    rules = buildPolicyRules {
-      endpointBindings = attrsOrEmpty policyEndpointBindings;
-      relations = siteRelations;
-      inherit services sharedServicePolicyAtoms trafficTypeMatches transitInterfaces runtimeOriginSourcePrefixes;
-    };
-  } // policyDiagnosticAttrs)
+  (
+    {
+      mode = "explicit-policy-forwarding";
+      transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
+      rules = buildPolicyRules {
+        endpointBindings = attrsOrEmpty policyEndpointBindings;
+        relations = siteRelations;
+        inherit
+          services
+          sharedServicePolicyAtoms
+          trafficTypeMatches
+          transitInterfaces
+          runtimeOriginSourcePrefixes
+          ;
+      };
+    }
+    // policyDiagnosticAttrs
+  )
 else if role == "core" then
   let
     coreRules = buildCoreRules {
-      inherit tenantPrefixOwners transitInterfaces uplinkInterfaces dnsServicePublicEgressRules;
+      inherit
+        tenantPrefixOwners
+        transitInterfaces
+        uplinkInterfaces
+        dnsServicePublicEgressRules
+        ;
     };
   in
   {

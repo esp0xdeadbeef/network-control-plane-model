@@ -20,6 +20,9 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     build = import (root + "/src/cpm/firewall-intent/public-ingress.nix") {
       inherit helpers lib ipam;
     };
+    buildForwarding = import (root + "/src/cpm/firewall-intent/forwarding.nix") {
+      inherit helpers;
+    };
     sourceFile = "/run/secrets/lab-dmz-ipv6-prefix";
     runtimePrefix = {
       allocation = "runtime";
@@ -161,6 +164,73 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
         (route: (route.sourceFile or null) == sourceFile)
         (iface.routes.ipv6 or [ ]))
       (builtins.attrValues augmented.${name}.effectiveRuntimeRealization.interfaces);
+    disabledEgress = {
+      eligible = false;
+      exit = false;
+      explicit = true;
+      uplinks = [ ];
+      upstreamSelection = false;
+      wanInterfaces = [ ];
+    };
+    enabledCoreEgress = disabledEgress // {
+      eligible = true;
+      exit = true;
+      uplinks = [ "lab-wan" ];
+      wanInterfaces = [ "lab-wan" ];
+    };
+    enabledSelectorEgress = disabledEgress // {
+      eligible = true;
+      upstreamSelection = true;
+      uplinks = [ "lab-wan" ];
+    };
+    forwardingArgs = target: interfaceRecords: {
+      policyEndpointBindings = { };
+      services = [ ];
+      siteRelations = [ ];
+      inherit target interfaceRecords;
+    };
+    coreForwardingInterfaces = [
+      {
+        sourceKind = "p2p";
+        sourceInterfaceName = "core-upstream";
+        runtimeIfName = "upstream";
+        backingRef = {
+          kind = "link";
+          id = "core-upstream";
+        };
+      }
+      {
+        sourceKind = "wan";
+        sourceInterfaceName = "lab-wan";
+        runtimeIfName = "wan0";
+        upstream = "lab-wan";
+        backingRef = {
+          kind = "uplink";
+          name = "lab-wan";
+          external = true;
+        };
+      }
+    ];
+    ingressOnlyCoreForwarding = buildForwarding (forwardingArgs {
+      role = "core";
+      egressIntent = disabledEgress;
+    } coreForwardingInterfaces);
+    egressCoreForwarding = buildForwarding (forwardingArgs {
+      role = "core";
+      egressIntent = enabledCoreEgress;
+    } coreForwardingInterfaces);
+    selectorForwardingInterfaces = [
+      (routeIface "policy" { kind = "access-uplink"; access = "access-dmz"; uplink = "lab-wan"; })
+      (routeIface "core" { kind = "uplink"; uplink = "lab-wan"; })
+    ];
+    ingressOnlySelectorForwarding = buildForwarding (forwardingArgs {
+      role = "upstream-selector";
+      egressIntent = disabledEgress;
+    } selectorForwardingInterfaces);
+    egressSelectorForwarding = buildForwarding (forwardingArgs {
+      role = "upstream-selector";
+      egressIntent = enabledSelectorEgress;
+    } selectorForwardingInterfaces);
     checks = {
       oneRecord = builtins.length records == 1;
       family = record.family == 6;
@@ -198,6 +268,19 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
         [ "core" "upstream" "policy" "downstream" "access" ];
       unrelatedAccessUntouched = rulesFor "unrelated-access" == [ ];
       unrelatedAccessHasNoProtectedRoute = protectedRoutesFor "unrelated-access" == [ ];
+      ingressOnlyCoreHasNoGenericExit = ingressOnlyCoreForwarding.rules == [ ];
+      explicitCoreEgressStillHasPair = builtins.length egressCoreForwarding.rules == 2;
+      ingressOnlySelectorHasNoGenericExit = ingressOnlySelectorForwarding.rules == [ ];
+      explicitSelectorEgressStillHasPair =
+        builtins.any
+          (rule: (rule.fromInterface or null) == "policy" && (rule.toInterface or null) == "core")
+          egressSelectorForwarding.rules
+        && builtins.any
+          (rule:
+            (rule.fromInterface or null) == "core"
+            && (rule.toInterface or null) == "policy"
+            && (rule.connectionState or null) == "established,related")
+          egressSelectorForwarding.rules;
     };
     missingSource = builtins.tryEval (builtins.deepSeq (build {
       siteAttrs.communicationContract.relations = [ relation ];
