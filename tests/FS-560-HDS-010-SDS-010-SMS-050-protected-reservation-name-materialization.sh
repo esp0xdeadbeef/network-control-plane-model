@@ -118,6 +118,7 @@ if ! OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       ownerScope = "client";
       requesterScopes = [ "client" ];
       recordClasses = [ "A" "AAAA" "PTR" ];
+      materializerFamily = "ipv4";
       fallbackBehavior = "local-only";
       publicationDenialDiagnostic = "diagnostic.protected-reservation-name-publication-denied";
     }
