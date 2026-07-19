@@ -33,9 +33,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     };
     ipv6Authority = {
       sourceScope = "internet";
-      publicSurface = "wan";
       targetService = "nebula";
-      targetEndpoint = "nebula-endpoint";
       targetPort = 4242;
       returnBehavior = "stateful-return";
       sourcePreservation = "preserve-source";
@@ -142,6 +140,9 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     checks = {
       oneRecord = builtins.length records == 1;
       family = record.family == 6;
+      inventoryOwnedBindings =
+        record.publicSurface == "wan"
+        && record.target.endpoint == "nebula-endpoint";
       noTranslation = record.destinationTranslation == false && record.sourceTranslation.mode == "none";
       exactTuple = record.tupleRecords == [ { protocol = "udp"; publicPort = 4242; targetPort = 4242; } ];
       protectedRuntimeDestination = record.runtimeDestination == {
@@ -177,6 +178,33 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
       target = core;
       targetName = "core";
     }) true);
+    conflictingLegacyBinding = builtins.tryEval (builtins.deepSeq (build {
+      siteAttrs.communicationContract.relations = [ (relation // {
+        publicIngressTupleAuthority = ipv6Authority // {
+          publicSurface = "wrong-uplink";
+          targetEndpoint = "wrong-endpoint";
+        };
+      }) ];
+      inherit services policyEndpointBindings;
+      interfaceRecords = builtins.attrValues core.effectiveRuntimeRealization.interfaces;
+      routedPrefixesByTenant.dmz = [ runtimePrefix ];
+      target = core;
+      targetName = "core";
+    }) true);
+    ambiguousInventoryEndpoint = builtins.tryEval (builtins.deepSeq (build {
+      siteAttrs.communicationContract.relations = [ relation ];
+      services = [ ((builtins.head services) // {
+        providerEndpoints = (builtins.head services).providerEndpoints ++ [ {
+          name = "second-nebula-endpoint";
+          ipv6 = [ "fd00:7::4343" ];
+        } ];
+      }) ];
+      inherit policyEndpointBindings;
+      interfaceRecords = builtins.attrValues core.effectiveRuntimeRealization.interfaces;
+      routedPrefixesByTenant.dmz = [ runtimePrefix ];
+      target = core;
+      targetName = "core";
+    }) true);
     familyNeutral = build {
       siteAttrs.communicationContract.relations = [ (relation // {
         publicIngressTupleAuthority = builtins.removeAttrs ipv6Authority [ "family" ];
@@ -193,6 +221,10 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     throw ("failed checks: " + builtins.concatStringsSep ", " failed)
   else if missingSource.success then
     throw "missing protected runtime source was accepted"
+  else if conflictingLegacyBinding.success then
+    throw "conflicting relation-owned surface or endpoint was accepted"
+  else if ambiguousInventoryEndpoint.success then
+    throw "ambiguous inventory-owned endpoint was accepted"
   else if familyNeutral != [ ] then
     throw "family-neutral no-translation tuple was expanded to IPv6"
   else
