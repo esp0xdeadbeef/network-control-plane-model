@@ -131,6 +131,25 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
           to-downstream = routeIface "downstream" { kind = "access-edge"; access = "access-dmz"; };
         };
       };
+      unrelated-access = {
+        role = "access";
+        logicalNode.name = "access-unrelated";
+        effectiveRuntimeRealization.interfaces = {
+          tenant = {
+            sourceKind = "tenant";
+            runtimeIfName = "tenant-unrelated";
+            backingRef.name = "unrelated";
+          };
+          to-downstream = {
+            sourceKind = "p2p";
+            runtimeIfName = "downstream-unrelated";
+            backingRef.lane = {
+              kind = "access-edge";
+              access = "access-unrelated";
+            };
+          };
+        };
+      };
     };
     augmented = routeAugment runtimeTargets;
     rulesFor = name: augmented.${name}.forwardingIntent.rules or [ ];
@@ -169,6 +188,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
           && rule.sourcePreservation == "preserve-source"
           && rule.destinationTranslation == false)
         [ "core" "upstream" "policy" "downstream" "access" ];
+      unrelatedAccessUntouched = rulesFor "unrelated-access" == [ ];
     };
     missingSource = builtins.tryEval (builtins.deepSeq (build {
       siteAttrs.communicationContract.relations = [ relation ];
