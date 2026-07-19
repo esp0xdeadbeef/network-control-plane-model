@@ -88,7 +88,7 @@ let
   firewallIntent =
     resolveFirewallIntent {
       services = resolvedServices;
-      inherit sitePath siteAttrs policyEndpointBindings;
+      inherit sitePath siteAttrs policyEndpointBindings routedPrefixesByTenant;
       runtimeTargets = runtimeTargetsForFirewall;
     };
 

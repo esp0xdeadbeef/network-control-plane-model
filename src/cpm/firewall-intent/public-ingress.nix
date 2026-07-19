@@ -1,4 +1,4 @@
-{ helpers }:
+{ helpers, lib, ipam }:
 
 let
   inherit (helpers) isNonEmptyString;
@@ -82,12 +82,62 @@ let
   endpointAddresses4 = endpoint:
     uniqueStrings (listOrEmpty ((attrsOrEmpty endpoint).ipv4 or null));
 
+  endpointAddresses6 = endpoint:
+    uniqueStrings (listOrEmpty ((attrsOrEmpty endpoint).ipv6 or null));
+
+  p2pPeer6 = cidr:
+    let
+      parsed = if builtins.isString cidr then ipam.splitCIDR cidr else null;
+      address = if parsed != null && parsed.prefixLen == 127 then ipam.parseIPv6 parsed.addr else null;
+      peer =
+        if address == null then
+          null
+        else
+          builtins.genList
+            (index:
+              if index != 7 then
+                builtins.elemAt address index
+              else if lib.mod (builtins.elemAt address index) 2 == 0 then
+                (builtins.elemAt address index) + 1
+              else
+                (builtins.elemAt address index) - 1)
+            8;
+    in
+    if peer == null then null else ipam.renderIPv6 peer;
+
+  interfaceIdentifier64 = address:
+    let
+      parsed = if builtins.isString address then ipam.parseIPv6 address else null;
+      identifier =
+        if parsed == null then
+          null
+        else
+          builtins.genList
+            (index: if index < 4 then 0 else builtins.elemAt parsed index)
+            8;
+    in
+    if identifier == null then null else ipam.renderIPv6 identifier;
+
+  protectedRuntimePrefix = context: tenant: routedPrefixesByTenant:
+    let
+      candidates = builtins.filter
+        (prefix:
+          builtins.isAttrs prefix
+          && (prefix.family or null) == "ipv6"
+          && (prefix.allocation or null) == "runtime"
+          && isNonEmptyString (prefix.sourceFile or null)
+          && lib.hasPrefix "/run/secrets/" prefix.sourceFile)
+        (listOrEmpty (routedPrefixesByTenant.${tenant} or null));
+    in
+    requireOne context candidates;
+
 in
 {
   siteAttrs,
   services ? [ ],
   policyEndpointBindings ? { },
   interfaceRecords,
+  routedPrefixesByTenant ? { },
   target,
   targetName,
 }:
@@ -103,11 +153,15 @@ let
       builtins.isAttrs relation
       && (relation.action or "allow") == "allow"
       && builtins.isAttrs (relation.publicIngressTupleAuthority or null)
-      # Only locally owned NAPT is materialized in this target's NAT/routing
-      # contract. Provider-port-forward and no-translation records describe an
-      # external translation boundary and must not invent a local ingress
-      # interface, DNAT rule, or source rewrite.
-      && (relation.publicIngressTupleAuthority.translationMode or null) == "napt")
+      && (
+        let
+          authority = relation.publicIngressTupleAuthority;
+          family = authority.family or null;
+          mode = authority.translationMode or null;
+        in
+        (mode == "napt" && (family == null || family == "ipv4"))
+        || (mode == "none" && family == "ipv6")
+      ))
     relations;
   servicesByName = serviceIndex services;
   loopback4 = stripCidr ((attrsOrEmpty ((attrsOrEmpty target.effectiveRuntimeRealization).loopback or null)).addr4 or null);
@@ -132,7 +186,13 @@ let
           || ((attrsOrEmpty endpoint).name or null) == targetEndpoint)
         (listOrEmpty (service.providerEndpoints or null));
       endpoint = requireOne "relation '${toString id}' target endpoint" endpointCandidates;
-      targetAddress = requireOne "relation '${toString id}' IPv4 target address" (endpointAddresses4 endpoint);
+      translationMode = authority.translationMode or null;
+      family = if (authority.family or null) == "ipv6" then 6 else 4;
+      targetAddress =
+        if family == 6 then
+          requireOne "relation '${toString id}' IPv6 target address" (endpointAddresses6 endpoint)
+        else
+          requireOne "relation '${toString id}' IPv4 target address" (endpointAddresses4 endpoint);
       targetAccessNode = requireOne
         "relation '${toString id}' target access node"
         (targetAccessNodesFor policyEndpointBindings service);
@@ -165,8 +225,9 @@ let
           && builtins.elem (lane.uplink or "") surfaces)
         interfaceRecords;
       internalEgress = requireOne "relation '${toString id}' internal egress interface" internalEgressCandidates;
-      internalNextHop = p2pPeer4 (internalEgress.addr4 or null);
-      translationMode = authority.translationMode or null;
+      internalNextHop =
+        if family == 6 then p2pPeer6 (internalEgress.addr6 or null)
+        else p2pPeer4 (internalEgress.addr4 or null);
       sourcePreservation = authority.sourcePreservation or null;
       returnBehavior = authority.returnBehavior or relation.returnBehavior or null;
       targetPort = authority.targetPort or null;
@@ -182,6 +243,37 @@ let
         tuples;
       rewriteSource = sourcePreservation == "rewritten";
       destinationTranslation = translationMode != "none";
+      providerTenant =
+        if family == 6 then
+          requireOne "relation '${toString id}' provider tenant" (listOrEmpty (service.providerTenants or null))
+        else
+          null;
+      interfaceIdentifier = interfaceIdentifier64 targetAddress;
+      runtimePrefix =
+        if family != 6 then
+          null
+        else
+          protectedRuntimePrefix
+            "relation '${toString id}' protected runtime prefix"
+            providerTenant
+            routedPrefixesByTenant;
+      runtimeDestination =
+        if family != 6 then
+          null
+        else if !isNonEmptyString interfaceIdentifier then
+          throw "public ingress relation '${toString id}' IPv6 endpoint has no stable interface identifier"
+        else
+          {
+            sourceClass = "protected";
+            source = "intent-routed-prefix";
+            sourceFile = runtimePrefix.sourceFile;
+            prefixName = runtimePrefix.name;
+            inherit interfaceIdentifier;
+            delegatedPrefixLength = runtimePrefix.delegatedPrefixLength;
+            perTenantPrefixLength = runtimePrefix.perTenantPrefixLength;
+            slot = runtimePrefix.slot;
+            targetPrefixLength = 128;
+          };
       complete =
         isNonEmptyString id
         && surfaces != [ ]
@@ -198,14 +290,15 @@ let
         && isNonEmptyString translationMode
         && isNonEmptyString sourcePreservation
         && isNonEmptyString returnBehavior
-        && (!rewriteSource || isNonEmptyString loopback4);
+        && (!rewriteSource || (family == 4 && isNonEmptyString loopback4))
+        && (family != 6 || (translationMode == "none" && sourcePreservation == "preserve-source"));
     in
     if !complete then
       throw "public ingress relation '${toString id}' has incomplete or ambiguous runtime realization"
     else
       {
         relationId = id;
-        family = 4;
+        inherit family;
         sourceScope = authority.sourceScope or null;
         inherit publicSurface translationMode sourcePreservation returnBehavior;
         ingressInterface = ingressIface.runtimeIfName;
@@ -219,13 +312,14 @@ let
           accessNode = targetAccessNode;
           providerTenants = listOrEmpty (service.providerTenants or null);
         };
-        inherit tupleRecords destinationTranslation;
+        inherit tupleRecords destinationTranslation runtimeDestination;
         internalPath = {
           egressInterface = internalEgress.runtimeIfName;
           nextHop = internalNextHop;
           targetRoute = {
-            dst = "${targetAddress}/32";
+            dst = if family == 6 then null else "${targetAddress}/32";
             table = "main";
+            inherit runtimeDestination;
           };
         };
         sourceTranslation =

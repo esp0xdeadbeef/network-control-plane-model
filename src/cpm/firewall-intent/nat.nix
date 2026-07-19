@@ -1,4 +1,4 @@
-{ helpers }:
+{ helpers, lib, ipam }:
 
 let
   inherit (helpers) isNonEmptyString;
@@ -26,10 +26,11 @@ in
 , target
 , targetName ? ""
 , runtimeOriginSourcePrefixes ? [ ]
+, routedPrefixesByTenant ? { }
 ,
 }:
 let
-  buildPublicIngress = import ./public-ingress.nix { inherit helpers; };
+  buildPublicIngress = import ./public-ingress.nix { inherit helpers lib ipam; };
   publicIngress = buildPublicIngress {
     inherit
       interfaceRecords
@@ -38,6 +39,7 @@ let
       siteAttrs
       target
       targetName
+      routedPrefixesByTenant
       ;
   };
   publicIngressNatEnabled = builtins.any (record: record.destinationTranslation) publicIngress;
@@ -455,7 +457,7 @@ in
 {
   enabled = natEnabled || publicIngressNatEnabled;
   families = {
-    ipv4 = nat4Enabled || publicIngress != [ ];
+    ipv4 = nat4Enabled || builtins.any (record: (record.family or null) == 4) publicIngress;
     ipv6 = nat6Enabled;
   };
   warnings = nat66Warning;

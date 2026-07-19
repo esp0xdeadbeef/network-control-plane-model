@@ -142,21 +142,33 @@ let
         (returnEgressCandidates target record);
       targetAddress = (attrsOrEmpty (record.target or null)).address or null;
       targetPort = (attrsOrEmpty (record.target or null)).port or null;
+      family = record.family or 4;
+      runtimeDestination = attrsOrEmpty (record.runtimeDestination or null);
+      hasRuntimeDestination =
+        family == 6
+        && isNonEmptyString (runtimeDestination.sourceFile or null)
+        && isNonEmptyString (runtimeDestination.interfaceIdentifier or null);
       rewriteAddress = (attrsOrEmpty (record.sourceTranslation or null)).address or null;
       role = target.role or null;
+      coreFromInterface = record.ingressInterface or null;
+      coreToInterface = (attrsOrEmpty (record.internalPath or null)).egressInterface or null;
       exactForwardRule =
         if
-          role == "core"
-          || targetCandidates == [ ]
-          || returnCandidates == [ ]
-          || !isNonEmptyString targetAddress
+          (!hasRuntimeDestination && !isNonEmptyString targetAddress)
           || !builtins.isInt targetPort
+          || (role == "core" && !hasRuntimeDestination)
+          || (role == "core" && !(isNonEmptyString coreFromInterface && isNonEmptyString coreToInterface))
+          || (role != "core" && (targetCandidates == [ ] || returnCandidates == [ ]))
         then
           null
         else
           let
-            fromInterface = (builtins.head returnCandidates).runtimeIfName;
-            toInterface = (builtins.head targetCandidates).runtimeIfName;
+            fromInterface =
+              if role == "core" then coreFromInterface
+              else (builtins.head returnCandidates).runtimeIfName;
+            toInterface =
+              if role == "core" then coreToInterface
+              else (builtins.head targetCandidates).runtimeIfName;
           in
           {
             action = "accept";
@@ -165,25 +177,33 @@ let
             trafficType = "public-ingress";
             matches = map
               (tuple: {
-                family = "ipv4";
+                family = if family == 6 then "ipv6" else "ipv4";
                 proto = tuple.protocol;
                 dports = [ targetPort ];
               })
               (listOrEmpty (record.tupleRecords or null));
-            destinationPrefixes = [ {
-              family = 4;
-              prefix = "${targetAddress}/32";
-            } ];
+            destinationPrefixes =
+              if hasRuntimeDestination then [ ]
+              else [ {
+                inherit family;
+                prefix = "${targetAddress}/${if family == 6 then "128" else "32"}";
+              } ];
+            destinationRuntimeAddresses =
+              if hasRuntimeDestination then [ runtimeDestination ] else [ ];
             transportAuthority = {
               admissible = true;
               basis = "public-ingress-tuple-authority";
               provenanceIsAuthority = false;
             };
             intent = {
-              kind = "public-ingress-post-dnat-forward";
+              kind =
+                if (record.destinationTranslation or false) then
+                  "public-ingress-post-dnat-forward"
+                else
+                  "public-ingress-runtime-destination-forward";
               source = "public-ingress-tuple-authority";
             };
-            comment = "${record.relationId}: exact post-DNAT public ingress";
+            comment = "${record.relationId}: exact public ingress";
           };
       sameExactPath = rule:
         exactForwardRule != null
@@ -199,7 +219,28 @@ let
           };
         };
       withTarget =
-        if targetCandidates == [ ] || !isNonEmptyString targetAddress then interfaces
+        if hasRuntimeDestination then
+          let
+            candidates =
+              if role == "core" then
+                builtins.filter
+                  (iface: (iface.runtimeIfName or null) == coreToInterface)
+                  (builtins.attrValues interfaces)
+              else
+                targetCandidates;
+            candidate =
+              if builtins.length candidates == 1 then builtins.head candidates
+              else throw "public ingress relation '${record.relationId}' runtime IPv6 path on '${targetName}' is missing or ambiguous";
+            routes = attrsOrEmpty (candidate.routes or null);
+            hasProtectedRoute = builtins.any
+              (route: (route.sourceFile or null) == runtimeDestination.sourceFile)
+              (listOrEmpty (routes.ipv6 or null));
+          in
+          if !hasProtectedRoute then
+            throw "public ingress relation '${record.relationId}' has no protected runtime IPv6 route on '${targetName}'"
+          else
+            interfaces
+        else if targetCandidates == [ ] || !isNonEmptyString targetAddress then interfaces
         else
           let
             iface = builtins.head targetCandidates;

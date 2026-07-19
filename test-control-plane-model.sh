@@ -34,6 +34,7 @@ tests=(
   test-renderer-contract-boundary.sh
   test-interface-mtu-contract.sh
   test-provider-access-no-side-channel.sh
+  FS-230-HDS-010-SDS-010-SMS-040-nebula-ipv6-public-ingress.sh
   FS-800-HDS-030-SDS-020-SMS-020-pppoe-ipv6-prefix-delegation.sh
   test-vxlan-contract-required-fields.sh
   test-endpoint-inventory-payload.sh

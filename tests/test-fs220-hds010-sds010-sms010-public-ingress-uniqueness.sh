@@ -94,6 +94,7 @@ REPO_ROOT="$repo_root" \
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };
+          runtimeTargets = { };
         };
         service = builtins.head services;
         records = (service.exposure or {}).records or [];
@@ -203,6 +204,7 @@ REPO_ROOT="$repo_root" \
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };
+          runtimeTargets = { };
         };
         service = builtins.head services;
         records = (service.exposure or {}).records or [];
@@ -323,6 +325,7 @@ REPO_ROOT="$repo_root" \
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };
+          runtimeTargets = { };
         };
         service = builtins.head services;
         records = (service.exposure or {}).records or [];
@@ -422,6 +425,7 @@ REPO_ROOT="$repo_root" \
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };
+          runtimeTargets = { };
         };
         service = builtins.head services;
       in
