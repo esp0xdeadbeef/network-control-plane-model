@@ -72,7 +72,7 @@ let
           [ ];
       reservationSource =
         if enabled then
-          resolveReservationSource "ipv6" entryPath (attrs.reservationSource or null) (attrs.reservations or null)
+          resolveReservationSource "ipv6" entryPath tenantContext.tenantName (attrs.reservationSource or null) (attrs.reservations or null)
         else
           null;
       leaseState =

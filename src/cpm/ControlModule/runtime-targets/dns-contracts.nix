@@ -206,6 +206,51 @@ let
       ++ lib.concatMap (entry: listOrEmpty (entry.prefixes or null)) (listOrEmpty (advertisements.ipv6Ra or null))
     );
 
+  protectedReservationPublicationsForTarget = target:
+    let
+      advertisements = attrsOrEmpty (target.advertisements or null);
+      publicationsFor = family: entries:
+        builtins.filter (entry: entry != null) (
+          builtins.map
+            (advertisement:
+              let
+                source = attrsOrEmpty (advertisement.reservationSource or null);
+                publication = attrsOrEmpty (source.namePublication or null);
+              in
+              if publication == { } then
+                null
+              else
+                {
+                  source = {
+                    schema = source.schema;
+                    sourceClass = source.sourceClass;
+                    sourceFile = source.sourceFile;
+                  };
+                  scopeId = advertisement.id;
+                  namespace = publication.namespace;
+                  ownerScope = publication.ownerScope;
+                  requesterScopes = publication.requesterScopes;
+                  recordClasses = publication.recordClasses;
+                  fallbackBehavior = publication.fallbackBehavior;
+                  publicationDenialDiagnostic = publication.publicationDenialDiagnostic;
+                  advertisementFamily = family;
+                })
+            entries
+        );
+      raw =
+        publicationsFor "ipv4" (listOrEmpty (advertisements.dhcp4 or null))
+        ++ publicationsFor "ipv6" (listOrEmpty (advertisements.dhcpv6 or null));
+      keyed = builtins.listToAttrs (
+        builtins.map
+          (publication: {
+            name = "${publication.source.sourceFile}|${publication.scopeId}|${publication.namespace}";
+            value = builtins.removeAttrs publication [ "advertisementFamily" ];
+          })
+          raw
+      );
+    in
+    builtins.attrValues keyed;
+
   runtimeTargetPath = target:
     "runtimeTargets.${target.placement.target or target.logicalNode.name or "access"}";
 
@@ -416,6 +461,7 @@ let
       existingServices = attrsOrEmpty (target.services or null);
       hasModeledDnsPolicy = existingServices ? dns;
       existingDns = attrsOrEmpty (existingServices.dns or null);
+      protectedReservationPublications = protectedReservationPublicationsForTarget target;
       existingForwarders = listOrEmpty (existingDns.forwarders or null);
       existingUpstreamResolvers = listOrEmpty (existingDns.upstreamResolvers or null);
       derivedUpstreamResolvers = listenerPolicyUpstreamResolvers;
@@ -489,6 +535,9 @@ let
           roles = roles // { recursion = recursionRole // { outgoingInterfaces = recursionOutgoingInterfaces; }; };
           routeContracts = lib.unique (listOrEmpty (existingDns.routeContracts or null) ++ localContracts);
           policyMatrix = lib.unique (listOrEmpty (existingDns.policyMatrix or null) ++ localContracts);
+        }
+        // lib.optionalAttrs (protectedReservationPublications != [ ]) {
+          inherit protectedReservationPublications;
         };
     in
     if (target.role or null) != "access" || listeners == [ ] then
