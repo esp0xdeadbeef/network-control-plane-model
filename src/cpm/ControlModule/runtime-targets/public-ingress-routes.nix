@@ -175,6 +175,12 @@ let
             inherit fromInterface toInterface;
             relationId = record.relationId;
             trafficType = "public-ingress";
+            inherit (record)
+              returnBehavior
+              translationMode
+              sourcePreservation
+              destinationTranslation
+              ;
             matches = map
               (tuple: {
                 family = if family == 6 then "ipv6" else "ipv4";
