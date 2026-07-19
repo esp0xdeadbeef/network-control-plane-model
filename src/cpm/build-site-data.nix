@@ -17,7 +17,7 @@ let
   inherit (helpers) isNonEmptyString sortedNames;
 
   resolveAccessAdvertisements = import ./resolve-access-advertisements.nix { inherit helpers ipam; };
-  resolveFirewallIntent = import ./resolve-firewall-intent.nix { inherit helpers; };
+  resolveFirewallIntent = import ./resolve-firewall-intent.nix { inherit lib helpers ipam; };
   resolvePolicyEndpointBindings = import ./resolve-policy-endpoint-bindings.nix { inherit helpers; };
   resolveRoutedPrefixes = import ./routed-prefixes.nix { inherit helpers; };
 

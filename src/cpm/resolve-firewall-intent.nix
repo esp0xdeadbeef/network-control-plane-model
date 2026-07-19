@@ -1,10 +1,11 @@
-{ helpers }:
+{ helpers, lib, ipam }:
 
 { sitePath
 , siteAttrs
 , runtimeTargets
 , policyEndpointBindings ? { }
 , services ? [ ]
+, routedPrefixesByTenant ? { }
 ,
 }:
 
@@ -59,7 +60,7 @@ let
   runtimeInterfaceRecords = import ./firewall-intent/runtime-interfaces.nix { inherit helpers; };
   runtimeOriginSourcePrefixesForSite =
     import ./firewall-intent/runtime-origin-source-prefixes.nix { inherit helpers; };
-  buildNat = import ./firewall-intent/nat.nix { inherit helpers; };
+  buildNat = import ./firewall-intent/nat.nix { inherit helpers lib ipam; };
   buildForwarding = import ./firewall-intent/forwarding.nix { inherit helpers; };
 
   targetEntries = map
@@ -97,6 +98,7 @@ let
                 services
                 siteAttrs
                 overlayNames
+                routedPrefixesByTenant
                 ;
               inherit (entry) interfaceRecords target targetName;
               inherit runtimeOriginSourcePrefixes;
