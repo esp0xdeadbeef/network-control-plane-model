@@ -1,0 +1,1 @@
+../shared/test-runtime-fact-input-boundary.sh

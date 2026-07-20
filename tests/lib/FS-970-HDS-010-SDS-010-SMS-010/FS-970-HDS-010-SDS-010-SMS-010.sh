@@ -1,0 +1,1 @@
+../shared/FS-970-HDS-010-SDS-010-SMS-010.sh
