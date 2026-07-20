@@ -1,0 +1,1 @@
+../shared/test-renderer-contract-boundary.sh

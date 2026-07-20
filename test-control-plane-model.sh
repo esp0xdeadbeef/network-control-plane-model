@@ -19,72 +19,10 @@ if ! [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || [[ "${test_timeout_seconds}"
   exit 2
 fi
 
-tests=(
-  test-nix-file-loc.sh
-  test-emitter-provenance-repo-boundary.sh
-  test-resolved-inventory-secret-facts-contract.sh
-  test-hat-protected-secret-records-contract.sh
-  test-dns-killswitch-policy-matrix.sh
-  test-dns-namespace-fallback-contract.sh
-  test-dns-public-block-source-authority.sh
-  test-policy-deny-precedence.sh
-  test-forwarding-intent-rule-deduplication.sh
-  test-tri-site-external-deny-policy-materialization.sh
-  test-provider-overlay-runtime-interface-name.sh
-  test-renderer-contract-boundary.sh
-  test-interface-mtu-contract.sh
-  test-provider-access-no-side-channel.sh
-  FS-230-HDS-010-SDS-010-SMS-040-nebula-ipv6-public-ingress.sh
-  FS-800-HDS-030-SDS-020-SMS-020-pppoe-ipv6-prefix-delegation.sh
-  test-vxlan-contract-required-fields.sh
-  test-endpoint-inventory-payload.sh
-  test-access-dhcpv6-advertisement-contract.sh
-  test-access-ipv6-ra-slaac-flags-contract.sh
-  test-fs330-stable-client-address-identity.sh
-  test-fs540-hds010-sds010-sms035-self-referential-forwarder.sh
-  test-access-static-reservation-contracts.sh
-  test-fs880-static-reservation-namespace-fields.sh
-  test-static-reservation-offset-resolution.sh
-  test-static-reservation-duplicate-service-target-rejection.sh
-  test-state-contract-dhcp4-explicit-input-only.sh
-  test-state-contract-dhcp4-persistence.sh
-  test-fs860-hds010-sds010-sms030-explicit-dhcp-lease-state-path.sh
-  test-state-contract-dhcp4-required-root-fails.sh
-  test-state-contract-dhcpv6-explicit-input-only.sh
-  test-state-contract-dhcpv6-persistence.sh
-  test-state-contract-dhcpv6-required-root-fails.sh
-  test-state-contract-dns-explicit-input-only.sh
-  test-state-contract-dns-resolver-persistence.sh
-  test-state-contract-dns-service-persistence.sh
-  test-state-contract-durability-classes.sh
-  test-state-contract-ephemeral-explicit.sh
-  test-state-contract-ephemeral-summary.sh
-  test-state-contract-invalid-durability-class-fails.sh
-  test-state-contract-operational-exclusions.sh
-  test-state-contract-operational-fields.sh
-  test-state-contract-operational-incomplete-evidence.sh
-  test-state-contract-record-dhcp4.sh
-  test-state-contract-record-dhcpv6.sh
-  test-state-contract-record-dns-resolver.sh
-  test-state-contract-record-dns-service.sh
-  test-state-contract-record-required-root-fails.sh
-  test-state-contract-related-service-persistence.sh
-  test-fs890-operational-record-schema-runtime-target.sh
-  test-delegated-overlay-public-egress.sh
-  test-example-overlay-dns-return-table.sh
-  FS-390-HDS-010-SDS-010-SMS-010-forwarding-artifact-pass-through.sh
-  FS-500-HDS-010-SDS-010-SMS-040-dns-service-p2p-gateway-onlink.sh
-  test-core-overlay-delegated-egress-source-scope.sh
-  test-tri-site-edge-core-dns-service-public-egress-forwarding.sh
-  test-selector-fabric-links-realization.sh
-  test-upstream-selector-no-core-crossconnect.sh
-  test-upstream-selector-nebula-underlay-core-transit.sh
-  test-runtime-underlay-endpoint-source-routes.sh
-  test-overlay-peer-site-preservation.sh
-  test-transit-default-routes-are-classified.sh
-  test-small-prefix-dhcp-pools.sh
-  test-network-labs-inventory-sweep.sh
-  integration-tri-site-dual-wan-overlay-integration-bgp
+mapfile -t tests < <(
+  find "${ROOT}/tests" -maxdepth 1 -regextype posix-extended \( -type f -o -type l \) \
+    \( -name 'test-*.sh' -o -regex '.*\/FS-[0-9]+-HDS-[0-9]+-SDS-[0-9]+-SMS-[0-9]+\.sh' \) \
+    -printf '%f\n' | LC_ALL=C sort
 )
 
 tmp_dir="$(mktemp -d)"

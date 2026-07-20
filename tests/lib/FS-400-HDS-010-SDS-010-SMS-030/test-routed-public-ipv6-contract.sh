@@ -1,0 +1,1 @@
+../shared/test-routed-public-ipv6-contract.sh

@@ -680,7 +680,7 @@
                 set -euo pipefail
                 export HOME="$TMPDIR"
                 echo "check: FS-800-HDS-010-SDS-013-SMS-020 construction test"
-                test_script="${self}/tests/FS-800-HDS-010-SDS-013-SMS-020-cpm-provider-handoff-fabric-egress.sh"
+                test_script="${self}/tests/FS-800-HDS-010-SDS-013-SMS-020.sh"
                 echo "  validating test script syntax..."
                 bash -n "$test_script"
                 echo "  test script: $(wc -l < "$test_script") lines"
