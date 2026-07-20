@@ -3,7 +3,9 @@
 A deterministic builder that converts an **explicit forwarding model** plus an explicit **realization inventory** into a **platform-independent control-plane model**.
 
 The control-plane model does **not** generate vendor or device configuration.
-Instead, it produces a stable, explicit intermediate representation that downstream renderers can consume.
+Instead, it produces a stable, explicit intermediate representation that
+`network-realization-model` carries into the validated canonical bundle used
+by downstream renderers.
 
 This project is intentionally **strict**.
 It does not repair missing forwarding intent.
@@ -72,7 +74,8 @@ But once the network stops being trivial, the explicit contract starts to matter
 
 # Project intent
 
-This repository sits between the forwarding model and the renderer.
+This repository sits between the forwarding model and
+`network-realization-model`.
 
 Its job is to take:
 
@@ -83,7 +86,7 @@ and produce:
 
 * explicit control-plane structure
 * explicit realized interface bindings
-* deterministic renderer input
+* deterministic canonical-realization input
 
 It is therefore a **composition layer**, not a forwarding solver and not a renderer.
 
@@ -100,7 +103,7 @@ It decides how already-declared meaning becomes an explicit, concrete control-pl
 * validates the explicit realization inventory
 * joins logical intent with concrete realization inputs
 * resolves already-declared control-plane bindings
-* emits deterministic control-plane data for downstream renderers
+* emits deterministic control-plane data for `network-realization-model`
 
 Typical output includes things like:
 
@@ -110,7 +113,7 @@ Typical output includes things like:
 * policy attachment identity
 * uplink and egress realization
 * concrete interface bindings
-* renderer-consumable control-plane structure
+* canonical-realization-ready control-plane structure
 
 The result is **platform-independent control-plane data**, not final platform configuration.
 
@@ -145,7 +148,12 @@ This repository is part of a multi-stage pipeline.
 | **Compiler**            | defines communication semantics and canonical staged topology                 |
 | **Forwarding model**    | constructs deterministic forwarding structure from the canonical staged model |
 | **Control plane model** | joins explicit forwarding intent with explicit realization inputs             |
+| **Realization model**   | produces the validated canonical realization bundle without reinterpreting intent |
 | **Renderer**            | emits platform-specific configuration                                         |
+
+`network-realization-schema` is the pinned contract dependency for canonical
+bundle production, validation, fixtures, and renderer consumption. It is not a
+transformation stage.
 
 Pipeline:
 
@@ -157,6 +165,10 @@ compiler
 forwarding model
   ↓
 control plane model
+  ↓
+realization model
+  ↓
+validated canonical realization bundle
   ↓
 renderer
 ```
@@ -206,12 +218,15 @@ Crash.
 
 The forwarding model is the canonical source of logical truth.
 
-The control-plane model is the canonical realized result.
+The control-plane model is the canonical explicit control-plane result. The
+validated canonical renderer authority is produced later by
+`network-realization-model` under the pinned schema contract.
 
 That distinction matters.
 
 The forwarding model defines **what the network means**.
-The control-plane model defines **what a renderer needs in order to realize that meaning concretely**.
+The control-plane model defines **what the realization layer needs in order to
+make that meaning canonical and renderer-consumable**.
 
 This repository therefore sits on a hard boundary:
 
@@ -223,18 +238,21 @@ No third source of truth is allowed to appear implicitly during evaluation.
 
 ---
 
-# Renderer contract
+# Canonical realization handoff
 
-This stage is where S88 logical truth becomes renderer-consumable realized truth.
+This stage is where S88 logical truth becomes explicit control-plane truth for
+canonical realization.
 
-Renderers must be able to consume CPM output without re-deriving semantics from
-intent files or from ad hoc inventory parsing.
+`network-realization-model` must consume CPM output without re-deriving
+semantics from intent files or ad hoc inventory parsing. Renderers must not
+consume CPM output directly.
 
 `intent.nix`, `inventory.nix`, and renderer-specific inventory files are inputs
 to the upstream pipeline. They are not renderer contracts. The renderer
-contract is the CPM output.
+contract is the validated canonical realization bundle.
 
-That means CPM output must be the canonical place for:
+That means CPM output must explicitly carry the following before canonical
+realization:
 
 * realized node identity
 * realized interface identity
@@ -245,16 +263,19 @@ That means CPM output must be the canonical place for:
 * overlay termination and overlay node addressing
 * provider-bootstrap DNS contracts that stay separate from customer resolver services
 * service realization structure
-* WAN-facing realized grouping that downstream renderers need for attachment
+* WAN-facing realized grouping that canonical realization and downstream
+  renderers need for attachment
 * protected secret declarations, secret sources, and source bindings as
   reference-only records when inventory supplies them
 
-If a renderer needs one of those concepts and it is not explicit here, the preferred fix is to tighten
-the CPM contract rather than teaching each renderer a different fallback heuristic.
+If canonical realization or a renderer needs one of those concepts and it is
+not explicit here, the preferred fix is to tighten the CPM contract rather than
+teaching realization or each renderer a different fallback heuristic.
 
-Renderer tests may still use intent and inventory files to build CPM output and
-assert end-to-end contract preservation. That does not grant production renderer
-code permission to parse those files or infer missing semantics from names.
+Pipeline tests may still use intent and inventory files to build CPM output,
+produce a validated canonical bundle, and assert end-to-end contract
+preservation. That does not grant production realization or renderer code
+permission to parse those files or infer missing semantics from names.
 
 ---
 
@@ -264,7 +285,10 @@ The model is renderer-neutral.
 
 It is not NixOS-specific.
 
-Its purpose is to provide enough explicit, normalized control-plane information for any downstream renderer to build a target-specific configuration for:
+Its purpose is to provide enough explicit, normalized control-plane
+information for `network-realization-model` to produce the shared canonical
+bundle from which a downstream renderer can build target-specific
+configuration for:
 
 * a Cisco router
 * a Juniper router
@@ -277,7 +301,8 @@ It is not responsible for inventing topology, inferring policy membership, recon
 
 In other words:
 
-> one explicit control-plane model, many possible renderers.
+> one explicit control-plane model, one canonical realization boundary, many
+> possible peer renderers.
 
 ---
 
@@ -652,19 +677,21 @@ The genericity boundary is therefore:
 
 ---
 
-# Practical expectation for downstream renderers
+# Practical expectation for downstream consumers
 
-If you write a renderer for this model, the expectation is simple:
+If you consume this model downstream, the expectation is simple:
 
 * consume the explicit control-plane structure
 * preserve the meaning already established upstream
 * use the realized interface bindings already resolved here
-* emit target-specific configuration
+* carry all renderer-bound meaning through `network-realization-model`
 * do not repair missing intent by inventing policy
 * do not reconstruct topology from partial hints
 
-A renderer may choose **how** to emit the model.
-It may not choose **whether the model means something else**.
+The realization model may deterministically concretize declared meaning but may
+not reinterpret it. A renderer may choose **how** to emit the validated
+canonical bundle. It may not choose **whether the model means something
+else**.
 
 ---
 
