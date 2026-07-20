@@ -14,12 +14,13 @@
   };
 
   outputs =
-    { self
-    , nixpkgs
-    , nixpkgs-network
-    , network-forwarding-model
-    , network-labs
-    , ...
+    {
+      self,
+      nixpkgs,
+      nixpkgs-network,
+      network-forwarding-model,
+      network-labs,
+      ...
     }:
     let
       systems = [
@@ -79,6 +80,15 @@
 
           buildCPM = import ./src/build-cpm.nix { lib = effectiveLib; };
 
+          controlledSkip = import ./lib/controlled-skip.nix {
+            repository = "network-control-plane-model";
+            repositoryRevision = self.sourceInfo.rev or self.dirtyRev or "uncommitted";
+            stageIndex = 3;
+            previousStage = "network-forwarding-model";
+            nextStage = "network-realization-model";
+            normalInputContract = "network-control-plane-model-input/v1";
+          };
+
           forwardingLib =
             if network-forwarding-model ? libBySystem then
               network-forwarding-model.libBySystem.${system}
@@ -104,7 +114,8 @@
             let
               hostNetwork = resolveHostNetwork result;
             in
-            result // {
+            result
+            // {
               inherit hostNetwork;
               renderedHostNetwork = hostNetwork;
             };
@@ -112,7 +123,10 @@
           layerEntrySkippedForBoundary = {
             intent-source = [ ];
             compiler-output = [ "intent-source" ];
-            forwarding-model-input = [ "intent-source" "network-compiler" ];
+            forwarding-model-input = [
+              "intent-source"
+              "network-compiler"
+            ];
             control-plane-input = [
               "intent-source"
               "network-compiler"
@@ -145,43 +159,48 @@
 
           layerEntrySkippedLayers =
             entryBoundary:
-            layerEntrySkippedForBoundary.${entryBoundary} or
-            (throw "network-control-plane-model layer-entry warning: unknown entryBoundary '${entryBoundary}'");
+            layerEntrySkippedForBoundary.${entryBoundary}
+              or (throw "network-control-plane-model layer-entry warning: unknown entryBoundary '${entryBoundary}'");
 
-          layerEntryWarningFor =
-            layer:
-            {
-              code = layerEntryWarningBySkippedLayer.${layer};
-              severity = "warning";
-              skippedLayer = layer;
-              issuingRepo = layer;
-              message =
-                if layer == layerEntryCurrentRepo then
-                  "layer-entry starts below network-control-plane-model; CPM execution and validation are not covered by this scenario"
-                else
-                  "layer-entry skips ${layer}; that layer is not covered by this scenario";
-            };
+          layerEntryWarningFor = layer: {
+            code = layerEntryWarningBySkippedLayer.${layer};
+            severity = "warning";
+            skippedLayer = layer;
+            issuingRepo = layer;
+            message =
+              if layer == layerEntryCurrentRepo then
+                "layer-entry starts below network-control-plane-model; CPM execution and validation are not covered by this scenario"
+              else
+                "layer-entry skips ${layer}; that layer is not covered by this scenario";
+          };
         in
         rec {
+          inherit controlledSkip;
+
+          controlledSkipAcknowledgement = controlledSkip.acknowledge;
+
           build =
-            { input
-            , inventory ? { }
-            , validateForwardingModel ? true
-            , validateRuntimeModel ? false
-            , secretPlatformSubstrate ? "nixos"
-            ,
+            {
+              input,
+              inventory ? { },
+              validateForwardingModel ? true,
+              validateRuntimeModel ? false,
+              secretPlatformSubstrate ? "nixos",
             }:
             let
               cpm =
-                builtins.addErrorContext
-                  "while building network-control-plane-model from forwarding-model input"
-                  (
-                    buildCPM {
-                      forwardingModel = input;
-                      inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
-                    }
-                  );
-              deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
+                builtins.addErrorContext "while building network-control-plane-model from forwarding-model input"
+                  (buildCPM {
+                    forwardingModel = input;
+                    inherit
+                      inventory
+                      validateForwardingModel
+                      validateRuntimeModel
+                      secretPlatformSubstrate
+                      ;
+                  });
+              deploymentHosts =
+                if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
               hatEndpointAssignment = import ./src/cpm/hat-endpoint-assignment.nix {
                 inherit lib deploymentHosts;
               };
@@ -198,16 +217,21 @@
             builtins.seq cpm (exposeHostNetwork result);
 
           get_CPM =
-            { input
-            , inventory ? { }
-            , validateForwardingModel ? true
-            , validateRuntimeModel ? false
-            , secretPlatformSubstrate ? "nixos"
-            ,
+            {
+              input,
+              inventory ? { },
+              validateForwardingModel ? true,
+              validateRuntimeModel ? false,
+              secretPlatformSubstrate ? "nixos",
             }:
             buildCPM {
-                      forwardingModel = input;
-              inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
+              forwardingModel = input;
+              inherit
+                inventory
+                validateForwardingModel
+                validateRuntimeModel
+                secretPlatformSubstrate
+                ;
             };
 
           getCPM = get_CPM;
@@ -215,36 +239,36 @@
           readInput = readValue;
 
           layerEntryWarnings =
-            { entryBoundary ? "intent-source" }:
+            {
+              entryBoundary ? "intent-source",
+            }:
             let
               skippedUpstreamLayers = layerEntrySkippedLayers entryBoundary;
               repoSkipped = builtins.elem layerEntryCurrentRepo skippedUpstreamLayers;
-              warnings =
-                if repoSkipped then
-                  [ (layerEntryWarningFor layerEntryCurrentRepo) ]
-                else
-                  [ ];
+              warnings = if repoSkipped then [ (layerEntryWarningFor layerEntryCurrentRepo) ] else [ ];
             in
             {
               repo = layerEntryCurrentRepo;
-              inherit entryBoundary skippedUpstreamLayers repoSkipped warnings;
-              inputTreatment =
-                if repoSkipped then
-                  "pass-through"
-                else
-                  "consume-or-normalize";
+              inherit
+                entryBoundary
+                skippedUpstreamLayers
+                repoSkipped
+                warnings
+                ;
+              inputTreatment = if repoSkipped then "pass-through" else "consume-or-normalize";
             };
 
           layerEntryEnvelope =
-            { input
-            , entryBoundary ? "intent-source"
-            ,
+            {
+              input,
+              entryBoundary ? "intent-source",
             }:
             let
               payload = readValue input;
               warningPayload = layerEntryWarnings { inherit entryBoundary; };
             in
-            warningPayload // {
+            warningPayload
+            // {
               normalizedTo = "nix-attrset";
               input = payload;
               output = payload;
@@ -259,14 +283,13 @@
             && builtins.isAttrs payload.control_plane_model.data;
 
           layerEntryWarningsForBoundary =
-            entryBoundary:
-            map layerEntryWarningFor (layerEntrySkippedLayers entryBoundary);
+            entryBoundary: map layerEntryWarningFor (layerEntrySkippedLayers entryBoundary);
 
           deploymentHostsForRendererInput =
-            { payload
-            , controlPlaneModel
-            , inventory
-            ,
+            {
+              payload,
+              controlPlaneModel,
+              inventory,
             }:
             if payload ? deploymentHosts && builtins.isAttrs payload.deploymentHosts then
               payload.deploymentHosts
@@ -288,9 +311,9 @@
               { };
 
           rendererInputPassThrough =
-            { input
-            , inventory ? { }
-            ,
+            {
+              input,
+              inventory ? { },
             }:
             let
               payload = readValue input;
@@ -329,36 +352,37 @@
             );
 
           compileAndBuild =
-            { input
-            , inventory ? { }
-            , validateForwardingModel ? true
-            , validateRuntimeModel ? false
-            , secretPlatformSubstrate ? "nixos"
-            ,
+            {
+              input,
+              inventory ? { },
+              validateForwardingModel ? true,
+              validateRuntimeModel ? false,
+              secretPlatformSubstrate ? "nixos",
             }:
             let
               forwardingOut = forwardingLib.buildFromCompilerInputs { inherit input; };
             in
             build {
               input = forwardingOut;
-              inherit inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
+              inherit
+                inventory
+                validateForwardingModel
+                validateRuntimeModel
+                secretPlatformSubstrate
+                ;
             };
 
           compileAndBuildFromPaths =
-            { inputPath
-            , inventoryPath ? null
-            , validateForwardingModel ? true
-            , validateRuntimeModel ? false
-            , secretPlatformSubstrate ? "nixos"
-            ,
+            {
+              inputPath,
+              inventoryPath ? null,
+              validateForwardingModel ? true,
+              validateRuntimeModel ? false,
+              secretPlatformSubstrate ? "nixos",
             }:
             let
               input = readValue inputPath;
-              inventory =
-                if inventoryPath == null then
-                  { }
-                else
-                  readValue inventoryPath;
+              inventory = if inventoryPath == null then { } else readValue inventoryPath;
             in
             if isRendererInputPayload input then
               rendererInputPassThrough {
@@ -366,14 +390,21 @@
               }
             else
               compileAndBuild {
-                inherit input inventory validateForwardingModel validateRuntimeModel secretPlatformSubstrate;
+                inherit
+                  input
+                  inventory
+                  validateForwardingModel
+                  validateRuntimeModel
+                  secretPlatformSubstrate
+                  ;
               };
 
           clientFixtures = mkClientFixtures {
             buildFromPaths =
-              { intentPath
-              , inventoryPath ? null
-              , ...
+              {
+                intentPath,
+                inventoryPath ? null,
+                ...
               }:
               compileAndBuildFromPaths {
                 inputPath = intentPath;
@@ -382,31 +413,33 @@
           };
 
           writeJSON =
-            { input
-            , inventory ? { }
-            , name ? "output-control-plane-model.json"
-            , secretPlatformSubstrate ? "nixos"
-            ,
-            }:
-            pkgs.writeText name (builtins.toJSON (build { inherit input inventory secretPlatformSubstrate; }));
-
-          writeCompileAndBuildJSON =
-            { inputPath
-            , inventoryPath ? null
-            , name ? "output-control-plane-model.json"
-            , secretPlatformSubstrate ? "nixos"
-            ,
+            {
+              input,
+              inventory ? { },
+              name ? "output-control-plane-model.json",
+              secretPlatformSubstrate ? "nixos",
             }:
             pkgs.writeText name (
-              builtins.toJSON (
-                compileAndBuildFromPaths {
-                  inherit
-                    inputPath
-                    inventoryPath
-                    secretPlatformSubstrate
-                    ;
-                }
-              )
+              builtins.toJSON (build {
+                inherit input inventory secretPlatformSubstrate;
+              })
+            );
+
+          writeCompileAndBuildJSON =
+            {
+              inputPath,
+              inventoryPath ? null,
+              name ? "output-control-plane-model.json",
+              secretPlatformSubstrate ? "nixos",
+            }:
+            pkgs.writeText name (
+              builtins.toJSON (compileAndBuildFromPaths {
+                inherit
+                  inputPath
+                  inventoryPath
+                  secretPlatformSubstrate
+                  ;
+              })
             );
         };
     in
@@ -417,11 +450,12 @@
 
       clientFixtures = mkClientFixtures {
         buildFromPaths =
-          { intentPath
-          , inventoryPath ? null
-          , pkgs ? null
-          , system ? if pkgs == null then builtins.currentSystem else pkgs.system
-          , ...
+          {
+            intentPath,
+            inventoryPath ? null,
+            pkgs ? null,
+            system ? if pkgs == null then builtins.currentSystem else pkgs.system,
+            ...
           }:
           self.libBySystem.${system}.compileAndBuildFromPaths {
             inputPath = intentPath;
@@ -579,28 +613,64 @@
         }
       );
 
-      checks = forAll (system:
+      checks = forAll (
+        system:
         let
           pkgs = mkPkgs system;
           lib = self.libBySystem.${system};
 
-          cpm_nixos_json = pkgs.writeText "cpm-nixos.json"
-            (builtins.toJSON (lib.compileAndBuildFromPaths {
-              inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
-              inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix";
-            }));
+          cpm_nixos_json = pkgs.writeText "cpm-nixos.json" (
+            builtins.toJSON (
+              lib.compileAndBuildFromPaths {
+                inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
+                inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix";
+              }
+            )
+          );
 
-          cpm_clab_json = pkgs.writeText "cpm-clab.json"
-            (builtins.toJSON (lib.compileAndBuildFromPaths {
-              inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
-              inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-clab.nix";
-            }));
+          cpm_clab_json = pkgs.writeText "cpm-clab.json" (
+            builtins.toJSON (
+              lib.compileAndBuildFromPaths {
+                inputPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix";
+                inventoryPath = "${network-labs}/GAMP/HAT/emulated-isp-residential-testnet/inventory-clab.nix";
+              }
+            )
+          );
         in
         {
+          "FS-166-HDS-010-SDS-010-SMS-010-controlled-skip" =
+            let
+              skip = lib.controlledSkip;
+              acknowledgement = lib.controlledSkipAcknowledgement {
+                traceId = "FS-166-HDS-010-SDS-010-SMS-010";
+                declaredRepository = skip.repository;
+                lockedRepositoryRevision = skip.repositoryRevision;
+                declaredStageIndex = skip.stageIndex;
+                declaredNormalInputContract = skip.normalInputContract;
+                replacementContract = "network-realization-model-input/v1";
+                expectedReplacementContract = "network-realization-model-input/v1";
+                declaredFirstActiveBoundary = "network-realization-model";
+                expectedFirstActiveBoundary = "network-realization-model";
+                reason = "controlled replacement starts at realization input";
+                declaredPreviousStage = skip.previousStage;
+                declaredNextStage = skip.nextStage;
+                replacementIdentity = "fixture-cpm-output";
+                replacementDigest = builtins.hashString "sha256" "fixture-cpm-output";
+              };
+            in
+            assert acknowledgement.payloadAccessed == false;
+            assert acknowledgement.transformationStarted == false;
+            assert builtins.stringLength acknowledgement.acknowledgementDigest == 64;
+            pkgs.runCommand "check-FS-166-controlled-skip-cpm" { } "touch $out";
+
           "FS-800-HDS-010-SDS-013-SMS-020" =
             pkgs.runCommand "check-FS-800-HDS-010-SDS-013-SMS-020"
               {
-                nativeBuildInputs = [ pkgs.bash pkgs.jq pkgs.nix ];
+                nativeBuildInputs = [
+                  pkgs.bash
+                  pkgs.jq
+                  pkgs.nix
+                ];
                 CPM_NIXOS_JSON = cpm_nixos_json;
                 CPM_CLAB_JSON = cpm_clab_json;
                 NETWORK_REPO_DIRECT_TEST_OK = "1";
@@ -638,63 +708,124 @@
               # Test cases: name -> { endpointAssignment, expectedResult }
               happyAssignment = {
                 "site-a-client01" = {
-                  name = "client01"; tenant = "client"; enterprise = "esp";
-                  site = "site-a"; mode = "static"; family = "dual";
-                  bridge = "br-client"; owningSubstrate = "s-router-test-clients";
+                  name = "client01";
+                  tenant = "client";
+                  enterprise = "esp";
+                  site = "site-a";
+                  mode = "static";
+                  family = "dual";
+                  bridge = "br-client";
+                  owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-client";
-                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
-                  static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
+                  gampIds = [
+                    "FS-720-HDS-010-SDS-025-SMS-010"
+                    "FS-983"
+                  ];
+                  static = {
+                    address = "10.20.20.10";
+                    prefixLength = 24;
+                    gateway4 = "10.20.20.1";
+                  };
                 };
                 "site-a-guest01" = {
-                  name = "guest01"; tenant = "guest"; enterprise = "esp";
-                  site = "site-a"; mode = "dhcp"; family = "ipv4";
-                  bridge = "br-guest"; owningSubstrate = "s-router-test-clients";
+                  name = "guest01";
+                  tenant = "guest";
+                  enterprise = "esp";
+                  site = "site-a";
+                  mode = "dhcp";
+                  family = "ipv4";
+                  bridge = "br-guest";
+                  owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-guest";
-                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
-                  dhcp = { servedPrefix4 = "10.20.30.1/24"; gw4 = "10.20.30.1"; conflict = "reject-overlap"; };
+                  gampIds = [
+                    "FS-720-HDS-010-SDS-025-SMS-010"
+                    "FS-983"
+                  ];
+                  dhcp = {
+                    servedPrefix4 = "10.20.30.1/24";
+                    gw4 = "10.20.30.1";
+                    conflict = "reject-overlap";
+                  };
                 };
               };
               happyResultRef = checkerModule { endpointAssignment = happyAssignment; };
 
               conflictAssignment = {
                 "site-a-client01" = {
-                  name = "client01"; tenant = "client"; enterprise = "esp";
-                  site = "site-a"; mode = "static"; family = "ipv4";
-                  bridge = "br-shared"; owningSubstrate = "s-router-test-clients";
+                  name = "client01";
+                  tenant = "client";
+                  enterprise = "esp";
+                  site = "site-a";
+                  mode = "static";
+                  family = "ipv4";
+                  bridge = "br-shared";
+                  owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-client";
-                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
-                  static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
+                  gampIds = [
+                    "FS-720-HDS-010-SDS-025-SMS-010"
+                    "FS-983"
+                  ];
+                  static = {
+                    address = "10.20.20.10";
+                    prefixLength = 24;
+                    gateway4 = "10.20.20.1";
+                  };
                 };
                 "site-a-guest01" = {
-                  name = "guest01"; tenant = "guest"; enterprise = "esp";
-                  site = "site-a"; mode = "dhcp"; family = "ipv4";
-                  bridge = "br-shared"; owningSubstrate = "s-router-test-clients";
+                  name = "guest01";
+                  tenant = "guest";
+                  enterprise = "esp";
+                  site = "site-a";
+                  mode = "dhcp";
+                  family = "ipv4";
+                  bridge = "br-shared";
+                  owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-guest";
-                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
-                  dhcp = { servedPrefix4 = "10.20.20.1/24"; gw4 = "10.20.20.1"; conflict = "reject-overlap"; };
+                  gampIds = [
+                    "FS-720-HDS-010-SDS-025-SMS-010"
+                    "FS-983"
+                  ];
+                  dhcp = {
+                    servedPrefix4 = "10.20.20.1/24";
+                    gw4 = "10.20.20.1";
+                    conflict = "reject-overlap";
+                  };
                 };
               };
               conflictResultRef = checkerModule { endpointAssignment = conflictAssignment; };
 
               nullBridgeAssignment = {
                 "site-a-client01" = {
-                  name = "client01"; tenant = "client"; enterprise = "esp";
-                  site = "site-a"; mode = "static"; family = "dual";
+                  name = "client01";
+                  tenant = "client";
+                  enterprise = "esp";
+                  site = "site-a";
+                  mode = "static";
+                  family = "dual";
                   owningSubstrate = "s-router-test-clients";
                   namespaceOwner = "site-a-access-client";
-                  gampIds = [ "FS-720-HDS-010-SDS-025-SMS-010" "FS-983" ];
-                  static = { address = "10.20.20.10"; prefixLength = 24; gateway4 = "10.20.20.1"; };
+                  gampIds = [
+                    "FS-720-HDS-010-SDS-025-SMS-010"
+                    "FS-983"
+                  ];
+                  static = {
+                    address = "10.20.20.10";
+                    prefixLength = 24;
+                    gateway4 = "10.20.20.1";
+                  };
                 };
               };
               nullBridgeResultRef = checkerModule { endpointAssignment = nullBridgeAssignment; };
 
               # Force all results (deepSeq to catch lazy evaluation issues)
-              forced = builtins.deepSeq happyResultRef.diagnostics
-                (builtins.deepSeq conflictResultRef.diagnostics
-                  (builtins.deepSeq nullBridgeResultRef.diagnostics true));
+              forced = builtins.deepSeq happyResultRef.diagnostics (
+                builtins.deepSeq conflictResultRef.diagnostics (
+                  builtins.deepSeq nullBridgeResultRef.diagnostics true
+                )
+              );
 
-              testData = pkgs.writeText "checker-test-data.json"
-                (builtins.toJSON {
+              testData = pkgs.writeText "checker-test-data.json" (
+                builtins.toJSON {
                   happy = {
                     result = happyResultRef.result;
                     diagnostics = happyResultRef.diagnostics;
@@ -707,11 +838,15 @@
                     result = nullBridgeResultRef.result;
                     diagnostics = nullBridgeResultRef.diagnostics;
                   };
-                });
+                }
+              );
             in
             pkgs.runCommand "check-FS-720-HDS-030-SDS-010-SMS-010-checker"
               {
-                nativeBuildInputs = [ pkgs.bash pkgs.jq ];
+                nativeBuildInputs = [
+                  pkgs.bash
+                  pkgs.jq
+                ];
                 TEST_DATA_JSON = testData;
               }
               ''
@@ -787,7 +922,9 @@
 
         compile-and-build-control-plane-model = {
           type = "app";
-          program = "${self.packages.${system}.compile-and-build-control-plane-model}/bin/compile-and-build-control-plane-model";
+          program = "${
+            self.packages.${system}.compile-and-build-control-plane-model
+          }/bin/compile-and-build-control-plane-model";
         };
 
         default = self.apps.${system}.debug;
