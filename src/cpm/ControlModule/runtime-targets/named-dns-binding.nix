@@ -1,13 +1,13 @@
-{ lib
-, common
-, enterpriseName
-, siteName
-, sitePath
-, siteDns
-, serviceDefinitions
-, allowedRelations
-, inventoryEndpoints
-,
+{
+  lib,
+  common,
+  enterpriseName,
+  siteName,
+  sitePath,
+  siteDns,
+  serviceDefinitions,
+  allowedRelations,
+  inventoryEndpoints,
 }:
 
 runtimeTargets:
@@ -19,9 +19,9 @@ let
   recursive = attrsOrEmpty (siteDns.recursive or null);
   bindings = listOrEmpty (recursive.bindings or null);
   reproducibilityWarnings = listOrEmpty (siteDns.warnings or null);
-  fatalWarnings = builtins.filter
-    (warning: (warning.code or null) != "DNS_CORE_UPSTREAM_HARDCODED")
-    reproducibilityWarnings;
+  fatalWarnings = builtins.filter (
+    warning: (warning.code or null) != "DNS_CORE_UPSTREAM_HARDCODED"
+  ) reproducibilityWarnings;
 
   stripPrefixLength =
     value:
@@ -38,14 +38,14 @@ let
       "${address}/${if builtins.match ".*:.*" address == null then "32" else "128"}";
 
   warning =
-    { code
-    , requester
-    , resolverService
-    , resolverNode ? null
-    , candidateIds ? [ ]
-    , family ? null
-    , context ? null
-    ,
+    {
+      code,
+      requester,
+      resolverService,
+      resolverNode ? null,
+      candidateIds ? [ ],
+      family ? null,
+      context ? null,
     }:
     {
       traceId = "FS-525-HDS-010-SDS-010-SMS-010";
@@ -61,11 +61,9 @@ let
 
   targetNamesForNode =
     nodeName:
-    builtins.filter
-      (
-        targetName: ((runtimeTargets.${targetName}.logicalNode or { }).name or null) == nodeName
-      )
-      (builtins.attrNames runtimeTargets);
+    builtins.filter (
+      targetName: ((runtimeTargets.${targetName}.logicalNode or { }).name or null) == nodeName
+    ) (builtins.attrNames runtimeTargets);
 
   targetNameForNode =
     nodeName:
@@ -82,10 +80,7 @@ let
     let
       endpoint = attrsOrEmpty (inventoryEndpoints.${providerName} or null);
     in
-    uniqueStrings (
-      listOrEmpty (endpoint.ipv4 or null)
-      ++ listOrEmpty (endpoint.ipv6 or null)
-    );
+    uniqueStrings (listOrEmpty (endpoint.ipv4 or null) ++ listOrEmpty (endpoint.ipv6 or null));
 
   service =
     serviceName:
@@ -155,8 +150,10 @@ let
     let
       candidates = dnsEgressInterfaceCandidates target selectedUplinks;
       candidateNames = builtins.attrNames candidates;
-      selectedInterfaceName = if builtins.length candidateNames == 1 then builtins.head candidateNames else null;
-      selectedInterface = if selectedInterfaceName == null then { } else candidates.${selectedInterfaceName};
+      selectedInterfaceName =
+        if builtins.length candidateNames == 1 then builtins.head candidateNames else null;
+      selectedInterface =
+        if selectedInterfaceName == null then { } else candidates.${selectedInterfaceName};
       allocation = attrsOrEmpty (selectedInterface.policyRoutingAllocation or null);
       runtimeIfName = selectedInterface.runtimeIfName or selectedInterface.renderedIfName or "";
       allocationIsComplete =
@@ -167,7 +164,12 @@ let
         && allocation.tableRulePriority > 0
         && isNonEmptyString runtimeIfName;
       warningArgs = {
-        inherit requester resolverService resolverNode context;
+        inherit
+          requester
+          resolverService
+          resolverNode
+          context
+          ;
         candidateIds = uniqueStrings (selectedUplinks ++ candidateNames);
       };
       diagnostic =
@@ -200,54 +202,46 @@ let
     };
 
   relationEndpointFor =
-    { targetName
-    , families
-    , selectedUplinks
-    , requesterService
-    , resolverService
-    , resolverNode
-    , relationId
-    ,
+    {
+      targetName,
+      families,
+      selectedUplinks,
+      requesterService,
+      resolverService,
+      resolverNode,
+      relationId,
     }:
     let
       realization = attrsOrEmpty (runtimeTargets.${targetName}.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (realization.interfaces or null);
-      candidates = builtins.filter
-        (
-          iface:
-          (iface.sourceKind or null) == "p2p"
-          && lib.any (uplink: builtins.elem uplink selectedUplinks) (interfaceUplinks iface)
-        )
-        (builtins.attrValues interfaces);
+      candidates = builtins.filter (
+        iface:
+        (iface.sourceKind or null) == "p2p"
+        && lib.any (uplink: builtins.elem uplink selectedUplinks) (interfaceUplinks iface)
+      ) (builtins.attrValues interfaces);
       attachmentIds = uniqueStrings (
         map (iface: (attrsOrEmpty (iface.backingRef or null)).id or "") candidates
       );
       addresses = uniqueStrings (
-        lib.concatMap
-          (
-            iface:
-            let
-              ipv4 = stripPrefixLength (iface.addr4 or "");
-              ipv6 = stripPrefixLength (iface.addr6 or "");
-            in
-            lib.optional (builtins.elem "ipv4" families && ipv4 != "") ipv4
-            ++ lib.optional (builtins.elem "ipv6" families && ipv6 != "") ipv6
-          )
-          candidates
+        lib.concatMap (
+          iface:
+          let
+            ipv4 = stripPrefixLength (iface.addr4 or "");
+            ipv6 = stripPrefixLength (iface.addr6 or "");
+          in
+          lib.optional (builtins.elem "ipv4" families && ipv4 != "") ipv4
+          ++ lib.optional (builtins.elem "ipv6" families && ipv6 != "") ipv6
+        ) candidates
       );
       missingFamilies =
-        lib.optional
-          (
-            builtins.elem "ipv4" families
-            && !lib.any (address: builtins.match ".*:.*" address == null) addresses
-          )
-          "ipv4"
-        ++ lib.optional
-          (
-            builtins.elem "ipv6" families
-            && !lib.any (address: builtins.match ".*:.*" address != null) addresses
-          )
-          "ipv6";
+        lib.optional (
+          builtins.elem "ipv4" families
+          && !lib.any (address: builtins.match ".*:.*" address == null) addresses
+        ) "ipv4"
+        ++ lib.optional (
+          builtins.elem "ipv6" families
+          && !lib.any (address: builtins.match ".*:.*" address != null) addresses
+        ) "ipv6";
       commonWarningArgs = {
         requester = "service:${requesterService}";
         inherit resolverService resolverNode;
@@ -286,48 +280,42 @@ let
       );
     in
     uniqueStrings (
-      lib.concatMap
-        (iface: [
-          (stripPrefixLength (iface.addr4 or ""))
-          (stripPrefixLength (iface.addr6 or ""))
-        ])
-        tenantInterfaces
+      lib.concatMap (iface: [
+        (stripPrefixLength (iface.addr4 or ""))
+        (stripPrefixLength (iface.addr6 or ""))
+      ]) tenantInterfaces
     );
 
   tenantPrefixesFor =
     tenantName:
     uniqueStrings (
-      lib.concatMap
-        (
-          target:
+      lib.concatMap (
+        target:
+        let
+          interfaces = attrsOrEmpty (
+            (attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null
+          );
+        in
+        lib.concatMap (
+          iface:
           let
-            interfaces = attrsOrEmpty (
-              (attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null
-            );
+            backingRef = attrsOrEmpty (iface.backingRef or null);
           in
-          lib.concatMap
-            (
-              iface:
-              let
-                backingRef = attrsOrEmpty (iface.backingRef or null);
-              in
-              if
-                (iface.sourceKind or null) == "tenant"
-                && (backingRef.kind or null) == "attachment"
-                && (backingRef.name or null) == tenantName
-              then
-                builtins.filter (prefix: prefix != null) (
-                  map common.ipam.canonicalNetworkPrefix [
-                    (iface.addr4 or "")
-                    (iface.addr6 or "")
-                  ]
-                )
-              else
-                [ ]
+          if
+            (iface.sourceKind or null) == "tenant"
+            && (backingRef.kind or null) == "attachment"
+            && (backingRef.name or null) == tenantName
+          then
+            builtins.filter (prefix: prefix != null) (
+              map common.ipam.canonicalNetworkPrefix [
+                (iface.addr4 or "")
+                (iface.addr6 or "")
+              ]
             )
-            (builtins.attrValues interfaces)
-        )
-        (builtins.attrValues runtimeTargets)
+          else
+            [ ]
+        ) (builtins.attrValues interfaces)
+      ) (builtins.attrValues runtimeTargets)
     );
 
   targetAddresses =
@@ -342,12 +330,10 @@ let
         (stripPrefixLength (loopback.addr4 or loopback.ipv4 or ""))
         (stripPrefixLength (loopback.addr6 or loopback.ipv6 or ""))
       ]
-      ++ lib.concatMap
-        (iface: [
-          (stripPrefixLength (iface.addr4 or ""))
-          (stripPrefixLength (iface.addr6 or ""))
-        ])
-        (builtins.attrValues interfaces)
+      ++ lib.concatMap (iface: [
+        (stripPrefixLength (iface.addr4 or ""))
+        (stripPrefixLength (iface.addr6 or ""))
+      ]) (builtins.attrValues interfaces)
     );
 
   requesterTargetNameForService =
@@ -362,9 +348,9 @@ let
           failForwarding "${sitePath}.dns" "named DNS requester service '${serviceName}' must have exactly one provider identity";
       nodeMatches = targetNamesForNode providerName;
       endpointAddresses = endpointAddressesForProvider providerName;
-      endpointMatches = builtins.filter
-        (targetName: lib.any (address: builtins.elem address (targetAddresses targetName)) endpointAddresses)
-        (builtins.attrNames runtimeTargets);
+      endpointMatches = builtins.filter (
+        targetName: lib.any (address: builtins.elem address (targetAddresses targetName)) endpointAddresses
+      ) (builtins.attrNames runtimeTargets);
       matches = if builtins.length nodeMatches == 1 then nodeMatches else endpointMatches;
     in
     if builtins.length matches == 1 then
@@ -375,79 +361,134 @@ let
   egressUplinksFor =
     serviceName:
     uniqueStrings (
-      lib.concatMap
-        (
-          relation:
-          let
-            from = attrsOrEmpty (relation.from or null);
-            to = attrsOrEmpty (relation.to or null);
-          in
-          if
-            (relation.action or "allow") == "allow"
-            && (relation.trafficType or null) == "dns"
-            && (from.kind or null) == "service"
-            && (from.name or null) == serviceName
-            && (to.kind or null) == "external"
-          then
-            listOrEmpty (to.uplinks or null)
-          else
-            [ ]
-        )
-        allowedRelations
+      lib.concatMap (
+        relation:
+        let
+          from = attrsOrEmpty (relation.from or null);
+          to = attrsOrEmpty (relation.to or null);
+        in
+        if
+          (relation.action or "allow") == "allow"
+          && (relation.trafficType or null) == "dns"
+          && (from.kind or null) == "service"
+          && (from.name or null) == serviceName
+          && (to.kind or null) == "external"
+        then
+          listOrEmpty (to.uplinks or null)
+        else
+          [ ]
+      ) allowedRelations
     );
 
   directTenantRequesterPrefixesFor =
     coreServiceName:
     uniqueStrings (
-      lib.concatMap
-        (
-          relation:
-          let
-            from = attrsOrEmpty (relation.from or null);
-            to = attrsOrEmpty (relation.to or null);
-          in
-          if
-            (relation.action or "allow") == "allow"
-            && (relation.trafficType or null) == "dns"
-            && (from.kind or null) == "tenant"
-            && (to.kind or null) == "service"
-            && (to.name or null) == coreServiceName
-          then
-            tenantPrefixesFor (from.name or "")
-          else
-            [ ]
-        )
-        allowedRelations
+      lib.concatMap (
+        relation:
+        let
+          from = attrsOrEmpty (relation.from or null);
+          to = attrsOrEmpty (relation.to or null);
+        in
+        if
+          (relation.action or "allow") == "allow"
+          && (relation.trafficType or null) == "dns"
+          && (from.kind or null) == "tenant"
+          && (to.kind or null) == "service"
+          && (to.name or null) == coreServiceName
+        then
+          tenantPrefixesFor (from.name or "")
+        else
+          [ ]
+      ) allowedRelations
     );
 
   bindingRequesterHostPrefixesFor =
     coreServiceName:
     uniqueStrings (
-      lib.concatMap
-        (
-          binding:
+      lib.concatMap (
+        binding:
+        let
+          upstream = attrsOrEmpty (binding.upstreamResolver or null);
+          advertised = attrsOrEmpty (binding.advertisedResolver or null);
+        in
+        if (upstream.name or null) == coreServiceName then
           let
-            upstream = attrsOrEmpty (binding.upstreamResolver or null);
-            advertised = attrsOrEmpty (binding.advertisedResolver or null);
+            requesterTargetName = requesterTargetNameForService (advertised.name or null);
+            requesterSources = tenantAddresses requesterTargetName;
           in
-          if (upstream.name or null) == coreServiceName then
-            let
-              requesterTargetName = requesterTargetNameForService (advertised.name or null);
-              requesterSources = tenantAddresses requesterTargetName;
-            in
-            builtins.filter (value: value != null) (map hostPrefix requesterSources)
-          else
-            [ ]
-        )
-        bindings
+          builtins.filter (value: value != null) (map hostPrefix requesterSources)
+        else
+          [ ]
+      ) bindings
     );
 
   requesterAllowFromFor =
     coreServiceName:
     uniqueStrings (
-      directTenantRequesterPrefixesFor coreServiceName
-      ++ bindingRequesterHostPrefixesFor coreServiceName
+      directTenantRequesterPrefixesFor coreServiceName ++ bindingRequesterHostPrefixesFor coreServiceName
     );
+
+  requesterRelationsFor =
+    requesterServiceName:
+    builtins.filter (
+      relation:
+      let
+        from = attrsOrEmpty (relation.from or null);
+        to = attrsOrEmpty (relation.to or null);
+      in
+      (relation.action or "allow") == "allow"
+      && (relation.trafficType or null) == "dns"
+      && (from.kind or null) == "tenant"
+      && (to.kind or null) == "service"
+      && (to.name or null) == requesterServiceName
+    ) allowedRelations;
+
+  bindRequesterInterfaces =
+    {
+      target,
+      binding,
+      requesterServiceName,
+      coreServiceName,
+      relationId,
+      families,
+    }:
+    let
+      realization = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (realization.interfaces or null);
+      requesterRelations = requesterRelationsFor requesterServiceName;
+      requesterTenantNames = uniqueStrings (
+        map (relation: (attrsOrEmpty (relation.from or null)).name or "") requesterRelations
+      );
+      requesterRelationIds = uniqueStrings (map (relation: relation.id or "") requesterRelations);
+      resolverAuthority = {
+        resolver4 = if builtins.elem "ipv4" families then "127.0.0.1" else null;
+        resolver6 = if builtins.elem "ipv6" families then "::1" else null;
+        resolverSource = binding.resolverSource or "local-recursive";
+        authoritySource = "named-dns-binding";
+        inherit
+          requesterServiceName
+          coreServiceName
+          relationId
+          requesterRelationIds
+          ;
+      };
+      bindInterface =
+        _ifName: iface:
+        let
+          backingRef = attrsOrEmpty (iface.backingRef or null);
+          isRequesterTenant =
+            (iface.sourceKind or null) == "tenant"
+            && (backingRef.kind or null) == "attachment"
+            && builtins.elem (backingRef.name or "") requesterTenantNames;
+        in
+        if isRequesterTenant then iface // { dnsResolver = resolverAuthority; } else iface;
+    in
+    target
+    // {
+      effectiveRuntimeRealization = realization // {
+        interfaces = builtins.mapAttrs bindInterface interfaces;
+      };
+    };
 
   mergeDns =
     target: patch:
@@ -464,26 +505,25 @@ let
 
   attachWarnings =
     targets: warnings:
-    builtins.mapAttrs
-      (
-        _targetName: target:
-        let
-          services = attrsOrEmpty (target.services or null);
-        in
-        if builtins.isAttrs (services.dns or null) then
-          target // {
-            services = services // {
-              dns = services.dns // {
-                reproducibilityWarnings = lib.unique (
-                  listOrEmpty (services.dns.reproducibilityWarnings or null) ++ warnings
-                );
-              };
+    builtins.mapAttrs (
+      _targetName: target:
+      let
+        services = attrsOrEmpty (target.services or null);
+      in
+      if builtins.isAttrs (services.dns or null) then
+        target
+        // {
+          services = services // {
+            dns = services.dns // {
+              reproducibilityWarnings = lib.unique (
+                listOrEmpty (services.dns.reproducibilityWarnings or null) ++ warnings
+              );
             };
-          }
-        else
-          target
-      )
-      targets;
+          };
+        }
+      else
+        target
+    ) targets;
 
   applyBinding =
     targets: binding:
@@ -499,21 +539,19 @@ let
       selectedUplinks = uniqueStrings (
         listOrEmpty ((attrsOrEmpty (binding.egressSurface or null)).uplinks or null)
       );
-      matchingRelations = builtins.filter
-        (
-          relation:
-          let
-            from = attrsOrEmpty (relation.from or null);
-            to = attrsOrEmpty (relation.to or null);
-          in
-          (relation.action or "allow") == "allow"
-          && (relation.trafficType or null) == "dns"
-          && (from.kind or null) == "service"
-          && (from.name or null) == requesterServiceName
-          && (to.kind or null) == "service"
-          && (to.name or null) == coreServiceName
-        )
-        allowedRelations;
+      matchingRelations = builtins.filter (
+        relation:
+        let
+          from = attrsOrEmpty (relation.from or null);
+          to = attrsOrEmpty (relation.to or null);
+        in
+        (relation.action or "allow") == "allow"
+        && (relation.trafficType or null) == "dns"
+        && (from.kind or null) == "service"
+        && (from.name or null) == requesterServiceName
+        && (to.kind or null) == "service"
+        && (to.name or null) == coreServiceName
+      ) allowedRelations;
       relationIds = uniqueStrings (map (relation: relation.id or "") matchingRelations);
       relationId =
         if builtins.length relationIds == 1 then
@@ -547,54 +585,60 @@ let
         context = relationId;
       };
       sourcePrefixes = builtins.filter (value: value != null) (
-        map
-          (
-            address:
-            let
-              prefix = hostPrefix address;
-            in
-            if prefix == null then
-              null
-            else
-              {
-                family = if builtins.match ".*:.*" address == null then 4 else 6;
-                inherit prefix;
-              }
-          )
-          endpoints
+        map (
+          address:
+          let
+            prefix = hostPrefix address;
+          in
+          if prefix == null then
+            null
+          else
+            {
+              family = if builtins.match ".*:.*" address == null then 4 else 6;
+              inherit prefix;
+            }
+        ) endpoints
       );
       preferredSources =
-        lib.optionalAttrs (builtins.any (address: builtins.match ".*:.*" address == null) endpoints)
-          {
-            ipv4 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address == null) endpoints);
-          }
+        lib.optionalAttrs (builtins.any (address: builtins.match ".*:.*" address == null) endpoints) {
+          ipv4 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address == null) endpoints);
+        }
         // lib.optionalAttrs (builtins.any (address: builtins.match ".*:.*" address != null) endpoints) {
           ipv6 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address != null) endpoints);
-      };
-      boundAccess = mergeDns accessTarget {
-        forwarders = endpoints;
-        recursionMode = "forwarding";
-        outgoingInterfaces = requesterSources;
-        upstreamResolvers = [
-          {
-            kind = "named-core-resolver";
-            service = coreServiceName;
-            node = coreNodeName;
-            addresses = endpoints;
-            addressAuthority = "model-allocated-service-prefix";
-            endpointAuthority = {
-              inherit relationId;
-              terminalAttachmentId = relationEndpoint.attachmentId;
-            };
-            returnBehavior = binding.returnBehavior or "symmetric";
-          }
-        ];
-        roles = accessRoles // {
-          recursion = accessRecursion // {
-            outgoingInterfaces = requesterSources;
-          };
         };
-        coreResolverBinding = binding;
+      boundAccess = bindRequesterInterfaces {
+        target = mergeDns accessTarget {
+          forwarders = endpoints;
+          recursionMode = "forwarding";
+          outgoingInterfaces = requesterSources;
+          upstreamResolvers = [
+            {
+              kind = "named-core-resolver";
+              service = coreServiceName;
+              node = coreNodeName;
+              addresses = endpoints;
+              addressAuthority = "model-allocated-service-prefix";
+              endpointAuthority = {
+                inherit relationId;
+                terminalAttachmentId = relationEndpoint.attachmentId;
+              };
+              returnBehavior = binding.returnBehavior or "symmetric";
+            }
+          ];
+          roles = accessRoles // {
+            recursion = accessRecursion // {
+              outgoingInterfaces = requesterSources;
+            };
+          };
+          coreResolverBinding = binding;
+        };
+        inherit
+          binding
+          requesterServiceName
+          coreServiceName
+          relationId
+          families
+          ;
       };
       boundCoreBase = mergeDns coreTarget {
         listen = endpoints;
@@ -641,6 +685,6 @@ let
       };
   boundRuntimeTargets = builtins.foldl' applyBinding runtimeTargets bindings;
 in
-attachWarnings
-  (if fatalWarnings == [ ] then boundRuntimeTargets else runtimeTargets)
-  reproducibilityWarnings
+attachWarnings (
+  if fatalWarnings == [ ] then boundRuntimeTargets else runtimeTargets
+) reproducibilityWarnings
