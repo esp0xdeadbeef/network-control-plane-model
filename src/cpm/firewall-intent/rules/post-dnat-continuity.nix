@@ -133,6 +133,8 @@ let
       family = m.family or "any";
       familyOk =
         family == "any"
+        || family == "ipv4"
+        || family == "ipv6"
         || (builtins.isInt family && family == (tuple.family or 4))
         || family == builtins.toString (tuple.family or 4);
     in

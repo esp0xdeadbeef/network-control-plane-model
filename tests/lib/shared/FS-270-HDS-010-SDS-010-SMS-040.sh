@@ -653,6 +653,197 @@ assert_rejects() {
   echo "PASS FS-270-HDS-010-SDS-010-SMS-040 ${label}: seeded violation rejected"
 }
 
+# --- Integrated public-ingress post-DNAT continuity predicate (SMS-075 resolved) ---
+# FS-310-HDS-020-SDS-010-SMS-075 is OK: CPM public-ingress pipeline now emits
+# per-hop routes + tuple-scoped forward authority at every selector handoff.
+# This predicate compiles the production public-ingress-routes module and proves
+# post-DNAT tuple continuity through core -> upstream-selector -> policy ->
+# downstream-selector -> access with evaluatePostDnatContinuity.
+# Runs before the pinned-HAT build so that transient nix cache unavailability
+# does not block the integrated proof.
+
+cat > "${tmp_dir}/integrated-continuity.nix" <<'CPMCONT'
+let
+  cpmRepoRoot = builtins.getEnv "CPM_REPO_ROOT";
+  lib = import <nixpkgs/lib>;
+  common = {
+    attrsOrEmpty = value: if builtins.isAttrs value then value else { };
+    listOrEmpty = value: if builtins.isList value then value else [ ];
+    ipam = { };
+  };
+  addPublicIngressPath = import (cpmRepoRoot
+    + "/src/cpm/ControlModule/runtime-targets/public-ingress-routes.nix") {
+    inherit lib common;
+  };
+  ruleBuilders = import (cpmRepoRoot + "/src/cpm/firewall-intent/rules.nix") { };
+  evaluate = ruleBuilders.evaluatePostDnatContinuity;
+
+  iface = runtimeIfName: sourceKind: addr4: lane: backingName: {
+    inherit runtimeIfName sourceKind addr4;
+    backingRef = { name = backingName; inherit lane; };
+    routes = { ipv4 = []; ipv6 = []; };
+    hostFacing = false;
+  };
+
+  relationId = "allow-wan-to-dmz-service";
+  record = {
+    inherit relationId;
+    family = 4;
+    publicSurface = "wan";
+    translationOwnerRuntimeTarget = "core";
+    target = {
+      service = "nebula"; endpoint = "nebula-dmz";
+      address = "192.0.2.10"; port = 4242;
+      accessNode = "access-dmz"; providerTenants = ["dmz"];
+    };
+    tupleRecords = [{ protocol = "udp"; publicPort = 4242; targetPort = 4242; }];
+    internalPath.egressInterface = "core-to-upstream";
+    sourceTranslation = { mode = "snat"; address = "10.19.0.3"; owner = "core"; };
+    ingressInterface = "wan-uplink";
+    translationMode = "napt";
+    destinationTranslation = true;
+    sourcePreservation = "rewritten";
+    returnBehavior = "stateful-return";
+    consumers = ["routing" "firewall" "renderer" "diagnostic"];
+  };
+
+  runtimeTargets = {
+    core = {
+      role = "core";
+      natIntent.publicIngress = [record];
+      # Core DNAT rule: accept the translated tuple from ingress to egress.
+      forwardingIntent.rules = [
+        { action = "accept"; fromInterface = "wan-uplink";
+          toInterface = "core-to-upstream"; inherit relationId;
+          matches = [{ proto = "udp"; family = "ipv4"; dports = [4242]; }]; }
+      ];
+      effectiveRuntimeRealization.interfaces = {
+        uplink = iface "core-to-upstream" "p2p" "10.0.1.0/31"
+          { kind = "uplink"; uplink = "wan"; } "core-upstream-link";
+      };
+    };
+    upstream = {
+      role = "upstream-selector";
+      forwardingIntent.rules = [];
+      effectiveRuntimeRealization.interfaces = {
+        core = iface "core-to-upstream" "p2p" "10.0.1.1/31"
+          { kind = "uplink"; uplink = "wan"; } "core-upstream-link";
+        policy = iface "upstream-to-policy" "p2p" "10.0.2.0/31"
+          { kind = "access-uplink"; access = "access-dmz"; uplink = "wan"; } "upstream-policy-link";
+      };
+    };
+    policy = {
+      role = "policy";
+      forwardingIntent.rules = [];
+      effectiveRuntimeRealization.interfaces = {
+        upstream = iface "upstream-to-policy" "p2p" "10.0.2.1/31"
+          { kind = "access-uplink"; access = "access-dmz"; uplink = "wan"; } "upstream-policy-link";
+        downstream = iface "policy-to-downstream" "p2p" "10.0.3.0/31"
+          { kind = "access"; access = "access-dmz"; } "policy-downstream-link";
+      };
+    };
+    downstream = {
+      role = "downstream-selector";
+      forwardingIntent.rules = [];
+      effectiveRuntimeRealization.interfaces = {
+        policy = iface "policy-to-downstream" "p2p" "10.0.3.1/31"
+          { kind = "access"; access = "access-dmz"; } "policy-downstream-link";
+        access = iface "downstream-to-access" "p2p" "10.0.4.0/31"
+          { kind = "access-edge"; access = "access-dmz"; } "downstream-access-link";
+      };
+    };
+    access = {
+      role = "access";
+      logicalNode.name = "access-dmz";
+      forwardingIntent.rules = [];
+      effectiveRuntimeRealization.interfaces = {
+        upstream = iface "downstream-to-access" "p2p" "10.0.4.1/31"
+          { kind = "access-edge"; access = "access-dmz"; } "downstream-access-link";
+        tenant = iface "lan-dmz" "tenant" "192.0.2.1/24"
+          { kind = "tenant"; access = "access-dmz"; } "dmz";
+      };
+    };
+  };
+
+  augmented = addPublicIngressPath runtimeTargets;
+
+  getHopAddress = target: role:
+    let
+      t = augmented.${target} or {};
+      ifaces = (t.effectiveRuntimeRealization or {}).interfaces or {};
+      rolePred = {
+        "core" = (name: let l = (((ifaces.${name}.backingRef or {}).lane or {})); in (l.kind or "") == "uplink" && (l.uplink or "") == "wan");
+        "upstream-selector" = (name: (ifaces.${name}.runtimeIfName or "") == "core-to-upstream");
+        "policy" = (name: let l = (((ifaces.${name}.backingRef or {}).lane or {})); in (l.kind or "") == "access-uplink");
+        "downstream-selector" = (name: let l = (((ifaces.${name}.backingRef or {}).lane or {})); in (l.kind or "") == "access");
+        "access" = (name: let l = (((ifaces.${name}.backingRef or {}).lane or {})); in (l.kind or "") == "access-edge");
+      };
+      matching = builtins.filter (rolePred.${role} or (name: false)) (builtins.attrNames ifaces);
+      addr4 = if matching != [] then (ifaces.${builtins.head matching}).addr4 or "" else "";
+    in builtins.head (builtins.filter builtins.isString (builtins.split "/" addr4));
+
+  getRoutes = target:
+    let
+      t = augmented.${target} or {};
+      ifaces = (t.effectiveRuntimeRealization or {}).interfaces or {};
+    in builtins.concatMap (name:
+      let ifr = ifaces.${name} or {}; in
+      builtins.concatMap (route:
+        [{ dst = route.dst or ""; table = route.table or "main"; nextHop = route.via4 or null; }]
+      ) ((ifr.routes or {}).ipv4 or [])
+    ) (builtins.attrNames ifaces);
+
+  getForwardingRules = target:
+    let
+      t = augmented.${target} or {};
+      allRules = (t.forwardingIntent or {}).rules or [];
+    in builtins.filter (rule: (rule.relationId or "") == relationId) allRules;
+
+  hopOrder = [ "core" "upstream" "policy" "downstream" "access" ];
+  hopRoles = [ "core" "upstream-selector" "policy" "downstream-selector" "access" ];
+
+  tuple = { family = 4; protocol = "udp"; dstAddress = "192.0.2.10"; dstPort = 4242; translationOwner = "core"; };
+
+  hops = builtins.genList (i:
+    let
+      target = builtins.elemAt hopOrder i;
+      role = builtins.elemAt hopRoles i;
+      addr = getHopAddress target role;
+      targetRoutes = getRoutes target;
+      targetRules = getForwardingRules target;
+    in { name = target; hopAddress = addr; selectedTable = "main";
+         routes = targetRoutes; rules = targetRules;
+         targetFacing = (i == (builtins.length hopOrder) - 1); }
+  ) (builtins.length hopOrder);
+
+  result = evaluate { inherit tuple hops; };
+in
+  { continuous = result.continuous; firstBrokenHop = result.firstBrokenHop or null;
+    failClosed = result.failClosed or false; diagnostic = result.diagnostic or null;
+    hopResults = map (h: { name = h.hop; ok = h.ok; missing = h.missing or []; })
+      (result.hopRecords or []);
+  }
+CPMCONT
+
+integrated_json="$(CPM_REPO_ROOT="${repo_root}" nix eval --impure --json -f "${tmp_dir}/integrated-continuity.nix" 2>&1)" || {
+  echo "FAIL FS-270-HDS-010-SDS-010-SMS-040 INTEGRATED: nix eval failed: ${integrated_json}" >&2
+  exit 1
+}
+
+jq -e '
+  .continuous == true
+  and .firstBrokenHop == null
+  and .failClosed == false
+  and .diagnostic == null
+  and ([.hopResults[] | .ok] | all)
+  and ([.hopResults[] | .missing] | all(length == 0))
+' <<<"${integrated_json}" >/dev/null || {
+  echo "FAIL FS-270-HDS-010-SDS-010-SMS-040 INTEGRATED: post-DNAT continuity broken: $(jq -c . <<<"${integrated_json}")" >&2
+  exit 1
+}
+
+echo "PASS FS-270-HDS-010-SDS-010-SMS-040 INTEGRATED: compiled public-ingress pipeline produces continuous post-DNAT hop chain (core->upstream->policy->downstream->access with route + tuple-scoped forward authority at each hop)"
+
 build_cpm "${hat_dir}/inventory-nixos.nix" "${nixos_output}"
 build_cpm "${hat_dir}/inventory-clab.nix" "${clab_output}"
 
@@ -675,5 +866,6 @@ for output in "${nixos_output}" "${clab_output}"; do
 
   validate_selector_rules "${output}"
 done
+
 
 echo "PASS selector-forwarding-relation-identity"
