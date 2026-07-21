@@ -1,6 +1,6 @@
-{ helpers
-, common
-,
+{
+  helpers,
+  common,
 }:
 
 let
@@ -29,36 +29,48 @@ let
       taxonomy;
 
   baseTaxonomy =
-    { adapterClass
-    , nodeRole
-    , virtualAdapter ? false
-    , hostFacing ? true
-    , extra ? { }
-    , direction ? null
-    ,
+    {
+      adapterClass,
+      nodeRole,
+      virtualAdapter ? false,
+      hostFacing ? true,
+      extra ? { },
+      direction ? null,
     }:
     {
-      inherit adapterClass virtualAdapter hostFacing direction;
+      inherit
+        adapterClass
+        virtualAdapter
+        hostFacing
+        direction
+        ;
       owningRole = nodeRole;
-    } // extra;
+    }
+    // extra;
 
   hygieneBoundaryContract =
-    { adapterClass
-    , nodeRole
-    , sourceKind
-    , logicalInterface
-    , boundary
-    , identityExtra ? { }
-    , authorityExtra ? { }
-    , decisionExtra ? { }
-    ,
+    {
+      adapterClass,
+      nodeRole,
+      sourceKind,
+      logicalInterface,
+      boundary,
+      identityExtra ? { },
+      authorityExtra ? { },
+      decisionExtra ? { },
     }:
     let
       boundaryIdentity = {
         kind = "virtual-adapter-hygiene-boundary";
-        inherit adapterClass sourceKind logicalInterface boundary;
+        inherit
+          adapterClass
+          sourceKind
+          logicalInterface
+          boundary
+          ;
         owningRole = nodeRole;
-      } // identityExtra;
+      }
+      // identityExtra;
       sourceScopeAuthority = {
         authority = "control-plane-model";
         mode = "structured-source-scope";
@@ -77,14 +89,16 @@ let
           "forwardingIntent.rules.candidateEgress"
           "forwardingIntent.rules.policyPointTraversal"
         ];
-      } // authorityExtra;
+      }
+      // authorityExtra;
       hygieneDecision = {
         decision = "preserve-virtual-boundary";
         enforcement = "fail-closed";
         unscopedSourceAccepted = false;
         interfaceTupleOnlyAuthority = false;
         diagnostic = "FS-305-HDS-010-SDS-010-SMS-010: virtual adapter traffic must retain structured source authority before renderer handoff";
-      } // decisionExtra;
+      }
+      // decisionExtra;
       spoofing = {
         rejection = "fail-closed";
         spoofedSourceAccepted = false;
@@ -131,13 +145,25 @@ let
       };
     in
     {
-      inherit boundaryIdentity sourceScopeAuthority hygieneDecision spoofing;
+      inherit
+        boundaryIdentity
+        sourceScopeAuthority
+        hygieneDecision
+        spoofing
+        ;
       hygieneBoundary = {
-        inherit boundaryIdentity sourceScopeAuthority hygieneDecision spoofing provenance;
+        inherit
+          boundaryIdentity
+          sourceScopeAuthority
+          hygieneDecision
+          spoofing
+          provenance
+          ;
       };
     };
 
-  pppoeServiceForInterface = ifName: backingRefName: targetDef:
+  pppoeServiceForInterface =
+    ifName: backingRefName: targetDef:
     let
       services = attrsOrEmpty ((attrsOrEmpty (targetDef.node or null)).services or null);
       pppoe = attrsOrEmpty (services.pppoe or null);
@@ -151,7 +177,11 @@ let
       service = if serviceRole == null then { } else attrsOrEmpty pppoe.${serviceRole};
       serviceInterface = service.interface or null;
     in
-    if serviceRole != null && isNonEmptyString serviceInterface && (serviceInterface == ifName || serviceInterface == backingRefName) then
+    if
+      serviceRole != null
+      && isNonEmptyString serviceInterface
+      && (serviceInterface == ifName || serviceInterface == backingRefName)
+    then
       {
         role = serviceRole;
         inherit service;
@@ -160,7 +190,11 @@ let
       null;
 
   overlayTaxonomy =
-    { nodeRole, backingRef, overlayProvisioning }:
+    {
+      nodeRole,
+      backingRef,
+      overlayProvisioning,
+    }:
     let
       overlayName = backingRef.name or null;
       overlay =
@@ -178,70 +212,78 @@ let
       inherit adapterClass nodeRole;
       virtualAdapter = true;
       hostFacing = false;
-      extra =
-        {
-          exclusionReason = "overlay-tunnel-adapter";
-          tunnelPurpose = "overlay-reachability";
-        }
-        // overlayIdentity
-        // hygieneBoundaryContract {
-          inherit adapterClass nodeRole;
-          sourceKind = "overlay";
-          logicalInterface = backingRef.name or "overlay";
-          boundary = "overlay-vpn-adapter";
-          identityExtra = overlayIdentity;
-          authorityExtra = {
-            sourceClass = "overlay-runtime-adapter";
-            sourceFacts = [
-              "overlay.provider"
-              "overlay.runtimeNodes.*.service.interface"
-              "overlay.nodes.*.addr4"
-              "overlay.nodes.*.addr6"
-            ];
-          };
-          decisionExtra = {
-            trafficClasses = [ "overlay-control" "overlay-service" ];
-          };
+      extra = {
+        exclusionReason = "overlay-tunnel-adapter";
+        tunnelPurpose = "overlay-reachability";
+      }
+      // overlayIdentity
+      // hygieneBoundaryContract {
+        inherit adapterClass nodeRole;
+        sourceKind = "overlay";
+        logicalInterface = backingRef.name or "overlay";
+        boundary = "overlay-vpn-adapter";
+        identityExtra = overlayIdentity;
+        authorityExtra = {
+          sourceClass = "overlay-runtime-adapter";
+          sourceFacts = [
+            "overlay.provider"
+            "overlay.runtimeNodes.*.service.interface"
+            "overlay.nodes.*.addr4"
+            "overlay.nodes.*.addr6"
+          ];
         };
+        decisionExtra = {
+          trafficClasses = [
+            "overlay-control"
+            "overlay-service"
+          ];
+        };
+      };
     };
 
   selectorFabricTaxonomy =
-    { nodeRole, backingRef, fabricLinkBinding }:
+    {
+      nodeRole,
+      backingRef,
+      fabricLinkBinding,
+    }:
     baseTaxonomy {
       adapterClass = "selector-fabric-link";
       inherit nodeRole;
       virtualAdapter = true;
       hostFacing = false;
-      extra =
-        {
-          exclusionReason = "selector-fabric-link";
-          p2pPurpose = "selector-fabric";
-          realization = "fabric-link";
+      extra = {
+        exclusionReason = "selector-fabric-link";
+        p2pPurpose = "selector-fabric";
+        realization = "fabric-link";
+        link = fabricLinkBinding.link or (backingRef.name or null);
+      }
+      // hygieneBoundaryContract {
+        adapterClass = "selector-fabric-link";
+        inherit nodeRole;
+        sourceKind = "p2p";
+        logicalInterface = backingRef.name or "selector-fabric-link";
+        boundary = "selector-fabric-link";
+        identityExtra = {
           link = fabricLinkBinding.link or (backingRef.name or null);
-        }
-        // hygieneBoundaryContract {
-          adapterClass = "selector-fabric-link";
-          inherit nodeRole;
-          sourceKind = "p2p";
-          logicalInterface = backingRef.name or "selector-fabric-link";
-          boundary = "selector-fabric-link";
-          identityExtra = {
-            link = fabricLinkBinding.link or (backingRef.name or null);
-            p2pIsolationKey = fabricLinkBinding.link or (backingRef.id or null);
-          };
-          authorityExtra = {
-            sourceClass = "selector-fabric-link";
-            sourceFacts = [
-              "inventory.realization.fabricLinks.*.link"
-              "backingRef.lane"
-              "communicationContract.relations.id"
-              "trafficPaths.nodePath"
-            ];
-          };
-          decisionExtra = {
-            trafficClasses = [ "selector-forwarding" "policy-forwarding" ];
-          };
+          p2pIsolationKey = fabricLinkBinding.link or (backingRef.id or null);
         };
+        authorityExtra = {
+          sourceClass = "selector-fabric-link";
+          sourceFacts = [
+            "inventory.realization.fabricLinks.*.link"
+            "backingRef.lane"
+            "communicationContract.relations.id"
+            "trafficPaths.nodePath"
+          ];
+        };
+        decisionExtra = {
+          trafficClasses = [
+            "selector-forwarding"
+            "policy-forwarding"
+          ];
+        };
+      };
     };
 
   providerSessionTaxonomy =
@@ -254,67 +296,95 @@ let
       inherit nodeRole;
       virtualAdapter = true;
       hostFacing = false;
-      extra =
-        {
-          exclusionReason = "provider-session-virtual-adapter";
+      extra = {
+        exclusionReason = "provider-session-virtual-adapter";
+        service = "pppoe";
+        sessionPurpose = "provider-access";
+        serviceRole = pppoeSession.role;
+      }
+      // (
+        if isNonEmptyString (service.runtimeInterface or null) then
+          { runtimeAdapter = service.runtimeInterface; }
+        else
+          { }
+      )
+      // (
+        if isNonEmptyString (service.implementation or null) then
+          { implementation = service.implementation; }
+        else
+          { }
+      )
+      // hygieneBoundaryContract {
+        adapterClass = "provider-session";
+        inherit nodeRole;
+        sourceKind = "p2p";
+        logicalInterface = service.interface or "provider-session";
+        boundary = "provider-session";
+        identityExtra = {
           service = "pppoe";
           sessionPurpose = "provider-access";
           serviceRole = pppoeSession.role;
         }
-        // (if isNonEmptyString (service.runtimeInterface or null) then { runtimeAdapter = service.runtimeInterface; } else { })
-        // (if isNonEmptyString (service.implementation or null) then { implementation = service.implementation; } else { })
-        // hygieneBoundaryContract {
-          adapterClass = "provider-session";
-          inherit nodeRole;
-          sourceKind = "p2p";
-          logicalInterface = service.interface or "provider-session";
-          boundary = "provider-session";
-          identityExtra =
-            {
-              service = "pppoe";
-              sessionPurpose = "provider-access";
-              serviceRole = pppoeSession.role;
-            }
-            // (if isNonEmptyString (service.runtimeInterface or null) then { runtimeAdapter = service.runtimeInterface; } else { });
-          authorityExtra = {
-            sourceClass = "provider-session";
-            sourceFacts = [
-              "providerAccess"
-              "services.pppoe"
-              "egressIntent.uplinks"
-              "natIntent.routeSafety"
-            ];
-          };
-          decisionExtra = {
-            trafficClasses = [ "provider-egress" "provider-session" "dns" ];
-          };
+        // (
+          if isNonEmptyString (service.runtimeInterface or null) then
+            { runtimeAdapter = service.runtimeInterface; }
+          else
+            { }
+        );
+        authorityExtra = {
+          sourceClass = "provider-session";
+          sourceFacts = [
+            "providerAccess"
+            "services.pppoe"
+            "egressIntent.uplinks"
+            "natIntent.routeSafety"
+          ];
         };
+        decisionExtra = {
+          trafficClasses = [
+            "provider-egress"
+            "provider-session"
+            "dns"
+          ];
+        };
+      };
     };
 
   taxonomyFor =
-    { ifacePath
-    , ifName
-    , sourceKind
-    , backingRef
-    , nodeRole
-    , targetDef
-    , portBinding
-    , fabricLinkBinding
-    , overlayProvisioning
-    ,
+    {
+      ifacePath,
+      ifName,
+      sourceKind,
+      backingRef,
+      nodeRole,
+      targetDef,
+      portBinding,
+      fabricLinkBinding,
+      overlayProvisioning,
     }:
     let
       backingRefName = backingRef.name or null;
-      lane =
-        if builtins.isAttrs (backingRef.lane or null) then
-          backingRef.lane
-        else
-          { };
+      lane = if builtins.isAttrs (backingRef.lane or null) then backingRef.lane else { };
       laneKind = lane.kind or null;
       backingUplinks =
-        (if builtins.isList (backingRef.uplinks or null) then builtins.filter builtins.isString backingRef.uplinks else [ ])
-        ++ (if builtins.isList (lane.uplinks or null) then builtins.filter builtins.isString lane.uplinks else [ ])
-        ++ (let uplink = lane.uplink or null; in if isNonEmptyString uplink then [ uplink ] else [ ]);
+        (
+          if builtins.isList (backingRef.uplinks or null) then
+            builtins.filter builtins.isString backingRef.uplinks
+          else
+            [ ]
+        )
+        ++ (
+          if builtins.isList (lane.uplinks or null) then
+            builtins.filter builtins.isString lane.uplinks
+          else
+            [ ]
+        )
+        ++ (
+          let
+            uplink = lane.uplink or null;
+          in
+          if isNonEmptyString uplink then [ uplink ] else [ ]
+        );
       pppoeSession =
         if targetDef != null then pppoeServiceForInterface ifName backingRefName targetDef else null;
       direction =
@@ -322,8 +392,10 @@ let
           if nodeRole != null && builtins.substring 0 4 nodeRole == "core" then "egress" else "ingress"
         else if sourceKind == "p2p" then
           if nodeRole != null && builtins.substring 0 4 nodeRole == "core" then "ingress" else "egress"
-        else if sourceKind == "wan" then "egress"
-        else null;
+        else if sourceKind == "wan" then
+          "egress"
+        else
+          null;
       taxonomy =
         if sourceKind == "overlay" then
           overlayTaxonomy { inherit nodeRole backingRef overlayProvisioning; }
@@ -336,23 +408,35 @@ let
             adapterClass = "p2p-realization";
             inherit nodeRole direction;
             hostFacing =
-              if nodeRole != null && builtins.substring 0 4 nodeRole == "core"
-                 && backingRefName != null
-                 && ((backingRef.lane or { }).access or null) != null
-              then false
-              else if nodeRole != null && builtins.substring 0 6 nodeRole == "access"
-                 && backingRefName != null
-                 && (
-                   let
-                     allUplinks =
-                       (backingRef.uplinks or [ ])
-                       ++ ((backingRef.lane or { }).uplinks or [ ])
-                       ++ (let u = (backingRef.lane or { }).uplink or null; in if u == null then [ ] else [ u ]);
-                   in
-                     builtins.any (name: builtins.hasAttr name overlayProvisioning) allUplinks
-                 )
-              then false
-              else true;
+              if
+                nodeRole != null
+                && builtins.substring 0 4 nodeRole == "core"
+                && backingRefName != null
+                && ((backingRef.lane or { }).access or null) != null
+              then
+                false
+              else if
+                nodeRole != null
+                && builtins.substring 0 6 nodeRole == "access"
+                && backingRefName != null
+                && (
+                  let
+                    allUplinks =
+                      (backingRef.uplinks or [ ])
+                      ++ ((backingRef.lane or { }).uplinks or [ ])
+                      ++ (
+                        let
+                          u = (backingRef.lane or { }).uplink or null;
+                        in
+                        if u == null then [ ] else [ u ]
+                      );
+                  in
+                  builtins.any (name: builtins.hasAttr name overlayProvisioning) allUplinks
+                )
+              then
+                false
+              else
+                true;
           }
         else if sourceKind == "tenant" then
           baseTaxonomy {
@@ -397,7 +481,8 @@ let
         explicitTransit =
           (sourceKind == "p2p" && (taxonomy.adapterClass or null) == "p2p-realization")
           || (sourceKind == "pppoe-session" && (taxonomy.adapterClass or null) == "provider-session");
-        explicitLocalAdapter = sourceKind == "tenant" && (taxonomy.adapterClass or null) == "tenant-role-surface";
+        explicitLocalAdapter =
+          sourceKind == "tenant" && (taxonomy.adapterClass or null) == "tenant-role-surface";
         explicitUplink = false;
       };
       interfaceClass = {
@@ -415,7 +500,7 @@ let
               && laneKind != "access"
               && laneKind != "access-uplink"
             )
-        );
+          );
         overlay = sourceKind == "overlay";
         coreTransit = false;
         serviceFacing = sourceKind == "pppoe-handoff";
@@ -438,19 +523,21 @@ let
       };
 
       # DNS resolver configuration per interface — FS-540-HDS-010-SDS-010-SMS-020.
-      # CPM must declare which DNS resolver each interface should use, rather than
-      # leaving renderers to infer resolver addresses from topology position.
+      # Interface taxonomy is not DNS policy authority. The named DNS binding
+      # control module replaces this fail-closed value only for requester
+      # interfaces selected by an explicit DNS relation and binding.
       dnsResolver = {
-        resolver4 = if sourceKind == "tenant" && nodeRole == "access" then "127.0.0.1" else null;
-        resolver6 = if sourceKind == "tenant" && nodeRole == "access" then "::1" else null;
-        resolverSource =
-          if sourceKind == "tenant" && nodeRole == "access" then "local-recursive"
-          else if sourceKind == "tenant" then "upstream-forwarder"
-          else if sourceKind == "wan" then "dhcp-provided"
-          else "none";
+        resolver4 = null;
+        resolver6 = null;
+        resolverSource = "none";
+        authoritySource = null;
       };
     in
-    virtualRequired { inherit ifacePath taxonomy; } // { explicit = explicitRole; inherit interfaceClass dhcpAuthority dnsResolver; };
+    virtualRequired { inherit ifacePath taxonomy; }
+    // {
+      explicit = explicitRole;
+      inherit interfaceClass dhcpAuthority dnsResolver;
+    };
 in
 {
   inherit taxonomyFor;
