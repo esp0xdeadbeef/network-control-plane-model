@@ -18,6 +18,10 @@ require_cmd jq
 
 flake_input_path() {
   local input_name="$1"
+  if [[ "${input_name}" == "network-labs" && -n "${NETWORK_LABS_PATH:-}" ]]; then
+    realpath "${NETWORK_LABS_PATH}"
+    return
+  fi
   nix flake archive --json "path:${repo_root}" \
     | jq -er ".inputs[\"${input_name}\"].path"
 }
