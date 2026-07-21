@@ -76,8 +76,8 @@ in
   assert nixosAuthority.selectedUplink == "isp-primary";
   assert nixosAuthority.alternateUplinks == [ "overlay-secondary" ];
   assert nixosAuthority.root.zone == ".";
-  assert nixosAuthority.delegation.zone == "dns-validation.test.";
-  assert nixosAuthority.terminal.name == "answer.dns-validation.test.";
+  assert nixosAuthority.delegation.zone == "dns-validation.gamp.";
+  assert nixosAuthority.terminal.name == "answer.dns-validation.gamp.";
   assert nixosAuthority.trust.mode == "insecure-controlled-root";
   assert badScope.success == false;
   assert badSelection.success == false;
