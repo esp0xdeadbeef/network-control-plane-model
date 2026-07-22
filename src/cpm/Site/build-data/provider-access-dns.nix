@@ -56,6 +56,17 @@ let
     in
     aliasMatchesSite || aliasMatchesProviderName;
 
+  warnHardcodedUpstream = scenarioPath: addr:
+    # SMS-025 seeded negative: when a provider supplies an explicit static
+    # upstream address (vs learned through PPPoE/DHCP options), the CPM must
+    # preserve the provider-bound relationship but emit DNS_CORE_UPSTREAM_HARDCODED
+    # so the renderer can log the warning without halting deployment.
+    {
+      code = "DNS_CORE_UPSTREAM_HARDCODED";
+      resolverService = scenarioPath;
+      message = "provider-access DNS followSource has an explicit static upstream address; upstream is provider-bound but not learned through the provider handoff";
+    };
+
   normalizeFollowSourceScenario = scenarioName:
     let
       scenarioPath = "inventory.controlPlane.providerAccess.scenarios.${scenarioName}";
@@ -68,11 +79,17 @@ let
       provider = attrsOrEmpty (scenario.provider or null);
       publicFacing = attrsOrEmpty (scenario.publicFacing or null);
       ipv4 = attrsOrEmpty (publicFacing.ipv4 or null);
+      isStaticUpstream = isNonEmptyString (ipv4.providerAddress or null);
       dst =
-        if isNonEmptyString (ipv4.providerAddress or null) then
+        if isStaticUpstream then
           requireString "${scenarioPath}.publicFacing.ipv4.providerAddress" ipv4.providerAddress
         else
           "follow-source";
+      staticUpstreamWarning =
+        if followSource && isStaticUpstream then
+          [ (warnHardcodedUpstream scenarioPath ipv4.providerAddress) ]
+        else
+          [ ];
       _upstreamSource =
         if !followSource || upstreamSource == "follow-source" then
           true
@@ -115,16 +132,61 @@ let
           implementationClass = resolver.implementationClass or null;
           failClosed = true;
           fallbackToCustomerResolver = false;
+          reproducibilityWarnings = staticUpstreamWarning;
         }
       )
     )
     else
       null;
 
+  followSourceRecordsUnfiltered =
+    builtins.map normalizeFollowSourceScenario (sortedNames scenarios);
+
   followSourceRecords =
     builtins.filter
       (record: record != null)
-      (builtins.map normalizeFollowSourceScenario (sortedNames scenarios));
+      followSourceRecordsUnfiltered;
+
+  # SMS-025 seeded negative: when multiple ISP/overlay scenarios match the
+  # same site and all have followSource = true, the CPM must not silently
+  # select one — it must emit an ambiguity warning on each record and
+  # let the downstream renderer treat the resolver as fail-closed until
+  # explicit ordering is provided.
+  ambiguityWarning = scenarioPath:
+    {
+      code = "DNS_PROVIDER_EGRESS_AMBIGUITY";
+      resolverService = scenarioPath;
+      message = "multiple provider-access DNS follow-source scenarios match this site; provider ordering or single-provider selection is required for deterministic upstream resolution";
+    };
+
+  warnAmbiguityRecords = records:
+    let
+      # group records by customerSite to detect multiple providers for same site
+      groupKey = record: record.customerSite or "";
+      groups = builtins.groupBy groupKey records;
+      ambiguousSiteKeys = builtins.filter
+        (key: builtins.length (groups.${key} or [ ]) > 1)
+        (builtins.attrNames groups);
+      ambiguousRecords = lib.concatMap
+        (key: groups.${key} or [ ])
+        ambiguousSiteKeys;
+      warnRecord = record:
+        record // {
+          reproducibilityWarnings =
+            (record.reproducibilityWarnings or [ ])
+            ++ [ (ambiguityWarning record.scenario) ];
+        };
+    in
+    builtins.map warnRecord ambiguousRecords;
+
+  # Records that are unambiguous (single provider per site)
+  unambiguousRecords = builtins.filter
+    (record: !(builtins.any
+      (ambiguous: (ambiguous.scenario or "") == (record.scenario or ""))
+      (warnAmbiguityRecords followSourceRecords)))
+    followSourceRecords;
+
+  allFollowSourceRecords = unambiguousRecords ++ (warnAmbiguityRecords followSourceRecords);
 
   recordsForRelation = relation:
     let
@@ -145,8 +207,8 @@ let
         // {
           inherit relationId uplinks;
         })
-      followSourceRecords;
+      allFollowSourceRecords;
 in
 {
-  inherit followSourceRecords recordsForRelation;
+  inherit followSourceRecords allFollowSourceRecords recordsForRelation;
 }
