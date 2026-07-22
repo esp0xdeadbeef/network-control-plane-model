@@ -232,6 +232,12 @@ def is_allowed_interface_handoff(parts):
     if "consumedInterfaces" in string_parts:
         return True
 
+    # transportAuthority carries logical surface identifiers for
+    # dedicated-link-isolation proofs; surface names here are logical
+    # endpoint identities, not platform grammar.
+    if "transportAuthority" in string_parts:
+        return True
+
     if leaf in logical_identity_fields or parent == "providers":
         return True
 
