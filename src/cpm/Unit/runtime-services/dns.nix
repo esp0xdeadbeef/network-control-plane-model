@@ -256,6 +256,16 @@ in
             dns.validationAuthority
         else
           null;
+      infraHostTtl =
+        if dns ? infraHostTtl && builtins.isInt dns.infraHostTtl && dns.infraHostTtl > 0 then
+          dns.infraHostTtl
+        else
+          null;
+      infraLameTtl =
+        if dns ? infraLameTtl && builtins.isInt dns.infraLameTtl && dns.infraLameTtl > 0 then
+          dns.infraLameTtl
+        else
+          null;
       localZones = normalizeLocalZones dnsPath dns;
       localRecords = normalizeLocalRecords dnsPath dns;
       namespaceFallback = normalizeNamespaceFallback dnsPath dns;
@@ -282,6 +292,8 @@ in
           // lib.optionalAttrs (localOnlyPolicy != null) { inherit localOnlyPolicy; }
           // lib.optionalAttrs (dns ? reproducibilityWarnings) { inherit reproducibilityWarnings; }
           // lib.optionalAttrs (validationAuthority != null) { inherit validationAuthority; }
+          // lib.optionalAttrs (infraHostTtl != null) { inherit infraHostTtl; }
+          // lib.optionalAttrs (infraLameTtl != null) { inherit infraLameTtl; }
           // {
           inherit
             allowedUpstreamClasses
