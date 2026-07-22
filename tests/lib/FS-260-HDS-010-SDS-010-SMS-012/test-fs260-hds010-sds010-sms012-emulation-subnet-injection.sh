@@ -28,6 +28,7 @@ echo ""
 BASE_ARGS='
   accessAdvertisements = null; accessSpaceDiscovery = null; attachments = [];
   bgpSiteAsn = null; bgpTopology = null; communicationContract = null; coreNodeNames = [];
+  dnsContract = null;
   domainsValue = { tenants = { t1 = { ipv4 = "10.20.0.0/24"; }; }; };
   endpointAssignment = null; forwardingSemantics = {};
   ipv4InternetMode = {}; ipv6Plan = null;
