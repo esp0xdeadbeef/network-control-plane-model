@@ -94,6 +94,15 @@ PERMITTED_PATTERNS=(
 
   # --- Dynamic IPv4 pattern (uses variable interpolation) ---
   '"${ipv4Octet}\\.${ipv4Octet}\\.${ipv4Octet}\\.${ipv4Octet}"'
+
+  # --- Prefix-length strip from CIDR (extract address before /N) ---
+  '"([^/]+)/.*"'
+
+  # --- Decimal numeric validation (octet digits, prefix lengths) ---
+  '"[0-9]+"'
+
+  # --- IP address character set (digits and dots only) ---
+  '"[0-9.]+"'
 )
 
 # ============================================================
