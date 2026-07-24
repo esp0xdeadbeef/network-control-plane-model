@@ -97,6 +97,7 @@ let
           }
         else
           { };
+      # GAMP-ID: FS-800-HDS-030-SDS-020-SMS-020
       normalizePPPoEIpv6 = clientPath: value:
         let
           ipv6Path = "${clientPath}.ipv6";
