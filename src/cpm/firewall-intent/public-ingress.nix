@@ -1,3 +1,8 @@
+# FS-230-HDS-010-SDS-010-SMS-040: Nebula IPv6 public-ingress tuple authority —
+# preserves TCP/UDP protocol independence, emits normalized control-plane
+# records with one resolved provider ingress surface, protected runtime-
+# address derivation handle, selected route-table set, and no outbound/
+# DNS/tenant authority.
 {
   helpers,
   lib,
