@@ -112,15 +112,18 @@ let
   resolveRouteCollisions =
     routes: requesterScope: family: laneIdentity: policyTableId:
     let
-      # Build keyed map of route → key
+      viaField = if family == 4 then "via4" else "via6";
+
+      # Build keyed map of route → key (full key including nextHopIdentity)
       keyed = builtins.map
         (route: {
           key = routeKeyFor route requesterScope family laneIdentity policyTableId;
+          prefixKey = "${requesterScope}|${builtins.toString family}|${route.dst or ""}|${policyTableId}|${laneIdentity}";
           inherit route;
         })
         routes;
 
-      # Group by key — attrset with one entry per key
+      # Group by full key — attrset with one entry per key
       byKey = builtins.foldl'
         (acc: entry:
           let
@@ -130,14 +133,47 @@ let
         { }
         keyed;
 
-      # For each key: if all routes are identical (same via + dst), collapse to
+      # Group by prefix key (excluding nextHopIdentity) for cross-key collision detection.
+      # SMS-040 predicate 4: equal-prefix atoms with different lane or next-hop
+      # identity shall fail as ambiguous.  Since the full key already includes
+      # nextHopIdentity, routes with the same prefix but different next hops
+      # produce different keys and would NOT be detected by the per-key
+      # processKey check alone.  This cross-key check catches that case.
+      byPrefixKey = builtins.foldl'
+        (acc: entry:
+          let
+            existing = acc.${entry.prefixKey} or [ ];
+          in
+          acc // { ${entry.prefixKey} = existing ++ [ entry.route ]; })
+        { }
+        keyed;
+
+      # Cross-key collision check: for every prefix group, if routes disagree
+      # on next-hop identity, fail as ambiguous.
+      _crossKeyCheck = builtins.mapAttrs
+        (_prefixKey: group:
+          let
+            first = builtins.head group;
+            allSameNextHop =
+              builtins.all
+                (r: (r.${viaField} or r.via or "") == (first.${viaField} or first.via or ""))
+                group;
+          in
+          if !allSameNextHop then
+            failForwarding
+              "runtime-targets.requester-lane-recursive-reachability"
+              "FS-540-HDS-010-SDS-010-SMS-040: ambiguous equal-prefix atoms — prefix '${first.dst or ""}' on lane '${laneIdentity}' has ${builtins.toString (builtins.length group)} routes with different next-hop identities; equal-prefix atoms with different next-hop identity shall fail as ambiguous (SMS-040 predicate 4)"
+          else
+            true)
+        byPrefixKey;
+
+      # For each full key: if all routes are identical (same via + dst), collapse to
       # one.  Otherwise fail because the same key produced different next-hop or
       # lane identities.
       processKey =
         _key: group:
         let
           first = builtins.head group;
-          viaField = if family == 4 then "via4" else "via6";
           allSame =
             builtins.all
               (r: (r.dst or "") == (first.dst or "") && (r.${viaField} or "") == (first.${viaField} or ""))
@@ -294,15 +330,12 @@ let
                   loopbackRejects = builtins.filter
                     (route: dstIsLoopback (route.dst or "") loopbackAddresses)
                     dnsReachabilityRoutes;
-                  _loopbackDiag = if loopbackRejects != [ ] then
-                    builtins.trace
-                      "FS-540-HDS-010-SDS-010-SMS-040: rejecting ${builtins.toString (builtins.length loopbackRejects)} DNS service route(s) on lane '${laneIdentity}' — destination matches a core ownership loopback; only resolver endpoint addresses are valid"
-                      null
-                  else
-                    null;
                 in
-                builtins.filter
-                  (route: !dstIsLoopback (route.dst or "") loopbackAddresses)
+                if loopbackRejects != [ ] then
+                  failForwarding
+                    "runtime-targets.requester-lane-recursive-reachability"
+                    "FS-540-HDS-010-SDS-010-SMS-040: ${builtins.toString (builtins.length loopbackRejects)} DNS service route(s) on lane '${laneIdentity}' have destinations matching a core ownership loopback; only resolver endpoint addresses are valid — endpoint-path validation failed (SMS-040 predicate 10)"
+                else
                   dnsReachabilityRoutes;
 
               # Apply SMS-040 keying + collision resolution to DNS routes
