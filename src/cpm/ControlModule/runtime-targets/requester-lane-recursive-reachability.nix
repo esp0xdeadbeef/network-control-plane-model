@@ -153,11 +153,56 @@ let
     builtins.concatLists (builtins.attrValues (builtins.mapAttrs processKey byKey));
 
   # ---------------------------------------------------------------------------
+  # Endpoint-path validation helpers
+  # ---------------------------------------------------------------------------
+
+  # Strip CIDR prefix length from an address string, leaving just the host
+  # address (e.g. "10.0.0.1/32" → "10.0.0.1").
+  stripPrefixLength =
+    value:
+    if !(builtins.isString value) || value == "" then
+      ""
+    else
+      builtins.head (lib.splitString "/" value);
+
+  # Collect every core-ownership loopback address across all runtime targets
+  # into a flat set keyed by the bare address (no prefix-length).  These are
+  # the addresses that must NOT appear as the destination of a DNS service
+  # reachability route.
+  collectLoopbackAddresses =
+    allTargets:
+    let
+      collectForTarget =
+        acc: targetName:
+        let
+          target = allTargets.${targetName} or { };
+          realization = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+          loopback = attrsOrEmpty (realization.loopback or null);
+          addr4 = stripPrefixLength (loopback.addr4 or loopback.ipv4 or "");
+          addr6 = stripPrefixLength (loopback.addr6 or loopback.ipv6 or "");
+        in
+        acc
+        // lib.optionalAttrs (addr4 != "") { ${addr4} = true; }
+        // lib.optionalAttrs (addr6 != "") { ${addr6} = true; };
+    in
+    builtins.foldl' collectForTarget { } (builtins.attrNames allTargets);
+
+  # Check whether a route destination (dst) resolves to a loopback address.
+  # The dst is normally in CIDR form (e.g. "10.0.0.1/32"); we strip the
+  # prefix-length before comparing against the loopback set.
+  dstIsLoopback =
+    dst: loopbackSet:
+    let
+      hostAddr = stripPrefixLength (if builtins.isString dst then dst else "");
+    in
+    hostAddr != "" && (loopbackSet.${hostAddr} or false);
+
+  # ---------------------------------------------------------------------------
   # Per-target processing
   # ---------------------------------------------------------------------------
 
   addRequesterLaneKeying =
-    targetName: target: firewallIntent:
+    targetName: target: firewallIntent: loopbackAddresses:
     let
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
@@ -238,17 +283,39 @@ let
                     || (route.intent or { }).kind or "" != "service-dns-reachability")
                   familyRoutes;
 
+              # ── Endpoint-path validation: reject DNS routes whose
+              # destination is a core ownership loopback address (SMS-040
+              # predicate 6 / seeded negative "core ownership loopback").
+              #
+              # Remaining routes that survive this filter are the true
+              # resolver-endpoint routes.
+              validDnsReachabilityRoutes =
+                let
+                  loopbackRejects = builtins.filter
+                    (route: dstIsLoopback (route.dst or "") loopbackAddresses)
+                    dnsReachabilityRoutes;
+                  _loopbackDiag = if loopbackRejects != [ ] then
+                    builtins.trace
+                      "FS-540-HDS-010-SDS-010-SMS-040: rejecting ${builtins.toString (builtins.length loopbackRejects)} DNS service route(s) on lane '${laneIdentity}' — destination matches a core ownership loopback; only resolver endpoint addresses are valid"
+                      null
+                  else
+                    null;
+                in
+                builtins.filter
+                  (route: !dstIsLoopback (route.dst or "") loopbackAddresses)
+                  dnsReachabilityRoutes;
+
               # Apply SMS-040 keying + collision resolution to DNS routes
               keyedDnsRoutes =
                 if isRequesterLane then
-                  resolveRouteCollisions dnsReachabilityRoutes laneAccess family laneIdentity policyTableId
+                  resolveRouteCollisions validDnsReachabilityRoutes laneAccess family laneIdentity policyTableId
                 else
                   # Non-requester lanes: remove DNS resolver routes — they
                   # must not inherit resolver reachability.  Emit diagnostic.
-                  if dnsReachabilityRoutes != [ ] then
+                  if validDnsReachabilityRoutes != [ ] then
                     let
                       _warn = builtins.trace
-                        "FS-540-HDS-010-SDS-010-SMS-040: lane '${laneIdentity}' is not an authorized requester lane; removing ${builtins.toString (builtins.length dnsReachabilityRoutes)} DNS service route(s)"
+                        "FS-540-HDS-010-SDS-010-SMS-040: lane '${laneIdentity}' is not an authorized requester lane; removing ${builtins.toString (builtins.length validDnsReachabilityRoutes)} DNS service route(s)"
                         null;
                     in
                     [ ]
@@ -365,6 +432,11 @@ in
 { normalizedRuntimeTargets, firewallIntent }:
 
 let
+  # ── Collect core-ownership loopback addresses once across all targets
+  # so the per-target processing can reject any DNS service route whose
+  # destination matches a loopback (SMS-040 predicate 6).
+  allLoopbackAddresses = collectLoopbackAddresses normalizedRuntimeTargets;
+
   targetsWithKeying =
     builtins.mapAttrs
       (targetName: target:
@@ -373,6 +445,7 @@ let
             targetName
             target
             (firewallIntent.forwardingByTarget or { })
+            allLoopbackAddresses
         else
           target)
       normalizedRuntimeTargets;
