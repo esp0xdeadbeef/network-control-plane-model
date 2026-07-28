@@ -185,8 +185,15 @@ let
           failForwarding
             "runtime-targets.requester-lane-recursive-reachability"
             "FS-540-HDS-010-SDS-010-SMS-040: ambiguous route key '${_key}' — equal-prefix atoms with different lane or next-hop identity are a conflict";
+
+      result = builtins.concatLists (builtins.attrValues (builtins.mapAttrs processKey byKey));
     in
-    builtins.concatLists (builtins.attrValues (builtins.mapAttrs processKey byKey));
+    # Force evaluation of the cross-key collision check so that equal-prefix
+    # atoms with different next-hop identities trigger failForwarding rather
+    # than silently passing through (SMS-040 predicate 4).  The _crossKeyCheck
+    # attrset is lazy; builtins.deepSeq forces every element, including any
+    # failForwarding calls buried inside.
+    builtins.deepSeq _crossKeyCheck result;
 
   # ---------------------------------------------------------------------------
   # Endpoint-path validation helpers
@@ -389,6 +396,59 @@ let
 
       updatedInterfaces =
         builtins.mapAttrs applyLaneKeyingToInterface interfaces;
+
+      # ── Seeded negative: missing requester-lane routes (SMS-040 SN1) ──
+      # If any DNS forwarding rule names a requester lane, that requester's
+      # interfaces must carry at least one DNS service route.  Missing
+      # requester-lane routes while provider (non-requester) lanes retain them
+      # is a construction failure per SMS-040 seeded negative ordinal 1.
+      _validateRequesterLaneRoutes =
+        let
+          # Count DNS service routes on requester vs non-requester lanes
+          # across both IPv4 and IPv6 families, scanning the updated interfaces.
+          countDnsRoutesOn =
+            ifaceName: iface: pred:
+            let
+              r = attrsOrEmpty (iface.routes or null);
+              ipv4Dns = builtins.filter
+                (route: (route.intent or { }).kind or "" == "service-dns-reachability")
+                (listOrEmpty (r.ipv4 or null));
+              ipv6Dns = builtins.filter
+                (route: (route.intent or { }).kind or "" == "service-dns-reachability")
+                (listOrEmpty (r.ipv6 or null));
+            in
+            builtins.length ipv4Dns + builtins.length ipv6Dns;
+
+          requesterTotal = builtins.foldl'
+            (sum: ifaceName:
+              let
+                iface = updatedInterfaces.${ifaceName};
+                isReq = builtins.hasAttr
+                  (attrsOrEmpty (attrsOrEmpty (iface.backingRef or null)).lane or null).access or ""
+                  requesterLaneScopes;
+              in
+              if isReq then sum + countDnsRoutesOn ifaceName iface (x: true) else sum)
+            0
+            (builtins.attrNames updatedInterfaces);
+
+          nonRequesterTotal = builtins.foldl'
+            (sum: ifaceName:
+              let
+                iface = updatedInterfaces.${ifaceName};
+                isReq = builtins.hasAttr
+                  (attrsOrEmpty (attrsOrEmpty (iface.backingRef or null)).lane or null).access or ""
+                  requesterLaneScopes;
+              in
+              if !isReq then sum + countDnsRoutesOn ifaceName iface (x: true) else sum)
+            0
+            (builtins.attrNames updatedInterfaces);
+        in
+        if requesterLaneScopes != { } && requesterTotal == 0 && nonRequesterTotal > 0 then
+          failForwarding
+            "runtime-targets.requester-lane-recursive-reachability"
+            "FS-540-HDS-010-SDS-010-SMS-040: requester lane(s) have 0 DNS service routes but non-requester (provider) lanes carry ${builtins.toString nonRequesterTotal} DNS route(s); remove requester-lane routes while retaining provider routes is a failure (SMS-040 seeded negative 1)"
+        else
+          true;
     in
     target // {
       effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; };
