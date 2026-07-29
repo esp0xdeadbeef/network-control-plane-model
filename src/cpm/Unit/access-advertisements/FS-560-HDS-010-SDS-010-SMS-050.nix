@@ -43,5 +43,22 @@
 #   protected-reservation-materializer.py (CLAB) — runtime A/AAAA/PTR materialization
 #   dns-services.nix                            — protectedReservationLocalZoneSettings
 
-{ }
+{ helpers
+, ipam
+, advertisementHelpers
+, binderSourceAudit
+,
+}:
+
+let
+  reservationModule = import ./reservations.nix {
+    inherit helpers ipam advertisementHelpers binderSourceAudit;
+  };
+in
+{
+  inherit (reservationModule)
+    normalizeNamePublication
+    resolveReservationSource
+    ;
+}
 
