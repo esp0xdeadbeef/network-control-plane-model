@@ -177,6 +177,11 @@ let
 
   relationPolicyRuntimeTargets = addRelationPolicyRouting normalizedRuntimeTargets;
 
+  bindAccessRaPathMtu = import ../../ControlModule/runtime-targets/access-ra-path-mtu.nix {
+    inherit lib;
+  };
+  pathMtuBoundRuntimeTargets = bindAccessRaPathMtu relationPolicyRuntimeTargets;
+
   finalControlPlane = import ./final-control-plane.nix {
     inherit
       lib
@@ -203,7 +208,7 @@ let
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       emulationSubnets
       ;
-    normalizedRuntimeTargets = relationPolicyRuntimeTargets;
+    normalizedRuntimeTargets = pathMtuBoundRuntimeTargets;
   };
 
 in
