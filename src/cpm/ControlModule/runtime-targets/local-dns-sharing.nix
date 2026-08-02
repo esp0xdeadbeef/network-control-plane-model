@@ -410,7 +410,7 @@ let
         requesterPatch
       ) authorityTargetName providerPatch;
     in
-    if allWarnings == [ ] then projected else attachWarnings targets allWarnings;
+    if allWarnings != [ ] then attachWarnings projected allWarnings else projected;
 in
 if localSharingRelations == [ ] then
   attachWarnings runtimeTargets effectiveBaseWarnings
