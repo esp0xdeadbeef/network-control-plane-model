@@ -15,7 +15,13 @@ runtimeTargets:
 let
   inherit (common) attrsOrEmpty failForwarding uniqueStrings;
   listOrEmpty = value: if builtins.isList value then value else [ ];
-  localSharing = siteDns.localSharing or null;
+  localSharingRelations =
+    if builtins.isList (siteDns.localSharingRelations or null) then
+      siteDns.localSharingRelations
+    else if builtins.isAttrs (siteDns.localSharing or null) then
+      [ siteDns.localSharing ]
+    else
+      [ ];
   baseWarnings = listOrEmpty (siteDns.warnings or null);
 
   stripPrefixLength =
@@ -162,6 +168,57 @@ let
       };
     };
 
+  modeledLocalSharingRelationIds = uniqueStrings (
+    builtins.filter
+      (value: builtins.isString value && value != "")
+      (map (entry: ((attrsOrEmpty (entry.relation or null)).id or null)) localSharingRelations)
+  );
+
+  unmodeledLocalAuthorityRelations = builtins.filter
+    (relation:
+      let
+        from = attrsOrEmpty (relation.from or null);
+        to = attrsOrEmpty (relation.to or null);
+        relationId = relation.id or null;
+        targetName =
+          if
+            (relation.action or "allow") == "allow"
+            && (relation.trafficType or null) == "dns"
+            && (from.kind or null) == "service"
+            && (to.kind or null) == "service"
+            && builtins.isString (to.name or null)
+            && to.name != ""
+            && builtins.isString relationId
+            && relationId != ""
+            && !(builtins.elem relationId modeledLocalSharingRelationIds)
+          then
+            targetNameForService to.name
+          else
+            null;
+        targetDns = if targetName == null then { } else dnsFor runtimeTargets targetName;
+      in
+      targetName != null
+      && builtins.isList (targetDns.localRecords or null)
+      && targetDns.localRecords != [ ])
+    allowedRelations;
+
+  unmodeledLocalAuthorityWarnings = map
+    (relation: {
+      traceId = "FS-560-HDS-010-SDS-020-SMS-010";
+      code = "DNS_LOCAL_SHARING_INTENT_MISSING";
+      sourceLayer = "intent";
+      requester = "service:${toString ((attrsOrEmpty relation.from).name or "<missing>")}";
+      resolverService = toString ((attrsOrEmpty relation.to).name or "<missing>");
+      relationId = relation.id or null;
+      enterprise = enterpriseName;
+      site = siteName;
+      disposition = "fail-closed";
+      message = "A DNS service relation targets modeled local records but has no directional local namespace-sharing intent";
+    })
+    unmodeledLocalAuthorityRelations;
+
+  effectiveBaseWarnings = baseWarnings ++ unmodeledLocalAuthorityWarnings;
+
   warning =
     {
       code,
@@ -203,7 +260,7 @@ let
     ) targets;
 
   applyLocalSharing =
-    targets:
+    targets: localSharing:
     let
       authority = attrsOrEmpty (localSharing.authority or null);
       requester = attrsOrEmpty (localSharing.requester or null);
@@ -264,7 +321,7 @@ let
             context = "local-namespace-provider";
           }
         ) missingFamilies;
-      allWarnings = baseWarnings ++ localWarnings;
+      allWarnings = effectiveBaseWarnings ++ localWarnings;
       requesterDns = dnsFor targets requesterTargetName;
       requesterUpstreams = listOrEmpty (requesterDns.upstreamResolvers or null);
       requesterPolicies = listOrEmpty (requesterDns.requesterPolicies or null);
@@ -329,6 +386,8 @@ let
       };
       providerDns = dnsFor targets authorityTargetName;
       providerAllowFrom = listOrEmpty (providerDns.allowFrom or null);
+      requesterDnsForRecords = dnsFor targets requesterTargetName;
+      requesterLocalRecords = listOrEmpty (requesterDnsForRecords.localRecords or null);
       providerPatch = {
         allowFrom = builtins.filter (prefix: !builtins.elem prefix requesterPrefixes) providerAllowFrom;
         requesterPolicies = listOrEmpty (providerDns.requesterPolicies or null) ++ [
@@ -339,6 +398,12 @@ let
             inherit namespaces relationId;
           }
         ];
+        # FS-560 legacy compatibility: propagate the requester's local records
+        # to the authority so clients querying the authority directly (without
+        # going through the forward zone) still get answers for authority-owned
+        # names. Remove when the parity contract stops requiring
+        # hasVlan2RuntimeLocalDns to include s-nebula-container.
+        localRecords = requesterLocalRecords;
         reproducibilityWarnings = allWarnings;
       };
       projected = mergeDns (mergeDns targets requesterTargetName
@@ -347,7 +412,7 @@ let
     in
     if allWarnings == [ ] then projected else attachWarnings targets allWarnings;
 in
-if !builtins.isAttrs localSharing then
-  attachWarnings runtimeTargets baseWarnings
+if localSharingRelations == [ ] then
+  attachWarnings runtimeTargets effectiveBaseWarnings
 else
-  applyLocalSharing runtimeTargets
+  builtins.foldl' applyLocalSharing runtimeTargets localSharingRelations
