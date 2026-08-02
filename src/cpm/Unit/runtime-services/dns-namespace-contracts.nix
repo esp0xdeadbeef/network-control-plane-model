@@ -293,6 +293,15 @@ let
                   publicationDenialDiagnostic = requireString
                     "${entryPath}.publicationDenialDiagnostic"
                     (attrs.publicationDenialDiagnostic or null);
+                  # FS-560: reverse namespace for PTR local-data-ptr records.
+                  # Emitted by the CPM when a protected reservation source has
+                  # no explicit namePublication and a subnet-derived in-addr.arpa
+                  # zone is available. Null for IPv6 or when absent.
+                  reverseNamespace =
+                    if builtins.isString (attrs.reverseNamespace or null) && attrs.reverseNamespace != "" then
+                      attrs.reverseNamespace
+                    else
+                      null;
                 }
               )
             )
