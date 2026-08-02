@@ -245,6 +245,29 @@ let
                 && builtins.isString (source.sourceFile or null)
                 && source.sourceFile != ""
               then
+                let
+                  # Derive the reverse-DNS zone for PTR records from the
+                  # advertisement subnet so the renderer can publish both
+                  # forward (lan.) and reverse (in-addr.arpa / ip6.arpa)
+                  # local zones.
+                  subnet = advertisement.subnet or "";
+                  # Derive the IPv4 reverse-DNS zone from the advertisement
+                  # subnet.  For 192.168.1.0/24 this yields
+                  # 1.168.192.in-addr.arpa. so Unbound local-data-ptr records
+                  # are answered authoritatively.
+                  reverseZone =
+                    if family == "ipv4" && builtins.isString subnet && subnet != "" then
+                      let
+                        parts = builtins.split "\\." subnet;
+                        octets = builtins.filter builtins.isString parts;
+                      in
+                      if builtins.length octets >= 3 then
+                        "${builtins.elemAt octets 2}.${builtins.elemAt octets 1}.${builtins.elemAt octets 0}.in-addr.arpa."
+                      else
+                        null
+                    else
+                      null;
+                in
                 {
                   source = {
                     schema = source.schema;
@@ -263,6 +286,7 @@ let
                   fallbackBehavior = "local-only";
                   publicationDenialDiagnostic = "protected-reservation-publication-default-fallback";
                   materializerFamily = family;
+                  reverseNamespace = reverseZone;
                 }
               else
                 null)
