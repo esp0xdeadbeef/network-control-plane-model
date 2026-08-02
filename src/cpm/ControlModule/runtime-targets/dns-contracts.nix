@@ -209,6 +209,26 @@ let
   protectedReservationPublicationsForTarget = target:
     let
       advertisements = attrsOrEmpty (target.advertisements or null);
+      targetDns = attrsOrEmpty ((attrsOrEmpty (target.services or null)).dns or null);
+      targetRecursionMode = targetDns.recursionMode or null;
+      targetLocalForwardNamespaces =
+        map (zone: zone.name or "")
+          (builtins.filter
+            (zone: builtins.isAttrs zone && builtins.isString (zone.name or null))
+            (targetDns.localForwardZones or [ ]));
+      targetLocalZones =
+        map (zone: zone.name or "")
+          (builtins.filter
+            (zone: builtins.isAttrs zone && builtins.isString (zone.name or null))
+            (targetDns.localZones or [ ]));
+      # FS-560: skip default protected-reservation publication when the DNS
+      # service is local-only or already has a forwarding/transparent handler
+      # for the lan. namespace. Only the authority (recursive) server should
+      # publish runtime reservation hostnames.
+      skipDefaultPublication =
+        targetRecursionMode == "local-only"
+        || builtins.elem "lan." targetLocalForwardNamespaces
+        || builtins.elem "lan." targetLocalZones;
       publicationsFor = family: entries:
         builtins.filter (entry: entry != null) (
           builtins.map
@@ -235,12 +255,14 @@ let
                 }
               # FS-560-HDS-010-SDS-010-SMS-050: when a protected reservation source
               # exists without an explicit namePublication contract, emit a default
-              # publication with the standard DHCP domain namespace. This keeps
-              # runtime reservation hostnames out of inventory, flake eval output,
-              # and the Nix store while publishing A, AAAA, and PTR through the
-              # renderer-owned protected materializer.
+              # publication with the standard DHCP domain namespace — but only for
+              # targets that are the authority for that namespace (not local-only
+              # forwarders). This keeps runtime reservation hostnames out of
+              # inventory, flake eval output, and the Nix store while publishing A,
+              # AAAA, and PTR through the renderer-owned protected materializer.
               else if
-                (source.schema or null) == "gamp-protected-reservation-set-v1"
+                !skipDefaultPublication
+                && (source.schema or null) == "gamp-protected-reservation-set-v1"
                 && (source.sourceClass or null) == "protected"
                 && builtins.isString (source.sourceFile or null)
                 && source.sourceFile != ""
