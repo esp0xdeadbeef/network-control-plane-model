@@ -72,7 +72,13 @@ in
     if providerAccessRecords != [ ] then
       [ ]
     else if builtins.any hasServiceExternalDnsEgress hostedDnsServices then
-      defaultPublicForwarders
+      # FS-540-HDS-010-SDS-010-SMS-035: fail-closed — never inject public
+      # forwarder defaults. When a DNS service has modelled WAN egress but no
+      # provider-access upstream record, the intent is incomplete and the CPM
+      # must not silently fall back to hard-coded public resolvers. The
+      # renderer will emit a reproducibility warning for the empty forwarder
+      # list so the operator can fix inventory before traffic leaves the site.
+      [ ]
     else
       [ ];
 
