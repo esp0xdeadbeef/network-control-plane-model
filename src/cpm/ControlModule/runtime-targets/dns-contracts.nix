@@ -217,9 +217,7 @@ let
                 source = attrsOrEmpty (advertisement.reservationSource or null);
                 publication = attrsOrEmpty (source.namePublication or null);
               in
-              if publication == { } then
-                null
-              else
+              if publication != { } then
                 {
                   source = {
                     schema = source.schema;
@@ -234,7 +232,40 @@ let
                   fallbackBehavior = publication.fallbackBehavior;
                   publicationDenialDiagnostic = publication.publicationDenialDiagnostic;
                   materializerFamily = family;
-                })
+                }
+              # FS-560-HDS-010-SDS-010-SMS-050: when a protected reservation source
+              # exists without an explicit namePublication contract, emit a default
+              # publication with the standard DHCP domain namespace. This keeps
+              # runtime reservation hostnames out of inventory, flake eval output,
+              # and the Nix store while publishing A, AAAA, and PTR through the
+              # renderer-owned protected materializer.
+              else if
+                (source.schema or null) == "gamp-protected-reservation-set-v1"
+                && (source.sourceClass or null) == "protected"
+                && builtins.isString (source.sourceFile or null)
+                && source.sourceFile != ""
+              then
+                {
+                  source = {
+                    schema = source.schema;
+                    sourceClass = source.sourceClass;
+                    sourceFile = source.sourceFile;
+                  };
+                  scopeId = advertisement.id;
+                  namespace = "lan.";
+                  ownerScope = advertisement.id;
+                  requesterScopes = [ advertisement.id ];
+                  recordClasses = [
+                    "A"
+                    "AAAA"
+                    "PTR"
+                  ];
+                  fallbackBehavior = "local-only";
+                  publicationDenialDiagnostic = "protected-reservation-publication-default-fallback";
+                  materializerFamily = family;
+                }
+              else
+                null)
             entries
         );
       raw =
