@@ -15,6 +15,28 @@ let
   requireInt = path: value:
     if builtins.isInt value then value else failInventory path "must be an integer";
 
+  # FS-340-HDS-010-SDS-010-SMS-010: IPv4 decimal offset parsing.
+  # Accepts integers (Nix-native) and decimal strings; rejects hex-prefixed
+  # strings and other non-conforming syntax per the SMS seeded negative.
+  requireDecimalOffset = path: value:
+    if builtins.isInt value then
+      value
+    else if builtins.isString value then
+      let
+        lower = builtins.match "([[:space:]]*)(.*)" value;
+        trimmed = if lower == null then value else builtins.elemAt lower 1;
+      in
+      # Protect against hex-prefixed IPv4 offsets injected as strings.
+      if builtins.substring 0 2 trimmed == "0x" || builtins.substring 0 2 trimmed == "0X" then
+        failInventory path "diagnostic.nonDecimalOffset: IPv4 offset \"${trimmed}\" must be a decimal host-position value, not hexadecimal"
+      else if builtins.match "[0-9]+" trimmed != null then
+        # Safe: string is purely decimal digits; fromJSON parses it as integer.
+        builtins.fromJSON trimmed
+      else
+        failInventory path "diagnostic.nonDecimalOffset: IPv4 offset \"${trimmed}\" must be a decimal host-position value"
+    else
+      failInventory path "diagnostic.nonDecimalOffset: IPv4 offset must be a decimal integer";
+
   hexDigitValues = {
     "0" = 0;
     "1" = 1;
@@ -353,7 +375,7 @@ let
     if familyName == "ipv6" then
       parseHexOffset "${reservationPath}.${familyName}.hostOffset" (familyAttrs.hostOffset or null)
     else
-      requireInt "${reservationPath}.${familyName}.hostOffset" (familyAttrs.hostOffset or null);
+      requireDecimalOffset "${reservationPath}.${familyName}.hostOffset" (familyAttrs.hostOffset or null);
 
   expectedPurposeFor = familyName:
     if familyName == "ipv6" then "dhcpv6-reservation" else "static-dhcp-reservation";
@@ -472,7 +494,18 @@ let
                 {
                   inherit schema sourceClass sourceFile;
                 }
-                // (if namePublication != null then { inherit namePublication; } else { })
+                // (if namePublication != null then { inherit namePublication; } else {
+                  namePublication = {
+                    namespace = "lan.";
+                    ownerScope = tenantName;
+                    requesterScopes = [ tenantName ];
+                    recordClasses = [ "A" "AAAA" "PTR" ];
+                    fallbackBehavior = "local-only";
+                    publicationDenialDiagnostic = "protected-reservation-publication-default-fallback";
+                    source = "protected-reservation-set";
+                    sourceFamily = familyName;
+                  };
+                })
                 // binderSourceAudit.make {
                   path = sourcePath;
                   field = "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservationSource";
