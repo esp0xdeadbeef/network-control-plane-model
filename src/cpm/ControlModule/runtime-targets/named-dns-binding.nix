@@ -416,7 +416,7 @@ let
             requesterTargetName = requesterTargetNameForService (advertised.name or null);
             requesterSources = tenantAddresses requesterTargetName;
           in
-          builtins.filter (value: value != null) (map hostPrefix requesterSources)
+          builtins.filter (value: value != null) (map stripPrefixLength requesterSources)
         else
           [ ]
       ) bindings
