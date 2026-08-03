@@ -425,7 +425,7 @@ let
   requesterAllowFromFor =
     coreServiceName:
     uniqueStrings (
-      directTenantRequesterPrefixesFor coreServiceName ++ bindingRequesterHostPrefixesFor coreServiceName
+      bindingRequesterHostPrefixesFor coreServiceName
     );
 
   requesterRelationsFor =
