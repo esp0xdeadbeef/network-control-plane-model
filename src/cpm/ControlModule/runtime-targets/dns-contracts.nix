@@ -238,6 +238,21 @@ let
                 publication = attrsOrEmpty (source.namePublication or null);
               in
               if publication != { } then
+                let
+                  pubSubnet = advertisement.subnet or "";
+                  pubReverseZone =
+                    if family == "ipv4" && builtins.isString pubSubnet && pubSubnet != "" then
+                      let
+                        parts = builtins.split "\\." pubSubnet;
+                        octets = builtins.filter builtins.isString parts;
+                      in
+                      if builtins.length octets >= 3 then
+                        "${builtins.elemAt octets 2}.${builtins.elemAt octets 1}.${builtins.elemAt octets 0}.in-addr.arpa."
+                      else
+                        null
+                    else
+                      null;
+                in
                 {
                   source = {
                     schema = source.schema;
@@ -252,6 +267,7 @@ let
                   fallbackBehavior = publication.fallbackBehavior;
                   publicationDenialDiagnostic = publication.publicationDenialDiagnostic;
                   materializerFamily = family;
+                  reverseNamespace = if builtins.elem "PTR" publication.recordClasses then pubReverseZone else null;
                 }
               # FS-560-HDS-010-SDS-010-SMS-050: when a protected reservation source
               # exists without an explicit namePublication contract, emit a default
