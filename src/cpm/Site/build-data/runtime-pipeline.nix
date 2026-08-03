@@ -182,6 +182,11 @@ let
   };
   pathMtuBoundRuntimeTargets = bindAccessRaPathMtu relationPolicyRuntimeTargets;
 
+  scopeCoreDnsLanes = import ../../ControlModule/runtime-targets/core-dns-lane-scope.nix {
+    inherit lib common;
+  };
+  laneScopedRuntimeTargets = scopeCoreDnsLanes pathMtuBoundRuntimeTargets;
+
   finalControlPlane = import ./final-control-plane.nix {
     inherit
       lib
@@ -208,7 +213,7 @@ let
       normalizeRuntimeTargetRoutesAfterPolicyComplements
       emulationSubnets
       ;
-    normalizedRuntimeTargets = pathMtuBoundRuntimeTargets;
+    normalizedRuntimeTargets = laneScopedRuntimeTargets;
   };
 
 in
