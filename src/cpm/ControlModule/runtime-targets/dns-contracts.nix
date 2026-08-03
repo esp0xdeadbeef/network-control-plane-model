@@ -237,7 +237,7 @@ let
                 source = attrsOrEmpty (advertisement.reservationSource or null);
                 publication = attrsOrEmpty (source.namePublication or null);
               in
-              if publication != { } then
+              if publication != { } && !skipDefaultPublication then
                 let
                   pubSubnet = advertisement.subnet or "";
                   pubReverseZone =
