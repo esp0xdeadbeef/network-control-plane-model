@@ -362,14 +362,12 @@ let
                 if isRequesterLane then
                   resolveRouteCollisions validDnsReachabilityRoutes laneAccess family laneIdentity policyTableId
                 else
-                  # Non-requester lanes: remove DNS resolver routes — they
-                  # must not inherit resolver reachability.  Emit diagnostic.
-                  if validDnsReachabilityRoutes != [ ] then
-                    failForwarding
-                      "runtime-targets.requester-lane-recursive-reachability"
-                      "FS-540-HDS-010-SDS-010-SMS-040: lane '${laneIdentity}' is not an authorized requester lane; ${builtins.toString (builtins.length validDnsReachabilityRoutes)} DNS service route(s) must not be present on non-requester lanes (SMS-040 seeded negative: copy resolver reachability to unauthorized lane)"
-                  else
-                    [ ];
+                  # Non-requester lanes: silently strip DNS resolver routes.
+                  # The aggregate _validateRequesterLaneRoutes check below
+                  # catches the SMS-040 seeded negatives (SN1: missing
+                  # requester-lane routes while provider lanes retain them;
+                  # unauthorized-lane copy) across all interfaces.
+                  [ ];
 
               # Add SMS-040 provenance to each kept route
               taggedKeyedRoutes =
@@ -444,15 +442,21 @@ let
         else
           true;
 
-      # ── Seeded negative: missing requester-lane routes (SMS-040 SN1) ──
-      # If any DNS forwarding rule names a requester lane, that requester's
-      # interfaces must carry at least one DNS service route.  Missing
-      # requester-lane routes while provider (non-requester) lanes retain them
-      # is a construction failure per SMS-040 seeded negative ordinal 1.
+      # ── Seeded negative: missing requester-lane routes + unauthorized-lane copy ──
+      # Scans the ORIGINAL (pre-processing) interfaces so that non-requester
+      # DNS routes are counted before the per-interface stripping step removes
+      # them.  This makes the aggregate check reachable: the per-interface
+      # logic at lines 362-372 silently strips DNS routes from non-requester
+      # lanes, but the counts here are computed against the original interfaces
+      # and will still detect the seeded negatives.
+      #
+      # SMS-040 SN1: Remove requester-lane routes while retaining provider
+      #   routes → fail (requesterTotal == 0, nonRequesterTotal > 0).
+      # SMS-040 unauthorized-lane copy: DNS routes present on non-requester
+      #   lanes → fail (nonRequesterTotal > 0 regardless of requesterTotal).
       _validateRequesterLaneRoutes =
         let
-          # Count DNS service routes on requester vs non-requester lanes
-          # across both IPv4 and IPv6 families, scanning the updated interfaces.
+          # Count DNS service routes on an interface across both families.
           countDnsRoutesOn =
             ifaceName: iface: pred:
             let
@@ -469,31 +473,31 @@ let
           requesterTotal = builtins.foldl'
             (sum: ifaceName:
               let
-                iface = updatedInterfaces.${ifaceName};
+                iface = interfaces.${ifaceName};
                 isReq = builtins.hasAttr
                   (attrsOrEmpty (attrsOrEmpty (iface.backingRef or null)).lane or null).access or ""
                   requesterLaneScopes;
               in
               if isReq then sum + countDnsRoutesOn ifaceName iface (x: true) else sum)
             0
-            (builtins.attrNames updatedInterfaces);
+            (builtins.attrNames interfaces);
 
           nonRequesterTotal = builtins.foldl'
             (sum: ifaceName:
               let
-                iface = updatedInterfaces.${ifaceName};
+                iface = interfaces.${ifaceName};
                 isReq = builtins.hasAttr
                   (attrsOrEmpty (attrsOrEmpty (iface.backingRef or null)).lane or null).access or ""
                   requesterLaneScopes;
               in
               if !isReq then sum + countDnsRoutesOn ifaceName iface (x: true) else sum)
             0
-            (builtins.attrNames updatedInterfaces);
+            (builtins.attrNames interfaces);
         in
-        if requesterLaneScopes != { } && requesterTotal == 0 && nonRequesterTotal > 0 then
+        if requesterLaneScopes != { } && nonRequesterTotal > 0 then
           failForwarding
             "runtime-targets.requester-lane-recursive-reachability"
-            "FS-540-HDS-010-SDS-010-SMS-040: requester lane(s) have 0 DNS service routes but non-requester (provider) lanes carry ${builtins.toString nonRequesterTotal} DNS route(s); remove requester-lane routes while retaining provider routes is a failure (SMS-040 seeded negative 1)"
+            "FS-540-HDS-010-SDS-010-SMS-040: ${builtins.toString nonRequesterTotal} DNS service route(s) on non-requester (provider) lane(s) with ${builtins.toString requesterTotal} route(s) on requester lane(s); DNS routes on unauthorized lanes or missing requester-lane routes while provider lanes retain them is a failure (SMS-040 seeded negative 1 + unauthorized-lane copy)"
         else
           true;
     in
@@ -614,8 +618,9 @@ let
           effective = common.attrsOrEmpty (target.effectiveRuntimeRealization or null);
           interfaces = common.attrsOrEmpty (effective.interfaces or null);
           dnsOnInterface =
-            _ifName: iface:
+            ifName:
             let
+              iface = interfaces.${ifName} or { };
               routes = common.attrsOrEmpty (iface.routes or null);
               ipv4Dns = builtins.any
                 (route: (route.intent or { }).kind or "" == "service-dns-reachability")
