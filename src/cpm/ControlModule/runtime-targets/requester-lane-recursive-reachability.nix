@@ -257,6 +257,18 @@ let
       dns = attrsOrEmpty (services.dns or null);
       hasDnsResolver = (dns.roles or { }) != { } || (dns.forwarders or [ ]) != [ ];
 
+      # ── Seeded negative: missing destination access ingress (SMS-040 SN3) ──
+      # Access targets with a DNS resolver must have interfaces carrying the
+      # DNS service reachability.  An empty interface set means the destination
+      # access ingress is missing.
+      _validateAccessInterfaces =
+        if isAccess && hasDnsResolver && interfaces == { } then
+          failForwarding
+            "runtime-targets.requester-lane-recursive-reachability"
+            "FS-540-HDS-010-SDS-010-SMS-040: access target '${targetName}' has a DNS resolver but zero interfaces; missing destination access ingress — remove the final destination access ingress; fail (SMS-040 seeded negative 3)"
+        else
+          true;
+
       # Collect all requester lanes from forwarding rules that are DNS-related
       dnsRules =
         builtins.filter
@@ -353,12 +365,9 @@ let
                   # Non-requester lanes: remove DNS resolver routes — they
                   # must not inherit resolver reachability.  Emit diagnostic.
                   if validDnsReachabilityRoutes != [ ] then
-                    let
-                      _warn = builtins.trace
-                        "FS-540-HDS-010-SDS-010-SMS-040: lane '${laneIdentity}' is not an authorized requester lane; removing ${builtins.toString (builtins.length validDnsReachabilityRoutes)} DNS service route(s)"
-                        null;
-                    in
-                    [ ]
+                    failForwarding
+                      "runtime-targets.requester-lane-recursive-reachability"
+                      "FS-540-HDS-010-SDS-010-SMS-040: lane '${laneIdentity}' is not an authorized requester lane; ${builtins.toString (builtins.length validDnsReachabilityRoutes)} DNS service route(s) must not be present on non-requester lanes (SMS-040 seeded negative: copy resolver reachability to unauthorized lane)"
                   else
                     [ ];
 
@@ -396,6 +405,44 @@ let
 
       updatedInterfaces =
         builtins.mapAttrs applyLaneKeyingToInterface interfaces;
+
+      # ── Seeded negative: dual-stack family completeness (SMS-040 SN5) ──
+      # When a requester lane carries DNS rules, both IPv4 and IPv6 must
+      # produce DNS reachability routes.  Removing one address family from a
+      # dual-stack relationship is a construction failure.
+      _validateFamilyCompleteness =
+        let
+          countDnsOnInterface =
+            ifaceName: iface: family: field:
+            let
+              r = attrsOrEmpty (iface.routes or null);
+            in
+            builtins.length (
+              builtins.filter
+                (route: (route.intent or { }).kind or "" == "service-dns-reachability")
+                (listOrEmpty (r.${field} or null))
+            );
+          familyIncomplete =
+            builtins.filter
+              (ifaceName:
+                let
+                  iface = updatedInterfaces.${ifaceName};
+                  backingRef = attrsOrEmpty (iface.backingRef or null);
+                  lane = attrsOrEmpty (backingRef.lane or null);
+                  laneAccess = lane.access or "";
+                  isReq = builtins.hasAttr laneAccess requesterLaneScopes;
+                  ipv4Count = countDnsOnInterface ifaceName iface 4 "ipv4";
+                  ipv6Count = countDnsOnInterface ifaceName iface 6 "ipv6";
+                in
+                isReq && (ipv4Count > 0 != ipv6Count > 0))
+              (builtins.attrNames updatedInterfaces);
+        in
+        if familyIncomplete != [ ] then
+          failForwarding
+            "runtime-targets.requester-lane-recursive-reachability"
+            "FS-540-HDS-010-SDS-010-SMS-040: requester lane(s) ${builtins.concatStringsSep ", " familyIncomplete} have mismatched address-family DNS routes; one family is missing DNS reachability — remove one address family from a dual-stack relationship; family completeness fails explicitly (SMS-040 seeded negative 5)"
+        else
+          true;
 
       # ── Seeded negative: missing requester-lane routes (SMS-040 SN1) ──
       # If any DNS forwarding rule names a requester lane, that requester's
@@ -450,9 +497,15 @@ let
         else
           true;
     in
-    target // {
-      effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; };
-    };
+    builtins.deepSeq _validateAccessInterfaces (
+      builtins.deepSeq _validateFamilyCompleteness (
+        builtins.deepSeq _validateRequesterLaneRoutes (
+          target // {
+            effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; };
+          }
+        )
+      )
+    );
 
   # ---------------------------------------------------------------------------
   # Cross-target lane inheritance prevention
@@ -547,5 +600,45 @@ let
   _laneIsolation = validateCrossTargetLaneIsolation
     targetsWithKeying
     (firewallIntent.forwardingByTarget or { });
+
+  # ── Seeded negative: DNS routes without a matching forwarding rule (SMS-040 SN4) ──
+  # A target with DNS service routes but no entry in forwardingByTarget is
+  # returned unchanged without validation.  This check ensures every DNS
+  # service route has a matching forwarding rule.
+  _validateDnsRoutesHaveForwardingRules =
+    let
+      forwardingByTarget = firewallIntent.forwardingByTarget or { };
+      hasDnsServiceRoute =
+        targetName: target:
+        let
+          effective = common.attrsOrEmpty (target.effectiveRuntimeRealization or null);
+          interfaces = common.attrsOrEmpty (effective.interfaces or null);
+          dnsOnInterface =
+            _ifName: iface:
+            let
+              routes = common.attrsOrEmpty (iface.routes or null);
+              ipv4Dns = builtins.any
+                (route: (route.intent or { }).kind or "" == "service-dns-reachability")
+                (common.listOrEmpty (routes.ipv4 or null));
+              ipv6Dns = builtins.any
+                (route: (route.intent or { }).kind or "" == "service-dns-reachability")
+                (common.listOrEmpty (routes.ipv6 or null));
+            in
+            ipv4Dns || ipv6Dns;
+        in
+        builtins.any dnsOnInterface (builtins.attrNames interfaces);
+
+      violators = builtins.filter
+        (targetName:
+          hasDnsServiceRoute targetName targetsWithKeying.${targetName}
+          && !(builtins.hasAttr targetName forwardingByTarget))
+        (builtins.attrNames targetsWithKeying);
+    in
+    if violators != [ ] then
+      failForwarding
+        "runtime-targets.requester-lane-recursive-reachability"
+        "FS-540-HDS-010-SDS-010-SMS-040: target(s) ${builtins.concatStringsSep ", " violators} carry DNS service routes but lack a matching DNS forwarding rule; add a direct core route without a DNS relation — recursion remains denied (SMS-040 seeded negative 4)"
+    else
+      true;
 in
-targetsWithKeying
+builtins.deepSeq _validateDnsRoutesHaveForwardingRules targetsWithKeying
