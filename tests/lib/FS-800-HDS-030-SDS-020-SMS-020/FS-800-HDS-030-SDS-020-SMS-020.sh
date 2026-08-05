@@ -52,10 +52,18 @@ expect_failure() {
   fi
 }
 
+expect_failure missing-interface '.services.pppoe.client.interface is required'
+expect_failure missing-runtime-interface '.services.pppoe.client.runtimeInterface is required'
+expect_failure missing-mtu '.services.pppoe.client.mtu: must be a positive integer'
 expect_failure missing-iaid '.services.pppoe.client.ipv6.iaid: must be a positive integer'
+expect_failure missing-pd-request-id '.services.pppoe.client.ipv6.prefixDelegationRequestId: must be a positive integer'
+expect_failure missing-ipv6-default-route '.services.pppoe.client.ipv6.defaultRoute: must be a boolean'
 expect_failure ipv4-enabled '.services.pppoe.client.ipv6.ipv4Mode: must be one of: disabled'
 expect_failure router-solicitation '.services.pppoe.client.ipv6.routerSolicitation: must be false for DHCPv6-PD-only mode'
 expect_failure fallback-enabled '.services.pppoe.client.ipv6.fallbackPolicy: must be one of: none'
+expect_failure resolver-enabled '.services.pppoe.client.ipv6.resolverMode: must be one of: disabled'
 expect_failure invented-field '.services.pppoe.client.ipv6: contains unsupported PPPoE IPv6/PD fields'
+expect_failure changed-iaid '.services.pppoe.client.ipv6.iaid: must be a positive integer'
+expect_failure changed-pd-request-id '.services.pppoe.client.ipv6.prefixDelegationRequestId: must be a positive integer'
 
 echo 'PASS FS-800-HDS-030-SDS-020-SMS-020: explicit PPPoE IPv6/PD contract'
