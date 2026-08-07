@@ -44,6 +44,58 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
       family = "ipv6";
       tuples = [ { protocol = "udp"; publicPort = 4242; } ];
     };
+    ipv6DualTuple = ipv6Authority // {
+      tuples = [
+        { protocol = "tcp"; publicPort = 4242; }
+        { protocol = "udp"; publicPort = 4242; }
+      ];
+    };
+    dualRelation = relation // {
+      publicIngressTupleAuthority = ipv6DualTuple;
+    };
+    dualRecords = build {
+      siteAttrs.communicationContract.relations = [ dualRelation ];
+      inherit services policyEndpointBindings;
+      interfaceRecords = builtins.attrValues core.effectiveRuntimeRealization.interfaces;
+      routedPrefixesByTenant.dmz = [ runtimePrefix ];
+      target = core;
+      targetName = "core";
+    };
+    ipv6TcpOnly = ipv6Authority // {
+      tuples = [ { protocol = "tcp"; publicPort = 4242; } ];
+    };
+    tcpOnlyRelation = relation // {
+      publicIngressTupleAuthority = ipv6TcpOnly;
+    };
+    singleProtocolRecords = build {
+      siteAttrs.communicationContract.relations = [ tcpOnlyRelation ];
+      inherit services policyEndpointBindings;
+      interfaceRecords = builtins.attrValues core.effectiveRuntimeRealization.interfaces;
+      routedPrefixesByTenant.dmz = [ runtimePrefix ];
+      target = core;
+      targetName = "core";
+    };
+    ipv6MixedPorts = ipv6Authority // {
+      tuples = [
+        { protocol = "tcp"; publicPort = 4242; }
+        { protocol = "udp"; publicPort = 5353; }
+      ];
+    };
+    mixedPortsRelation = relation // {
+      publicIngressTupleAuthority = ipv6MixedPorts;
+    };
+    mixedPortsRecords = build {
+      siteAttrs.communicationContract.relations = [ mixedPortsRelation ];
+      inherit services policyEndpointBindings;
+      interfaceRecords = builtins.attrValues core.effectiveRuntimeRealization.interfaces;
+      routedPrefixesByTenant.dmz = [ runtimePrefix ];
+      target = core;
+      targetName = "core";
+    };
+    countRecords = rs: builtins.length rs;
+    forwardingRuleCount = fw: builtins.length fw.rules;
+    activeNode = "access-dmz";
+    unrelatedNode = "unrelated-access";
     relation = {
       id = "allow-wan-to-nebula-ipv6";
       action = "allow";
@@ -281,6 +333,13 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
             && (rule.toInterface or null) == "policy"
             && (rule.connectionState or null) == "established,related")
           egressSelectorForwarding.rules;
+      dualTupleTwoRecords = countRecords dualRecords == 2;
+      noSiblingInferred = countRecords singleProtocolRecords == 1;
+      independentScoping = countRecords mixedPortsRecords == 2;
+      unrelatedNodeZeroRecords = rulesFor unrelatedNode == [ ];
+      nominalActiveNodeHasRules = rulesFor activeNode != [ ];
+      nominalForwardingGtZero = forwardingRuleCount egressCoreForwarding > 0;
+      mutatedForwardingIsZero = forwardingRuleCount ingressOnlyCoreForwarding == 0;
     };
     missingSource = builtins.tryEval (builtins.deepSeq (build {
       siteAttrs.communicationContract.relations = [ relation ];
@@ -339,6 +398,10 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     throw "ambiguous inventory-owned endpoint was accepted"
   else if familyNeutral != [ ] then
     throw "family-neutral no-translation tuple was expanded to IPv6"
+  else if !checks.dualTupleTwoRecords then throw "dual TCP+UDP tuples did not produce exactly 2 independent records"
+  else if !checks.noSiblingInferred then throw "TCP-only tuple wrongly inferred UDP sibling records"
+  else if !checks.independentScoping then throw "mixed-port tuples lost independent scoping"
+  else if !checks.unrelatedNodeZeroRecords then throw "unrelated access node wrongly received tuple records"
   else
     true
 ' >/dev/null
