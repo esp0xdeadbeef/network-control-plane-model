@@ -18,9 +18,8 @@ let
   inherit (endpointContext) serviceNamesForEndpoint serviceRecords uniqueStrings;
   inherit (endpointSelection) endpointIfaces endpointIfacesForPeerAccess;
 
-  # Every tenant prefix owned by this site; used to give the tenant-to-WAN
-  # policy rules an enforceable source scope so the firewall materializes them
-  # (an unscoped "any" forward would otherwise be rejected as broad).
+  # Every tenant prefix owned by this site; used for tenant-set sources and as
+  # the fallback when a relation source names no specific tenant.
   allTenantPrefixes =
     builtins.map
       (key:
@@ -34,6 +33,26 @@ let
           prefix = prefixPart;
         })
       (builtins.attrNames tenantPrefixOwners);
+
+  # Tenant prefixes owned by a single access unit. The relation source tenant
+  # name (e.g. "vlan2") maps to the owning access unit ("access-vlan2"), so a
+  # tenant-scoped relation never admits another tenant's source prefixes.
+  tenantPrefixesForTenant =
+    tenantName:
+    builtins.map
+      (key:
+        let
+          parts = builtins.split "\\|" key;
+          familyPart = builtins.elemAt parts 0;
+          prefixPart = builtins.elemAt parts 2;
+        in
+        {
+          family = if familyPart == "6" then 6 else 4;
+          prefix = prefixPart;
+        })
+      (builtins.filter
+        (key: (tenantPrefixOwners.${key}.owner or null) == "access-${tenantName}")
+        (builtins.attrNames tenantPrefixOwners));
 
   isNonEmptyString = value: builtins.isString value && value != "";
 
@@ -155,7 +174,9 @@ let
       prefixes =
         if (fromEndpoint.kind or null) == "service" then
           serviceSourcePrefixes fromEndpoint
-        else if (fromEndpoint.kind or null) == "tenant" || (fromEndpoint.kind or null) == "tenant-set" then
+        else if (fromEndpoint.kind or null) == "tenant" then
+          tenantPrefixesForTenant (fromEndpoint.name or "")
+        else if (fromEndpoint.kind or null) == "tenant-set" then
           allTenantPrefixes
         else
           [ ];
@@ -186,8 +207,8 @@ let
           relationForSource =
             if reverseSource then
               relation // {
-                from = attrsOrEmpty toEndpoint;
-                to = attrsOrEmpty fromEndpoint;
+                from = attrsOrEmpty fromEndpoint;
+                to = attrsOrEmpty toEndpoint;
               }
             else
               relation;
