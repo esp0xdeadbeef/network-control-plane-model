@@ -11,6 +11,23 @@ let
 
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };
 
+  # Every tenant prefix owned by this site; used to make the core fabric-to-
+  # uplink egress enforceable (the WAN surface is external, so the forward leg
+  # cannot carry a dedicated-link isolation proof).
+  allTenantPrefixes =
+    builtins.map
+      (key:
+        let
+          parts = builtins.split "\\|" key;
+          familyPart = builtins.elemAt parts 0;
+          prefixPart = builtins.elemAt parts 2;
+        in
+        {
+          family = if familyPart == "6" then 6 else 4;
+          prefix = prefixPart;
+        })
+      (builtins.attrNames tenantPrefixOwners);
+
   traceIdFor = iface:
     let
       scope = common.interfaceScope iface;
@@ -183,7 +200,7 @@ let
     if uplinkIface.sourceKind == "overlay" && delegatedOverlayEgress.exitNodesFor uplinkIface != [ ] then
       delegatedOverlayEgress.rulesFor transitIface uplinkIface ++ [ (reverseRule transitIface uplinkIface) ]
     else
-      common.selectorPairRule transitIface uplinkIface;
+      common.selectorPairRuleWithSourcePrefixes allTenantPrefixes transitIface uplinkIface;
 
   meshRules =
     builtins.concatLists (
