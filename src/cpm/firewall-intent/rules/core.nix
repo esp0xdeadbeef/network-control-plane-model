@@ -26,7 +26,9 @@ let
           family = if familyPart == "6" then 6 else 4;
           prefix = prefixPart;
         })
-      (builtins.attrNames tenantPrefixOwners);
+      (builtins.filter
+        (key: (tenantPrefixOwners.${key}.kind or null) != "runtime-routed-prefix")
+        (builtins.attrNames tenantPrefixOwners));
 
   traceIdFor = iface:
     let
