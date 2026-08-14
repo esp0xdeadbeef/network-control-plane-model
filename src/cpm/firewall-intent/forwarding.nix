@@ -199,6 +199,7 @@ if role == "access" then
         trafficTypeMatches
         transitInterfaces
         runtimeOriginSourcePrefixes
+        tenantPrefixOwners
         ;
     };
   }

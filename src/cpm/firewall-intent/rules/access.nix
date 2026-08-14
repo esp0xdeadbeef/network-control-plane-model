@@ -9,7 +9,7 @@
 , trafficTypeMatches ? { }
 , transitInterfaces
 , runtimeOriginSourcePrefixes ? [ ]
-,
+, tenantPrefixOwners ? { }
 }:
 let
   endpointContext = import ./endpoint-context.nix { inherit common; } {
@@ -22,6 +22,24 @@ let
     runtimeInterfacesForEndpointAtLogicalNode
     sourcePrefixesForEndpoint
     ;
+
+  # Tenant prefixes owned by this site; used to make the access local-to-fabric
+  # handoff enforceable (the local tenant surface and the fabric p2p are both
+  # host-bridge realized, so they cannot carry a dedicated-link isolation
+  # proof).
+  allTenantPrefixes =
+    builtins.map
+      (key:
+        let
+          parts = builtins.split "\\|" key;
+          familyPart = builtins.elemAt parts 0;
+          prefixPart = builtins.elemAt parts 2;
+        in
+        {
+          family = if familyPart == "6" then 6 else 4;
+          prefix = prefixPart;
+        })
+      (builtins.attrNames tenantPrefixOwners);
 
   relationId = relation:
     if builtins.isString (relation.id or null) && relation.id != "" then
@@ -139,7 +157,7 @@ builtins.concatLists (
     (localIface:
     builtins.concatLists (
       builtins.map
-        (transitIface: common.selectorPairRule localIface transitIface)
+        (transitIface: common.selectorPairRuleWithSourcePrefixes allTenantPrefixes localIface transitIface)
         transitInterfaces
     ))
     localInterfaces
