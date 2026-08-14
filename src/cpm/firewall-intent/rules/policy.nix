@@ -32,7 +32,9 @@ let
           family = if familyPart == "6" then 6 else 4;
           prefix = prefixPart;
         })
-      (builtins.attrNames tenantPrefixOwners);
+      (builtins.filter
+        (key: (tenantPrefixOwners.${key}.kind or null) != "runtime-routed-prefix")
+        (builtins.attrNames tenantPrefixOwners));
 
   # Tenant prefixes owned by a single access unit. The relation source tenant
   # name (e.g. "vlan2") maps to the owning access unit ("access-vlan2"), so a
@@ -51,7 +53,8 @@ let
           prefix = prefixPart;
         })
       (builtins.filter
-        (key: (tenantPrefixOwners.${key}.owner or null) == "access-${tenantName}")
+        (key: (tenantPrefixOwners.${key}.owner or null) == "access-${tenantName}"
+          && (tenantPrefixOwners.${key}.kind or null) != "runtime-routed-prefix")
         (builtins.attrNames tenantPrefixOwners));
 
   isNonEmptyString = value: builtins.isString value && value != "";

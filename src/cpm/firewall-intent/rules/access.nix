@@ -42,7 +42,8 @@ let
           prefix = prefixPart;
         })
       (builtins.filter
-        (key: (tenantPrefixOwners.${key}.owner or null) == ownerName)
+        (key: (tenantPrefixOwners.${key}.owner or null) == ownerName
+          && (tenantPrefixOwners.${key}.kind or null) != "runtime-routed-prefix")
         (builtins.attrNames tenantPrefixOwners));
 
   relationId = relation:
