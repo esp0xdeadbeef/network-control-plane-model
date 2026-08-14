@@ -23,11 +23,13 @@ let
     sourcePrefixesForEndpoint
     ;
 
-  # Tenant prefixes owned by this site; used to make the access local-to-fabric
-  # handoff enforceable (the local tenant surface and the fabric p2p are both
-  # host-bridge realized, so they cannot carry a dedicated-link isolation
-  # proof).
-  allTenantPrefixes =
+  # Tenant prefixes owned by a single access unit; used to make the access
+  # local-to-fabric handoff enforceable (the local tenant surface and the
+  # fabric p2p are both host-bridge realized, so they cannot carry a
+  # dedicated-link isolation proof). Scoped per-owner so one access lane never
+  # admits another tenant's source prefixes.
+  tenantPrefixesForOwner =
+    ownerName:
     builtins.map
       (key:
         let
@@ -39,7 +41,9 @@ let
           family = if familyPart == "6" then 6 else 4;
           prefix = prefixPart;
         })
-      (builtins.attrNames tenantPrefixOwners);
+      (builtins.filter
+        (key: (tenantPrefixOwners.${key}.owner or null) == ownerName)
+        (builtins.attrNames tenantPrefixOwners));
 
   relationId = relation:
     if builtins.isString (relation.id or null) && relation.id != "" then
@@ -157,7 +161,10 @@ builtins.concatLists (
     (localIface:
     builtins.concatLists (
       builtins.map
-        (transitIface: common.selectorPairRuleWithSourcePrefixes allTenantPrefixes localIface transitIface)
+        (transitIface: common.selectorPairRuleWithSourcePrefixes
+          (tenantPrefixesForOwner (common.laneAccess localIface))
+          localIface
+          transitIface)
         transitInterfaces
     ))
     localInterfaces
