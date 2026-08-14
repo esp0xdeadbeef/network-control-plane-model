@@ -454,17 +454,10 @@ let
           "namePublication"
         ];
         unexpectedKeys = builtins.filter (name: !(builtins.elem name allowedKeys)) (builtins.attrNames source);
-        publicReservations =
-          if rawReservations == null then [ ] else requireList "${entryPath}.reservations" rawReservations;
         schema = requireString "${sourcePath}.schema" (source.schema or null);
         sourceClass = requireString "${sourcePath}.sourceClass" (source.sourceClass or null);
         sourceFile = optionalNonEmptyString "${sourcePath}.sourceFile" (source.sourceFile or null);
         namePublication = normalizeNamePublication familyName entryPath tenantName (source.namePublication or null);
-        _scopeOnly =
-          if publicReservations == [ ] then
-            true
-          else
-            failInventory entryPath "diagnostic.runtime-reservation-source-conflict: a served scope may declare either public per-reservation descriptors or one opaque protected reservationSource, never both";
         _noInlineRecords =
           if unexpectedKeys == [ ] then
             true
@@ -486,9 +479,8 @@ let
           else
             failInventory "${sourcePath}.sourceFile" "diagnostic.runtime-reservation-source-file-missing: protected reservation set requires an opaque runtime sourceFile reference";
       in
-      builtins.seq _scopeOnly (
-        builtins.seq _noInlineRecords (
-          builtins.seq _schema (
+      builtins.seq _noInlineRecords (
+        builtins.seq _schema (
             builtins.seq _protected (
               builtins.seq _sourceFile (
                 {
@@ -516,7 +508,6 @@ let
               )
             )
           )
-        )
       );
 
   resolveReservations =
@@ -545,14 +536,21 @@ let
                 else
                   null;
               scopedIdentity = reservationRequirementScoped reservationPath attrs;
-              _identityMaterial =
+              protectedSecretRef =
                 if mac != null then
+                  null
+                else if (identitySource.sourceClass or "") == "protected" && isNonEmptyString (identitySource.secretRef or null) then
+                  identitySource.secretRef
+                else
+                  null;
+              _identityMaterial =
+                if mac != null || protectedSecretRef != null then
                   true
                 else
                   failInventoryIdentityDiagnostic reservationPath attrs
                     "diagnostic.reservation-identity-source-missing: ${requirementLabel} requires complete MAC address for a public per-reservation descriptor; protected runtime recordsets belong on advertisement.reservationSource";
               _scopedRuntimeIdentity =
-                if mac != null || scopedIdentity != null then
+                if mac != null || scopedIdentity != null || protectedSecretRef != null then
                   true
                 else
                   failInventoryIdentityDiagnostic reservationPath attrs
@@ -579,7 +577,7 @@ let
                   inherit hostOffset address cidr identitySource;
                   source = "inventory-realization";
                 }
-                // (if mac != null then { inherit mac; } else { })
+                // (if mac != null then { inherit mac; } else if protectedSecretRef != null then { secretRef = protectedSecretRef; } else { })
                 // binderSourceAudit.make {
                   path = reservationPath;
                   field =
