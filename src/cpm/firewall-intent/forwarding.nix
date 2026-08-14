@@ -250,6 +250,7 @@ else if role == "policy" then
           trafficTypeMatches
           transitInterfaces
           runtimeOriginSourcePrefixes
+          tenantPrefixOwners
           ;
       };
     }
