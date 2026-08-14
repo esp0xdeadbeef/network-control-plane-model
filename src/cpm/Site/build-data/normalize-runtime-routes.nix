@@ -381,6 +381,7 @@ let
     target: interfaces:
     let
       allocationMethod = allocationMethodFor target interfaces;
+      targetRole = target.role or "";
       ifNames = builtins.attrNames interfaces;
       sortedIfNames =
         builtins.sort
@@ -397,6 +398,13 @@ let
           )
           ifNames;
       count = builtins.length sortedIfNames;
+      # The core's fabric p2p and WAN uplink must share one policy table so the
+      # tenant traffic forwarded in from the fabric can reach the WAN default
+      # route (which is DHCP-provided and therefore only present in the WAN's
+      # table). Giving them distinct slots strands the fabric ingress in a table
+      # with return routes but no default.
+      coreSharedSlot =
+        if targetRole == "core" then count else null;
       entries =
         builtins.genList
           (index:
@@ -405,7 +413,9 @@ let
             in
             {
               name = ifName;
-              value = policyRoutingAllocationFor allocationMethod (index + 1);
+              value = policyRoutingAllocationFor allocationMethod (
+                if coreSharedSlot != null then coreSharedSlot else index + 1
+              );
             })
           count;
     in
