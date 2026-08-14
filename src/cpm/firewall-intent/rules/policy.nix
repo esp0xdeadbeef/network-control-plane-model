@@ -7,6 +7,7 @@
 , trafficTypeMatches ? { }
 , transitInterfaces
 , runtimeOriginSourcePrefixes ? [ ]
+, tenantPrefixOwners ? { }
 }:
 let
   endpointContext = import ./endpoint-context.nix { inherit common; } {
@@ -16,6 +17,23 @@ let
   inherit (endpointContext) attrsOrEmpty listOrEmpty;
   inherit (endpointContext) serviceNamesForEndpoint serviceRecords uniqueStrings;
   inherit (endpointSelection) endpointIfaces endpointIfacesForPeerAccess;
+
+  # Every tenant prefix owned by this site; used to give the tenant-to-WAN
+  # policy rules an enforceable source scope so the firewall materializes them
+  # (an unscoped "any" forward would otherwise be rejected as broad).
+  allTenantPrefixes =
+    builtins.map
+      (key:
+        let
+          parts = builtins.split "\\|" key;
+          familyPart = builtins.elemAt parts 0;
+          prefixPart = builtins.elemAt parts 2;
+        in
+        {
+          family = if familyPart == "6" then 6 else 4;
+          prefix = prefixPart;
+        })
+      (builtins.attrNames tenantPrefixOwners);
 
   isNonEmptyString = value: builtins.isString value && value != "";
 
@@ -137,6 +155,8 @@ let
       prefixes =
         if (fromEndpoint.kind or null) == "service" then
           serviceSourcePrefixes fromEndpoint
+        else if (fromEndpoint.kind or null) == "tenant" || (fromEndpoint.kind or null) == "tenant-set" then
+          allTenantPrefixes
         else
           [ ];
     in
