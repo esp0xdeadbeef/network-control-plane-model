@@ -48,8 +48,10 @@ let
   siteNat44SourcePrefixes =
     builtins.map prefixValue (
       builtins.filter isPrivate4Prefix (
-        (builtins.map (tenant: if builtins.isAttrs tenant then tenant.ipv4 or "" else tenant) siteTenantPrefixes)
-        ++ (builtins.map (prefix: if builtins.isAttrs prefix then prefix.ipv4 or prefix.prefix or "" else prefix) siteOwnershipPrefixes)
+        builtins.filter (p: p != "") (
+          (builtins.map (tenant: if builtins.isAttrs tenant then (if builtins.hasAttr (tenant.name or "") routedPrefixesByTenant then tenant.ipv4 or "" else "") else tenant) siteTenantPrefixes)
+          ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if builtins.hasAttr (prefix.name or "") routedPrefixesByTenant then prefix.ipv4 or prefix.prefix or "" else "") else prefix) siteOwnershipPrefixes)
+        )
       )
     );
   runtimeOriginNat44SourcePrefixes =
