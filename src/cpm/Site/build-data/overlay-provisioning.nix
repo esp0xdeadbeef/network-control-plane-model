@@ -103,6 +103,7 @@ let
                 overlayPath
                 terminateOn
                 ;
+              runtimeAddresses = providerName != null;
             };
             overlayNodePrefixRecords = overlayNodePrefixRecordsFor overlayName;
             overlayNodePrefixes = overlayNodePrefixesFor overlayName;
