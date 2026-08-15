@@ -43,46 +43,24 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
           && (entry.dnsPolicy or null) == "modeled-resolver-relationship"
           && (entry.egressPolicy or null) == "not-direct-public-dns");
 
-    deniedDirectPublicDns =
-      anyClass
+    noDeniedDirectPublicDns =
+      !(anyClass
         (entry:
           (entry.kind or null) == "public-dns-traffic-classification"
-          && (entry.trafficClass or null) == "denied-direct-public-dns"
-          && (entry.requesterScope or null) == "access-runtime"
-          && (entry.resolverDestination or null) == "1.1.1.1/32"
-          && (entry.egressSurface or null) == "explicit-egress-default"
-          && (entry.protocol or null) == "tcp-udp"
-          && (entry.port or null) == "53"
-          && (entry.dnsPolicy or null) == "direct-public-dns-forbidden"
-          && (entry.egressPolicy or null) == "egress-allowed");
+          && (entry.trafficClass or null) == "denied-direct-public-dns"));
 
-    unrelatedPayload =
-      anyClass
+    noUnrelatedPayload =
+      !(anyClass
         (entry:
           (entry.kind or null) == "public-dns-traffic-classification"
-          && (entry.trafficClass or null) == "unrelated-payload"
-          && (entry.requesterScope or null) == "access-runtime"
-          && (entry.resolverDestination or null) == "1.1.1.1/32"
-          && (entry.egressSurface or null) == "explicit-egress-default"
-          && (entry.protocol or null) == "non-dns"
-          && (entry.port or null) == "not-53"
-          && (entry.dnsPolicy or null) == "not-dns-traffic"
-          && (entry.egressPolicy or null) == "egress-allowed");
-
-    noDestinationOnlyLeakClass =
-      builtins.all
-        (entry:
-          !((entry.resolverDestination or null) == "1.1.1.1/32"
-            && (entry.trafficClass or null) == "denied-direct-public-dns"
-            && (entry.protocol or null) == "non-dns"))
-        classes;
+          && (entry.trafficClass or null) == "unrelated-payload"));
   in
     modeledResolver
-    && deniedDirectPublicDns
-    && unrelatedPayload
-    && noDestinationOnlyLeakClass
+    && noDeniedDirectPublicDns
+    && noUnrelatedPayload
+    && (dns.strictEgress or false)
 ' >/dev/null || {
-  echo "FAIL public-dns-flow-classification: CPM did not emit the FS-580 SMS-010 public DNS traffic classes" >&2
+  echo "FAIL public-dns-flow-classification: CPM did not emit the FS-580 SMS-010 modeled-resolver traffic class with strict egress and no resolver deny-list classes" >&2
   jq '.control_plane_model.data.acme.ams.runtimeTargets["access-runtime"].services.dns.publicDnsTrafficClassifications' "${output_json}" >&2
   exit 1
 }

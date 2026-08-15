@@ -1,6 +1,11 @@
 let
   base = import ../default-egress-reachability/inventory.nix;
 
+  registeredUpstream = {
+    sourceFile = "/run/mullvad/dns";
+    family = "any";
+  };
+
   dnsFor =
     allowedUpstreamClasses:
     {
@@ -13,30 +18,18 @@ let
         "10.20.0.0/24"
         "fd00:20::/64"
       ];
-      deniedResolverCidrs = publicResolverCidrs;
+      strictEgress = true;
       inherit allowedUpstreamClasses;
     };
 
-  publicResolverCidrs = [
-    "1.1.1.1/32"
-    "1.0.0.1/32"
-    "8.8.8.8/32"
-    "8.8.4.4/32"
-    "9.9.9.9/32"
-    "2606:4700:4700::1111/128"
-    "2606:4700:4700::1001/128"
-    "2001:4860:4860::8888/128"
-    "2001:4860:4860::8844/128"
-    "2620:fe::fe/128"
-  ];
-
-  withExplicitDeniedResolverCidrs =
+  withStrictEgress =
     node:
     node
     // {
       services = (node.services or { }) // {
         dns = (node.services.dns or { }) // {
-          deniedResolverCidrs = publicResolverCidrs;
+          strictEgress = true;
+          registeredUpstreams = [ registeredUpstream ];
         };
       };
     };
@@ -77,7 +70,7 @@ base
   // {
   realization = base.realization // {
     nodes = base.realization.nodes // {
-      access-runtime = (withExplicitDeniedResolverCidrs base.realization.nodes.access-runtime) // {
+      access-runtime = (withStrictEgress base.realization.nodes.access-runtime) // {
         services.dns =
           dnsFor [
             "local-access"
@@ -102,7 +95,7 @@ base
           };
       };
 
-      core-runtime = (withExplicitDeniedResolverCidrs base.realization.nodes.core-runtime) // {
+      core-runtime = (withStrictEgress base.realization.nodes.core-runtime) // {
         services.dns = {
           implementation = "unbound";
           listen = [
@@ -113,16 +106,17 @@ base
             "10.20.0.0/24"
             "fd00:20::/64"
           ];
-          deniedResolverCidrs = publicResolverCidrs;
+          strictEgress = true;
+          registeredUpstreams = [ registeredUpstream ];
           allowedUpstreamClasses = [ "explicit-egress-default" ];
         };
       };
 
       globex-nyc-access-runtime =
-        withExplicitDeniedResolverCidrs base.realization.nodes.globex-nyc-access-runtime;
+        withStrictEgress base.realization.nodes.globex-nyc-access-runtime;
 
       globex-lon-access-runtime =
-        withExplicitDeniedResolverCidrs base.realization.nodes.globex-lon-access-runtime;
+        withStrictEgress base.realization.nodes.globex-lon-access-runtime;
     };
   };
 }

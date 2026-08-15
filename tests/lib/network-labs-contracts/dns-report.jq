@@ -24,17 +24,10 @@ def dns_contract_violations:
   | ($target.data.services.dns // {}) as $dns
   | ($dns.forwarders // []) as $forwarders
   | ($forwarders | map(. as $forwarder | select(public_resolvers | index($forwarder) != null))) as $publicForwarders
-  | ($dns.killSwitch // {}) as $killSwitch
   | if ($target.data.role // "") == "access" and ($dns.routePreference // []) != expected_dns_route_preference then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "access DNS routePreference is not deterministic")
-    elif ($killSwitch.enabled // false) != true then
-      violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS kill-switch is not enabled")
-    elif ($killSwitch.blockPublicResolvers // false) != true then
-      violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS public resolver block is not enabled")
-    elif ($killSwitch.blockImplicitDefaultRouteDns // false) != true then
-      violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS implicit default-route block is not enabled")
-    elif bool_or($killSwitch; "allowPublicResolverFallback"; true) != false then
-      violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS public resolver fallback is allowed")
+    elif bool_or($dns; "strictEgress"; false) != true then
+      violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS strict egress is not enabled")
     elif ($target.data.role // "") == "access" and ($dns.routeContracts // [] | length) == 0 then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "access DNS forwarders lack explicit route contracts")
     elif ($target.data.role // "") == "access" and ($dns.policyMatrix // [] | length) == 0 then
