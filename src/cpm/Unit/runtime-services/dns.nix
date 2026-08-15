@@ -187,6 +187,18 @@ in
             failInventory "${dnsPath}.recursionMode" "must be iterative, forwarding, or local-only"
         else
           null;
+      strictEgress =
+        if dns ? strictEgress then
+          boolOrDefault "${dnsPath}.strictEgress" dns.strictEgress false
+        else
+          false;
+      _strictEgressRequiresForwarders =
+        if strictEgress && forwarders == [ ] && upstreamResolvers == [ ] then
+          failInventory
+            "${dnsPath}.strictEgress"
+            "requires at least one forwarder or upstream resolver as the sole allowed DNS egress destination"
+        else
+          true;
       localForwardZones = builtins.map
         (zone:
           let
@@ -277,7 +289,8 @@ in
     in
     builtins.seq _forwarderConflict (
       builtins.seq _killSwitchNoPublicFallback (
-        builtins.seq _killSwitchExplicitDeniedResolverCidrs ({ }
+        builtins.seq _killSwitchExplicitDeniedResolverCidrs (
+          builtins.seq _strictEgressRequiresForwarders ({ }
           // lib.optionalAttrs (implementation != null) { inherit implementation; }
           // lib.optionalAttrs (listen != [ ]) { inherit listen; }
           // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
@@ -287,6 +300,7 @@ in
           // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
           // lib.optionalAttrs (upstreamResolvers != [ ]) { inherit upstreamResolvers; }
           // lib.optionalAttrs (recursionMode != null) { inherit recursionMode; }
+          // lib.optionalAttrs strictEgress { inherit strictEgress; }
           // lib.optionalAttrs (localForwardZones != [ ]) { inherit localForwardZones; }
           // lib.optionalAttrs (requesterPolicies != [ ]) { inherit requesterPolicies; }
           // lib.optionalAttrs (localOnlyPolicy != null) { inherit localOnlyPolicy; }
@@ -312,6 +326,7 @@ in
           // lib.optionalAttrs (recordPublications != [ ]) { inherit recordPublications; }
           // lib.optionalAttrs (protectedReservationPublications != [ ]) { inherit protectedReservationPublications; }
           // lib.optionalAttrs (namespaceDiagnostics != [ ]) { inherit namespaceDiagnostics; }
+          )
         )
       )
     );
