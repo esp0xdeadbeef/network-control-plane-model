@@ -156,8 +156,8 @@ let
   cpmWithMediatedCredentials = {
     version = 1;
     data = secretSourceContract.mediateCredentialPaths cpmDataWithCrossSiteDnsAllowFrom;
-    providerContracts.wireguard = providerContractsWireguard;
-    wgInventory = wgInventory;
+    providerContracts.wireguard = builtins.trace ("pc type=" + builtins.typeOf providerContractsWireguard) providerContractsWireguard;
+    wgInventory = builtins.trace ("wg type=" + builtins.typeOf wgInventory) wgInventory;
   }
   // (
     if builtins.isAttrs (inventory.operationalPrivacyContracts or null) && inventory.operationalPrivacyContracts != { } then
