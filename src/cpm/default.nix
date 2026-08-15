@@ -98,63 +98,55 @@ let
       inherit lib helpers cpmData;
     };
 
-  overlayFieldByName =
-    field: data:
+  providerContractsWireguard =
     builtins.listToAttrs (
       builtins.concatLists (
         map
           (enterpriseName:
-            let enterpriseData = data.${enterpriseName} or { };
+            let sites = inventory.controlPlane.sites.${enterpriseName} or { };
             in
             builtins.concatLists (
               map
                 (siteName:
-                  let siteData = enterpriseData.${siteName} or { };
+                  let overlays = sites.${siteName}.overlays or { };
                   in
                   map
                     (overlayName:
-                      let value = siteData.overlays.${overlayName}.${field} or null;
+                      let pc = overlays.${overlayName}.providerContract or null;
                       in
-                      if value == null then [ ] else [ { name = overlayName; inherit value; } ])
-                    (builtins.attrNames (siteData.overlays or { })))
-                (builtins.attrNames enterpriseData))
-          )
-          (builtins.attrNames data)
+                      if pc == null then [ ] else [ { name = overlayName; value = pc; } ])
+                    (builtins.attrNames overlays))
+                (builtins.attrNames sites)))
+          (builtins.attrNames (inventory.controlPlane.sites or { }))
       )
     );
 
-  providerContractsWireguard =
-    overlayFieldByName "providerContract" cpmDataWithCrossSiteDnsAllowFrom;
-
   wgInventory =
-    let
-      entries = builtins.concatLists (
+    builtins.listToAttrs (
+      builtins.concatLists (
         map
           (enterpriseName:
-            let enterpriseData = cpmDataWithCrossSiteDnsAllowFrom.${enterpriseName} or { };
+            let sites = inventory.controlPlane.sites.${enterpriseName} or { };
             in
             builtins.concatLists (
               map
                 (siteName:
-                  let siteData = enterpriseData.${siteName} or { };
+                  let overlays = sites.${siteName}.overlays or { };
                   in
                   map
                     (overlayName:
                       let
-                        overlay = siteData.overlays.${overlayName} or { };
-                        nodes = builtins.attrValues (overlay.runtimeNodes or { });
+                        nodes = builtins.attrValues (overlays.${overlayName}.runtimeNodes or { });
                         ifaces = builtins.filter (s: builtins.isString s && s != "") (
                           map (n: (n.service or { }).interface or null) nodes
                         );
                       in
                       if ifaces == [ ] then [ ] else [ { name = overlayName; value = { interface = builtins.head ifaces; }; } ])
-                    (builtins.attrNames (siteData.overlays or { })))
-                (builtins.attrNames enterpriseData))
-          )
-          (builtins.attrNames cpmDataWithCrossSiteDnsAllowFrom)
-      );
-    in
-    builtins.listToAttrs entries;
+                    (builtins.attrNames overlays))
+                (builtins.attrNames sites)))
+          (builtins.attrNames (inventory.controlPlane.sites or { }))
+      )
+    );
 
   secretSourceContract =
     import ./secret-source-contract.nix {
