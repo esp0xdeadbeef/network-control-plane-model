@@ -31,6 +31,8 @@
       dnsService = attrsOrEmpty (normalized.dns or null);
       explicitForwarders =
         if builtins.isList (dnsService.forwarders or null) then requireStringList "${targetDef.nodePath}.services.dns.forwarders" dnsService.forwarders else [ ];
+      registeredUpstreams =
+        if builtins.isList (dnsService.registeredUpstreams or null) then dnsService.registeredUpstreams else [ ];
       explicitAllowFrom =
         if builtins.isList (dnsService.allowFrom or null) then requireStringList "${targetDef.nodePath}.services.dns.allowFrom" dnsService.allowFrom else [ ];
       listenAddresses =
@@ -85,7 +87,9 @@
       directEgressBlockedTenants = policyDerivedDnsDirectEgressBlockedTenants tenantNames;
       filteredDerivedForwarders = builtins.filter (addr: !(builtins.elem addr listenAddresses)) derivedForwarders;
       mergedForwarders =
-        if explicitForwarders != [ ] then
+        if registeredUpstreams != [ ] then
+          [ ]
+        else if explicitForwarders != [ ] then
           explicitForwarders
         else if derivedUpstreamRecords != [ ] then
           [ ]

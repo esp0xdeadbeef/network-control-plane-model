@@ -128,45 +128,38 @@ in
           failInventory dnsPath "must define only one of 'forwarders' or 'upstreams'"
         else
           true;
-      deniedResolverCidrs =
-        if dns ? deniedResolverCidrs then
-          normalizeStringList dnsPath dns "deniedResolverCidrs"
-        else
-          [ ];
-      killSwitchInput = requireAttrs "${dnsPath}.killSwitch" (dns.killSwitch or { });
-      killSwitch = {
-        enabled = boolOrDefault "${dnsPath}.killSwitch.enabled" (killSwitchInput.enabled or null) true;
-        blockPublicResolvers =
-          boolOrDefault "${dnsPath}.killSwitch.blockPublicResolvers"
-            (killSwitchInput.blockPublicResolvers or null)
-            (deniedResolverCidrs != [ ]);
-        blockImplicitDefaultRouteDns =
-          boolOrDefault "${dnsPath}.killSwitch.blockImplicitDefaultRouteDns"
-            (killSwitchInput.blockImplicitDefaultRouteDns or null)
-            true;
-        allowPublicResolverFallback =
-          boolOrDefault "${dnsPath}.killSwitch.allowPublicResolverFallback"
-            (killSwitchInput.allowPublicResolverFallback or null)
-            false;
-      };
-      _killSwitchNoPublicFallback =
-        if killSwitch.enabled && killSwitch.blockPublicResolvers && killSwitch.allowPublicResolverFallback then
-          failInventory
-            "${dnsPath}.killSwitch.allowPublicResolverFallback"
-            "must be false when DNS public resolver blocking is enabled"
+      registeredUpstreams = builtins.map
+        (entry:
+          let
+            source = entry;
+            sourceFile = requireString "${dnsPath}.registeredUpstreams[*].sourceFile" (source.sourceFile or null);
+            family =
+              if source ? family then
+                let value = requireString "${dnsPath}.registeredUpstreams[*].family" source.family;
+                in
+                if builtins.elem value [ "ipv4" "ipv6" "any" ] then
+                  value
+                else
+                  failInventory "${dnsPath}.registeredUpstreams[*].family" "must be ipv4, ipv6, or any"
+              else
+                "any";
+          in
+          if !(isNonEmptyString sourceFile) then
+            failInventory "${dnsPath}.registeredUpstreams[*].sourceFile" "must be a non-empty absolute runtime source file path"
+          else if builtins.substring 0 1 sourceFile != "/" then
+            failInventory "${dnsPath}.registeredUpstreams[*].sourceFile" "must be an absolute runtime source file path"
+          else
+            { inherit sourceFile family; })
+        (attrsList "${dnsPath}.registeredUpstreams" (dns.registeredUpstreams or [ ]));
+      _registeredUpstreamForwarderConflict =
+        if registeredUpstreams != [ ] && forwarders != [ ] then
+          failInventory dnsPath "must define only one of 'forwarders' or 'registeredUpstreams'"
         else
           true;
       routePreference =
         if dns ? routePreference then normalizeStringList dnsPath dns "routePreference" else defaults.defaultRoutePreference;
       allowedUpstreamClasses =
         if dns ? allowedUpstreamClasses then normalizeStringList dnsPath dns "allowedUpstreamClasses" else [ "local-access" ];
-      _killSwitchExplicitDeniedResolverCidrs =
-        if killSwitch.enabled && killSwitch.blockPublicResolvers && deniedResolverCidrs == [ ] then
-          failInventory
-            "${dnsPath}.deniedResolverCidrs"
-            "must be explicitly set to one or more CIDRs when DNS public resolver blocking is enabled"
-        else
-          true;
       directEgressBlockedTenants =
         if dns ? directEgressBlockedTenants then normalizeStringList dnsPath dns "directEgressBlockedTenants" else null;
       routeContracts = requireList "${dnsPath}.routeContracts" (dns.routeContracts or [ ]);
@@ -193,10 +186,10 @@ in
         else
           false;
       _strictEgressRequiresForwarders =
-        if strictEgress && forwarders == [ ] && upstreamResolvers == [ ] then
+        if strictEgress && forwarders == [ ] && upstreamResolvers == [ ] && registeredUpstreams == [ ] then
           failInventory
             "${dnsPath}.strictEgress"
-            "requires at least one forwarder or upstream resolver as the sole allowed DNS egress destination"
+            "requires at least one forwarder, upstream resolver, or registeredUpstreams entry as the sole allowed DNS egress destination"
         else
           true;
       localForwardZones = builtins.map
@@ -288,9 +281,8 @@ in
       protectedReservationPublications = normalizeProtectedReservationPublications dnsPath dns;
     in
     builtins.seq _forwarderConflict (
-      builtins.seq _killSwitchNoPublicFallback (
-        builtins.seq _killSwitchExplicitDeniedResolverCidrs (
-          builtins.seq _strictEgressRequiresForwarders ({ }
+      builtins.seq _registeredUpstreamForwarderConflict (
+        builtins.seq _strictEgressRequiresForwarders ({ }
           // lib.optionalAttrs (implementation != null) { inherit implementation; }
           // lib.optionalAttrs (listen != [ ]) { inherit listen; }
           // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
@@ -301,6 +293,7 @@ in
           // lib.optionalAttrs (upstreamResolvers != [ ]) { inherit upstreamResolvers; }
           // lib.optionalAttrs (recursionMode != null) { inherit recursionMode; }
           // lib.optionalAttrs strictEgress { inherit strictEgress; }
+          // lib.optionalAttrs (registeredUpstreams != [ ]) { inherit registeredUpstreams; }
           // lib.optionalAttrs (localForwardZones != [ ]) { inherit localForwardZones; }
           // lib.optionalAttrs (requesterPolicies != [ ]) { inherit requesterPolicies; }
           // lib.optionalAttrs (localOnlyPolicy != null) { inherit localOnlyPolicy; }
@@ -311,8 +304,6 @@ in
           // {
           inherit
             allowedUpstreamClasses
-            deniedResolverCidrs
-            killSwitch
             policyMatrix
             routeContracts
             routePreference
@@ -326,7 +317,6 @@ in
           // lib.optionalAttrs (recordPublications != [ ]) { inherit recordPublications; }
           // lib.optionalAttrs (protectedReservationPublications != [ ]) { inherit protectedReservationPublications; }
           // lib.optionalAttrs (namespaceDiagnostics != [ ]) { inherit namespaceDiagnostics; }
-          )
         )
       )
     );
