@@ -505,7 +505,7 @@ in
       nat66RuntimeNames
     else
       [ ];
-  masqueradeSourcePrefixes4 = builtins.trace "DBG relcount=${builtins.toJSON (builtins.length (listOrEmpty ((attrsOrEmpty (siteAttrs.communicationContract or null)).relations or null)))} rels=${builtins.toJSON (listOrEmpty ((attrsOrEmpty (siteAttrs.communicationContract or null)).relations or null))}" (if nat4Enabled then nat44SourcePrefixes else [ ]);
+  masqueradeSourcePrefixes4 = builtins.trace "DBG siteAttrsKeys=${builtins.toJSON (builtins.attrNames (attrsOrEmpty siteAttrs))} ccKeys=${builtins.toJSON (builtins.attrNames (attrsOrEmpty (siteAttrs.communicationContract or null)))}" (if nat4Enabled then nat44SourcePrefixes else [ ]);
   masqueradeSourcePrefixes6 = if nat6Enabled then nat66SourcePrefixes else [ ];
   masqueradeFabricPrefixes4 = if nat4Enabled then masqueradeFabricPrefixes4 else [ ];
   masqueradeFabricPrefixes6 = if nat6Enabled then masqueradeFabricPrefixes6 else [ ];
