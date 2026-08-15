@@ -52,7 +52,10 @@ let
         && ((attrsOrEmpty (rel.to or null)).kind or null) == "external"
         && (((attrsOrEmpty (rel.to or null)).name or null) == "wan" || ((attrsOrEmpty (rel.to or null)).uplinks or []) != [ ])
         && (rel.action or "allow") == "allow")
-      (listOrEmpty ((attrsOrEmpty (siteAttrs.communicationContract or null)).relations or null))
+      (let
+        cc = attrsOrEmpty (siteAttrs.communicationContract or null);
+      in
+      if builtins.isList (cc.relations or null) then cc.relations else listOrEmpty (cc.allowedRelations or null))
     )
   );
   siteNat44SourcePrefixes =
