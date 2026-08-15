@@ -110,45 +110,6 @@ let
       ));
 
   diagnostics = cardinalityDiagnostics ++ bindingDiagnostics;
-  # FS-982: when the inventory does not declare an explicit hostManagement
-  # binding, fall back to a runtime target derived from the intent-level
-  # requirement alone.  The logical interface name (e.g. "vlan2") maps by
-  # convention to the host bridge "lan<vlan>" rendered from inventory
-  # transitBridges.  The renderer applies DHCPv4 with UseDNS=false on that
-  # bridge so the host stays reachable while the operator adds the binding.
-  fallbackBridgeName =
-    if logicalInterface != null && builtins.match "vlan[0-9]+" logicalInterface != null then
-      builtins.replaceStrings [ "vlan" ] [ "lan" ] logicalInterface
-    else
-      null;
-  fallbackRuntimeTarget =
-    if !required || fallbackBridgeName == null then
-      null
-    else
-      {
-        kind = "host-management-runtime-target";
-        schemaVersion = 1;
-        deploymentHost = if selectedHostName != null then selectedHostName else "";
-        inherit logicalInterface purpose;
-        managementOnly = true;
-        link = {
-          kind = "bridge";
-          name = fallbackBridgeName;
-        };
-        addressAcquisition = {
-          ipv4 = "dhcp";
-          ipv6 = "disabled";
-          acceptRA = false;
-          useDns = false;
-          defaultRoute = false;
-        };
-        provenance = {
-          intentPath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}.hostManagement";
-          inventoryPath = null;
-          authority = "network-control-plane-model";
-        };
-        fallback = true;
-      };
   runtimeTarget =
     if !required then
       null
@@ -177,13 +138,13 @@ let
         };
       }
     else
-      fallbackRuntimeTarget;
+      null;
 in
 if requirement == null then
   null
 else
   {
-    validated = diagnostics == [ ] || (fallbackRuntimeTarget != null);
+    validated = diagnostics == [ ];
     requirement = {
       inherit required logicalInterface purpose;
       managementOnly = requirement.managementOnly or true;
