@@ -102,19 +102,25 @@ let
     field: data:
     builtins.listToAttrs (
       builtins.concatLists (
-        lib.mapAttrsToList
-          (enterprise: enterpriseData:
+        map
+          (enterpriseName:
+            let enterpriseData = data.${enterpriseName} or { };
+            in
             builtins.concatLists (
-              lib.mapAttrsToList
-                (site: siteData:
-                  lib.mapAttrsToList
-                    (overlayName: overlay:
-                      let value = overlay.${field} or null;
+              map
+                (siteName:
+                  let siteData = enterpriseData.${siteName} or { };
+                  in
+                  map
+                    (overlayName:
+                      let value = siteData.overlays.${overlayName}.${field} or null;
                       in
                       if value == null then [ ] else [ { name = overlayName; inherit value; } ])
-                    (siteData.overlays or { }))
-                enterpriseData))
-          data)
+                    (builtins.attrNames (siteData.overlays or { })))
+                (builtins.attrNames enterpriseData))
+          )
+          (builtins.attrNames data)
+      )
     );
 
   providerContractsWireguard =
@@ -123,23 +129,30 @@ let
   wgInventory =
     let
       entries = builtins.concatLists (
-        lib.mapAttrsToList
-          (enterprise: enterpriseData:
+        map
+          (enterpriseName:
+            let enterpriseData = cpmDataWithCrossSiteDnsAllowFrom.${enterpriseName} or { };
+            in
             builtins.concatLists (
-              lib.mapAttrsToList
-                (site: siteData:
-                  lib.mapAttrsToList
-                    (overlayName: overlay:
+              map
+                (siteName:
+                  let siteData = enterpriseData.${siteName} or { };
+                  in
+                  map
+                    (overlayName:
                       let
+                        overlay = siteData.overlays.${overlayName} or { };
                         nodes = builtins.attrValues (overlay.runtimeNodes or { });
                         ifaces = builtins.filter (s: builtins.isString s && s != "") (
                           map (n: (n.service or { }).interface or null) nodes
                         );
                       in
                       if ifaces == [ ] then [ ] else [ { name = overlayName; value = { interface = builtins.head ifaces; }; } ])
-                    (siteData.overlays or { }))
-                enterpriseData))
-          cpmDataWithCrossSiteDnsAllowFrom);
+                    (builtins.attrNames (siteData.overlays or { })))
+                (builtins.attrNames enterpriseData))
+          )
+          (builtins.attrNames cpmDataWithCrossSiteDnsAllowFrom)
+      );
     in
     builtins.listToAttrs entries;
 
