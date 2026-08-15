@@ -132,7 +132,7 @@ let
                     (overlayName: overlay:
                       let
                         nodes = builtins.attrValues (overlay.runtimeNodes or { });
-                        ifaces = builtins.filter (s: builtins.isString (s.interface or null) && s.interface != "") (
+                        ifaces = builtins.filter (s: builtins.isString s && s != "") (
                           map (n: (n.service or { }).interface or null) nodes
                         );
                       in
