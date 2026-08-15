@@ -45,12 +45,22 @@ let
   publicIngressNatEnabled = builtins.any (record: record.destinationTranslation) publicIngress;
   siteTenantPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.domains or null)).tenants or null);
   siteOwnershipPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null);
+  internetTenantNames = uniqueStrings (
+    builtins.map (rel: (attrsOrEmpty (rel.from or null)).name or "") (
+      builtins.filter (rel:
+        ((attrsOrEmpty (rel.from or null)).kind or null) == "tenant"
+        && ((attrsOrEmpty (rel.to or null)).kind or null) == "external"
+        && (((attrsOrEmpty (rel.to or null)).name or null) == "wan" || ((attrsOrEmpty (rel.to or null)).uplinks or []) != [ ])
+        && (rel.action or "allow") == "allow")
+      (listOrEmpty ((attrsOrEmpty (siteAttrs.communicationContract or null)).relations or null))
+    )
+  );
   siteNat44SourcePrefixes =
     builtins.map prefixValue (
       builtins.filter isPrivate4Prefix (
         builtins.filter (p: p != "") (
-          (builtins.map (tenant: if builtins.isAttrs tenant then (if builtins.hasAttr (tenant.name or "") routedPrefixesByTenant then tenant.ipv4 or "" else "") else tenant) siteTenantPrefixes)
-          ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if builtins.hasAttr (prefix.name or "") routedPrefixesByTenant then prefix.ipv4 or prefix.prefix or "" else "") else prefix) siteOwnershipPrefixes)
+          (builtins.map (tenant: if builtins.isAttrs tenant then (if builtins.elem (tenant.name or "") internetTenantNames then tenant.ipv4 or "" else "") else tenant) siteTenantPrefixes)
+          ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if builtins.elem (prefix.name or "") internetTenantNames then prefix.ipv4 or prefix.prefix or "" else "") else prefix) siteOwnershipPrefixes)
         )
       )
     );
