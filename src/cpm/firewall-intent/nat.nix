@@ -82,11 +82,21 @@ let
   declined = interfaceDeclined declinedInterfaceIdentities;
   nat44ByUplink = attrsOrEmpty (egressIntent.nat44 or null);
   nat44SelectedIntents = map (uplink: attrsOrEmpty (nat44ByUplink.${uplink} or null)) selectedUplinks;
+  nonInternetTenantPrefixes4 = uniqueStrings (
+    builtins.filter isPrivate4Prefix (
+      builtins.filter (p: p != "") (
+        (builtins.map (tenant: if builtins.isAttrs tenant then (if builtins.elem (tenant.name or "") internetTenantNames then "" else tenant.ipv4 or "") else "") siteTenantPrefixes)
+        ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if builtins.elem (prefix.name or "") internetTenantNames then "" else prefix.ipv4 or prefix.prefix or "") else "") siteOwnershipPrefixes)
+      )
+    )
+  );
   nat44SourcePrefixes = uniqueStrings (
-    builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
-    ++ siteNat44SourcePrefixes
-    ++ runtimeOriginNat44SourcePrefixes
-    ++ masqueradeFabricPrefixes4
+    builtins.filter (prefix: !(builtins.elem prefix nonInternetTenantPrefixes4)) (
+      builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
+      ++ siteNat44SourcePrefixes
+      ++ runtimeOriginNat44SourcePrefixes
+      ++ masqueradeFabricPrefixes4
+    )
   );
   nat66ByUplink = attrsOrEmpty (egressIntent.nat66 or null);
   nat66SelectedIntents = map (uplink: attrsOrEmpty (nat66ByUplink.${uplink} or null)) selectedUplinks;
