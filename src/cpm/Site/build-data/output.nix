@@ -35,6 +35,7 @@
 , uplinkRouting
 , upstreamSelectorNodeName
 , ulaNat66Mode
+, hostManagement
 , endpointAssignmentCheckDiagnostics ? [ ]
 , emulationSubnets ? [ ]
 , emulationSubnetGuards ? { }
@@ -479,6 +480,14 @@ in
   if isNonEmptyString (siteAttrs.enterprise or null) then
     {
       enterprise = siteAttrs.enterprise;
+    }
+  else
+    { }
+)
+// (
+  if hostManagement != null then
+    {
+      inherit hostManagement;
     }
   else
     { }
