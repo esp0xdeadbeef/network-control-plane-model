@@ -185,13 +185,6 @@ in
           boolOrDefault "${dnsPath}.strictEgress" dns.strictEgress false
         else
           false;
-      _strictEgressRequiresForwarders =
-        if strictEgress && forwarders == [ ] && upstreamResolvers == [ ] && registeredUpstreams == [ ] then
-          failInventory
-            "${dnsPath}.strictEgress"
-            "requires at least one forwarder, upstream resolver, or registeredUpstreams entry as the sole allowed DNS egress destination"
-        else
-          true;
       localForwardZones = builtins.map
         (zone:
           let
@@ -281,8 +274,7 @@ in
       protectedReservationPublications = normalizeProtectedReservationPublications dnsPath dns;
     in
     builtins.seq _forwarderConflict (
-      builtins.seq _registeredUpstreamForwarderConflict (
-        builtins.seq _strictEgressRequiresForwarders ({ }
+      builtins.seq _registeredUpstreamForwarderConflict ({ }
           // lib.optionalAttrs (implementation != null) { inherit implementation; }
           // lib.optionalAttrs (listen != [ ]) { inherit listen; }
           // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
@@ -317,7 +309,6 @@ in
           // lib.optionalAttrs (recordPublications != [ ]) { inherit recordPublications; }
           // lib.optionalAttrs (protectedReservationPublications != [ ]) { inherit protectedReservationPublications; }
           // lib.optionalAttrs (namespaceDiagnostics != [ ]) { inherit namespaceDiagnostics; }
-        )
       )
     );
 }
