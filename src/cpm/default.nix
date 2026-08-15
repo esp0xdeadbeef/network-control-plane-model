@@ -102,12 +102,12 @@ let
     field: data:
     builtins.listToAttrs (
       builtins.concatLists (
-        builtins.mapAttrsToList
+        lib.mapAttrsToList
           (enterprise: enterpriseData:
             builtins.concatLists (
-              builtins.mapAttrsToList
+              lib.mapAttrsToList
                 (site: siteData:
-                  builtins.mapAttrsToList
+                  lib.mapAttrsToList
                     (overlayName: overlay:
                       let value = overlay.${field} or null;
                       in
@@ -123,12 +123,12 @@ let
   wgInventory =
     let
       entries = builtins.concatLists (
-        builtins.mapAttrsToList
+        lib.mapAttrsToList
           (enterprise: enterpriseData:
             builtins.concatLists (
-              builtins.mapAttrsToList
+              lib.mapAttrsToList
                 (site: siteData:
-                  builtins.mapAttrsToList
+                  lib.mapAttrsToList
                     (overlayName: overlay:
                       let
                         nodes = builtins.attrValues (overlay.runtimeNodes or { });
