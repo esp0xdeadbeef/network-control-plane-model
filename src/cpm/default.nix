@@ -98,6 +98,51 @@ let
       inherit lib helpers cpmData;
     };
 
+  overlayFieldByName =
+    field: data:
+    builtins.listToAttrs (
+      builtins.concatLists (
+        builtins.mapAttrsToList
+          (enterprise: enterpriseData:
+            builtins.concatLists (
+              builtins.mapAttrsToList
+                (site: siteData:
+                  builtins.mapAttrsToList
+                    (overlayName: overlay:
+                      let value = overlay.${field} or null;
+                      in
+                      if value == null then [ ] else [ { name = overlayName; inherit value; } ])
+                    (siteData.overlays or { }))
+                enterpriseData))
+          data)
+    );
+
+  providerContractsWireguard =
+    overlayFieldByName "providerContract" cpmDataWithCrossSiteDnsAllowFrom;
+
+  wgInventory =
+    let
+      entries = builtins.concatLists (
+        builtins.mapAttrsToList
+          (enterprise: enterpriseData:
+            builtins.concatLists (
+              builtins.mapAttrsToList
+                (site: siteData:
+                  builtins.mapAttrsToList
+                    (overlayName: overlay:
+                      let
+                        nodes = builtins.attrValues (overlay.runtimeNodes or { });
+                        ifaces = builtins.filter (s: builtins.isString (s.interface or null) && s.interface != "") (
+                          map (n: (n.service or { }).interface or null) nodes
+                        );
+                      in
+                      if ifaces == [ ] then [ ] else [ { name = overlayName; value = { interface = builtins.head ifaces; }; } ])
+                    (siteData.overlays or { }))
+                enterpriseData))
+          cpmDataWithCrossSiteDnsAllowFrom);
+    in
+    builtins.listToAttrs entries;
+
   secretSourceContract =
     import ./secret-source-contract.nix {
       inherit lib helpers inventory secretPlatformSubstrate;
@@ -106,6 +151,8 @@ let
   cpmWithMediatedCredentials = {
     version = 1;
     data = secretSourceContract.mediateCredentialPaths cpmDataWithCrossSiteDnsAllowFrom;
+    providerContracts.wireguard = providerContractsWireguard;
+    wgInventory = wgInventory;
   }
   // (
     if builtins.isAttrs (inventory.operationalPrivacyContracts or null) && inventory.operationalPrivacyContracts != { } then
