@@ -11,20 +11,6 @@ let
   inherit (common) attrsOrEmpty failInventory listOrEmpty;
   ipam = common.ipam or { };
 
-  publicResolvers = {
-    "1.1.1.1" = true;
-    "1.0.0.1" = true;
-    "8.8.8.8" = true;
-    "8.8.4.4" = true;
-    "9.9.9.9" = true;
-    "2606:4700:4700::1111" = true;
-    "2606:4700:4700::1001" = true;
-    "2001:4860:4860::8888" = true;
-    "2001:4860:4860::8844" = true;
-    "2620:fe::fe" = true;
-  };
-
-  isPublicResolver = forwarder: builtins.hasAttr forwarder publicResolvers;
   stripPrefixLength =
     value:
     if !(builtins.isString value) || value == "" then "" else builtins.head (lib.splitString "/" value);
@@ -679,7 +665,7 @@ let
         allowedUpstreamClasses =
           lib.unique (
             listOrEmpty (dns.allowedUpstreamClasses or null)
-            ++ (if builtins.any isPublicResolver forwarders then [ "explicit-egress-default" ] else [ ])
+            ++ (if forwarders != [ ] then [ "explicit-egress-default" ] else [ ])
           );
         roles = attrsOrEmpty (dns.roles or null);
         recursionRole = attrsOrEmpty (roles.recursion or null);
