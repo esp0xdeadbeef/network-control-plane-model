@@ -213,6 +213,7 @@
                   name = "wan";
                 };
                 action = "allow";
+                returnBehavior = "stateful-return";
               }
             ];
           };
@@ -569,6 +570,7 @@
                   name = "wan";
                 };
                 action = "allow";
+                returnBehavior = "stateful-return";
               }
             ];
           };
@@ -900,6 +902,7 @@
                 };
                 to = "any";
                 action = "allow";
+                returnBehavior = "stateful-return";
               }
             ];
           };

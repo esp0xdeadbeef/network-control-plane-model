@@ -7,7 +7,12 @@ base
     nodes = base.realization.nodes // {
       access-runtime = base.realization.nodes.access-runtime // {
         services.dns = base.realization.nodes.access-runtime.services.dns // {
-          killSwitch.allowPublicResolverFallback = true;
+          registeredUpstreams = [
+            {
+              sourceFile = "/run/mullvad/dns";
+              family = "bogus";
+            }
+          ];
         };
       };
     };
