@@ -133,7 +133,10 @@ let
             ++ interfaceUplinks iface
           );
         in
-        (iface.sourceKind or null) == "wan"
+        (
+          (iface.sourceKind or null) == "wan"
+          || (iface.sourceKind or null) == "overlay"
+        )
         && lib.any (uplink: builtins.elem uplink selectedUplinks) identities;
     in
     lib.filterAttrs matchesSelectedUplink interfaces;
