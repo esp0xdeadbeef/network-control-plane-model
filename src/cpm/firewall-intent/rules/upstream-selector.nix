@@ -130,10 +130,14 @@ let
     policyIface:
     let
       primaryCore = coreForPolicy policyIface;
+      primaryIsOverlay = primaryCore != null && isOverlayCoreInterface primaryCore;
     in
-    builtins.filter (
-      coreIface: primaryCore == null || coreIface.runtimeIfName != primaryCore.runtimeIfName
-    ) internetEgressCoreInterfaces;
+    if primaryIsOverlay then
+      [ ]
+    else
+      builtins.filter (
+        coreIface: primaryCore == null || coreIface.runtimeIfName != primaryCore.runtimeIfName
+      ) internetEgressCoreInterfaces;
 
   # Generate pair rules for additional cores (internetModes-based coverage)
   additionalSelectorPairRules = builtins.concatLists (
