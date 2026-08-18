@@ -152,6 +152,37 @@ let
       ++ lib.concatMap (entry: listOrEmpty (entry.prefixes or null)) (listOrEmpty (advertisements.ipv6Ra or null))
     );
 
+  # Derive the reverse (PTR) zone name from a tenant prefix. IPv4 uses the
+  # octet reversal of the network octets; IPv6 uses the full nibble reversal
+  # (RFC 3596). No hand-written in-addr.arpa/ip6.arpa strings.
+  reverseZoneForCidr = cidr:
+    let
+      parts = lib.splitString "/" cidr;
+      addr = builtins.elemAt parts 0;
+      mask = lib.toInt (builtins.elemAt parts 1);
+    in
+    if builtins.match ".*:.*" addr != null then
+      let
+        hextets = ipam.parseIPv6 addr;
+        nibbles = lib.concatMap
+          (h: [
+            (lib.mod h 16)
+            (builtins.div h 16)
+          ])
+          (lib.reverseList hextets);
+      in
+      "${builtins.concatStringsSep "." (map builtins.toString nibbles)}.ip6.arpa."
+    else
+      let
+        octets = builtins.filter builtins.isString (builtins.split "\\." addr);
+        count = mask / 8;
+        networkOctets = builtins.genList (i: builtins.elemAt octets (count - 1 - i)) count;
+      in
+      if builtins.length octets == 4 && count > 0 && count < 4 then
+        "${builtins.concatStringsSep "." networkOctets}.in-addr.arpa."
+      else
+        null;
+
   protectedReservationPublicationsForTarget = target:
     let
       advertisements = attrsOrEmpty (target.advertisements or null);
@@ -494,6 +525,7 @@ let
       advertisements = attrsOrEmpty (target.advertisements or null);
       listeners = advertisedDnsListeners advertisements;
       sources = advertisedDnsSources advertisements;
+      derivedReverseZones = builtins.filter (z: z != null) (map reverseZoneForCidr sources);
       listenerPolicyForwarders = policyDerivedDnsForwardersForListeners listeners;
       listenerPolicyUpstreamResolvers = policyDerivedDnsUpstreamRecordsForListeners listeners;
       listenerPolicyAllowedClasses = policyDerivedDnsAllowedClassesForListeners listeners;
@@ -572,6 +604,13 @@ let
             else
               [ ];
           roles = roles // { recursion = recursionRole // { outgoingInterfaces = recursionOutgoingInterfaces; }; };
+          localZones = lib.unique (
+            (listOrEmpty (existingDns.localZones or null))
+            ++ map (z: {
+              name = z;
+              type = "static";
+            }) derivedReverseZones
+          );
           routeContracts = lib.unique (listOrEmpty (existingDns.routeContracts or null) ++ localContracts);
           policyMatrix = lib.unique (listOrEmpty (existingDns.policyMatrix or null) ++ localContracts);
         }
