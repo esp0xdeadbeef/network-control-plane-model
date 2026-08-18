@@ -97,6 +97,23 @@ let
           failForwarding
             "${sitePath}.domains.tenants"
             "tenant '${tenantName}' requires an explicit site.domains.tenants entry for advertisement derivation";
+
+      # The summarised internal subnets (the NFM's smallest groupings) carried
+      # on the access node's p2p uplink. These are advertised to the clients as
+      # RFC 3442 classless routes (IPv4) + RFC 4191 more-specific routes
+      # (IPv6), so the clients can reach the rest of the site without a
+      # default route.
+      internalReachabilityRoutes = family:
+        let
+          ifaces = getRuntimeTargetInterfaces targetPath target;
+          p2pNames = builtins.filter
+            (n: ((ifaces.${n}.sourceKind or null) == "p2p"))
+            (sortedNames ifaces);
+          routes = builtins.concatMap
+            (n: (ifaces.${n}.routes or { })."ipv${toString family}" or [ ])
+            p2pNames;
+        in
+        builtins.filter (r: (r.intent.kind or null) == "internal-reachability") routes;
     in
     {
       inherit runtimeInterface tenantName tenantDefinition;
@@ -106,6 +123,8 @@ let
       tenantIPv6Prefix = tenantDefinition.ipv6 or null;
       tenantRa6Prefixes = tenantDefinition.ra6Prefixes or [ ];
       tenantRoutedPrefixes = routedPrefixesByTenant.${tenantName} or [ ];
+      internalReachabilityRoutes4 = internalReachabilityRoutes 4;
+      internalReachabilityRoutes6 = internalReachabilityRoutes 6;
     };
 
 in
