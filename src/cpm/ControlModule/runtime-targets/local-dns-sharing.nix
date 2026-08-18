@@ -349,7 +349,7 @@ let
         localForwardZones = map (namespace: {
           name = namespace;
           forwardTo = authorityEndpoints;
-          forwardFirst = false;
+          forwardFirst = true;
           inherit relationId;
         }) namespaces;
         upstreamResolvers = requesterUpstreams ++ [
@@ -381,8 +381,15 @@ let
         ];
         reproducibilityWarnings = allWarnings;
       }
-      // lib.optionalAttrs (requesterLocalZones != [ ]) {
-        localZones = normalizedRequesterLocalZones;
+      // {
+        # Each shared namespace gets a transparent local-zone so the forward
+        # zone below takes effect. Without this, the unbound's built-in
+        # local-zone: home.arpa. static (RFC 8375) and the in-addr.arpa.
+        # statics shadow the forward zone and answer NXDOMAIN locally.
+        localZones = normalizedRequesterLocalZones ++ map (namespace: {
+          name = namespace;
+          type = "transparent";
+        }) namespaces;
       };
       providerDns = dnsFor targets authorityTargetName;
       providerAllowFrom = listOrEmpty (providerDns.allowFrom or null);
