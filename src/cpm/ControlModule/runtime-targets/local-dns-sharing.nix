@@ -349,7 +349,7 @@ let
         localForwardZones = map (namespace: {
           name = namespace;
           forwardTo = authorityEndpoints;
-          forwardFirst = true;
+          forwardFirst = false;
           inherit relationId;
         }) namespaces;
         upstreamResolvers = requesterUpstreams ++ [
