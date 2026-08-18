@@ -82,6 +82,16 @@ let
     requireString
       "${targetPath}.effectiveRuntimeRealization.interfaces.${interfaceName}.runtimeIfName"
       (tenantContext.runtimeInterface.runtimeIfName or null);
+  classlessRoutes =
+    if enabled then
+      builtins.map
+        (r: {
+          destination = r.dst;
+          router = routerAddress;
+        })
+        (builtins.filter (r: builtins.isString (r.dst or null)) tenantContext.internalReachabilityRoutes4)
+    else
+      [ ];
   routerInterface =
     {
       logicalInterface = interfaceName;
@@ -114,6 +124,7 @@ builtins.seq _idMatch (builtins.seq _subnetMatch (builtins.seq _routerMatch ({
   inherit reservations;
   dnsServers = dnsServers;
   domain = requireString "${entryPath}.domain" (attrs.domain or null);
+  inherit classlessRoutes;
 }
 // (if reservationSource != null then { inherit reservationSource; } else { })
 // (if leaseState != null then { inherit leaseState; } else { })
