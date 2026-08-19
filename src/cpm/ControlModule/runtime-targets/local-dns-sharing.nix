@@ -324,6 +324,15 @@ let
       allWarnings = effectiveBaseWarnings ++ localWarnings;
       requesterDns = dnsFor targets requesterTargetName;
       requesterUpstreams = listOrEmpty (requesterDns.upstreamResolvers or null);
+      # FS-540: recursive DNS is a relationship separate from local answer
+      # authority. If the requester already carries an explicit
+      # named-core-resolver upstream (its recursiveDnsIntent binding), the
+      # local sharing only adds the namespace forward-zones + ACLs and must
+      # keep the forwarding mode. Only resolvers without a recursive core
+      # binding become local-only.
+      requesterHasCoreResolver = builtins.any (
+        resolver: (resolver.kind or null) == "named-core-resolver"
+      ) requesterUpstreams;
       requesterPolicies = listOrEmpty (requesterDns.requesterPolicies or null);
       requesterLocalZones = listOrEmpty (requesterDns.localZones or null);
       requesterRoles = attrsOrEmpty (requesterDns.roles or null);
@@ -339,7 +348,7 @@ let
         requesterLocalZones;
       requesterPatch = {
         forwarders = [ ];
-        recursionMode = "local-only";
+        recursionMode = if requesterHasCoreResolver then "forwarding" else "local-only";
         outgoingInterfaces = requesterEndpoints;
         roles = requesterRoles // {
           recursion = requesterRecursionRole // {
