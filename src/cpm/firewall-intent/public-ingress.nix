@@ -360,56 +360,59 @@ let
     if !complete then
       throw "public ingress relation '${toString id}' has incomplete or ambiguous runtime realization"
     else
-      {
-        relationId = id;
-        inherit family;
-        sourceScope = authority.sourceScope or null;
-        inherit
-          publicSurface
-          translationMode
-          sourcePreservation
-          returnBehavior
-          ;
-        ingressInterface = ingressIface.runtimeIfName;
-        publicAddressBinding = "runtime-interface-address";
-        translationOwnerRuntimeTarget = targetName;
-        target = {
-          service = targetService;
-          endpoint = targetEndpoint;
-          address = targetAddress;
-          port = targetPort;
-          accessNode = targetAccessNode;
-          providerTenants = listOrEmpty (service.providerTenants or null);
-        };
-        inherit tupleRecords destinationTranslation runtimeDestination;
-        internalPath = {
-          egressInterface = internalEgress.runtimeIfName;
-          nextHop = internalNextHop;
-          targetRoute = {
-            dst = if family == 6 then null else "${targetAddress}/32";
-            table = "main";
-            inherit runtimeDestination;
+      map
+        (tupleRecord: {
+          relationId = id;
+          inherit family;
+          sourceScope = authority.sourceScope or null;
+          inherit
+            publicSurface
+            translationMode
+            sourcePreservation
+            returnBehavior
+            ;
+          ingressInterface = ingressIface.runtimeIfName;
+          publicAddressBinding = "runtime-interface-address";
+          translationOwnerRuntimeTarget = targetName;
+          target = {
+            service = targetService;
+            endpoint = targetEndpoint;
+            address = targetAddress;
+            port = targetPort;
+            accessNode = targetAccessNode;
+            providerTenants = listOrEmpty (service.providerTenants or null);
           };
-        };
-        sourceTranslation =
-          if rewriteSource then
-            {
-              mode = "snat";
-              address = loopback4;
-              owner = targetName;
-            }
-          else
-            {
-              mode = "none";
-              address = null;
-              owner = null;
+          tupleRecords = [ tupleRecord ];
+          inherit destinationTranslation runtimeDestination;
+          internalPath = {
+            egressInterface = internalEgress.runtimeIfName;
+            nextHop = internalNextHop;
+            targetRoute = {
+              dst = if family == 6 then null else "${targetAddress}/32";
+              table = "main";
+              inherit runtimeDestination;
             };
-        consumers = [
-          "routing"
-          "firewall"
-          "renderer"
-          "diagnostic"
-        ];
-      };
+          };
+          sourceTranslation =
+            if rewriteSource then
+              {
+                mode = "snat";
+                address = loopback4;
+                owner = targetName;
+              }
+            else
+              {
+                mode = "none";
+                address = null;
+                owner = null;
+              };
+          consumers = [
+            "routing"
+            "firewall"
+            "renderer"
+            "diagnostic"
+          ];
+        })
+        tupleRecords;
 in
-map buildRecord publicIngressRelations
+builtins.concatMap buildRecord publicIngressRelations

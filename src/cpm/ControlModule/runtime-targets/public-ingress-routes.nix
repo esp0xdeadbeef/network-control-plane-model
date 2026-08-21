@@ -264,13 +264,24 @@ let
             };
             comment = "${record.relationId}: exact public ingress";
           };
+      # FS-220 / FS-230: each public-ingress tuple (protocol + port) is an
+      # independently authorized path. Two tuples on the same relation and
+      # runtime path therefore produce distinct forwarding rules, so the
+      # replace-dedup key must include the rule's matches (protocol + port).
+      # A generic rule on the same path (no tuple matches) is a placeholder
+      # the exact tuple rule refines and is always replaced; a previously
+      # emitted exact tuple rule is replaced only when it is the same tuple.
       sameExactPath =
         rule:
         exactForwardRule != null
         && builtins.isAttrs rule
         && (rule.relationId or null) == record.relationId
         && (rule.fromInterface or null) == exactForwardRule.fromInterface
-        && (rule.toInterface or null) == exactForwardRule.toInterface;
+        && (rule.toInterface or null) == exactForwardRule.toInterface
+        && (
+          (rule.matches or null) == null
+          || (rule.matches or null) == exactForwardRule.matches
+        );
       withForwarding =
         if exactForwardRule == null then
           target

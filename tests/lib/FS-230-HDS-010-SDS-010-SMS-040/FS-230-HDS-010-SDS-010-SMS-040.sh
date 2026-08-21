@@ -94,7 +94,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     };
     countRecords = rs: builtins.length rs;
     forwardingRuleCount = fw: builtins.length fw.rules;
-    activeNode = "access-dmz";
+    activeNode = "access";
     unrelatedNode = "unrelated-access";
     relation = {
       id = "allow-wan-to-nebula-ipv6";
@@ -207,6 +207,9 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
       };
     };
     augmented = routeAugment runtimeTargets;
+    dualAugmented = routeAugment (runtimeTargets // {
+      core = core // { natIntent.publicIngress = dualRecords; };
+    });
     rulesFor = name: augmented.${name}.forwardingIntent.rules or [ ];
     exactRuleFor = name: builtins.head (builtins.filter
       (rule: (rule.relationId or null) == relation.id)
@@ -216,6 +219,12 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
         (route: (route.sourceFile or null) == sourceFile)
         (iface.routes.ipv6 or [ ]))
       (builtins.attrValues augmented.${name}.effectiveRuntimeRealization.interfaces);
+    dualAccessRules = builtins.filter
+      (rule: (rule.relationId or null) == relation.id)
+      (dualAugmented.access.forwardingIntent.rules or [ ]);
+    dualAccessProtocols = builtins.sort (a: b: a < b) (
+      builtins.concatMap (rule: map (m: m.proto or null) (rule.matches or [ ])) dualAccessRules
+    );
     disabledEgress = {
       eligible = false;
       exit = false;
@@ -334,6 +343,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
             && (rule.connectionState or null) == "established,related")
           egressSelectorForwarding.rules;
       dualTupleTwoRecords = countRecords dualRecords == 2;
+      dualTupleTwoForwardRules = dualAccessProtocols == [ "tcp" "udp" ];
       noSiblingInferred = countRecords singleProtocolRecords == 1;
       independentScoping = countRecords mixedPortsRecords == 2;
       unrelatedNodeZeroRecords = rulesFor unrelatedNode == [ ];
@@ -399,6 +409,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
   else if familyNeutral != [ ] then
     throw "family-neutral no-translation tuple was expanded to IPv6"
   else if !checks.dualTupleTwoRecords then throw "dual TCP+UDP tuples did not produce exactly 2 independent records"
+  else if !checks.dualTupleTwoForwardRules then throw "dual TCP+UDP tuples did not materialize two independent forwarding rules"
   else if !checks.noSiblingInferred then throw "TCP-only tuple wrongly inferred UDP sibling records"
   else if !checks.independentScoping then throw "mixed-port tuples lost independent scoping"
   else if !checks.unrelatedNodeZeroRecords then throw "unrelated access node wrongly received tuple records"
