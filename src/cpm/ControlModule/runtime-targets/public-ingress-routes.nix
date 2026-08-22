@@ -206,6 +206,9 @@ let
       role = target.role or null;
       coreFromInterface = record.ingressInterface or null;
       coreToInterface = (attrsOrEmpty (record.internalPath or null)).egressInterface or null;
+      relationId = record.relationId;
+      returnBehavior = record.returnBehavior;
+      policyStateOwner = (attrsOrEmpty (target.logicalNode or null)).name or "policy";
       exactForwardRule =
         if
           (!hasRuntimeDestination && !isNonEmptyString targetAddress)
@@ -373,22 +376,120 @@ let
             name = interfaceNameFor interfaces candidate;
             iface = withTarget.${name};
             route = routeFor {
-              relationId = record.relationId;
+              inherit relationId;
               kind = "public-ingress-source-return";
               dst = "${rewriteAddress}/32";
               inherit iface;
             };
           in
           withTarget // { ${name} = appendRoute iface route; };
+
+      # FS-230 / FS-310: public ingress is a relation-bound stateful path, but
+      # its post-SNAT source (the core loopback rewrite address) is also an
+      # "internal-reachability" return prefix that the runtime-origin route
+      # machinery copies into every tenant policy table. The policy then
+      # resolves the DNAT forward source over a wrong tenant lane and drops
+      # the packet. Emit explicit relation-bound forward/return selectors and
+      # policy-only reachability routes so the policy routes the ingress on
+      # the modeled access-uplink lane instead of the shared return prefix.
+      relationPolicyRouteFor =
+        iface: direction: dst:
+        let
+          via4 = p2pPeer4 (iface.addr4 or null);
+          base = {
+            inherit dst relationId;
+            proto = "internal";
+            policyOnly = true;
+            intent = {
+              kind = "relation-policy-reachability";
+              source = "public-ingress-tuple-authority";
+              relationId = record.relationId;
+              inherit direction policyStateOwner;
+            };
+          };
+        in
+        if via4 == null then base else base // { inherit via4; };
+
+      withSelectors =
+        let
+          existingRules = listOrEmpty (effective.routeSelectionRules or null);
+          selectorPresent =
+            direction:
+            builtins.any
+              (
+                rule:
+                (rule.relationId or null) == relationId
+                && (rule.direction or null) == direction
+                && (rule.family or null) == family
+              )
+              existingRules;
+        in
+        if
+          role != "policy"
+          || family != 4
+          || targetCandidates == [ ]
+          || returnCandidates == [ ]
+          || !isNonEmptyString rewriteAddress
+          || !isNonEmptyString targetAddress
+          || (selectorPresent "forward" && selectorPresent "return")
+        then
+          effective // { interfaces = withReturn; }
+        else
+          let
+            targetCandidate = builtins.head targetCandidates;
+            returnCandidate = builtins.head returnCandidates;
+            targetCandidateName = interfaceNameFor interfaces targetCandidate;
+            returnCandidateName = interfaceNameFor interfaces returnCandidate;
+            targetCandidateTable = (attrsOrEmpty (targetCandidate.policyRoutingAllocation or null)).tableId or null;
+            returnCandidateTable = (attrsOrEmpty (returnCandidate.policyRoutingAllocation or null)).tableId or null;
+            service = (attrsOrEmpty (record.target or null)).service or null;
+            selectorPriority = 900;
+            selectorFor =
+              direction: incomingCandidate: policyCandidate: sourcePrefix: destinationPrefix: tableId:
+              {
+                authority = "relation-policy-state-owner";
+                inherit relationId direction family returnBehavior policyStateOwner service tableId sourcePrefix destinationPrefix;
+                trafficType = "public-ingress";
+                priority = selectorPriority;
+                incomingInterface = incomingCandidate.runtimeIfName;
+                policyInterface = policyCandidate.runtimeIfName;
+              };
+            forwardSelector =
+              selectorFor "forward" returnCandidate targetCandidate "${rewriteAddress}/32" "${targetAddress}/32" targetCandidateTable;
+            returnSelector =
+              selectorFor "return" targetCandidate returnCandidate "${targetAddress}/32" "${rewriteAddress}/32" returnCandidateTable;
+            forwardRoute = relationPolicyRouteFor targetCandidate "forward" "${targetAddress}/32";
+            returnRoute = relationPolicyRouteFor returnCandidate "return" "${rewriteAddress}/32";
+            targetCandidateWithRoute = targetCandidate // {
+              routes = (attrsOrEmpty (targetCandidate.routes or null)) // {
+                ipv4 = listOrEmpty ((attrsOrEmpty (targetCandidate.routes or null)).ipv4 or null) ++ [ forwardRoute ];
+              };
+            };
+            returnCandidateWithRoute = returnCandidate // {
+              routes = (attrsOrEmpty (returnCandidate.routes or null)) // {
+                ipv4 = listOrEmpty ((attrsOrEmpty (returnCandidate.routes or null)).ipv4 or null) ++ [ returnRoute ];
+              };
+            };
+          in
+          effective
+          // {
+            interfaces = withReturn // {
+              ${targetCandidateName} = targetCandidateWithRoute;
+              ${returnCandidateName} = returnCandidateWithRoute;
+            };
+            routeSelectionRules =
+              listOrEmpty (effective.routeSelectionRules or null) ++ [
+                forwardSelector
+                returnSelector
+              ];
+          };
     in
-    if interfaces == withReturn then
+    if withSelectors == effective then
       withForwarding
     else
       withForwarding
       // {
-        effectiveRuntimeRealization = effective // {
-          interfaces = withReturn;
-        };
+        effectiveRuntimeRealization = withSelectors;
       };
 
 in
