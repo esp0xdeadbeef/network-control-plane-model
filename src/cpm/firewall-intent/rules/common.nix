@@ -134,6 +134,19 @@ rec {
     rule: sourcePrefixes:
     if sourcePrefixes == [ ] then rule else rule // { inherit sourcePrefixes; };
 
+  # Splits static source prefixes from runtime source-file entries so the
+  # renderer can materialize the runtime /64 via the dynamic forward oneshots
+  # without treating a sourceFile-only entry as an unrenderable static match.
+  withSourceScope =
+    rule: sourcePrefixes:
+    let
+      staticPrefixes = builtins.filter (s: (s.kind or "static") == "static") sourcePrefixes;
+      runtimePrefixes = builtins.filter (s: (s.kind or null) == "sourceFile") sourcePrefixes;
+    in
+    rule
+    // (if staticPrefixes == [ ] then { } else { sourcePrefixes = staticPrefixes; })
+    // (if runtimePrefixes == [ ] then { } else { sourceRuntimePrefixes = runtimePrefixes; });
+
   uplinks = iface:
     let
       ref = backingRef iface;
