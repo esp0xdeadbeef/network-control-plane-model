@@ -21,19 +21,33 @@ let
   # Every tenant prefix owned by this site; used for tenant-set sources and as
   # the fallback when a relation source names no specific tenant.
   allTenantPrefixes =
-    builtins.map
-      (key:
-        let
-          parts = builtins.split "\\|" key;
-          familyPart = builtins.elemAt parts 0;
-          prefixPart = builtins.elemAt parts 2;
-        in
-        {
-          family = if familyPart == "6" then 6 else 4;
-          prefix = prefixPart;
-        })
-      (builtins.filter
-        (key: (tenantPrefixOwners.${key}.kind or null) != "runtime-routed-prefix")
+    builtins.filter
+      (entry: entry != null)
+      (builtins.map
+        (key:
+          let
+            value = tenantPrefixOwners.${key} or { };
+            parts = builtins.split "\\|" key;
+            familyPart = builtins.elemAt parts 0;
+            prefixPart = builtins.elemAt parts 2;
+            family = if familyPart == "6" then 6 else 4;
+          in
+          if (value.kind or null) == "runtime-routed-prefix" && family == 6 then
+            {
+              inherit family;
+              kind = "sourceFile";
+              sourceFile = value.sourceFile or null;
+              slot = value.slot or null;
+              delegatedPrefixLength = value.delegatedPrefixLength or null;
+              perTenantPrefixLength = value.perTenantPrefixLength or null;
+            }
+          else if (value.kind or null) == "runtime-routed-prefix" then
+            null
+          else
+            {
+              inherit family;
+              prefix = prefixPart;
+            })
         (builtins.attrNames tenantPrefixOwners));
 
   # Tenant prefixes owned by a single access unit. The relation source tenant
@@ -41,21 +55,36 @@ let
   # tenant-scoped relation never admits another tenant's source prefixes.
   tenantPrefixesForTenant =
     tenantName:
-    builtins.map
-      (key:
-        let
-          parts = builtins.split "\\|" key;
-          familyPart = builtins.elemAt parts 0;
-          prefixPart = builtins.elemAt parts 2;
-        in
-        {
-          family = if familyPart == "6" then 6 else 4;
-          prefix = prefixPart;
-        })
-      (builtins.filter
-        (key: (tenantPrefixOwners.${key}.owner or null) == "access-${tenantName}"
-          && (tenantPrefixOwners.${key}.kind or null) != "runtime-routed-prefix")
-        (builtins.attrNames tenantPrefixOwners));
+    builtins.filter
+      (entry: entry != null)
+      (builtins.map
+        (key:
+          let
+            value = tenantPrefixOwners.${key} or { };
+            parts = builtins.split "\\|" key;
+            familyPart = builtins.elemAt parts 0;
+            prefixPart = builtins.elemAt parts 2;
+            family = if familyPart == "6" then 6 else 4;
+          in
+          if (value.kind or null) == "runtime-routed-prefix" && family == 6 then
+            {
+              inherit family;
+              kind = "sourceFile";
+              sourceFile = value.sourceFile or null;
+              slot = value.slot or null;
+              delegatedPrefixLength = value.delegatedPrefixLength or null;
+              perTenantPrefixLength = value.perTenantPrefixLength or null;
+            }
+          else if (value.kind or null) == "runtime-routed-prefix" then
+            null
+          else
+            {
+              inherit family;
+              prefix = prefixPart;
+            })
+        (builtins.filter
+          (key: (tenantPrefixOwners.${key}.owner or null) == "access-${tenantName}")
+          (builtins.attrNames tenantPrefixOwners)));
 
   isNonEmptyString = value: builtins.isString value && value != "";
 
