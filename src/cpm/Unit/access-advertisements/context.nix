@@ -113,7 +113,7 @@ let
             (n: (ifaces.${n}.routes or { })."ipv${toString family}" or [ ])
             p2pNames;
         in
-        builtins.filter (r: (r.intent.kind or null) == "internal-reachability") routes;
+        builtins.filter (r: (r.intent.kind or null) == "internal-reachability" || (r.advertisedToClients or false) == true) routes;
     in
     {
       inherit runtimeInterface tenantName tenantDefinition;
