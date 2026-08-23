@@ -429,6 +429,7 @@ let
     coreServiceName:
     uniqueStrings (
       bindingRequesterHostPrefixesFor coreServiceName
+      ++ directTenantRequesterPrefixesFor coreServiceName
     );
 
   requesterRelationsFor =

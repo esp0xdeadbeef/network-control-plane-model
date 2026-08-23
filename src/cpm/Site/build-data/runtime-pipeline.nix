@@ -177,15 +177,10 @@ let
 
   relationPolicyRuntimeTargets = addRelationPolicyRouting normalizedRuntimeTargets;
 
-  bindAccessRaPathMtu = import ../../ControlModule/runtime-targets/access-ra-path-mtu.nix {
-    inherit lib;
-  };
-  pathMtuBoundRuntimeTargets = bindAccessRaPathMtu relationPolicyRuntimeTargets;
-
   scopeCoreDnsLanes = import ../../ControlModule/runtime-targets/core-dns-lane-scope.nix {
     inherit lib common;
   };
-  laneScopedRuntimeTargets = scopeCoreDnsLanes pathMtuBoundRuntimeTargets;
+  laneScopedRuntimeTargets = scopeCoreDnsLanes relationPolicyRuntimeTargets;
 
   finalControlPlane = import ./final-control-plane.nix {
     inherit
