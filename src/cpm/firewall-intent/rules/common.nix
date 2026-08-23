@@ -487,22 +487,28 @@ rec {
   # Core fabric-to-uplink transport is the tenant default egress: the forward
   # leg is enforceable via the tenant source prefixes even though the WAN
   # surface is external and cannot carry a dedicated-link isolation proof.
-  selectorPairRuleWithSourcePrefixes = sourcePrefixes: fromIface: toIface: [
-    (withSourcePrefixes
+  selectorPairRuleWithSourcePrefixes = sourcePrefixes: fromIface: toIface:
+    let
+      staticPrefixes = builtins.filter (s: (s.kind or "static") == "static") sourcePrefixes;
+      runtimePrefixes = builtins.filter (s: (s.kind or null) == "sourceFile") sourcePrefixes;
+    in
+    [
+      (withSourcePrefixes
+        ({
+          action = "accept";
+          fromInterface = fromIface.runtimeIfName;
+          toInterface = toIface.runtimeIfName;
+          applyTcpMssClamp = true;
+        } // selectorPairAuditWith { sourcePrefixes = staticPrefixes; } "forward" fromIface toIface
+          // (if runtimePrefixes == [ ] then { } else { sourceRuntimePrefixes = runtimePrefixes; }))
+        staticPrefixes)
       ({
         action = "accept";
-        fromInterface = fromIface.runtimeIfName;
-        toInterface = toIface.runtimeIfName;
-        applyTcpMssClamp = true;
-      } // selectorPairAuditWith { inherit sourcePrefixes; } "forward" fromIface toIface)
-      sourcePrefixes)
-    ({
-      action = "accept";
-      fromInterface = toIface.runtimeIfName;
-      toInterface = fromIface.runtimeIfName;
-      applyTcpMssClamp = false;
-      connectionState = "established,related";
-      returnRule = true;
-    } // selectorPairAuditWith { statefulReturn = true; } "reverse" toIface fromIface)
-  ];
+        fromInterface = toIface.runtimeIfName;
+        toInterface = fromIface.runtimeIfName;
+        applyTcpMssClamp = false;
+        connectionState = "established,related";
+        returnRule = true;
+      } // selectorPairAuditWith { statefulReturn = true; } "reverse" toIface fromIface)
+    ];
 }

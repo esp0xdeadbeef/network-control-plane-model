@@ -30,21 +30,36 @@ let
   # admits another tenant's source prefixes.
   tenantPrefixesForOwner =
     ownerName:
-    builtins.map
-      (key:
-        let
-          parts = builtins.split "\\|" key;
-          familyPart = builtins.elemAt parts 0;
-          prefixPart = builtins.elemAt parts 2;
-        in
-        {
-          family = if familyPart == "6" then 6 else 4;
-          prefix = prefixPart;
-        })
-      (builtins.filter
-        (key: (tenantPrefixOwners.${key}.owner or null) == ownerName
-          && (tenantPrefixOwners.${key}.kind or null) != "runtime-routed-prefix")
-        (builtins.attrNames tenantPrefixOwners));
+    builtins.filter
+      (entry: entry != null)
+      (builtins.map
+        (key:
+          let
+            value = tenantPrefixOwners.${key} or { };
+            parts = builtins.split "\\|" key;
+            familyPart = builtins.elemAt parts 0;
+            prefixPart = builtins.elemAt parts 2;
+            family = if familyPart == "6" then 6 else 4;
+          in
+          if (value.kind or null) == "runtime-routed-prefix" && family == 6 then
+            {
+              inherit family;
+              kind = "sourceFile";
+              sourceFile = value.sourceFile or null;
+              slot = value.slot or null;
+              delegatedPrefixLength = value.delegatedPrefixLength or null;
+              perTenantPrefixLength = value.perTenantPrefixLength or null;
+            }
+          else if (value.kind or null) == "runtime-routed-prefix" then
+            null
+          else
+            {
+              family = if familyPart == "6" then 6 else 4;
+              prefix = prefixPart;
+            })
+        (builtins.filter
+          (key: (tenantPrefixOwners.${key}.owner or null) == ownerName)
+          (builtins.attrNames tenantPrefixOwners)));
 
   relationId = relation:
     if builtins.isString (relation.id or null) && relation.id != "" then
