@@ -56,18 +56,26 @@ let
         };
       };
 
-  bindTarget = _targetName: target:
-    let
-      advertisements = target.advertisements or { };
-      ipv6Ra = advertisements.ipv6Ra or [ ];
-    in
-    if !builtins.isList ipv6Ra || ipv6Ra == [ ] then
-      target
-    else
-      target // {
-        advertisements = advertisements // {
-          ipv6Ra = map bindAdvertisement ipv6Ra;
-        };
-      };
+  # FS-800: bind the PPPoE client MTU provenance onto the *resolved* access
+  # advertisements (where delegatedPrefix is already materialized). This must
+  # run after resolveAccessAdvertisements; the raw inventory ipv6Ra is an
+  # attrset keyed by interface and carries no delegatedPrefix, so binding at
+  # the raw-target stage never fires.
+  bindAdvertisements = advertisements:
+    builtins.mapAttrs
+      (_targetName: advertisementSet:
+        let
+          ipv6Ra = advertisementSet.ipv6Ra or [ ];
+        in
+        if !builtins.isList ipv6Ra || ipv6Ra == [ ] then
+          advertisementSet
+        else
+          advertisementSet // {
+            ipv6Ra = map bindAdvertisement ipv6Ra;
+          })
+      advertisements;
 in
-builtins.mapAttrs bindTarget runtimeTargets
+{
+  inherit pppoeClientMtuSources;
+  inherit bindAdvertisements;
+}

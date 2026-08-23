@@ -28,11 +28,17 @@
 let
   inherit (common) uniqueStrings;
 
-  accessAdvertisements =
+  resolvedAccessAdvertisements =
     resolveAccessAdvertisements {
       inherit sitePath siteAttrs realizationIndex endpointInventoryIndex routedPrefixesByTenant;
       runtimeTargets = normalizedRuntimeTargets;
     };
+
+  bindAccessRaPathMtu = import ../../ControlModule/runtime-targets/access-ra-path-mtu.nix {
+    inherit lib;
+  };
+
+  accessAdvertisements = (bindAccessRaPathMtu normalizedRuntimeTargets).bindAdvertisements resolvedAccessAdvertisements;
 
   policyEndpointBindings =
     resolvePolicyEndpointBindings {
