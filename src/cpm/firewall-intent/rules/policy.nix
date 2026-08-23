@@ -213,7 +213,7 @@ let
         else
           [ ];
     in
-    common.withSourcePrefixes rule prefixes;
+    common.withSourceScope rule prefixes;
 
   relationRules = relationRaw:
     let
