@@ -93,6 +93,7 @@ if ! OUTPUT_JSON="${output_json}" nix eval --impure --expr '
     && ra.otherConfig == true
     && ra.onLink == false
     && ra.autonomous == false
+    && ra.defaultRoute == false
 ' | grep -qx true; then
   echo "FAIL access-ipv6-ra-slaac-flags-contract: CPM did not preserve explicit IPv6 RA/SLAAC flags" >&2
   exit 1

@@ -55,6 +55,7 @@ let
       builtins.filter builtins.isString (builtins.map (r: r.dst or null) tenantContext.internalReachabilityRoutes6)
     else
       [ ];
+  defaultRoute = if enabled then tenantContext.hasIPv6DefaultRoute else false;
   managed = boolOr false (attrs.managed or null);
   otherConfig = boolOr false (attrs.otherConfig or null);
   onLink = boolOr true (attrs.onLink or null);
@@ -89,7 +90,7 @@ builtins.seq _prefixMatch ({
   prefixes = prefixes;
   rdnss = rdnss;
   dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
-  inherit managed otherConfig onLink autonomous moreSpecificRoutes;
+  inherit managed otherConfig onLink autonomous moreSpecificRoutes defaultRoute;
 } else { })
 // (if routedIpv6Prefixes != [ ] then {
   routedPrefixes = routedIpv6Prefixes;
