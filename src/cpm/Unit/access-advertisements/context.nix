@@ -114,6 +114,23 @@ let
             p2pNames;
         in
         builtins.filter (r: (r.intent.kind or null) == "internal-reachability" || (r.advertisedToClients or false) == true) routes;
+
+      # Whether the access node has an IPv6 default route on its p2p uplink.
+      # The forwarding model emits such a route only when the site has a real
+      # non-overlay IPv6 egress default (for example 2000::/3), so this is the
+      # signal for whether the node should advertise itself as a default IPv6
+      # router to clients.
+      hasIPv6DefaultRoute =
+        let
+          ifaces = getRuntimeTargetInterfaces targetPath target;
+          p2pNames = builtins.filter
+            (n: ((ifaces.${n}.sourceKind or null) == "p2p"))
+            (sortedNames ifaces);
+          routes = builtins.concatMap
+            (n: (ifaces.${n}.routes or { }).ipv6 or [ ])
+            p2pNames;
+        in
+        builtins.any (r: (r.intent.kind or null) == "default-reachability") routes;
     in
     {
       inherit runtimeInterface tenantName tenantDefinition;
@@ -125,6 +142,7 @@ let
       tenantRoutedPrefixes = routedPrefixesByTenant.${tenantName} or [ ];
       internalReachabilityRoutes4 = internalReachabilityRoutes 4;
       internalReachabilityRoutes6 = internalReachabilityRoutes 6;
+      inherit hasIPv6DefaultRoute;
     };
 
 in
