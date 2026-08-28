@@ -96,7 +96,6 @@ let
   nat44SourcePrefixes = uniqueStrings (
     builtins.filter (prefix: !(builtins.elem prefix nonInternetTenantPrefixes4)) (
       builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
-      ++ siteNat44SourcePrefixes
       ++ runtimeOriginNat44SourcePrefixes
       ++ masqueradeFabricPrefixes4
     )
@@ -128,10 +127,13 @@ let
   # Fabric-internal interfaces: non-WAN, non-overlay, non-declined
   # These are p2p and tenant interfaces whose addresses need masquerading
   # when they source traffic through a NAT-eligible core.
+  # Fabric-internal source interfaces: only the p2p transit surfaces need
+  # masquerading when they source traffic through a NAT-eligible core. Tenant
+  # subnets are carried by the explicit egressIntent.nat44 source prefixes
+  # (surface-bound by the forwarding model), never re-derived here.
   fabricSourceInterfaces = builtins.filter
     (iface:
-      iface.sourceKind != "wan"
-      && iface.sourceKind != "overlay"
+      iface.sourceKind == "p2p"
       && !(declined iface)
     )
     interfaceRecords;
@@ -221,7 +223,7 @@ let
     else
       selectedWanInterfaces;
   wanInterfaces = builtins.filter (iface: !(declined iface)) selectedWanInterfacesChecked;
-  nat4Enabled = exitEnabled && builtins.any hasHostIPv4 wanInterfaces;
+  nat4Enabled = exitEnabled && nat44SelectedIntents != [ ] && builtins.any hasHostIPv4 wanInterfaces;
   nat6Enabled =
     exitEnabled
     && explicitNat66Interfaces != [ ]
