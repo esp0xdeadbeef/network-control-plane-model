@@ -12,11 +12,26 @@
 let
   inherit (helpers) hasAttr requireAttrs requireString sortedNames;
 
+  # Explicit tenant-scoped NAT66 selections, per FS-420. The forwarding model
+  # materializes these into each egress node's egressIntent.nat66 from the
+  # modeled uplink translation (egress.ipv6.translation.mode = "nat66").
+  nat66SourcePrefixes6 = builtins.concatMap
+    (targetName:
+      let
+        target = runtimeTargets.${targetName} or { };
+        egress = target.egressIntent or { };
+        nat66 = egress.nat66 or { };
+      in
+      builtins.concatMap
+        (uplinkName: (nat66.${uplinkName} or { }).sourcePrefixes or [ ])
+        (builtins.attrNames nat66))
+    (builtins.attrNames runtimeTargets);
+
   advertisementHelpers = import ./Unit/access-advertisements/helpers.nix {
     inherit helpers endpointInventoryIndex;
   };
   advertisementContext = import ./Unit/access-advertisements/context.nix {
-    inherit helpers sitePath siteAttrs routedPrefixesByTenant advertisementHelpers;
+    inherit helpers sitePath siteAttrs routedPrefixesByTenant advertisementHelpers nat66SourcePrefixes6;
   };
   advertisementEntries = import ./Unit/access-advertisements/entries.nix {
     inherit helpers sitePath ipam advertisementHelpers advertisementContext;
