@@ -55,7 +55,7 @@ let
       builtins.filter builtins.isString (builtins.map (r: r.dst or null) tenantContext.internalReachabilityRoutes6)
     else
       [ ];
-  defaultRoute = if enabled then tenantContext.hasIPv6DefaultRoute else false;
+  defaultRoute = if enabled then tenantContext.tenantHasIPv6Egress else false;
   managed = boolOr false (attrs.managed or null);
   otherConfig = boolOr false (attrs.otherConfig or null);
   onLink = boolOr true (attrs.onLink or null);
