@@ -243,20 +243,9 @@ let
   translatedPrefixesForInterface =
     iface:
     let
-      wan = attrsOrEmpty (iface.wan or null);
-      egress = attrsOrEmpty (wan.egress or null);
-      ipv6 = attrsOrEmpty (egress.ipv6 or null);
-      translation = attrsOrEmpty (ipv6.translation or null);
+      modeledNat66 = attrsOrEmpty (nat66ByUplink.${iface.upstream or ""} or null);
     in
-    listOrEmpty (translation.translatedPrefixes or null)
-    ++ listOrEmpty (translation.translatedAddressOrPrefix or null)
-    ++ listOrEmpty (translation.translatedAddresses or null)
-    ++ [
-      (translation.translatedPrefix or "")
-      (translation.translatedAddress or "")
-      (translation.prefix or "")
-      (translation.address or "")
-    ];
+    listOrEmpty (modeledNat66.translatedPrefixes or null);
   nat66TranslatedAddressOrPrefix = uniqueStrings (builtins.concatMap translatedPrefixesForInterface explicitNat66Interfaces);
   translatedAddressesForInterface =
     iface:
@@ -370,8 +359,16 @@ let
         alternateProviders = false;
       };
     } // extra;
+  nat66ProviderRealized = builtins.any
+    (uplink: (attrsOrEmpty (nat66ByUplink.${uplink} or null)).providerRealized or false)
+    selectedUplinks;
   nat66Diagnostics =
     if !exitEnabled || nat6Enabled then
+      [ ]
+    else if nat66ProviderRealized then
+      # Provider/overlay egress (for example WireGuard) realizes NAT66 through
+      # the provider renderer, not the CPM WAN firewall. No WAN NAT66
+      # diagnostic applies for that path.
       [ ]
     else if !nat66Requested then
       if runtimeOriginNat66SourcePrefixes == [ ] then

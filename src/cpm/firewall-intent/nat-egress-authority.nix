@@ -15,13 +15,9 @@ let
     (
       iface:
       let
-        wan = attrsOrEmpty (iface.wan or null);
-        egress = attrsOrEmpty (wan.egress or null);
-        ipv6 = attrsOrEmpty (egress.ipv6 or null);
-        translation = attrsOrEmpty (ipv6.translation or null);
         modeledNat66 = attrsOrEmpty (nat66ByUplink.${iface.upstream or ""} or null);
       in
-      (translation.mode or null) == "nat66" && (modeledNat66.mode or null) == "nat66"
+      (modeledNat66.mode or null) == "nat66"
     )
     interfaceRecords;
 
@@ -33,7 +29,6 @@ let
       wan = attrsOrEmpty (iface.wan or null);
       egress = attrsOrEmpty (wan.egress or null);
       wanIpv6 = attrsOrEmpty (egress.ipv6 or null);
-      translation = attrsOrEmpty (wanIpv6.translation or null);
     in
     hasHostIPv6 iface
     && builtins.any (value: value == true) [
@@ -42,7 +37,6 @@ let
       (hostIpv6.routeAuthority or false)
       (ifaceIpv6.egressAuthority or false)
       (wanIpv6.egressAuthority or false)
-      (translation.egressAuthority or false)
     ];
 in
 {
