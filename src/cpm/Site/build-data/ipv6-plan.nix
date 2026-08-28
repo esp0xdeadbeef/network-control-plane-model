@@ -141,7 +141,14 @@ let
       failInventory path "ipv6.prefixes is required (list of /64s) when ipv6.mode = \"static\"";
 
   pdTenants =
-    if ipv6PdUplink == null then [ ] else builtins.sort (a: b: a < b) (builtins.filter (t: tenantIpv6Mode t != "static") tenantNames);
+    if ipv6PdUplink == null then
+      [ ]
+    else
+      builtins.sort (a: b: a < b) (
+        builtins.filter
+          (t: builtins.hasAttr t routedPrefixesByTenant && (routedPrefixesByTenant.${t} or [ ]) != [ ])
+          tenantNames
+      );
 
   _validatePdSlotsEnough =
     if ipv6PdUplink == null then
@@ -185,8 +192,10 @@ in
                         { inherit mode; }
                         // (if mode == "static" then
                           { prefixes = tenantStaticPrefixes tenantName; }
+                        else if builtins.hasAttr tenantName routedPrefixesByTenant && (routedPrefixesByTenant.${tenantName} or [ ]) != [ ] then
+                          { pd = { slot = pdTenantSlots.${tenantName}; prefixLength = ipv6PdPerTenantPrefixLength; }; }
                         else
-                          { pd = { slot = pdTenantSlots.${tenantName}; prefixLength = ipv6PdPerTenantPrefixLength; }; });
+                          { });
                     })
                   tenantNames
               );
