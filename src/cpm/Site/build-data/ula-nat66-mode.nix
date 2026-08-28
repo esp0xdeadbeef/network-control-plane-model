@@ -15,6 +15,12 @@ let
   isUla6Prefix = value:
     isNonEmptyString value && builtins.match "^[fF][cCdD].*" value != null;
 
+  canonicalPrefix = value:
+    let
+      canonical = common.ipam.canonicalNetworkPrefix value;
+    in
+    if canonical == null then value else canonical;
+
   # ULA owner entries from tenantPrefixOwners
   ownerEntries =
     builtins.filter
@@ -25,7 +31,29 @@ let
       (builtins.attrValues tenantPrefixOwners);
 
   # All ULA prefixes from owners
-  allUlaPrefixes = uniqueStrings (builtins.map (owner: owner.dst) ownerEntries);
+  allUlaPrefixes = uniqueStrings (builtins.map (owner: canonicalPrefix owner.dst) ownerEntries);
+
+  # Explicit NAT66 selection is the model authority (FS-420). The forwarding
+  # model materializes it into each egress node's egressIntent.nat66 from the
+  # modeled uplink translation. Overlay egress (for example WireGuard) selects
+  # NAT66 there even when the CPM has no physical WAN translation surface.
+  explicitNat66ByTarget =
+    builtins.listToAttrs (
+      builtins.map
+        (targetName:
+          let
+            egress = attrsOrEmpty (runtimeTargets.${targetName}.egressIntent or null);
+            nat66 = attrsOrEmpty (egress.nat66 or null);
+            sourcePrefixes = uniqueStrings (builtins.map canonicalPrefix (builtins.concatMap
+              (uplinkName: listOrEmpty ((attrsOrEmpty (nat66.${uplinkName} or null)).sourcePrefixes or null))
+              (builtins.attrNames nat66)));
+          in
+          {
+            name = targetName;
+            value = sourcePrefixes;
+          })
+        (sortedNames runtimeTargets)
+    );
 
   # Find runtime targets with NAT66 enabled
   nat66Targets =
@@ -34,7 +62,7 @@ let
         let
           natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
         in
-        (natIntent.families.ipv6 or false) == true)
+        (natIntent.families.ipv6 or false) == true || (explicitNat66ByTarget.${targetName} or [ ]) != [ ])
       (sortedNames runtimeTargets);
 
   # All NAT66 source prefixes from enabled targets
@@ -44,13 +72,14 @@ let
         let
           natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
         in
-        listOrEmpty (natIntent.masqueradeSourcePrefixes6 or null))
+        (builtins.map canonicalPrefix (listOrEmpty (natIntent.masqueradeSourcePrefixes6 or null)))
+        ++ (explicitNat66ByTarget.${targetName} or [ ]))
       nat66Targets);
 
   # For each ULA prefix with an owner, check if it has NAT66 egress
   ownerForPrefix = prefix:
     let
-      matches = builtins.filter (owner: (owner.dst or null) == prefix) ownerEntries;
+      matches = builtins.filter (owner: (canonicalPrefix (owner.dst or null)) == prefix) ownerEntries;
     in
     if matches == [ ] then null else builtins.head matches;
 
@@ -61,7 +90,8 @@ let
           let
             natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
           in
-          builtins.elem prefix (natIntent.masqueradeSourcePrefixes6 or [ ]))
+          builtins.elem prefix (builtins.map canonicalPrefix (natIntent.masqueradeSourcePrefixes6 or [ ]))
+          || builtins.elem prefix (explicitNat66ByTarget.${targetName} or [ ]))
         nat66Targets;
     in
     if matches == [ ] then null else builtins.head matches;
@@ -76,6 +106,13 @@ let
     if owner != null && targetName != null then
       let
         natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
+        egress = attrsOrEmpty (runtimeTargets.${targetName}.egressIntent or null);
+        nat66 = attrsOrEmpty (egress.nat66 or null);
+        uplinks =
+          if (natIntent.uplinks or [ ]) != [ ] then
+            natIntent.uplinks
+          else
+            builtins.attrNames nat66;
       in
       [
         {
@@ -85,7 +122,7 @@ let
           owner = owner.owner;
           source = "tenant-prefix-owner";
           runtimeTarget = targetName;
-          uplinks = natIntent.uplinks or [ ];
+          inherit uplinks;
           outputInterfaces = natIntent.masqueradeInterfaces6 or [ ];
         }
       ]
