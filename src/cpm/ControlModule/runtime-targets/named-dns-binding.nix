@@ -217,6 +217,9 @@ let
     let
       realization = attrsOrEmpty (runtimeTargets.${targetName}.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (realization.interfaces or null);
+      loopback = attrsOrEmpty (realization.loopback or null);
+      loopback4 = stripPrefixLength (loopback.addr4 or loopback.ipv4 or "");
+      loopback6 = stripPrefixLength (loopback.addr6 or loopback.ipv6 or "");
       candidates = builtins.filter (
         iface:
         (iface.sourceKind or null) == "p2p"
@@ -225,16 +228,14 @@ let
       attachmentIds = uniqueStrings (
         map (iface: (attrsOrEmpty (iface.backingRef or null)).id or "") candidates
       );
+      # FS-550: a core-hosted DNS service is addressed by its stable loopback,
+      # never by the fabric p2p up-sel address. Using the up-sel here made the
+      # runtime-origin source prefix (e.g. 10.1.0.18/32) collide with the
+      # connected p2p subnet (10.1.0.18/31) and shadow it with a more-specific
+      # /32, breaking the fabric reachability to the provider core.
       addresses = uniqueStrings (
-        lib.concatMap (
-          iface:
-          let
-            ipv4 = stripPrefixLength (iface.addr4 or "");
-            ipv6 = stripPrefixLength (iface.addr6 or "");
-          in
-          lib.optional (builtins.elem "ipv4" families && ipv4 != "") ipv4
-          ++ lib.optional (builtins.elem "ipv6" families && ipv6 != "") ipv6
-        ) candidates
+        lib.optional (builtins.elem "ipv4" families && loopback4 != "") loopback4
+        ++ lib.optional (builtins.elem "ipv6" families && loopback6 != "") loopback6
       );
       missingFamilies =
         lib.optional (
