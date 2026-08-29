@@ -17,7 +17,11 @@ let
     builtins.filter
       (iface:
         (accessNodes == [ ] || builtins.elem (common.laneAccess iface) accessNodes)
-        && (uplinks == [ ] || builtins.elem (common.laneUplink iface) uplinks))
+        && (
+          uplinks == [ ]
+          || builtins.elem (common.laneUplink iface) uplinks
+          || builtins.any (u: builtins.elem u uplinks) (common.laneUplinks iface)
+        ))
       uplinkInterfaces;
 
   serviceIfacesFor = accessNodes: peerAccessNodes:
@@ -45,14 +49,14 @@ let
           builtins.isAttrs (relationValue.publicIngressTupleAuthority or null);
         exact =
           if peerIsService && hasPublicIngressAuthority then
-            # A public ingress relation is bound to the access node that owns
-            # the target service.  Selecting every lane for the same uplink
-            # widens one WAN/service tuple over unrelated tenant lanes.
+          # A public ingress relation is bound to the access node that owns
+          # the target service.  Selecting every lane for the same uplink
+          # widens one WAN/service tuple over unrelated tenant lanes.
             uplinkIfacesFor peerAccessNodes uplinks
           else if peerIsService then
-            # Named non-public external fabrics (for example east-west) retain
-            # their explicit service projection over every matching fabric
-            # lane.  They do not carry public-ingress tuple authority.
+          # Named non-public external fabrics (for example east-west) retain
+          # their explicit service projection over every matching fabric
+          # lane.  They do not carry public-ingress tuple authority.
             uplinkIfacesFor [ ] uplinks
           else
             uplinkIfacesFor peerAccessNodes uplinks;
