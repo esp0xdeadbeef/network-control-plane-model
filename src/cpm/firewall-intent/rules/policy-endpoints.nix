@@ -6,6 +6,7 @@ let
     uplinkInterfaces
     accessNodesForEndpoint
     uplinksForEndpoint
+    uplinksForService
     serviceKnown
     attrsOrEmpty
     ;
@@ -24,12 +25,18 @@ let
         ))
       uplinkInterfaces;
 
-  serviceIfacesFor = accessNodes: peerAccessNodes:
+  serviceIfacesFor = endpoint: peerAccessNodes:
+    let
+      accessNodes = accessNodesForEndpoint endpoint;
+    in
     if accessNodes != [ ] then
       accessIfacesForNodes accessNodes
     else
-      let sameAccessUplinks = uplinkIfacesFor peerAccessNodes [ ];
-      in if sameAccessUplinks != [ ] then sameAccessUplinks else uplinkInterfaces;
+    # FS-315: a core-hosted service (no tenant access nodes) reaches the
+    # fabric through its provider node's uplink lane(s) only. Widening to
+    # `uplinkInterfaces` would copy an unassigned route into sibling policy
+    # lanes and shadow the provider core's connected fabric route.
+      uplinkIfacesFor peerAccessNodes (uplinksForService endpoint);
 
   endpointIfaces = relation: endpoint: peerEndpoint:
     let
@@ -69,7 +76,7 @@ let
       else
         denyFallback
     else if (endpointValue.kind or null) == "service" && serviceKnown endpoint then
-      serviceIfacesFor accessNodes peerAccessNodes
+      serviceIfacesFor endpoint peerAccessNodes
     else if endpointValue == "any" || endpoint == "any" then
       accessInterfaces ++ uplinkIfacesFor peerAccessNodes [ ]
     else

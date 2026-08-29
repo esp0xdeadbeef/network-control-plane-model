@@ -185,6 +185,51 @@ let
       )
     );
 
+  # The logical nodes that host a service (e.g. `core-vpn-onyx` for
+  # `onyx-dns`). A core-hosted service has no tenant access nodes, so its
+  # reachability lane must be derived from the provider node's uplink instead
+  # of widening to every sibling uplink lane (FS-315).
+  serviceProviderNodes =
+    endpoint:
+    uniqueStrings (
+      builtins.concatLists (
+        map
+          (serviceName:
+            if builtins.hasAttr serviceName serviceBindings then
+              listOrEmpty (serviceBindings.${serviceName}.providers or null)
+            else if builtins.hasAttr serviceName serviceRecords then
+              listOrEmpty (serviceRecords.${serviceName}.providers or null)
+            else
+              [ ])
+          (namesForEndpoint "service" endpoint)
+      )
+    );
+
+  # Uplinks/overlays that reach a service's provider node, derived from the
+  # external bindings whose runtime binding lands on that logical node. For a
+  # core-hosted service this is the single fabric lane (or lanes) that reaches
+  # the provider core, never the full sibling lane set.
+  uplinksForService =
+    endpoint:
+    let
+      providerNodes = serviceProviderNodes endpoint;
+    in
+    uniqueStrings (
+      builtins.concatLists (
+        map
+          (externalName:
+            if builtins.any
+              (binding: builtins.elem ((attrsOrEmpty binding).logicalNode or null) providerNodes)
+              (listOrEmpty (externalBindings.${externalName}.runtimeBindings or null))
+            then
+              listOrEmpty (externalBindings.${externalName}.uplinks or null)
+              ++ listOrEmpty (externalBindings.${externalName}.overlays or null)
+            else
+              [ ])
+          (builtins.attrNames externalBindings)
+      )
+    );
+
 in
 {
   inherit
@@ -275,5 +320,7 @@ in
     runtimeInterfacesForEndpointAtLogicalNode
     sourcePrefixesForEndpoint
     tenantNamesForEndpoint
+    serviceProviderNodes
+    uplinksForService
     ;
 }
