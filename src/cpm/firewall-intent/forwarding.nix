@@ -167,6 +167,52 @@ let
         )
       ) publicDnsServiceSources
     );
+
+  # FS-482: BGP control-plane traffic between the fabric router roles is
+  # authorized only from the intent-declared `bgp` traffic type. Emit a
+  # transit-to-transit accept on each fabric node for that traffic type so the
+  # iBGP peering (loopback-to-loopback over the p2p fabric) is not dropped by
+  # the deny-by-default forward chain.
+  bgpControlPlaneRules =
+    if (target.routingMode or "static") != "bgp" then
+      [ ]
+    else
+      let
+        bgpMatches = trafficTypeMatches.bgp or [ ];
+        distinctTransitInterfaces = builtins.filter
+          (iface: builtins.isString (iface.runtimeIfName or null) && iface.runtimeIfName != "")
+          transitInterfaces;
+      in
+      builtins.concatLists (
+        builtins.map
+          (fromIface:
+            builtins.concatLists (
+              builtins.map
+                (toIface:
+                  if fromIface.runtimeIfName == toIface.runtimeIfName then
+                    [ ]
+                  else
+                    builtins.map
+                      (family: {
+                        action = "accept";
+                        intent = {
+                          kind = "bgp-control-plane";
+                          source = "routing";
+                        };
+                        trafficType = "bgp";
+                        matches = bgpMatches;
+                        fromInterface = fromIface.runtimeIfName;
+                        toInterface = toIface.runtimeIfName;
+                        sourcePrefixes = [ ];
+                        inherit family;
+                        comment = "allow-bgp-control-plane";
+                        applyTcpMssClamp = false;
+                      })
+                      [ 4 6 ])
+                distinctTransitInterfaces)
+          )
+          distinctTransitInterfaces
+      );
 in
 if role == "access" then
   {
@@ -186,7 +232,7 @@ if role == "access" then
         runtimeOriginSourcePrefixes
         tenantPrefixOwners
         ;
-    };
+    } ++ bgpControlPlaneRules;
   }
 else if role == "downstream-selector" || role == "upstream-selector" then
   (
@@ -194,31 +240,34 @@ else if role == "downstream-selector" || role == "upstream-selector" then
       mode = "explicit-selector-forwarding";
       transitInterfaces = map (iface: iface.runtimeIfName) transitInterfaces;
       rules =
-        if role == "downstream-selector" then
-          buildDownstreamSelectorRules {
-            endpointBindings = attrsOrEmpty policyEndpointBindings;
-            relations = siteRelations;
-            inherit
-              services
-              trafficPaths
-              trafficTypeMatches
-              transitInterfaces
-              runtimeOriginSourcePrefixes
-              ;
-          }
-        else
-          buildUpstreamSelectorRules {
-            endpointBindings = attrsOrEmpty policyEndpointBindings;
-            relations = siteRelations;
-            egressEnabled = egressSelectorEnabled;
-            inherit
-              overlayNames
-              services
-              trafficTypeMatches
-              transitInterfaces
-              ;
-            siteRuntimeOriginSourcePrefixes = runtimeOriginSourcePrefixes;
-          };
+        (
+          if role == "downstream-selector" then
+            buildDownstreamSelectorRules {
+              endpointBindings = attrsOrEmpty policyEndpointBindings;
+              relations = siteRelations;
+              inherit
+                services
+                trafficPaths
+                trafficTypeMatches
+                transitInterfaces
+                runtimeOriginSourcePrefixes
+                ;
+            }
+          else
+            buildUpstreamSelectorRules {
+              endpointBindings = attrsOrEmpty policyEndpointBindings;
+              relations = siteRelations;
+              egressEnabled = egressSelectorEnabled;
+              inherit
+                overlayNames
+                services
+                trafficTypeMatches
+                transitInterfaces
+                ;
+              siteRuntimeOriginSourcePrefixes = runtimeOriginSourcePrefixes;
+            }
+        )
+        ++ bgpControlPlaneRules;
     }
     // policyDiagnosticAttrs
   )
@@ -238,7 +287,7 @@ else if role == "policy" then
           runtimeOriginSourcePrefixes
           tenantPrefixOwners
           ;
-      };
+      } ++ bgpControlPlaneRules;
     }
     // policyDiagnosticAttrs
   )
@@ -259,7 +308,7 @@ else if role == "core" then
     uplinkInterfaces = map (iface: iface.runtimeIfName) uplinkInterfaces;
     wanInterfaces = map (iface: iface.runtimeIfName) wanInterfaces;
     lanInterfaces = map (iface: iface.runtimeIfName) lanInterfaces;
-    rules = coreRules.rules;
+    rules = coreRules.rules ++ bgpControlPlaneRules;
     # FS-270-HDS-010-SDS-010-SMS-010: fail-closed core-transit admission
     # record — denied surfaces are reported, never silently forwarded.
     transitAdmission = coreRules.transitAdmission;
