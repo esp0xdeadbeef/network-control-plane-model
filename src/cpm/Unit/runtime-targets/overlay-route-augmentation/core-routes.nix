@@ -210,7 +210,7 @@ let
                   inherit overlayName;
                   overlay = overlayName;
                   policyOnly = true;
-                  proto = "default";
+                  proto = "overlay";
                   scope = "link";
                   intent = {
                     kind = "default-reachability";
@@ -225,7 +225,7 @@ let
                   inherit overlayName;
                   overlay = overlayName;
                   policyOnly = true;
-                  proto = "default";
+                  proto = "overlay";
                   scope = "link";
                   intent = {
                     kind = "default-reachability";
