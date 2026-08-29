@@ -108,11 +108,24 @@ let
   coreForPolicy =
     policyIface:
     let
-      matchesCore = builtins.filter (
-        coreIface: builtins.elem (common.laneUplink policyIface) (common.uplinks coreIface)
-      ) coreInterfaces;
+      cores = coresForPolicy policyIface;
     in
-    if matchesCore == [ ] then null else builtins.elemAt matchesCore 0;
+    if cores == [ ] then null else builtins.head cores;
+
+  # Every core whose uplink(s) intersect the policy lane's uplink(s). For a
+  # single-uplink lane this is one core; for a multi-uplink lane (e.g.
+  # clients-vpn with uplinks [onyx opal]) it is every matching provider core,
+  # so the selector emits a handoff to each and tenant traffic can ECMP across
+  # them instead of being dropped for lack of a policy→core forward rule.
+  coresForPolicy =
+    policyIface:
+    let
+      policyUplinks = common.laneUplinks policyIface;
+    in
+    builtins.filter (
+      coreIface:
+      builtins.any (uplink: builtins.elem uplink (common.uplinks coreIface)) policyUplinks
+    ) coreInterfaces;
 
   # For every policy interface, also generate forwarding rules to internet
   # egress core interfaces so that egress surface constraints match when
@@ -210,63 +223,65 @@ let
     map (
       policyIface:
       let
-        coreIface = coreForPolicy policyIface;
+        matchingCores = coresForPolicy policyIface;
       in
-      if coreIface == null then
-        [ ]
-      else
-        let
-          policySourcePrefixes = common.sourcePrefixesAllowedToInterface (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface) coreIface;
-        in
-        common.selectorPairRule policyIface coreIface
-        ++ (
-          if policySourcePrefixes == [ ] then
-            [ ]
-          else
-            [
-              (common.withSourcePrefixes (
-                {
-                  action = "accept";
-                  intent = {
-                    kind = "runtime-origin-egress";
-                    source = "loopback-runtime-identity";
-                    stage = "upstream-selector-policy-core-egress";
-                  };
-                  fromInterface = policyIface.runtimeIfName;
-                  toInterface = coreIface.runtimeIfName;
-                  applyTcpMssClamp = true;
-                }
-                // common.selectorRuntimeRuleAudit {
-                  relationId = "runtime-origin-egress";
-                  direction = "forward-runtime-origin";
-                  fromIface = policyIface;
-                  toIface = coreIface;
-                  decomposed = true;
-                  sourcePrefixes = policySourcePrefixes;
-                }
-              ) policySourcePrefixes)
-            ]
-        )
-        ++ [
-          (common.withSourcePrefixes (
-            {
-              action = "accept";
-              fromInterface = coreIface.runtimeIfName;
-              toInterface = policyIface.runtimeIfName;
-              applyTcpMssClamp = false;
-              connectionState = "established,related";
-              returnRule = true;
-            }
-            // common.selectorRuntimeRuleAudit {
-              relationId = "runtime-origin-egress";
-              direction = "reverse-runtime-origin";
-              fromIface = coreIface;
-              toIface = policyIface;
-              decomposed = true;
-              statefulReturn = true;
-            }
-          ) (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
-        ]
+      builtins.concatLists (
+        map (
+          coreIface:
+          let
+            policySourcePrefixes = common.sourcePrefixesAllowedToInterface (common.sourcePrefixesForInterface siteRuntimeOriginSourcePrefixes policyIface) coreIface;
+          in
+          common.selectorPairRule policyIface coreIface
+          ++ (
+            if policySourcePrefixes == [ ] then
+              [ ]
+            else
+              [
+                (common.withSourcePrefixes (
+                  {
+                    action = "accept";
+                    intent = {
+                      kind = "runtime-origin-egress";
+                      source = "loopback-runtime-identity";
+                      stage = "upstream-selector-policy-core-egress";
+                    };
+                    fromInterface = policyIface.runtimeIfName;
+                    toInterface = coreIface.runtimeIfName;
+                    applyTcpMssClamp = true;
+                  }
+                  // common.selectorRuntimeRuleAudit {
+                    relationId = "runtime-origin-egress";
+                    direction = "forward-runtime-origin";
+                    fromIface = policyIface;
+                    toIface = coreIface;
+                    decomposed = true;
+                    sourcePrefixes = policySourcePrefixes;
+                  }
+                ) policySourcePrefixes)
+              ]
+          )
+          ++ [
+            (common.withSourcePrefixes (
+              {
+                action = "accept";
+                fromInterface = coreIface.runtimeIfName;
+                toInterface = policyIface.runtimeIfName;
+                applyTcpMssClamp = false;
+                connectionState = "established,related";
+                returnRule = true;
+              }
+              // common.selectorRuntimeRuleAudit {
+                relationId = "runtime-origin-egress";
+                direction = "reverse-runtime-origin";
+                fromIface = coreIface;
+                toIface = policyIface;
+                decomposed = true;
+                statefulReturn = true;
+              }
+            ) (common.sourcePrefixesReachableVia siteRuntimeOriginSourcePrefixes coreIface))
+          ]
+        ) matchingCores
+      )
     ) policyInterfaces
   );
   genericEgressRules =

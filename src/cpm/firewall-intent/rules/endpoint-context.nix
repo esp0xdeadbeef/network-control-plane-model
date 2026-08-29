@@ -261,7 +261,7 @@ in
     transitInterfaces;
   policyInterfaces = builtins.filter
     (
-      iface: common.laneKind iface == "access-uplink" && common.laneUplink iface != null
+      iface: common.laneKind iface == "access-uplink" && common.laneUplinks iface != [ ]
     )
     transitInterfaces;
   externalUplinks =
