@@ -14,6 +14,14 @@ rec {
 
   laneUplink = iface: (lane iface).uplink or null;
 
+  laneUplinks = iface:
+    let
+      l = lane iface;
+      explicit = if builtins.isList (l.uplinks or null) then l.uplinks else [ ];
+      single = if builtins.isString (l.uplink or null) && l.uplink != "" then [ l.uplink ] else [ ];
+    in
+    if explicit != [ ] then explicit else single;
+
   prefixOrigin = prefix: attrsOrEmpty (prefix.origin or null);
 
   prefixOriginAccesses = prefix:
@@ -513,7 +521,7 @@ rec {
           toInterface = toIface.runtimeIfName;
           applyTcpMssClamp = true;
         } // selectorPairAuditWith { sourcePrefixes = staticPrefixes; } "forward" fromIface toIface
-          // (if runtimePrefixes == [ ] then { } else { sourceRuntimePrefixes = runtimePrefixes; }))
+        // (if runtimePrefixes == [ ] then { } else { sourceRuntimePrefixes = runtimePrefixes; }))
         staticPrefixes)
       ({
         action = "accept";
