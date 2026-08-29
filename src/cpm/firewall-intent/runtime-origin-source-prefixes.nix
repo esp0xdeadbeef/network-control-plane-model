@@ -21,9 +21,6 @@ let
       )
     );
 
-  siteTransport = attrsOrEmpty (siteAttrs.transport or null);
-  overlayList = listOrEmpty (siteTransport.overlays or null);
-
   routeList =
     iface:
     let
@@ -54,52 +51,6 @@ let
   isAccessTarget =
     target: (target.role or null) == "access" || hasForwardingFunction "access-gateway" target;
 
-  tenantAccessNodes =
-    tenantName:
-    uniqueStrings (
-      map (entry: entry.target.logicalNode.name or null) (
-        builtins.filter
-          (
-            entry:
-            isAccessTarget entry.target
-            && builtins.any
-              (
-                iface:
-                (iface.sourceKind or null) == "tenant"
-                && (toString (iface.tenant or "")) == (toString tenantName)
-              )
-              (targetInterfaces entry.target)
-          )
-          targetEntries
-      )
-    );
-
-  underlayAccessNodes =
-    underlayAccess:
-    if (underlayAccess.kind or null) == "tenant" then tenantAccessNodes (underlayAccess.name or "") else [ ];
-
-  overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
-  overlayUnderlayAccessByName =
-    let
-      fromTransport = map (
-        overlay:
-        {
-          name = overlay.name or null;
-          value = underlayAccessNodes (attrsOrEmpty (overlay.underlayAccess or null));
-        }
-      ) overlayList;
-      fromReachability = map (
-        name:
-        {
-          inherit name;
-          value = underlayAccessNodes (attrsOrEmpty (overlayReachability.${name}.underlayAccess or null));
-        }
-      ) (sortedNames overlayReachability);
-    in
-    builtins.listToAttrs (
-      builtins.filter (entry: entry.name != null && entry.value != [ ]) (fromTransport ++ fromReachability)
-    );
-
   peerAccessesForLink =
     targetName: iface:
     let
@@ -122,19 +73,17 @@ let
     let
       defaultIfaces = builtins.filter hasDefaultRoute (targetInterfaces target);
       laneValues = map laneAttrs defaultIfaces;
-      runtimeOrigin = attrsOrEmpty (target.runtimeOriginEgress or null);
-      runtimeUplinks =
-        if builtins.isList (runtimeOrigin.uplinks or null) then runtimeOrigin.uplinks else [ ];
-      overlayUnderlayAccesses = map (
-        uplink: overlayUnderlayAccessByName.${uplink} or null
-      ) runtimeUplinks;
     in
     {
       inherit targetName;
       interfaces = uniqueStrings (map (iface: iface.runtimeIfName or null) defaultIfaces);
+      # FS-550: a runtime-origin source is scoped by the fabric lanes that
+      # actually reach it (lane access + direct access peer), never by the
+      # overlay's underlay tenant. The underlay is transport, not the source's
+      # origin; including it fanned the source /32 onto the underlay lane and
+      # shadowed the provider core's connected fabric subnet.
       accesses = uniqueStrings (
         map (lane: lane.access or null) laneValues
-        ++ builtins.concatMap (value: if builtins.isList value then value else [ ]) overlayUnderlayAccesses
         ++ builtins.concatMap (peerAccessesForLink targetName) defaultIfaces
       );
       uplinks = uniqueStrings (
