@@ -123,8 +123,17 @@ let
         via = if peer != null then peer else (builtins.head candidates).${viaField};
       in
       builtins.map
-        (dst: {
-          inherit dst family;
+        (address: {
+          # Emit an explicit host prefix so the service endpoint route shares
+          # the same destination key as the fabric internal-reachability host
+          # route (e.g. 10.1.1.9/32). A bare address would become a second,
+          # distinct destination and let a wrong-direction fabric route win.
+          dst =
+            if lib.hasInfix "/" address then
+              address
+            else
+              "${address}/${if family == 4 then "32" else "128"}";
+          inherit family;
           proto = "internal";
           intent = {
             kind = "service-endpoint-reachability";
