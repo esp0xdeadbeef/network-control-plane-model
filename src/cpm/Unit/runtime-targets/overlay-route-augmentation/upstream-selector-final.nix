@@ -11,6 +11,7 @@
 , addOverlayUnderlayEndpointRoutesToCore
 , addDelegatedOverlayDefaultRoutesToCore
 , addGenericOverlayDefaultRoutesToCore
+, addEgressSourceReturnRoutesToCore
 , addRuntimePrefixReturnsToCoreOverlay
 , addRuntimePrefixReturnsToWanCore
 , underlayEndpointRoutes
@@ -72,10 +73,12 @@ let
   selectorDefaultVia6 = defaultViaFor 6 interfaces;
   coreInterfaces = addRuntimePrefixReturnsToWanCore nodeRole (
     addRuntimePrefixReturnsToCoreOverlay nodeRole (
-      addDelegatedOverlayDefaultRoutesToCore nodeRole (
-        addGenericOverlayDefaultRoutesToCore nodeRole (
-          addOverlayUnderlayEndpointRoutesToCore nodeRole (
-            addOverlayNodeRoutesToCoreOverlay nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
+      addEgressSourceReturnRoutesToCore nodeRole (
+        addDelegatedOverlayDefaultRoutesToCore nodeRole (
+          addGenericOverlayDefaultRoutesToCore nodeRole (
+            addOverlayUnderlayEndpointRoutesToCore nodeRole (
+              addOverlayNodeRoutesToCoreOverlay nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
+            )
           )
         )
       )

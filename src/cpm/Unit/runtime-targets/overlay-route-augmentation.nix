@@ -102,6 +102,7 @@ let
     addOverlayUnderlayEndpointRoutesToCore
     addDelegatedOverlayDefaultRoutesToCore
     addGenericOverlayDefaultRoutesToCore
+    addEgressSourceReturnRoutesToCore
     addRuntimePrefixReturnsToCoreOverlay
     ;
 
@@ -139,6 +140,7 @@ let
       addOverlayUnderlayEndpointRoutesToCore
       addDelegatedOverlayDefaultRoutesToCore
       addGenericOverlayDefaultRoutesToCore
+      addEgressSourceReturnRoutesToCore
       addRuntimePrefixReturnsToCoreOverlay
       addRuntimePrefixReturnsToWanCore
       underlayEndpointRoutes

@@ -20,7 +20,7 @@
 
 let
   inherit (helpers) hasAttr isNonEmptyString;
-  inherit (common) attrsOrEmpty mergeRoutes;
+  inherit (common) attrsOrEmpty listOrEmpty mergeRoutes;
 
   overlayNodeRouteAugmenters = import ./overlay-node-routes.nix {
     inherit
@@ -141,6 +141,80 @@ let
         )
         interfaces;
 
+  # The NAT/NAT66 source prefixes of an egress-only WireGuard overlay are the
+  # local tenant scopes the tunnel serves. Their return path (un-NAT'd replies
+  # coming back out of the tunnel) must route toward the fabric, not the
+  # underlay bootstrap path (FS-470 return-route expectation).
+  addEgressSourceReturnRoutesToCore =
+    nodeRole: interfaces:
+    if nodeRole != "core" then
+      interfaces
+    else
+      lib.mapAttrs
+        (
+          _: iface:
+          let
+            lane = ((iface.backingRef or { }).lane or { });
+            overlayName = lane.uplink or null;
+            overlayCfg =
+              if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
+                overlayProvisioning.${overlayName}
+              else
+                { };
+            providerContract = attrsOrEmpty (overlayCfg.providerContract or null);
+            nat = attrsOrEmpty (providerContract.nat or null);
+            sourceCidrs4 = listOrEmpty ((attrsOrEmpty (nat.ipv4 or null)).sourceCidrs or null);
+            sourceCidrs6 = listOrEmpty ((attrsOrEmpty (nat.ipv6 or null)).sourceCidrs or null);
+            via4 = p2pPeerAddress 4 (iface.addr4 or null);
+            via6 = p2pPeerAddress 6 (iface.addr6 or null);
+            isOverlayFabric =
+              (iface.sourceKind or null) == "p2p"
+              && (lane.kind or null) == "uplink"
+              && isNonEmptyString overlayName
+              && hasAttr overlayName overlayProvisioning;
+            routes = attrsOrEmpty (iface.routes or null);
+            returnRoutes = {
+              ipv4 =
+                if via4 == null then
+                  [ ]
+                else
+                  builtins.map
+                    (cidr: {
+                      dst = cidr;
+                      family = 4;
+                      via4 = via4;
+                      proto = "internal";
+                      intent = {
+                        kind = "internal-reachability";
+                        source = "egress-source-return";
+                      };
+                    })
+                    sourceCidrs4;
+              ipv6 =
+                if via6 == null then
+                  [ ]
+                else
+                  builtins.map
+                    (cidr: {
+                      dst = cidr;
+                      family = 6;
+                      via6 = via6;
+                      proto = "internal";
+                      intent = {
+                        kind = "internal-reachability";
+                        source = "egress-source-return";
+                      };
+                    })
+                    sourceCidrs6;
+            };
+          in
+          if !isOverlayFabric || (returnRoutes.ipv4 == [ ] && returnRoutes.ipv6 == [ ]) then
+            iface
+          else
+            iface // { routes = mergeRoutes routes returnRoutes; }
+        )
+        interfaces;
+
   addRuntimePrefixReturnsToCoreOverlay =
     nodeRole: interfaces:
     if nodeRole != "core" then
@@ -251,6 +325,7 @@ in
     addOverlayUnderlayEndpointRoutesToCore
     addDelegatedOverlayDefaultRoutesToCore
     addGenericOverlayDefaultRoutesToCore
+    addEgressSourceReturnRoutesToCore
     addRuntimePrefixReturnsToCoreOverlay
     ;
 }
