@@ -1,21 +1,21 @@
-{
-  lib,
-  helpers,
-  common,
-  overlayProvisioning,
-  interfaceOverlayLaneNames,
-  interfaceOverlayNames,
-  p2pPeerAddress,
-  defaultViaRoutes,
-  overlayNodeRoutesVia,
-  overlayPeerTenantRoutes,
-  overlayRuntimeRoutedPrefixRoutes,
-  overlayRuntimeRoutedPrefixRoutesVia,
-  delegatedOverlayDefaultRoutes,
-  delegatedOverlayAuthorityDefaults,
-  withoutGenericOverlayDefaults,
-  runtimePrefixExitNodes,
-  overlayUnderlayEndpoints,
+{ lib
+, helpers
+, common
+, overlayProvisioning
+, interfaceOverlayLaneNames
+, interfaceOverlayNames
+, p2pPeerAddress
+, defaultViaRoutes
+, overlayNodeRoutesVia
+, overlayPeerTenantRoutes
+, overlayRuntimeRoutedPrefixRoutes
+, overlayRuntimeRoutedPrefixRoutesVia
+, delegatedOverlayDefaultRoutes
+, delegatedOverlayAuthorityDefaults
+, withoutGenericOverlayDefaults
+, runtimePrefixExitNodes
+, overlayUnderlayEndpoints
+,
 }:
 
 let
@@ -54,19 +54,19 @@ let
     in
     lib.concatMap
       (defaultRoute:
-        builtins.map
-          (endpoint: {
-            inherit family;
-            sourceFile = endpoint.sourceFile;
-            proto = "underlay";
-            overlay = endpoint.overlay;
-            intent = {
-              kind = "overlay-underlay-reachability";
-              source = "overlay-underlay-endpoint";
-            };
-            ${viaField} = defaultRoute.${viaField};
-          })
-          endpoints)
+      builtins.map
+        (endpoint: {
+          inherit family;
+          sourceFile = endpoint.sourceFile;
+          proto = "underlay";
+          overlay = endpoint.overlay;
+          intent = {
+            kind = "overlay-underlay-reachability";
+            source = "overlay-underlay-endpoint";
+          };
+          ${viaField} = defaultRoute.${viaField};
+        })
+        endpoints)
       (defaultViaRoutes family routes);
 
   addOverlayUnderlayEndpointRoutesToCore =
@@ -80,92 +80,167 @@ let
       if nodeOverlayNames == [ ] then
         interfaces
       else
-        lib.mapAttrs (
-          _: iface:
-          let
-            routes = attrsOrEmpty (iface.routes or null);
-            extraRoutes = {
-              ipv4 = underlayEndpointRoutesFor 4 nodeOverlayNames routes;
-              ipv6 = underlayEndpointRoutesFor 6 nodeOverlayNames routes;
-            };
-          in
-          if
-            (iface.sourceKind or null) != "p2p"
-            || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ])
-          then
-            iface
-          else
-            iface // { routes = mergeRoutes routes extraRoutes; }
-        ) interfaces;
+        lib.mapAttrs
+          (
+            _: iface:
+            let
+              routes = attrsOrEmpty (iface.routes or null);
+              extraRoutes = {
+                ipv4 = underlayEndpointRoutesFor 4 nodeOverlayNames routes;
+                ipv6 = underlayEndpointRoutesFor 6 nodeOverlayNames routes;
+              };
+            in
+            if
+              (iface.sourceKind or null) != "p2p"
+              || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ])
+            then
+              iface
+            else
+              iface // { routes = mergeRoutes routes extraRoutes; }
+          )
+          interfaces;
 
   addDelegatedOverlayDefaultRoutesToCore =
     nodeRole: interfaces:
     if nodeRole != "core" || runtimePrefixExitNodes == [ ] then
       interfaces
     else
-      lib.mapAttrs (
-        _: iface:
-        let
-          overlayName = ((iface.backingRef or { }).name or null);
-          runtimeNode = iface.logicalNode or null;
-          routes = attrsOrEmpty (iface.routes or null);
-          delegatedDefaultsFromRoutes4 = delegatedOverlayDefaultRoutes 4 routes;
-          delegatedDefaultsFromRoutes6 = delegatedOverlayDefaultRoutes 6 routes;
-          delegatedDefaults = {
-            ipv4 =
-              if delegatedDefaultsFromRoutes4 != [ ] then
-                delegatedDefaultsFromRoutes4
-              else
-                delegatedOverlayAuthorityDefaults 4 overlayName runtimeNode;
-            ipv6 =
-              if delegatedDefaultsFromRoutes6 != [ ] then
-                delegatedDefaultsFromRoutes6
-              else
-                delegatedOverlayAuthorityDefaults 6 overlayName runtimeNode;
-          };
-          cleanedRoutes = routes // {
-            ipv4 = withoutGenericOverlayDefaults 4 routes;
-            ipv6 = withoutGenericOverlayDefaults 6 routes;
-          };
-        in
-        if
-          (iface.sourceKind or null) != "overlay"
-          || (delegatedDefaults.ipv4 == [ ] && delegatedDefaults.ipv6 == [ ])
-        then
-          iface
-        else
-          iface // { routes = mergeRoutes cleanedRoutes delegatedDefaults; }
-      ) interfaces;
+      lib.mapAttrs
+        (
+          _: iface:
+          let
+            overlayName = ((iface.backingRef or { }).name or null);
+            runtimeNode = iface.logicalNode or null;
+            routes = attrsOrEmpty (iface.routes or null);
+            delegatedDefaultsFromRoutes4 = delegatedOverlayDefaultRoutes 4 routes;
+            delegatedDefaultsFromRoutes6 = delegatedOverlayDefaultRoutes 6 routes;
+            delegatedDefaults = {
+              ipv4 =
+                if delegatedDefaultsFromRoutes4 != [ ] then
+                  delegatedDefaultsFromRoutes4
+                else
+                  delegatedOverlayAuthorityDefaults 4 overlayName runtimeNode;
+              ipv6 =
+                if delegatedDefaultsFromRoutes6 != [ ] then
+                  delegatedDefaultsFromRoutes6
+                else
+                  delegatedOverlayAuthorityDefaults 6 overlayName runtimeNode;
+            };
+            cleanedRoutes = routes // {
+              ipv4 = withoutGenericOverlayDefaults 4 routes;
+              ipv6 = withoutGenericOverlayDefaults 6 routes;
+            };
+          in
+          if
+            (iface.sourceKind or null) != "overlay"
+            || (delegatedDefaults.ipv4 == [ ] && delegatedDefaults.ipv6 == [ ])
+          then
+            iface
+          else
+            iface // { routes = mergeRoutes cleanedRoutes delegatedDefaults; }
+        )
+        interfaces;
 
   addRuntimePrefixReturnsToCoreOverlay =
     nodeRole: interfaces:
     if nodeRole != "core" then
       interfaces
     else
-      lib.mapAttrs (
-        _: iface:
-        let
-          overlayName = ((iface.backingRef or { }).name or null);
-          routes = attrsOrEmpty (iface.routes or null);
-          extraRoutes = {
-            ipv4 =
+      lib.mapAttrs
+        (
+          _: iface:
+          let
+            overlayName = ((iface.backingRef or { }).name or null);
+            routes = attrsOrEmpty (iface.routes or null);
+            extraRoutes = {
+              ipv4 =
+                if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
+                  builtins.filter (route: (route.family or null) == 4) (overlayPeerTenantRoutes overlayName)
+                else
+                  [ ];
+              ipv6 =
+                if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
+                  (builtins.filter (route: (route.family or null) == 6) (overlayPeerTenantRoutes overlayName))
+                  ++ overlayRuntimeRoutedPrefixRoutes overlayName
+                else
+                  [ ];
+            };
+          in
+          if (iface.sourceKind or null) != "overlay" || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then
+            iface
+          else
+            iface // { routes = mergeRoutes routes extraRoutes; }
+        )
+        interfaces;
+
+  # An egress-only WireGuard overlay terminates a policy-routed provider exit
+  # (FS-470). Its generic default (0.0.0.0/0 and ::/0 over the tunnel, the
+  # WireGuard AllowedIPs) must be installed in the core's shared fabric policy
+  # table so tenant payload ingressing from the upstream-selector is routed
+  # through the tunnel — not the underlay bootstrap path, which must stay
+  # payload-inert (URS: underlay reachability does not become payload
+  # reachability).
+  addGenericOverlayDefaultRoutesToCore =
+    nodeRole: interfaces:
+    if nodeRole != "core" then
+      interfaces
+    else
+      lib.mapAttrs
+        (
+          _: iface:
+          let
+            overlayName = ((iface.backingRef or { }).name or null);
+            overlayCfg =
               if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
-                builtins.filter (route: (route.family or null) == 4) (overlayPeerTenantRoutes overlayName)
+                overlayProvisioning.${overlayName}
               else
-                [ ];
-            ipv6 =
-              if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
-                (builtins.filter (route: (route.family or null) == 6) (overlayPeerTenantRoutes overlayName))
-                ++ overlayRuntimeRoutedPrefixRoutes overlayName
-              else
-                [ ];
-          };
-        in
-        if (iface.sourceKind or null) != "overlay" || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then
-          iface
-        else
-          iface // { routes = mergeRoutes routes extraRoutes; }
-      ) interfaces;
+                { };
+            providerContract = attrsOrEmpty (overlayCfg.providerContract or null);
+            providerMode = (attrsOrEmpty (providerContract.provider or null)).mode or null;
+            isEgressOnlyOverlay =
+              (iface.sourceKind or null) == "overlay"
+              && isNonEmptyString overlayName
+              && providerMode == "egress-only";
+            routes = attrsOrEmpty (iface.routes or null);
+            genericDefaults = {
+              ipv4 = [
+                {
+                  dst = "0.0.0.0/0";
+                  family = 4;
+                  inherit overlayName;
+                  overlay = overlayName;
+                  policyOnly = true;
+                  proto = "default";
+                  scope = "link";
+                  intent = {
+                    kind = "default-reachability";
+                    source = "overlay-egress";
+                  };
+                }
+              ];
+              ipv6 = [
+                {
+                  dst = "::/0";
+                  family = 6;
+                  inherit overlayName;
+                  overlay = overlayName;
+                  policyOnly = true;
+                  proto = "default";
+                  scope = "link";
+                  intent = {
+                    kind = "default-reachability";
+                    source = "overlay-egress";
+                  };
+                }
+              ];
+            };
+          in
+          if !isEgressOnlyOverlay then
+            iface
+          else
+            iface // { routes = mergeRoutes routes genericDefaults; }
+        )
+        interfaces;
 
 
 in
@@ -175,6 +250,7 @@ in
     addOverlayNodeRoutesToCoreOverlay
     addOverlayUnderlayEndpointRoutesToCore
     addDelegatedOverlayDefaultRoutesToCore
+    addGenericOverlayDefaultRoutesToCore
     addRuntimePrefixReturnsToCoreOverlay
     ;
 }
