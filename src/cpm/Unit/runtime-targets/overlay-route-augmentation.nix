@@ -1,11 +1,11 @@
-{
-  lib,
-  helpers,
-  common,
-  ipam,
-  overlayProvisioning,
-  attachments,
-  routedPrefixesByTenant,
+{ lib
+, helpers
+, common
+, ipam
+, overlayProvisioning
+, attachments
+, routedPrefixesByTenant
+,
 }:
 
 let
@@ -101,6 +101,7 @@ let
     addOverlayNodeRoutesToCoreOverlay
     addOverlayUnderlayEndpointRoutesToCore
     addDelegatedOverlayDefaultRoutesToCore
+    addGenericOverlayDefaultRoutesToCore
     addRuntimePrefixReturnsToCoreOverlay
     ;
 
@@ -137,6 +138,7 @@ let
       addOverlayNodeRoutesToCoreOverlay
       addOverlayUnderlayEndpointRoutesToCore
       addDelegatedOverlayDefaultRoutesToCore
+      addGenericOverlayDefaultRoutesToCore
       addRuntimePrefixReturnsToCoreOverlay
       addRuntimePrefixReturnsToWanCore
       underlayEndpointRoutes
