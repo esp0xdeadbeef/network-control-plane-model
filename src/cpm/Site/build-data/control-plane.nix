@@ -36,11 +36,24 @@ let
   siteTenantsCfg = attrsOrEmpty (siteControlPlaneCfg.tenants or null);
   siteIpv6Cfg = attrsOrEmpty (siteAttrs.ipv6 or null) // attrsOrEmpty (siteControlPlaneCfg.ipv6 or null);
 
-  routingMode =
-    let
-      v = siteRouting.mode or "static";
-    in
-    if v == "bgp" || v == "static" then v else "static";
+  # FS-481: routing style is selected per modeled boundary in the intent
+  # topology (uplink egress mode), never from a site-wide inventory mode.
+  intentUplinkEgressModes =
+    builtins.concatMap
+      (nodeName:
+        builtins.map
+          (uplinkName:
+            let
+              node = attrsOrEmpty (siteAttrs.nodes.${nodeName} or null);
+              uplinks = attrsOrEmpty (node.uplinks or null);
+              uplink = attrsOrEmpty (uplinks.${uplinkName} or null);
+              egress = attrsOrEmpty (uplink.egress or null);
+            in
+            egress.mode or "static")
+          (builtins.attrNames (attrsOrEmpty ((attrsOrEmpty (siteAttrs.nodes.${nodeName} or null)).uplinks or null))))
+      (builtins.attrNames (attrsOrEmpty (siteAttrs.nodes or null)));
+
+  routingMode = if builtins.elem "bgp" intentUplinkEgressModes then "bgp" else "static";
 
   bgpSite =
     if routingMode == "bgp" then
