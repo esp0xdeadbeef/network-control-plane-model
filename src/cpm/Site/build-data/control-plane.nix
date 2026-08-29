@@ -48,7 +48,15 @@ let
     else
       { };
 
-  bgpSiteAsn = bgpSite.asn or null;
+  bgpSiteAsn =
+    if routingMode != "bgp" then
+      null
+    else if builtins.isInt (bgpSite.asn or null) then
+      bgpSite.asn
+    else
+      failInventory
+        "inventory.controlPlane.sites.${enterpriseName}.${siteName}.routing.bgp.asn"
+        "routing.bgp.asn is required and must be an integer when routing.mode = \"bgp\"";
   bgpTopology = bgpSite.topology or "policy-rr";
 
   normalizeEgressMode = v:
