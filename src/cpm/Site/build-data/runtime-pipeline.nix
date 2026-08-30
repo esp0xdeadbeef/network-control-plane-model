@@ -100,6 +100,7 @@ let
       allowedRelations
       serviceDefinitions
       inventoryEndpoints
+      overlayProvisioning
       ;
     siteDns = dnsContract;
   };
