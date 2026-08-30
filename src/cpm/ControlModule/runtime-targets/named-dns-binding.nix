@@ -290,6 +290,27 @@ let
       ]) tenantInterfaces
     );
 
+  # The fabric-side (p2p) addresses of a runtime target. A resolver's
+  # forwarded queries egress toward the fabric, so the requester source and
+  # the resolver's outgoing interface must be its fabric address — not its
+  # tenant-facing address, which has no route to the fabric.
+  fabricAddresses =
+    targetName:
+    let
+      interfaces = attrsOrEmpty (
+        (attrsOrEmpty (runtimeTargets.${targetName}.effectiveRuntimeRealization or null)).interfaces or null
+      );
+      transitInterfaces = builtins.filter (iface: (iface.sourceKind or null) == "p2p") (
+        builtins.attrValues interfaces
+      );
+    in
+    uniqueStrings (
+      lib.concatMap (iface: [
+        (stripPrefixLength (iface.addr4 or ""))
+        (stripPrefixLength (iface.addr6 or ""))
+      ]) transitInterfaces
+    );
+
   tenantPrefixesFor =
     tenantName:
     uniqueStrings (
@@ -418,7 +439,7 @@ let
         if (upstream.name or null) == coreServiceName then
           let
             requesterTargetName = requesterTargetNameForService (advertised.name or null);
-            requesterSources = tenantAddresses requesterTargetName;
+            requesterSources = fabricAddresses requesterTargetName;
           in
           builtins.filter (value: value != null) (map stripPrefixLength requesterSources)
         else
@@ -571,7 +592,7 @@ let
         resolverNode = coreNodeName;
       };
       endpoints = relationEndpoint.addresses;
-      requesterSources = tenantAddresses requesterTargetName;
+      requesterSources = fabricAddresses requesterTargetName;
       uplinks = egressUplinksFor coreServiceName;
       accessTarget = targets.${requesterTargetName};
       accessDns = attrsOrEmpty ((attrsOrEmpty (accessTarget.services or null)).dns or null);
