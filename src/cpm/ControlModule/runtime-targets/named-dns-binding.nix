@@ -650,23 +650,27 @@ let
         };
       boundAccess = bindRequesterInterfaces {
         target = mergeDns accessTarget {
-          forwarders = endpoints;
+          forwarders = uniqueStrings (
+            listOrEmpty (accessDns.forwarders or null) ++ endpoints
+          );
           recursionMode = "forwarding";
           outgoingInterfaces = requesterSources;
-          upstreamResolvers = [
-            {
-              kind = "named-core-resolver";
-              service = coreServiceName;
-              node = coreNodeName;
-              addresses = endpoints;
-              addressAuthority = "model-allocated-service-prefix";
-              endpointAuthority = {
-                inherit relationId;
-                terminalAttachmentId = relationEndpoint.attachmentId;
-              };
-              returnBehavior = binding.returnBehavior or "symmetric";
-            }
-          ];
+          upstreamResolvers =
+            listOrEmpty (accessDns.upstreamResolvers or null)
+            ++ [
+              {
+                kind = "named-core-resolver";
+                service = coreServiceName;
+                node = coreNodeName;
+                addresses = endpoints;
+                addressAuthority = "model-allocated-service-prefix";
+                endpointAuthority = {
+                  inherit relationId;
+                  terminalAttachmentId = relationEndpoint.attachmentId;
+                };
+                returnBehavior = binding.returnBehavior or "symmetric";
+              }
+            ];
           roles = accessRoles // {
             recursion = accessRecursion // {
               outgoingInterfaces = requesterSources;
