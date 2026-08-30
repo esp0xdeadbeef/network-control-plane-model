@@ -53,8 +53,11 @@ let
   hasP2PPrefixLength = dst:
     builtins.isString dst
     && (
-      builtins.match ".*/3[12]" dst != null
-      || builtins.match ".*/12[78]" dst != null
+      # Only the point-to-point /31 (IPv4) and /127 (IPv6) subnets are p2p
+      # links. A /32 or /128 is a distinct host route (a router loopback or a
+      # service address), not a p2p subnet, and must not be filtered out.
+      builtins.match ".*/31" dst != null
+      || builtins.match ".*/127" dst != null
     );
 
   dnsServiceRoute = route:
