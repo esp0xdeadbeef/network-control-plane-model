@@ -8,6 +8,7 @@
   serviceDefinitions,
   allowedRelations,
   inventoryEndpoints,
+  overlayProvisioning ? { },
 }:
 
 runtimeTargets:
@@ -594,6 +595,21 @@ let
       endpoints = relationEndpoint.addresses;
       requesterSources = fabricAddresses requesterTargetName;
       uplinks = egressUplinksFor coreServiceName;
+      # FS-525: a core that hosts an overlay/VPN service obtains its upstream
+      # resolvers from the overlay provider profile (the WireGuard DNS= file),
+      # not from a hardcoded address. The provider's generatedPeer.dnsFile is
+      # a runtime secret path; the renderer reads it at runtime to populate the
+      # resolver's forwarders.
+      overlayDnsFile =
+        let
+          overlayNames = listOrEmpty uplinks;
+          firstOverlay = if overlayNames == [ ] then null else builtins.head overlayNames;
+          overlay = if firstOverlay == null then { } else attrsOrEmpty (overlayProvisioning.${firstOverlay} or null);
+          providerContract = attrsOrEmpty (overlay.providerContract or null);
+          profile = attrsOrEmpty (providerContract.profile or null);
+          generatedPeer = attrsOrEmpty (profile.generatedPeer or null);
+        in
+        generatedPeer.dnsFile or null;
       accessTarget = targets.${requesterTargetName};
       accessDns = attrsOrEmpty ((attrsOrEmpty (accessTarget.services or null)).dns or null);
       accessRoles = attrsOrEmpty (accessDns.roles or null);
@@ -671,7 +687,12 @@ let
         allowFrom = requesterAllowFromFor coreServiceName;
         forwarders = [ ];
         outgoingInterfaces = [ ];
-        recursionMode = (service coreServiceName).recursionMode or "iterative";
+        recursionMode =
+          if overlayDnsFile != null then
+            "forwarding"
+          else
+            (service coreServiceName).recursionMode or "iterative";
+        dnsFile = overlayDnsFile;
         egress = { inherit uplinks; };
         roles = coreRoles // {
           recursion = coreRecursion // {
