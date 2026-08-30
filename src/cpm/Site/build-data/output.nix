@@ -339,6 +339,50 @@ let
         message = "Emulation-derived route to ${r.dst or "unknown"} missing provenance tag (emulationSubnet = true required)";
       })
       untaggedRoutes;
+
+  # FS-540: an access resolver forwards its query from the access node's
+  # fabric p2p address, so that address must be a source-scoped selector for
+  # the access lane on every selector/policy node in the path. Register each
+  # access node's fabric p2p host addresses as tenant-prefix owners so the
+  # renderer emits the lane policy rule for the fabric source as well as the
+  # tenant prefixes.
+  stripPrefixLength = addr:
+    let
+      parts = if builtins.isString addr then lib.splitString "/" addr else [ ];
+    in
+    if builtins.length parts >= 1 then builtins.head parts else "";
+  fabricSourceOwners =
+    builtins.foldl'
+      (acc: targetName:
+        let
+          target = runtimeTargets.${targetName} or { };
+          role = target.role or "";
+          logical = target.logicalNode or { };
+          accessName = if builtins.isAttrs logical then (logical.name or null) else null;
+          interfaces = (target.effectiveRuntimeRealization or { }).interfaces or { };
+        in
+        if role != "access" || !(builtins.isString accessName) || accessName == "" then
+          acc
+        else
+          builtins.foldl'
+            (ifAcc: ifName:
+              let
+                iface = interfaces.${ifName} or { };
+                host4 = stripPrefixLength (iface.addr4 or "");
+                host6 = stripPrefixLength (iface.addr6 or "");
+              in
+              if (iface.sourceKind or "") != "p2p" then
+                ifAcc
+              else
+                ifAcc
+                // (if host4 == "" then { } else { "4|${host4}/32" = { owner = accessName; }; })
+                // (if host6 == "" then { } else { "6|${host6}/128" = { owner = accessName; }; })
+            )
+            acc
+            (builtins.attrNames interfaces)
+      )
+      { }
+      (builtins.attrNames runtimeTargets);
 in
 {
   siteId = siteId;
@@ -350,7 +394,7 @@ in
   uplinkNames = uplinkNames;
   attachments = attachments;
   domains = domainsValue;
-  tenantPrefixOwners = tenantPrefixOwners;
+  tenantPrefixOwners = tenantPrefixOwners // fabricSourceOwners;
   transit = transitAttrs;
   trafficPaths = trafficPaths;
   routing =
