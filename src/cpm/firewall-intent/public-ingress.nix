@@ -85,6 +85,19 @@ let
     else
       throw "public ingress ${context} must resolve exactly once; resolved ${builtins.toString (builtins.length values)} records";
 
+  # A relation is allowed to not apply to a given node (for example a public
+  # ingress relation is evaluated for every core node, but only the WAN core
+  # owns the wan ingress surface). Zero matches resolves to null and the
+  # caller skips the relation for that node.
+  requireZeroOrOne =
+    context: values:
+    if builtins.length values == 0 then
+      null
+    else if builtins.length values == 1 then
+      builtins.head values
+    else
+      throw "public ingress ${context} must resolve at most once; resolved ${builtins.toString (builtins.length values)} records";
+
   serviceIndex =
     services:
     builtins.listToAttrs (
@@ -263,7 +276,7 @@ let
           builtins.elem (iface.upstream or "") surfaces || builtins.elem iface.sourceInterfaceName surfaces
         )
       ) interfaceRecords;
-      ingressIface = requireOne "relation '${toString id}' runtime ingress interface" (
+      ingressIface = requireZeroOrOne "relation '${toString id}' runtime ingress interface" (
         if pppoeIngress != [ ] then pppoeIngress else wanIngress
       );
 
@@ -277,7 +290,7 @@ let
         && (lane.kind or null) == "uplink"
         && builtins.elem (lane.uplink or "") surfaces
       ) interfaceRecords;
-      internalEgress = requireOne "relation '${toString id}' internal egress interface" internalEgressCandidates;
+      internalEgress = requireZeroOrOne "relation '${toString id}' internal egress interface" internalEgressCandidates;
       internalNextHop =
         if family == 6 then
           p2pPeer6 (internalEgress.addr6 or null)
@@ -357,7 +370,9 @@ let
         && (!rewriteSource || (family == 4 && isNonEmptyString loopback4))
         && (family != 6 || (translationMode == "none" && sourcePreservation == "preserve-source"));
     in
-    if !complete then
+    if ingressIface == null || internalEgress == null then
+      [ ]
+    else if !complete then
       throw "public ingress relation '${toString id}' has incomplete or ambiguous runtime realization"
     else
       map
