@@ -211,10 +211,30 @@ let
     returnRule = true;
   };
 
+  # The upstream-selector health-gates each overlay lane by pinging through the
+  # tunnel (ping -I <lane> 1.1.1.1). That ICMP originates from the selector's
+  # own fabric address, which is not a tenant prefix, so it needs an explicit
+  # enforceable probe rule (trafficType=icmp) in addition to the tenant-prefix
+  # handoff rules.
+  laneHealthProbeRule = transitIface: uplinkIface:
+    {
+      action = "accept";
+      fromInterface = transitIface.runtimeIfName;
+      toInterface = uplinkIface.runtimeIfName;
+      applyTcpMssClamp = false;
+    } // common.selectorPairAuditWith { trafficType = "icmp"; } "forward" transitIface uplinkIface;
+
   uplinkPairRules =
     transitIface: uplinkIface:
-    if uplinkIface.sourceKind == "overlay" && delegatedOverlayEgress.exitNodesFor uplinkIface != [ ] then
-      delegatedOverlayEgress.rulesFor transitIface uplinkIface ++ [ (reverseRule transitIface uplinkIface) ]
+    if
+      uplinkIface.sourceKind == "overlay"
+      && delegatedOverlayEgress.exitNodesFor uplinkIface != [ ]
+    then
+      delegatedOverlayEgress.rulesFor transitIface uplinkIface
+      ++ [ (reverseRule transitIface uplinkIface) (laneHealthProbeRule transitIface uplinkIface) ]
+    else if uplinkIface.sourceKind == "overlay" then
+      common.selectorPairRuleWithSourcePrefixes allTenantPrefixes transitIface uplinkIface
+      ++ [ (laneHealthProbeRule transitIface uplinkIface) ]
     else
       common.selectorPairRuleWithSourcePrefixes allTenantPrefixes transitIface uplinkIface;
 
