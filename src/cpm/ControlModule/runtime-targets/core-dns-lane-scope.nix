@@ -52,8 +52,10 @@ let
     in
     if builtins.isString access && access != "" then access else null;
 
-  # Query the authorized requester lanes for core DNS from the
-  # named-dns-binding service endpoint bindings on each access target.
+  # Authorized requester lanes are the access targets that carry a
+  # named-dns-binding service endpoint binding. The access target name IS
+  # the lane access identity, so no string-matching on the requester name
+  # is needed.
   requesterLanes =
     let
       accessTargets = builtins.filter
@@ -67,19 +69,7 @@ let
           dns = attrsOrEmpty ((attrsOrEmpty (t.services or null)).dns or null);
           bindings = listOrEmpty (dns.serviceEndpointBindings or null);
         in
-        if bindings == [ ] then
-          [ ]
-        else
-          let
-            b = builtins.head bindings;
-            requester = b.requesterService or "";
-          in
-          if builtins.match ".*vlan2.*" requester != null then
-            [ "access-vlan2" ]
-          else if builtins.match ".*vlan7.*" requester != null then
-            [ "access-vlan7" ]
-          else
-            [ ];
+        if bindings == [ ] then [ ] else [ tn ];
     in
     lib.unique (lib.concatMap lanesFor accessTargets);
 
