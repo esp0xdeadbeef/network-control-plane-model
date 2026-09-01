@@ -491,9 +491,14 @@ let
         exitFacing = sourceKind == "p2p" && laneKind == "access-uplink";
         # An actual uplink lane carrying tenant egress toward one core. This is
         # the only kind the upstream-selector may health-gate: the core-facing
-        # fabric backhaul (backingUplinks != []) is control-plane reachability,
-        # not a data lane, and gating it strands the core's DNS/control path.
-        uplinkLane = sourceKind == "p2p" && laneKind == "uplink";
+        # fabric backhaul (the underlay wan uplink, backingUplinks != []) is
+        # control-plane reachability, not a tunneled data lane, and gating it
+        # strands the core's DNS/control path.
+        uplinkLane =
+          sourceKind == "p2p"
+          && laneKind == "uplink"
+          && isNonEmptyString (lane.uplink or null)
+          && builtins.hasAttr (lane.uplink or null) overlayProvisioning;
         coreFacing =
           sourceKind == "p2p"
           && (
