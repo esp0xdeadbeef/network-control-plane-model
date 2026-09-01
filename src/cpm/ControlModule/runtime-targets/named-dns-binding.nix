@@ -192,11 +192,15 @@ let
         if diagnostic != null then
           null
         else
+          let
+            selectedAddresses = interfaceAddresses selectedInterface;
+          in
           {
             source = "control-plane-model";
             selectedUplink = builtins.head selectedUplinks;
             selectedInterface = selectedInterfaceName;
             inherit runtimeIfName;
+            inherit selectedAddresses;
             tableId = allocation.tableId;
             rulePriority = allocation.tableRulePriority;
             # The mark is model-owned and intentionally equals the selected
@@ -310,6 +314,16 @@ let
         (stripPrefixLength (iface.addr4 or ""))
         (stripPrefixLength (iface.addr6 or ""))
       ]) transitInterfaces
+    );
+
+  interfaceAddresses =
+    iface:
+    uniqueStrings (
+      (builtins.filter (value: builtins.isString value && value != "") [
+        (stripPrefixLength (iface.addr4 or ""))
+        (stripPrefixLength (iface.addr6 or ""))
+      ])
+      ++ builtins.filter builtins.isString (listOrEmpty (iface.addresses or null))
     );
 
   tenantPrefixesFor =
@@ -690,7 +704,11 @@ let
         listen = endpoints;
         allowFrom = requesterAllowFromFor coreServiceName;
         forwarders = [ ];
-        outgoingInterfaces = [ ];
+        outgoingInterfaces =
+          if builtins.isAttrs (egressPolicy.policy or null) then
+            listOrEmpty (egressPolicy.policy.selectedAddresses or [ ])
+          else
+            [ ];
         recursionMode =
           if overlayDnsFile != null then
             "forwarding"
@@ -700,7 +718,11 @@ let
         egress = { inherit uplinks; };
         roles = coreRoles // {
           recursion = coreRecursion // {
-            outgoingInterfaces = [ ];
+            outgoingInterfaces =
+              if builtins.isAttrs (egressPolicy.policy or null) then
+                listOrEmpty (egressPolicy.policy.selectedAddresses or [ ])
+              else
+                [ ];
           };
         };
         serviceEndpointBindings = listOrEmpty (coreDns.serviceEndpointBindings or null) ++ [
