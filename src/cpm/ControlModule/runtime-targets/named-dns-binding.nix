@@ -690,7 +690,11 @@ let
         listen = endpoints;
         allowFrom = requesterAllowFromFor coreServiceName;
         forwarders = [ ];
-        outgoingInterfaces = [ ];
+        outgoingInterfaces =
+          if builtins.isString (egressPolicy.runtimeIfName or "") && egressPolicy.runtimeIfName != "" then
+            [ egressPolicy.runtimeIfName ]
+          else
+            [ ];
         recursionMode =
           if overlayDnsFile != null then
             "forwarding"
@@ -700,7 +704,11 @@ let
         egress = { inherit uplinks; };
         roles = coreRoles // {
           recursion = coreRecursion // {
-            outgoingInterfaces = [ ];
+            outgoingInterfaces =
+              if builtins.isString (egressPolicy.runtimeIfName or "") && egressPolicy.runtimeIfName != "" then
+                [ egressPolicy.runtimeIfName ]
+              else
+                [ ];
           };
         };
         serviceEndpointBindings = listOrEmpty (coreDns.serviceEndpointBindings or null) ++ [
