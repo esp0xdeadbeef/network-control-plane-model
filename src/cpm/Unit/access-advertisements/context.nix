@@ -103,7 +103,11 @@ let
       # on the access node's p2p uplink. These are advertised to the clients as
       # RFC 3442 classless routes (IPv4) + RFC 4191 more-specific routes
       # (IPv6), so the clients can reach the rest of the site without a
-      # default route.
+      # default route. Only the client-facing subnets and the explicitly
+      # advertised default belong here; the fabric's point-to-point (/31,
+      # /127) and host (/32, /128) plumbing is not client reachability and
+      # must never be emitted (RFC 3442 option 121 is capped at 255 bytes,
+      # and leaking the fabric plumbing to clients is not modeled).
       internalReachabilityRoutes = family:
         let
           ifaces = getRuntimeTargetInterfaces targetPath target;
@@ -113,8 +117,20 @@ let
           routes = builtins.concatMap
             (n: (ifaces.${n}.routes or { })."ipv${toString family}" or [ ])
             p2pNames;
+          isClientSubnet = r:
+            let dst = r.dst or null;
+            in
+            builtins.isString dst
+            && (
+              if family == 4 then
+                !(lib.hasSuffix "/31" dst || lib.hasSuffix "/32" dst)
+              else
+                !(lib.hasSuffix "/127" dst || lib.hasSuffix "/128" dst)
+            );
         in
-        builtins.filter (r: (r.intent.kind or null) == "internal-reachability" || (r.advertisedToClients or false) == true) routes;
+        builtins.filter
+          (r: isClientSubnet r && ((r.intent.kind or null) == "internal-reachability" || (r.advertisedToClients or false) == true))
+          routes;
 
       # Explicit IPv6 internet egress for this tenant, per FS-400/410/420.
       # Two modeled modes grant a client-facing IPv6 default route:
