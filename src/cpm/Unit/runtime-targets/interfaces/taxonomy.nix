@@ -489,6 +489,11 @@ let
         edgeFacing = sourceKind == "p2p" && laneKind == "access-edge";
         fabricFacing = sourceKind == "p2p" && laneKind == "access";
         exitFacing = sourceKind == "p2p" && laneKind == "access-uplink";
+        # An actual uplink lane carrying tenant egress toward one core. This is
+        # the only kind the upstream-selector may health-gate: the core-facing
+        # fabric backhaul (backingUplinks != []) is control-plane reachability,
+        # not a data lane, and gating it strands the core's DNS/control path.
+        uplinkLane = sourceKind == "p2p" && laneKind == "uplink";
         coreFacing =
           sourceKind == "p2p"
           && (
