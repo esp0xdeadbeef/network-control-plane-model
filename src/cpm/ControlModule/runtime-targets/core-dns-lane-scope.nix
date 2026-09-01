@@ -53,8 +53,9 @@ let
     if builtins.isString access && access != "" then access else null;
 
   # Authorized requester lanes are the access targets that carry a
-  # named-dns-binding service endpoint binding. The access target name IS
-  # the lane access identity, so no string-matching on the requester name
+  # Authorized requester lanes are the access targets whose DNS service
+  # carries a named-core-resolver upstream binding. The access target name
+  # IS the lane access identity, so no string-matching on the requester name
   # is needed.
   requesterLanes =
     let
@@ -67,9 +68,12 @@ let
         let
           t = runtimeTargets.${tn};
           dns = attrsOrEmpty ((attrsOrEmpty (t.services or null)).dns or null);
-          bindings = listOrEmpty (dns.serviceEndpointBindings or null);
+          upstreams = listOrEmpty (dns.upstreamResolvers or null);
+          hasCoreResolver = builtins.any (
+            resolver: (attrsOrEmpty resolver).kind or null == "named-core-resolver"
+          ) upstreams;
         in
-        if bindings == [ ] then [ ] else [ tn ];
+        if hasCoreResolver then [ tn ] else [ ];
     in
     lib.unique (lib.concatMap lanesFor accessTargets);
 
