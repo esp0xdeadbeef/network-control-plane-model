@@ -691,8 +691,8 @@ let
         allowFrom = requesterAllowFromFor coreServiceName;
         forwarders = [ ];
         outgoingInterfaces =
-          if builtins.isString (egressPolicy.runtimeIfName or "") && egressPolicy.runtimeIfName != "" then
-            [ egressPolicy.runtimeIfName ]
+          if builtins.isString (egressPolicy.policy.runtimeIfName or "") && egressPolicy.policy.runtimeIfName != "" then
+            [ egressPolicy.policy.runtimeIfName ]
           else
             [ ];
         recursionMode =
@@ -705,8 +705,8 @@ let
         roles = coreRoles // {
           recursion = coreRecursion // {
             outgoingInterfaces =
-              if builtins.isString (egressPolicy.runtimeIfName or "") && egressPolicy.runtimeIfName != "" then
-                [ egressPolicy.runtimeIfName ]
+              if builtins.isString (egressPolicy.policy.runtimeIfName or "") && egressPolicy.policy.runtimeIfName != "" then
+                [ egressPolicy.policy.runtimeIfName ]
               else
                 [ ];
           };
