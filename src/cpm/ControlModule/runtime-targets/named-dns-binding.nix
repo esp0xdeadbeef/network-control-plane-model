@@ -706,7 +706,9 @@ let
         forwarders = [ ];
         outgoingInterfaces =
           if builtins.isAttrs (egressPolicy.policy or null) then
-            listOrEmpty (egressPolicy.policy.selectedAddresses or [ ])
+            lib.optional
+              (builtins.isString (egressPolicy.policy.runtimeIfName or "") && egressPolicy.policy.runtimeIfName != "")
+              egressPolicy.policy.runtimeIfName
           else
             [ ];
         recursionMode =
@@ -720,7 +722,9 @@ let
           recursion = coreRecursion // {
             outgoingInterfaces =
               if builtins.isAttrs (egressPolicy.policy or null) then
-                listOrEmpty (egressPolicy.policy.selectedAddresses or [ ])
+                lib.optional
+                  (builtins.isString (egressPolicy.policy.runtimeIfName or "") && egressPolicy.policy.runtimeIfName != "")
+                  egressPolicy.policy.runtimeIfName
               else
                 [ ];
           };
