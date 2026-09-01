@@ -118,15 +118,17 @@ let
             (n: (ifaces.${n}.routes or { })."ipv${toString family}" or [ ])
             p2pNames;
           isClientSubnet = r:
-            let dst = r.dst or null;
+            let
+              dst = r.dst or null;
+              plumbing =
+                if !builtins.isString dst then
+                  true
+                else if family == 4 then
+                  (builtins.match ".*/(31|32)$" dst) != null
+                else
+                  (builtins.match ".*/(127|128)$" dst) != null;
             in
-            builtins.isString dst
-            && (
-              if family == 4 then
-                !(lib.hasSuffix "/31" dst || lib.hasSuffix "/32" dst)
-              else
-                !(lib.hasSuffix "/127" dst || lib.hasSuffix "/128" dst)
-            );
+            builtins.isString dst && !plumbing;
         in
         builtins.filter
           (r: isClientSubnet r && ((r.intent.kind or null) == "internal-reachability" || (r.advertisedToClients or false) == true))
