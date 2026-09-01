@@ -106,6 +106,9 @@ let
   failForwarding = path: message:
     throw "forwarding-model update required: ${path}: ${message}";
 
+  failIntent = path: message:
+    throw "intent.nix update required: ${path}: ${message}";
+
   failInventory = path: message:
     throw "inventory.nix update required: ${path}: ${message}";
 
@@ -116,6 +119,7 @@ in
     attrsOrEmpty
     cidrContainsAddress
     failForwarding
+    failIntent
     failInventory
     ipam
     listOrEmpty

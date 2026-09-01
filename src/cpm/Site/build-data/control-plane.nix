@@ -19,6 +19,7 @@ let
 
   inherit (common)
     attrsOrEmpty
+    failForwarding
     failInventory
     ;
 
@@ -30,30 +31,21 @@ let
     in
     attrsOrEmpty (enterpriseCfg.${siteName} or null);
 
-  siteRouting = attrsOrEmpty (siteControlPlaneCfg.routing or null);
   siteOverlays = attrsOrEmpty (siteControlPlaneCfg.overlays or null);
   siteUplinksCfg = attrsOrEmpty (siteControlPlaneCfg.uplinks or null);
   siteTenantsCfg = attrsOrEmpty (siteControlPlaneCfg.tenants or null);
   siteIpv6Cfg = attrsOrEmpty (siteAttrs.ipv6 or null) // attrsOrEmpty (siteControlPlaneCfg.ipv6 or null);
 
-  # FS-481: routing style is selected per modeled boundary in the intent
-  # topology (uplink egress mode), never from a site-wide inventory mode.
-  intentUplinkEgressModes =
-    builtins.concatMap
-      (nodeName:
-        builtins.map
-          (uplinkName:
-            let
-              node = attrsOrEmpty (siteAttrs.nodes.${nodeName} or null);
-              uplinks = attrsOrEmpty (node.uplinks or null);
-              uplink = attrsOrEmpty (uplinks.${uplinkName} or null);
-              egress = attrsOrEmpty (uplink.egress or null);
-            in
-            egress.mode or "static")
-          (builtins.attrNames (attrsOrEmpty ((attrsOrEmpty (siteAttrs.nodes.${nodeName} or null)).uplinks or null))))
-      (builtins.attrNames (attrsOrEmpty (siteAttrs.nodes or null)));
+  # FS-481: the routing style is forwarding-model authority. The NFM computes
+  # `routing = { mode; bgp = { asn; topology; } }` from the intent and the CPM
+  # consumes that normalized output; it never parses the intent topology.
+  siteRouting = attrsOrEmpty (siteAttrs.routing or null);
 
-  routingMode = if builtins.elem "bgp" intentUplinkEgressModes then "bgp" else "static";
+  routingMode =
+    let
+      raw = siteRouting.mode or "static";
+    in
+    if raw == "bgp" || raw == "static" then raw else "static";
 
   bgpSite =
     if routingMode == "bgp" then
@@ -67,8 +59,8 @@ let
     else if builtins.isInt (bgpSite.asn or null) then
       bgpSite.asn
     else
-      failInventory
-        "inventory.controlPlane.sites.${enterpriseName}.${siteName}.routing.bgp.asn"
+      failForwarding
+        "${sitePath}.routing.bgp.asn"
         "routing.bgp.asn is required and must be an integer when routing.mode = \"bgp\"";
   bgpTopology = bgpSite.topology or "policy-rr";
 
@@ -219,7 +211,6 @@ in
     siteControlPlaneCfg
     siteIpv6Cfg
     siteOverlays
-    siteRouting
     siteTenantsCfg
     siteUplinksCfg
     uplinkRouting

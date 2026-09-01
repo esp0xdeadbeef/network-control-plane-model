@@ -37,6 +37,7 @@ let
     ;
   inherit (common)
     attrsOrEmpty
+    failForwarding
     failInventory
     ipam
     ;
@@ -44,9 +45,9 @@ let
   validateSiteRouting =
     if routingMode == "bgp" then
       if !builtins.isInt bgpSiteAsn then
-        failInventory "inventory.controlPlane.sites.${enterpriseName}.${siteName}.routing.bgp.asn" "bgp mode requires integer 'asn'"
+        failForwarding "forwardingModel.${enterpriseName}.${siteName}.routing.bgp.asn" "bgp mode requires integer 'asn'"
       else if bgpTopology != "policy-rr" then
-        failInventory "inventory.controlPlane.sites.${enterpriseName}.${siteName}.routing.bgp.topology" "only 'policy-rr' is supported right now"
+        failForwarding "forwardingModel.${enterpriseName}.${siteName}.routing.bgp.topology" "only 'policy-rr' is supported right now"
       else
         true
     else
