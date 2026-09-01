@@ -444,7 +444,7 @@ let
             uplinkName = lane.uplink or null;
             group =
               if laneKind == "uplink" && builtins.isString uplinkName && uplinkName != "" then
-                lib.findFirst (g: builtins.elem uplinkName g) null multipathUplinkGroups
+                builtins.findFirst (g: builtins.elem uplinkName g) null multipathUplinkGroups
               else
                 null;
             groupKey =
