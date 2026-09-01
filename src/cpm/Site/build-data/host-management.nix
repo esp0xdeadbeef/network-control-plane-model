@@ -89,8 +89,7 @@ let
     && (acquisition.ipv4 or null) == "dhcp"
     && (acquisition.ipv6 or null) == "disabled"
     && (acquisition.acceptRA or false) == false
-    && (acquisition.useDns or null) == false
-    && (acquisition.defaultRoute or null) == false;
+    && (acquisition.useDns or null) == false;
 
   bindingDiagnostics =
     if selectedBinding == null then
@@ -129,7 +128,7 @@ let
           ipv6 = "disabled";
           acceptRA = false;
           useDns = false;
-          defaultRoute = false;
+          defaultRoute = true;
         };
         provenance = {
           intentPath = "forwardingModel.enterprise.${enterpriseName}.site.${siteName}.hostManagement";
