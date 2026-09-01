@@ -41,6 +41,7 @@ let
     tenantPrefixOwners = common.attrsOrEmpty (siteAttrs.tenantPrefixOwners or null);
     inherit (overlayData) overlayNames;
     inherit (ipv6Data) routedPrefixesByTenant;
+    trafficPaths = common.listOrEmpty (siteAttrs.trafficPaths or null);
   };
 in
 {
