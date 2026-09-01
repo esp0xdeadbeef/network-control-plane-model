@@ -222,6 +222,16 @@ let
       fromInterface = transitIface.runtimeIfName;
       toInterface = uplinkIface.runtimeIfName;
       applyTcpMssClamp = false;
+      matches = [
+        {
+          proto = "icmp";
+          family = "ipv4";
+        }
+        {
+          proto = "icmpv6";
+          family = "ipv6";
+        }
+      ];
     } // common.selectorPairAuditWith { trafficType = "icmp"; } "forward" transitIface uplinkIface;
 
   uplinkPairRules =
