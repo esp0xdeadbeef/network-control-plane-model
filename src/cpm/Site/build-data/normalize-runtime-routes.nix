@@ -4,38 +4,11 @@
 , attachments ? [ ]
 , routedPrefixesByTenant ? { }
 , tenantPrefixOwners ? { }
-, trafficPaths ? [ ]
 ,
 }:
 
 let
   inherit (common) attrsOrEmpty listOrEmpty;
-
-  # Uplink groups that share one modeled egress relation (the traffic path's
-  # destination.uplinks with more than one member). Those are the ECMP lanes:
-  # the upstream-selector must place their default routes in the same policy
-  # table so the renderer can collapse them into a MultiPathRoute.
-  multipathUplinkGroups =
-    lib.unique (
-      builtins.filter (group: builtins.length group > 1) (
-        builtins.map
-          (path:
-            lib.sort builtins.lessThan (
-              listOrEmpty ((attrsOrEmpty (path.destination or null)).uplinks or null)
-            ))
-          trafficPaths
-      )
-    );
-
-  multipathGroupSlot =
-    builtins.listToAttrs (
-      builtins.genList
-        (idx: {
-          name = builtins.concatStringsSep "," (builtins.elemAt multipathUplinkGroups idx);
-          value = idx + 1;
-        })
-        (builtins.length multipathUplinkGroups)
-    );
 
   defaultDst = family: if family == 4 then "0.0.0.0/0" else "::/0";
   routeIdentity = import ./runtime-route-identity.nix { inherit attrsOrEmpty defaultDst; };
@@ -432,30 +405,6 @@ let
       # with return routes but no default.
       coreSharedSlot =
         if targetRole == "core" then count else null;
-      slotFor =
-        index: ifName:
-        if coreSharedSlot != null then
-          coreSharedSlot
-        else if targetRole == "upstream-selector" then
-          let
-            iface = attrsOrEmpty interfaces.${ifName};
-            lane = attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null);
-            laneKind = lane.kind or null;
-            uplinkName = lane.uplink or null;
-            group =
-              if laneKind == "uplink" && builtins.isString uplinkName && uplinkName != "" then
-                builtins.findFirst (g: builtins.elem uplinkName g) null multipathUplinkGroups
-              else
-                null;
-            groupKey =
-              if group == null then null else builtins.concatStringsSep "," group;
-          in
-          if groupKey != null && builtins.hasAttr groupKey multipathGroupSlot then
-            multipathGroupSlot.${groupKey}
-          else
-            (builtins.length multipathUplinkGroups) + index + 1
-        else
-          index + 1;
       entries =
         builtins.genList
           (index:
@@ -464,7 +413,9 @@ let
             in
             {
               name = ifName;
-              value = policyRoutingAllocationFor allocationMethod (slotFor index ifName);
+              value = policyRoutingAllocationFor allocationMethod (
+                if coreSharedSlot != null then coreSharedSlot else index + 1
+              );
             })
           count;
     in
