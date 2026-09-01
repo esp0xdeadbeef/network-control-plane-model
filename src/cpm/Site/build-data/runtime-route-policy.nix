@@ -7,6 +7,7 @@
 
 let
   rolesWithPolicyDefaults = {
+    access = true;
     downstream-selector = true;
     policy = true;
     upstream-selector = true;
@@ -18,25 +19,29 @@ let
       routedPrefixesByTenant,
     }:
     lib.unique (
-      builtins.concatLists (builtins.map
-        (tenantName:
-        builtins.map (attachment: attachment.unit) (
-          builtins.filter (
-            attachment:
-            (attachment.kind or null) == "tenant"
-            && (attachment.name or null) == tenantName
-            && builtins.isString (attachment.unit or null)
-          ) attachments
-        ))
-        (
-          builtins.filter (
+      builtins.concatLists (
+        builtins.map
+          (
             tenantName:
-            builtins.any (
-              prefix:
-              (prefix.allocation or null) == "runtime" || (prefix.source or null) == "intent-routed-prefix"
-            ) (listOrEmpty (routedPrefixesByTenant.${tenantName} or null))
-          ) (builtins.attrNames routedPrefixesByTenant)
-        ))
+            builtins.map (attachment: attachment.unit) (
+              builtins.filter (
+                attachment:
+                (attachment.kind or null) == "tenant"
+                && (attachment.name or null) == tenantName
+                && builtins.isString (attachment.unit or null)
+              ) attachments
+            )
+          )
+          (
+            builtins.filter (
+              tenantName:
+              builtins.any (
+                prefix:
+                (prefix.allocation or null) == "runtime" || (prefix.source or null) == "intent-routed-prefix"
+              ) (listOrEmpty (routedPrefixesByTenant.${tenantName} or null))
+            ) (builtins.attrNames routedPrefixesByTenant)
+          )
+      )
     );
 
   classifyRoute =
@@ -62,15 +67,17 @@ let
   policyDefaultRoutes =
     { isPolicyDefault }:
     family: interfaces:
-    builtins.concatLists (builtins.map (
-      ifName:
-      let
-        routes = attrsOrEmpty (interfaces.${ifName}.routes or null);
-      in
-      builtins.filter (isPolicyDefault family) (
-        listOrEmpty (routes."ipv${builtins.toString family}" or null)
-      )
-    ) (builtins.attrNames interfaces));
+    builtins.concatLists (
+      builtins.map (
+        ifName:
+        let
+          routes = attrsOrEmpty (interfaces.${ifName}.routes or null);
+        in
+        builtins.filter (isPolicyDefault family) (
+          listOrEmpty (routes."ipv${builtins.toString family}" or null)
+        )
+      ) (builtins.attrNames interfaces)
+    );
 
   isPolicyTableComplementSource =
     family: route:
@@ -81,41 +88,38 @@ let
 
   policyTableComplements =
     family: defaults: routes:
-    builtins.concatLists (builtins.map (
-      route:
-      let
-        routeLaneAccess = (attrsOrEmpty (route.lane or null)).access or null;
-        matching =
-          if routeLaneAccess != null then
-            builtins.filter
-              (d: (attrsOrEmpty (d.lane or null)).access or null == routeLaneAccess)
-              defaults
-          else
-            defaults;
-      in
+    builtins.concatLists (
       builtins.map (
-        defaultRoute:
+        route:
         let
-          routeLane = attrsOrEmpty (route.lane or null);
-          defaultLane = attrsOrEmpty (defaultRoute.lane or null);
-          complementLane =
-            if routeLane == { } || (routeLane.access or null) == null then
-              defaultLane
+          routeLaneAccess = (attrsOrEmpty (route.lane or null)).access or null;
+          matching =
+            if routeLaneAccess != null then
+              builtins.filter (d: (attrsOrEmpty (d.lane or null)).access or null == routeLaneAccess) defaults
             else
-              routeLane;
+              defaults;
         in
-        route
-        // {
-          lane = complementLane;
-          policyOnly = true;
-          reason = "policy-table-internal-reachability";
-          intent = (attrsOrEmpty (route.intent or null)) // {
-            policyTableComplement = true;
-            source = "policy-default-lane";
-          };
-        }
-      ) matching
-    ) (builtins.filter (isPolicyTableComplementSource family) routes));
+        builtins.map (
+          defaultRoute:
+          let
+            routeLane = attrsOrEmpty (route.lane or null);
+            defaultLane = attrsOrEmpty (defaultRoute.lane or null);
+            complementLane =
+              if routeLane == { } || (routeLane.access or null) == null then defaultLane else routeLane;
+          in
+          route
+          // {
+            lane = complementLane;
+            policyOnly = true;
+            reason = "policy-table-internal-reachability";
+            intent = (attrsOrEmpty (route.intent or null)) // {
+              policyTableComplement = true;
+              source = "policy-default-lane";
+            };
+          }
+        ) matching
+      ) (builtins.filter (isPolicyTableComplementSource family) routes)
+    );
 in
 {
   inherit
