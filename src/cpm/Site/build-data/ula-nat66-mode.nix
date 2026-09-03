@@ -83,49 +83,53 @@ let
     in
     if matches == [ ] then null else builtins.head matches;
 
-  nat66TargetForPrefix = prefix:
-    let
-      matches = builtins.filter
-        (targetName:
-          let
-            natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
-          in
-          builtins.elem prefix (builtins.map canonicalPrefix (natIntent.masqueradeSourcePrefixes6 or [ ]))
-          || builtins.elem prefix (explicitNat66ByTarget.${targetName} or [ ]))
-        nat66Targets;
-    in
-    if matches == [ ] then null else builtins.head matches;
+  # All egress targets that select NAT66 for a given ULA prefix. A tenant may
+  # select several egress surfaces (for example load-balanced WireGuard
+  # uplinks); each declared target is materialized as its own record so the
+  # renderer can emit the full forwarding/NAT projection instead of silently
+  # collapsing the set to one target.
+  nat66TargetsForPrefix =
+    prefix:
+    builtins.filter
+      (targetName:
+        let
+          natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
+        in
+        builtins.elem prefix (builtins.map canonicalPrefix (natIntent.masqueradeSourcePrefixes6 or [ ]))
+        || builtins.elem prefix (explicitNat66ByTarget.${targetName} or [ ]))
+      nat66Targets;
 
   # Records for ULA prefixes with NAT66 egress available
   recordsForPrefix =
     prefix:
     let
       owner = ownerForPrefix prefix;
-      targetName = nat66TargetForPrefix prefix;
+      targets = nat66TargetsForPrefix prefix;
     in
-    if owner != null && targetName != null then
-      let
-        natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
-        egress = attrsOrEmpty (runtimeTargets.${targetName}.egressIntent or null);
-        nat66 = attrsOrEmpty (egress.nat66 or null);
-        uplinks =
-          if (natIntent.uplinks or [ ]) != [ ] then
-            natIntent.uplinks
-          else
-            builtins.attrNames nat66;
-      in
-      [
-        {
-          mode = "ula-nat66";
-          prefix = prefix;
-          tenant = owner.netName or null;
-          owner = owner.owner;
-          source = "tenant-prefix-owner";
-          runtimeTarget = targetName;
-          inherit uplinks;
-          outputInterfaces = natIntent.masqueradeInterfaces6 or [ ];
-        }
-      ]
+    if owner != null && targets != [ ] then
+      builtins.map
+        (targetName:
+          let
+            natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
+            egress = attrsOrEmpty (runtimeTargets.${targetName}.egressIntent or null);
+            nat66 = attrsOrEmpty (egress.nat66 or null);
+            uplinks =
+              if (natIntent.uplinks or [ ]) != [ ] then
+                natIntent.uplinks
+              else
+                builtins.attrNames nat66;
+          in
+          {
+            mode = "ula-nat66";
+            prefix = prefix;
+            tenant = owner.netName or null;
+            owner = owner.owner;
+            source = "tenant-prefix-owner";
+            runtimeTarget = targetName;
+            inherit uplinks;
+            outputInterfaces = natIntent.masqueradeInterfaces6 or [ ];
+          })
+        targets
     else
       [ ];
 
