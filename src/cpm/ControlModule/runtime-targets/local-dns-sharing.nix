@@ -417,9 +417,10 @@ let
         # FS-560 legacy compatibility: propagate the requester's local records
         # to the authority so clients querying the authority directly (without
         # going through the forward zone) still get answers for authority-owned
-        # names. Remove when the parity contract stops requiring
-        # hasVlan2RuntimeLocalDns to include s-nebula-container.
-        localRecords = requesterLocalRecords;
+        # names. The authority keeps its own records; the requester's records
+        # are appended, never replacing them. Remove when the parity contract
+        # stops requiring hasVlan2RuntimeLocalDns to include s-nebula-container.
+        localRecords = listOrEmpty (providerDns.localRecords or null) ++ requesterLocalRecords;
         reproducibilityWarnings = allWarnings;
       };
       projected = mergeDns (mergeDns targets requesterTargetName
