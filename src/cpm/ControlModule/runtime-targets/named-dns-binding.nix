@@ -607,7 +607,6 @@ let
         resolverNode = coreNodeName;
       };
       endpoints = relationEndpoint.addresses;
-      requesterSources = fabricAddresses requesterTargetName;
       uplinks = egressUplinksFor coreServiceName;
       # FS-525: a core that hosts an overlay/VPN service obtains its upstream
       # resolvers from the overlay provider profile (the WireGuard DNS= file),
@@ -626,8 +625,6 @@ let
         generatedPeer.dnsFile or null;
       accessTarget = targets.${requesterTargetName};
       accessDns = attrsOrEmpty ((attrsOrEmpty (accessTarget.services or null)).dns or null);
-      accessRoles = attrsOrEmpty (accessDns.roles or null);
-      accessRecursion = attrsOrEmpty (accessRoles.recursion or null);
       coreTarget = targets.${coreTargetName};
       coreDns = attrsOrEmpty ((attrsOrEmpty (coreTarget.services or null)).dns or null);
       coreRoles = attrsOrEmpty (coreDns.roles or null);
@@ -668,7 +665,6 @@ let
             listOrEmpty (accessDns.forwarders or null) ++ endpoints
           );
           recursionMode = "forwarding";
-          outgoingInterfaces = requesterSources;
           upstreamResolvers =
             listOrEmpty (accessDns.upstreamResolvers or null)
             ++ [
@@ -685,11 +681,6 @@ let
                 returnBehavior = binding.returnBehavior or "symmetric";
               }
             ];
-          roles = accessRoles // {
-            recursion = accessRecursion // {
-              outgoingInterfaces = requesterSources;
-            };
-          };
           coreResolverBinding = binding;
         };
         inherit
