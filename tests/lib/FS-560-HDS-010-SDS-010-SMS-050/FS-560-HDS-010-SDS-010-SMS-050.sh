@@ -125,6 +125,7 @@ if ! OUTPUT_JSON="${output_json}" nix eval --impure --expr '
       materializerFamily = "ipv4";
       fallbackBehavior = "local-only";
       publicationDenialDiagnostic = "diagnostic.protected-reservation-name-publication-denied";
+      reverseNamespace = "20.20.10.in-addr.arpa.";
     }
     && !(publication ? records)
     && !(publication ? hostname)
