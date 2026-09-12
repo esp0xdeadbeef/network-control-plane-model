@@ -63,9 +63,24 @@ let
       resolveReservations 4 "ipv4" 32 entryPath interfaceName subnet (attrs.reservations or null)
     else
       [ ];
+  domain =
+    if enabled then
+      let
+        rawDomain = tenantContext.dnsDomain;
+      in
+      if rawDomain == null || rawDomain == "" then
+        failForwarding
+          "${sitePath}.domains.tenants"
+          "tenant '${tenantContext.tenantName}' requires an explicit dnsDomain in intent ownership prefixes for DHCP advertisement derivation"
+      else if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then
+        rawDomain
+      else
+        "${rawDomain}."
+    else
+      null;
   reservationSource =
     if enabled then
-      resolveReservationSource "ipv4" entryPath tenantContext.tenantName (attrs.reservationSource or null) (attrs.reservations or null)
+      resolveReservationSource "ipv4" entryPath tenantContext.tenantName domain (attrs.reservationSource or null) (attrs.reservations or null)
     else
       null;
   leaseState =
@@ -114,7 +129,7 @@ builtins.seq _idMatch (builtins.seq _subnetMatch (builtins.seq _routerMatch ({
   enabled = enabled;
   inherit routerInterface;
 }
-// (if enabled then {
+  // (if enabled then {
   id = tenantContext.tenantName;
   subnet = subnet;
   pool = {
@@ -123,7 +138,7 @@ builtins.seq _idMatch (builtins.seq _subnetMatch (builtins.seq _routerMatch ({
   };
   inherit reservations;
   dnsServers = dnsServers;
-  domain = requireString "${entryPath}.domain" (attrs.domain or null);
+  inherit domain;
   inherit classlessRoutes;
 }
 // (if reservationSource != null then { inherit reservationSource; } else { })

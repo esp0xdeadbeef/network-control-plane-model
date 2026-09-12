@@ -70,9 +70,24 @@ let
           resolveReservations 6 "ipv6" 128 entryPath interfaceName subnet (attrs.reservations or null)
         else
           [ ];
+      domain =
+        if enabled then
+          let
+            rawDomain = tenantContext.dnsDomain;
+          in
+          if rawDomain == null || rawDomain == "" then
+            failForwarding
+              "${sitePath}.domains.tenants"
+              "tenant '${tenantContext.tenantName}' requires an explicit dnsDomain in intent ownership prefixes for DHCPv6 advertisement derivation"
+          else if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then
+            rawDomain
+          else
+            "${rawDomain}."
+        else
+          null;
       reservationSource =
         if enabled then
-          resolveReservationSource "ipv6" entryPath tenantContext.tenantName (attrs.reservationSource or null) (attrs.reservations or null)
+          resolveReservationSource "ipv6" entryPath tenantContext.tenantName domain (attrs.reservationSource or null) (attrs.reservations or null)
         else
           null;
       leaseState =
@@ -116,7 +131,7 @@ let
       pool = pool;
       inherit reservations;
       dnsServers = dnsServers;
-      domain = requireString "${entryPath}.domain" (attrs.domain or null);
+      inherit domain;
     }
     // (if reservationSource != null then { inherit reservationSource; } else { })
     // (if leaseState != null then { inherit leaseState; } else { })

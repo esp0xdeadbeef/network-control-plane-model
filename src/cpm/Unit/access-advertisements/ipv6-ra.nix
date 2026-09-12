@@ -89,10 +89,20 @@ builtins.seq _prefixMatch ({
 // (if enabled then {
   prefixes = prefixes;
   rdnss = rdnss;
-  dnssl = requireStringList "${entryPath}.dnssl" (attrs.dnssl or null);
+  dnssl =
+    let
+      rawDomain = tenantContext.dnsDomain;
+    in
+    if rawDomain == null || rawDomain == "" then
+      failForwarding
+        "${sitePath}.domains.tenants"
+        "tenant '${tenantContext.tenantName}' requires an explicit dnsDomain in intent ownership prefixes for router advertisement derivation"
+    else [
+      (if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then rawDomain else "${rawDomain}.")
+    ];
   inherit managed otherConfig onLink autonomous moreSpecificRoutes defaultRoute;
 } else { })
-// (if routedIpv6Prefixes != [ ] then {
+  // (if routedIpv6Prefixes != [ ] then {
   routedPrefixes = routedIpv6Prefixes;
   delegatedPrefix = builtins.head routedIpv6Prefixes;
 } else { }))

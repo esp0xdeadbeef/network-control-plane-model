@@ -193,19 +193,18 @@ let
           (builtins.filter
             (zone: builtins.isAttrs zone && builtins.isString (zone.name or null))
             (targetDns.localForwardZones or [ ]));
-      targetLocalZones =
-        map (zone: zone.name or "")
-          (builtins.filter
-            (zone: builtins.isAttrs zone && builtins.isString (zone.name or null))
-            (targetDns.localZones or [ ]));
       # FS-560: skip default protected-reservation publication when the DNS
       # service is local-only or already has a forwarding/transparent handler
-      # for the lan. namespace. Only the authority (recursive) server should
-      # publish runtime reservation hostnames.
-      skipDefaultPublication =
+      # for the tenant's own modeled namespace. Only the authority (recursive)
+      # server should publish runtime reservation hostnames. The namespace is
+      # the tenant's modeled DNS domain (advertisement.domain), never a
+      # renderer-local default such as "lan.".
+      skipPublicationFor = domainNs:
         targetRecursionMode == "local-only"
-        || builtins.elem "lan." targetLocalForwardNamespaces
-        || builtins.elem "lan." targetLocalZones;
+        || builtins.elem domainNs targetLocalForwardNamespaces
+        || builtins.any
+          (zone: builtins.isAttrs zone && (zone.name or "") == domainNs && (zone.type or "static") == "transparent")
+          (targetDns.localZones or [ ]);
       publicationsFor = family: entries:
         builtins.filter (entry: entry != null) (
           builtins.map
@@ -213,8 +212,17 @@ let
               let
                 source = attrsOrEmpty (advertisement.reservationSource or null);
                 publication = attrsOrEmpty (source.namePublication or null);
+                rawDomain = advertisement.domain or "";
+                domainNs =
+                  if rawDomain == "" then
+                    ""
+                  else if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then
+                    rawDomain
+                  else
+                    "${rawDomain}.";
+                skipPublication = skipPublicationFor domainNs;
               in
-              if publication != { } && !skipDefaultPublication then
+              if publication != { } && !skipPublication then
                 let
                   pubSubnet = advertisement.subnet or "";
                   pubReverseZone =
@@ -254,7 +262,7 @@ let
               # inventory, flake eval output, and the Nix store while publishing A,
               # AAAA, and PTR through the renderer-owned protected materializer.
               else if
-                !skipDefaultPublication
+                !skipPublication
                 && (source.schema or null) == "gamp-protected-reservation-set-v1"
                 && (source.sourceClass or null) == "protected"
                 && builtins.isString (source.sourceFile or null)
@@ -290,7 +298,7 @@ let
                     sourceFile = source.sourceFile;
                   };
                   scopeId = advertisement.id;
-                  namespace = "lan.";
+                  namespace = domainNs;
                   ownerScope = advertisement.id;
                   requesterScopes = [ advertisement.id ];
                   recordClasses = [
@@ -606,10 +614,12 @@ let
           roles = roles // { recursion = recursionRole // { outgoingInterfaces = recursionOutgoingInterfaces; }; };
           localZones = lib.unique (
             (listOrEmpty (existingDns.localZones or null))
-            ++ map (z: {
-              name = z;
-              type = "static";
-            }) derivedReverseZones
+            ++ map
+              (z: {
+                name = z;
+                type = "static";
+              })
+              derivedReverseZones
           );
           routeContracts = lib.unique (listOrEmpty (existingDns.routeContracts or null) ++ localContracts);
           policyMatrix = lib.unique (listOrEmpty (existingDns.policyMatrix or null) ++ localContracts);
@@ -621,15 +631,16 @@ let
     if (target.role or null) != "access" || listeners == [ ] then
       target
     else if !hasModeledDnsPolicy then
-      builtins.deepSeq listenerPolicyForwarders (
-        builtins.deepSeq listenerPolicyUpstreamResolvers (
-          builtins.deepSeq listenerPolicyAllowedClasses (
-            failInventory
-              "${runtimeTargetPath target}.services.dns"
-              "missing modeled DNS policy for resolver advertisement; define services.dns before renderer-facing advertisement output"
+      builtins.deepSeq listenerPolicyForwarders
+        (
+          builtins.deepSeq listenerPolicyUpstreamResolvers (
+            builtins.deepSeq listenerPolicyAllowedClasses (
+              failInventory
+                "${runtimeTargetPath target}.services.dns"
+                "missing modeled DNS policy for resolver advertisement; define services.dns before renderer-facing advertisement output"
+            )
           )
         )
-      )
     else
       target
       // {
