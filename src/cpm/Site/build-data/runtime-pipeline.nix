@@ -194,6 +194,7 @@ let
       resolveFirewallIntent
       sitePath
       siteAttrs
+      siteOverlays
       attachments
       domains
       realizationIndex

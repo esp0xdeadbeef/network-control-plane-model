@@ -7,6 +7,7 @@
 , resolveFirewallIntent
 , sitePath
 , siteAttrs
+, siteOverlays
 , attachments
 , domains
 , realizationIndex
@@ -38,7 +39,14 @@ let
     inherit lib;
   };
 
-  accessAdvertisements = (bindAccessRaPathMtu normalizedRuntimeTargets).bindAdvertisements resolvedAccessAdvertisements;
+  bindAccessOverlayPathMtu = import ../../ControlModule/runtime-targets/access-overlay-path-mtu.nix {
+    inherit lib ipam siteOverlays;
+  };
+
+  accessAdvertisements =
+    (bindAccessRaPathMtu normalizedRuntimeTargets).bindAdvertisements (
+      bindAccessOverlayPathMtu.bindAdvertisements resolvedAccessAdvertisements
+    );
 
   policyEndpointBindings =
     resolvePolicyEndpointBindings {
