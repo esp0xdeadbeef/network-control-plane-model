@@ -30,7 +30,7 @@ let
       if builtins.substring 0 2 trimmed == "0x" || builtins.substring 0 2 trimmed == "0X" then
         failInventory path "diagnostic.nonDecimalOffset: IPv4 offset \"${trimmed}\" must be a decimal host-position value, not hexadecimal"
       else if builtins.match "[0-9]+" trimmed != null then
-        # Safe: string is purely decimal digits; fromJSON parses it as integer.
+      # Safe: string is purely decimal digits; fromJSON parses it as integer.
         builtins.fromJSON trimmed
       else
         failInventory path "diagnostic.nonDecimalOffset: IPv4 offset \"${trimmed}\" must be a decimal host-position value"
@@ -346,24 +346,26 @@ let
     let
       indexList = builtins.genList (i: i) (builtins.length values);
       findIdx = val: builtins.filter (i: builtins.elemAt values i == val) indexList;
-      seen = {};
-      dups = builtins.foldl' (acc: i:
-        let val = builtins.elemAt values i;
-        in if builtins.hasAttr val acc then acc else
+      seen = { };
+      dups = builtins.foldl'
+        (acc: i:
+          let val = builtins.elemAt values i;
+          in if builtins.hasAttr val acc then acc else
           let indices = findIdx val;
-          in if builtins.length indices > 1 then acc // { ${val} = indices; } else acc // { ${val} = []; })
-        {} indexList;
+          in if builtins.length indices > 1 then acc // { ${val} = indices; } else acc // { ${val} = [ ]; })
+        { }
+        indexList;
       dupVals = builtins.filter (v: builtins.length dups.${v} > 0) (builtins.attrNames dups);
     in
-    if dupVals == [] then
-      { ok = true; dupValues = []; dupIndices = []; }
+    if dupVals == [ ] then
+      { ok = true; dupValues = [ ]; dupIndices = [ ]; }
     else
       { ok = false; dupValues = dupVals; dupIndices = builtins.head (map (v: dups.${v}) dupVals); };
 
   ensureUniqueValues = path: label: values:
     let result = findDuplicates values;
     in if result.ok then true else
-      failInventory path "duplicate ${label} \"${builtins.head result.dupValues}\" across reservations [${toString (builtins.head result.dupIndices)}]";
+    failInventory path "duplicate ${label} \"${builtins.head result.dupValues}\" across reservations [${toString (builtins.head result.dupIndices)}]";
 
   ensureUniqueReservationIds = path: values:
     if duplicate values then failInventory path "duplicate reservation id in the same service target" else true;
@@ -440,7 +442,7 @@ let
       )
     );
 
-  resolveReservationSource = familyName: entryPath: tenantName: rawSource: rawReservations:
+  resolveReservationSource = familyName: entryPath: tenantName: domain: rawSource: rawReservations:
     if rawSource == null then
       null
     else
@@ -458,6 +460,13 @@ let
         sourceClass = requireString "${sourcePath}.sourceClass" (source.sourceClass or null);
         sourceFile = optionalNonEmptyString "${sourcePath}.sourceFile" (source.sourceFile or null);
         namePublication = normalizeNamePublication familyName entryPath tenantName (source.namePublication or null);
+        normalizedDomain =
+          if domain == null || domain == "" then
+            failInventory "${entryPath}.domain" "diagnostic.dns-domain-missing: tenant '${tenantName}' requires an explicit DNS domain for protected reservation name publication"
+          else if builtins.substring (builtins.stringLength domain - 1) 1 domain == "." then
+            domain
+          else
+            "${domain}.";
         _noInlineRecords =
           if unexpectedKeys == [ ] then
             true
@@ -481,33 +490,33 @@ let
       in
       builtins.seq _noInlineRecords (
         builtins.seq _schema (
-            builtins.seq _protected (
-              builtins.seq _sourceFile (
-                {
-                  inherit schema sourceClass sourceFile;
-                }
-                // (if namePublication != null then { inherit namePublication; } else {
-                  namePublication = {
-                    namespace = "lan.";
-                    ownerScope = tenantName;
-                    requesterScopes = [ tenantName ];
-                    recordClasses = [ "A" "AAAA" "PTR" ];
-                    fallbackBehavior = "local-only";
-                    publicationDenialDiagnostic = "protected-reservation-publication-default-fallback";
-                    source = "protected-reservation-set";
-                    sourceFamily = familyName;
-                  };
-                })
-                // binderSourceAudit.make {
-                  path = sourcePath;
-                  field = "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservationSource";
-                  binderSourceClass = "protected-inventory";
-                  binderSourcePath = sourcePath;
-                  upstreamBehaviorRef = entryPath;
-                }
-              )
+          builtins.seq _protected (
+            builtins.seq _sourceFile (
+              {
+                inherit schema sourceClass sourceFile;
+              }
+              // (if namePublication != null then { inherit namePublication; } else {
+                namePublication = {
+                  namespace = normalizedDomain;
+                  ownerScope = tenantName;
+                  requesterScopes = [ tenantName ];
+                  recordClasses = [ "A" "AAAA" "PTR" ];
+                  fallbackBehavior = "local-only";
+                  publicationDenialDiagnostic = "protected-reservation-publication-default-fallback";
+                  source = "protected-reservation-set";
+                  sourceFamily = familyName;
+                };
+              })
+              // binderSourceAudit.make {
+                path = sourcePath;
+                field = "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservationSource";
+                binderSourceClass = "protected-inventory";
+                binderSourcePath = sourcePath;
+                upstreamBehaviorRef = entryPath;
+              }
             )
           )
+        )
       );
 
   resolveReservations =
@@ -566,33 +575,33 @@ let
             builtins.seq _perRecordRuntimeSource (
               builtins.seq _identityMaterial (
                 builtins.seq _scopedRuntimeIdentity (
-                {
-                  id =
-                    if isNonEmptyString (attrs.id or null) then
-                      attrs.id
-                    else if isNonEmptyString (attrs.name or null) then
-                      attrs.name
-                    else
-                      if mac != null then mac else scopedIdentity;
-                  inherit hostOffset address cidr identitySource;
-                  source = "inventory-realization";
-                }
-                // (if mac != null then { inherit mac; } else if protectedSecretRef != null then { secretRef = protectedSecretRef; } else { })
-                // binderSourceAudit.make {
-                  path = reservationPath;
-                  field =
-                    "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservations";
-                  binderSourceClass =
-                    if (identitySource.sourceClass or "") == "protected" then
-                      "protected-inventory"
-                    else
-                      "public-inventory";
-                  binderSourcePath = reservationPath;
-                  upstreamBehaviorRef = entryPath;
-                }
-                // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
-                // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { })
-                // (normalizeFs880NamespaceFields reservationPath attrs)
+                  {
+                    id =
+                      if isNonEmptyString (attrs.id or null) then
+                        attrs.id
+                      else if isNonEmptyString (attrs.name or null) then
+                        attrs.name
+                      else
+                        if mac != null then mac else scopedIdentity;
+                    inherit hostOffset address cidr identitySource;
+                    source = "inventory-realization";
+                  }
+                  // (if mac != null then { inherit mac; } else if protectedSecretRef != null then { secretRef = protectedSecretRef; } else { })
+                  // binderSourceAudit.make {
+                    path = reservationPath;
+                    field =
+                      "advertisements.${if familyName == "ipv4" then "dhcp4" else "dhcpv6"}.reservations";
+                    binderSourceClass =
+                      if (identitySource.sourceClass or "") == "protected" then
+                        "protected-inventory"
+                      else
+                        "public-inventory";
+                    binderSourcePath = reservationPath;
+                    upstreamBehaviorRef = entryPath;
+                  }
+                  // (if isNonEmptyString (attrs.hostname or null) then { hostname = attrs.hostname; } else { })
+                  // (if isNonEmptyString (attrs.duid or null) then { duid = attrs.duid; } else { })
+                  // (normalizeFs880NamespaceFields reservationPath attrs)
                 )
               )
             )

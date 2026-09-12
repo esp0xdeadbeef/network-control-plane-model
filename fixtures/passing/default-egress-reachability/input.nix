@@ -31,6 +31,7 @@
             tenants = [
               {
                 name = "tenant-a";
+                dnsDomain = "tenant-a.lan.";
                 ipv4 = "10.20.0.0/24";
                 ipv6 = "fd00:20::/64";
               }
@@ -388,6 +389,7 @@
             tenants = [
               {
                 name = "tenant-b";
+                dnsDomain = "tenant-b.lan.";
                 ipv4 = "10.30.0.0/24";
                 ipv6 = "fd00:30::/64";
               }
@@ -741,6 +743,7 @@
             tenants = [
               {
                 name = "tenant-c";
+                dnsDomain = "tenant-c.lan.";
                 ipv4 = "10.40.0.0/24";
                 ipv6 = "fd00:40::/64";
               }

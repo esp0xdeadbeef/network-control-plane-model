@@ -153,6 +153,10 @@ let
     in
     {
       inherit runtimeInterface tenantName tenantDefinition;
+      # FS-560: the tenant DNS domain (search/namespace) is modeled in
+      # intent.nix ownership prefixes and flows through the forwarding-model
+      # domains table. It is never a renderer-local default.
+      dnsDomain = tenantDefinition.dnsDomain or null;
       interfaceAddr4 = stripMask (runtimeInterface.addr4 or null);
       interfaceAddr6 = stripMask (runtimeInterface.addr6 or null);
       tenantIPv4Prefix = tenantDefinition.ipv4 or null;
