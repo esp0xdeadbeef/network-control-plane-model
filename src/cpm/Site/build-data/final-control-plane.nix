@@ -545,8 +545,14 @@ let
   runtimeTargetsWithProvider = addProviderSubnetFabricRoutes runtimeTargetsWithEmulation;
 
   runtimeTargets =
+    # Final pass: normalize (which dedupes route identity, FS-315) after every
+    # augmentation so no two identical routes survive on one interface/lane.
     builtins.mapAttrs
-      (_targetName: normalizeRuntimeTargetRoutesAfterPolicyComplements)
+      (_targetName:
+        target:
+        normalizeRuntimeTargetRoutes (
+          normalizeRuntimeTargetRoutesAfterPolicyComplements target
+        ))
       (addCoreTenantReturnRoutes runtimeTargetsWithProvider);
 
 in

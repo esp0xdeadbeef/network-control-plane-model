@@ -223,10 +223,17 @@ let
       { }
       routes;
 
+  # FS-315: keep every destination prefix, route kind, and lane assignment
+  # unique. Exact duplicate route meaning collapses to one route while its
+  # provenance stays inspectable. Always dedupe base and extra, not only when
+  # there is a return route set.
   appendUniqueRoutes =
     family: baseRoutes: extraRoutes:
+    let
+      uniqueBase = uniqueRoutes family baseRoutes;
+    in
     if extraRoutes == [ ] then
-      baseRoutes
+      uniqueBase
     else
       let
         result =
@@ -242,12 +249,12 @@ let
                   values = [ route ] ++ acc.values;
                 })
             {
-              seen = routeKeySet family baseRoutes;
+              seen = routeKeySet family uniqueBase;
               values = [ ];
             }
             extraRoutes;
       in
-      baseRoutes ++ reverseList result.values;
+      uniqueBase ++ reverseList result.values;
 
   appendPostInitialComplements =
     target: interfaces:
@@ -284,8 +291,8 @@ let
             builtins.filter
               (route: !dropWrongRuntimeOriginComplement route)
               (ipv6 ++ return6);
-          base4 = if return4 == [ ] then baseRaw4 else uniqueRoutes 4 baseRaw4;
-          base6 = if return6 == [ ] then baseRaw6 else uniqueRoutes 6 baseRaw6;
+          base4 = uniqueRoutes 4 baseRaw4;
+          base6 = uniqueRoutes 6 baseRaw6;
           postInitial4 =
             builtins.filter
               (route: !dropWrongRuntimeOriginComplement route)
@@ -511,7 +518,7 @@ let
                 let
                   routes = attrsOrEmpty (iface.routes or null);
                   dropWrongRuntimeOriginRoute = isRuntimeOriginSourceRouteOnPolicyUplink targetRole runtimeOriginPrefixes iface;
-                  ipv4 = uniqueKernelDefaults 4 (
+                  ipv4 = uniqueRoutes 4 (uniqueKernelDefaults 4 (
                     dropDuplicateUnlanedDefaults 4 (
                       builtins.filter (route: route != null) (
                         builtins.map (route: normalizeRuntimeLearnedIntent 4 ifName iface (classifyTargetRoute 4 route)) (
@@ -519,8 +526,8 @@ let
                         )
                       )
                     )
-                  );
-                  ipv6 = uniqueKernelDefaults 6 (
+                  ));
+                  ipv6 = uniqueRoutes 6 (uniqueKernelDefaults 6 (
                     dropDuplicateUnlanedDefaults 6 (
                       builtins.filter (route: route != null) (
                         builtins.map (route: normalizeRuntimeLearnedIntent 6 ifName iface (classifyTargetRoute 6 route)) (
@@ -528,7 +535,7 @@ let
                         )
                       )
                     )
-                  );
+                  ));
                 in
                 if ipv4 == [ ] && ipv6 == [ ] then
                   iface

@@ -180,11 +180,16 @@ in
             failInventory "${dnsPath}.recursionMode" "must be iterative, forwarding, or local-only"
         else
           null;
+      # FS-550: a modeled recursive resolver shall not fall back to system
+      # default resolvers, default routes, unselected uplinks, or host resolver
+      # state. Strict egress is therefore the model posture for a modeled
+      # resolver; an explicit strictEgress = false is a modeled relaxation, not
+      # a default.
       strictEgress =
         if dns ? strictEgress then
-          boolOrDefault "${dnsPath}.strictEgress" dns.strictEgress false
+          boolOrDefault "${dnsPath}.strictEgress" dns.strictEgress true
         else
-          false;
+          true;
       localForwardZones = builtins.map
         (zone:
           let
