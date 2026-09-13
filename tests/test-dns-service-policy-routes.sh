@@ -135,12 +135,12 @@ INVENTORY_PATH="${inventory_path}" \
           mgmtLaneLearnsMgmtDnsV4 =
             hasDnsServiceRoute
               (siteaUpstreamMgmt.ipv4 or [ ])
-              "10.20.10.1"
+              "10.20.10.1/32"
               "allow-east-west-to-sitea-mgmt-dns";
           mgmtLaneLearnsMgmtDnsV6 =
             hasDnsServiceRoute
               (siteaUpstreamMgmt.ipv6 or [ ])
-              "fd42:dead:beef:10::1"
+              "fd42:dead:beef:10::1/128"
               "allow-east-west-to-sitea-mgmt-dns";
           eastWestIngressDoesNotCloneSiteaMgmtDnsPrefixV4 =
             !(hasRoute (siteaUpstreamEastWestCore.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.30");
