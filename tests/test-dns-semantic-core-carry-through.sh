@@ -35,7 +35,7 @@ cat >"${input_file}" <<'EOF'
 
     domains = {
       tenants = [
-        { name = "client"; ipv4 = "10.20.20.0/24"; ipv6 = "fd00:20::/64"; }
+        { name = "client"; dnsDomain = "lan."; ipv4 = "10.20.20.0/24"; ipv6 = "fd00:20::/64"; domainSearch = [ "lan." ]; }
       ];
       externals = [
         { name = "wan-a"; }
@@ -56,7 +56,7 @@ cat >"${input_file}" <<'EOF'
         { name = "site-dns"; providers = [ "access-dns" "nebula-dns" "wan-a-dns" "wan-b-dns" ]; trafficType = "dns"; }
       ];
       allowedRelations = [
-        { id = "allow-client-dns"; from = { kind = "tenant"; name = "client"; }; to = { kind = "service"; name = "site-dns"; }; trafficType = "dns"; action = "allow"; }
+        { id = "allow-client-dns"; returnBehavior = "stateful-return"; from = { kind = "tenant"; name = "client"; }; to = { kind = "service"; name = "site-dns"; }; trafficType = "dns"; action = "allow"; }
       ];
     };
 
