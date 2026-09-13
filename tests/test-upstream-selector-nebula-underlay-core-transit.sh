@@ -98,12 +98,7 @@ EOF
 
 cat >"${overlay_policy_case}" <<EOF
 let
-  common = {
-    laneKind = iface: iface.laneKind or null;
-    laneAccess = iface: iface.laneAccess or null;
-    laneUplink = iface: iface.laneUplink or null;
-    uplinks = iface: iface.uplinks or [ ];
-  };
+  common = import ${repo_root}/src/cpm/firewall-intent/rules/common.nix { };
   endpointContext = import ${repo_root}/src/cpm/firewall-intent/rules/endpoint-context.nix {
     inherit common;
   } {
@@ -126,11 +121,22 @@ let
         laneAccess = "core-nebula";
         laneUplink = "isp-a";
         uplinks = [ "isp-a" ];
+        backingRef.lane = {
+          kind = "access-uplink";
+          access = "core-nebula";
+          uplink = "isp-a";
+          uplinks = [ "isp-a" ];
+        };
       }
       {
         runtimeIfName = "core-a";
         laneKind = "uplink";
         uplinks = [ "isp-a" ];
+        backingRef.lane = {
+          kind = "uplink";
+          uplink = null;
+          uplinks = [ "isp-a" ];
+        };
         routes = {
           ipv4 = [
             {
@@ -146,6 +152,11 @@ let
         runtimeIfName = "core-b";
         laneKind = "uplink";
         uplinks = [ "isp-b" ];
+        backingRef.lane = {
+          kind = "uplink";
+          uplink = null;
+          uplinks = [ "isp-b" ];
+        };
         routes = { ipv4 = [ ]; ipv6 = [ ]; };
       }
     ];
