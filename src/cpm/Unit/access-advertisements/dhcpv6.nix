@@ -70,19 +70,39 @@ let
           resolveReservations 6 "ipv6" 128 entryPath interfaceName subnet (attrs.reservations or null)
         else
           [ ];
+      domainSearch =
+        if enabled then
+          let
+            rawDomains = tenantContext.domainSearch;
+          in
+          if rawDomains == [ ] then
+            failForwarding
+              "${sitePath}.domains.tenants"
+              "tenant '${tenantContext.tenantName}' requires a derived dnsDomain or zone reference for DHCPv6 advertisement derivation"
+          else
+            map (
+              rawDomain:
+              if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then
+                rawDomain
+              else
+                "${rawDomain}."
+            ) rawDomains
+        else
+          [ ];
+      # Authoritative single domain (first entry).
       domain =
         if enabled then
           let
-            rawDomain = tenantContext.dnsDomain;
+            ds = tenantContext.domainSearch;
           in
-          if rawDomain == null || rawDomain == "" then
+          if ds == [ ] then
             failForwarding
               "${sitePath}.domains.tenants"
-              "tenant '${tenantContext.tenantName}' requires an explicit dnsDomain in intent ownership prefixes for DHCPv6 advertisement derivation"
-          else if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then
-            rawDomain
+              "tenant '${tenantContext.tenantName}' requires a derived dnsDomain or zone reference for DHCPv6 advertisement derivation"
+          else if builtins.substring (builtins.stringLength (builtins.head ds) - 1) 1 (builtins.head ds) == "." then
+            builtins.head ds
           else
-            "${rawDomain}."
+            "${builtins.head ds}."
         else
           null;
       reservationSource =

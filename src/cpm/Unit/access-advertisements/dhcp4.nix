@@ -63,19 +63,40 @@ let
       resolveReservations 4 "ipv4" 32 entryPath interfaceName subnet (attrs.reservations or null)
     else
       [ ];
+  domainSearch =
+    if enabled then
+      let
+        rawDomains = tenantContext.domainSearch;
+      in
+      if rawDomains == [ ] then
+        failForwarding
+          "${sitePath}.domains.tenants"
+          "tenant '${tenantContext.tenantName}' requires a derived dnsDomain or zone reference for DHCP advertisement derivation"
+      else
+        map (
+          rawDomain:
+          if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then
+            rawDomain
+          else
+            "${rawDomain}."
+        ) rawDomains
+    else
+      [ ];
+  # The authoritative single domain (first entry), kept for reservation-source
+  # derivation that expects one namespace value.
   domain =
     if enabled then
       let
-        rawDomain = tenantContext.dnsDomain;
+        ds = tenantContext.domainSearch;
       in
-      if rawDomain == null || rawDomain == "" then
+      if ds == [ ] then
         failForwarding
           "${sitePath}.domains.tenants"
-          "tenant '${tenantContext.tenantName}' requires an explicit dnsDomain in intent ownership prefixes for DHCP advertisement derivation"
-      else if builtins.substring (builtins.stringLength rawDomain - 1) 1 rawDomain == "." then
-        rawDomain
+          "tenant '${tenantContext.tenantName}' requires a derived dnsDomain or zone reference for DHCP advertisement derivation"
+      else if builtins.substring (builtins.stringLength (builtins.head ds) - 1) 1 (builtins.head ds) == "." then
+        builtins.head ds
       else
-        "${rawDomain}."
+        "${builtins.head ds}."
     else
       null;
   reservationSource =
