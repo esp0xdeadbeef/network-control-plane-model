@@ -104,6 +104,7 @@ eval_service_scope_binding_fixture() {
               )
             );
           services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            runtimeTargets = { };
             inherit lib helpers common uniqueStrings;
             sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
             policyEndpointBindings = {
@@ -121,7 +122,7 @@ eval_service_scope_binding_fixture() {
               };
               relations = [ relation ];
             };
-            providerEndpointForServiceProvider = providerName: null;
+            providerEndpointForServiceProvider = serviceName: providerName: null;
             providerTenantsForServiceProvider = providerName: [ "dmz" ];
             preferredDnsUplinksForService = serviceName: [ ];
             preferredDnsUplinksByRelationForService = serviceName: { };
@@ -174,6 +175,7 @@ eval_reachability_separation_fixture() {
             trafficType = relation.trafficType;
           };
           services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            runtimeTargets = { };
             inherit lib helpers common uniqueStrings;
             sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
             policyEndpointBindings = {
@@ -187,7 +189,7 @@ eval_reachability_separation_fixture() {
               };
               relations = [ relation ];
             };
-            providerEndpointForServiceProvider = providerName: {
+            providerEndpointForServiceProvider = serviceName: providerName: {
               name = providerName;
               node = "c-router-lighthouse";
               ipv4 = [ "10.90.10.100" ];
@@ -315,6 +317,7 @@ eval_no_exposure_fixture() {
               )
             );
           services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            runtimeTargets = { };
             inherit lib helpers common uniqueStrings;
             sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
             policyEndpointBindings = {
@@ -332,7 +335,7 @@ eval_no_exposure_fixture() {
               };
               relations = [ ];
             };
-            providerEndpointForServiceProvider = providerName: {
+            providerEndpointForServiceProvider = serviceName: providerName: {
               name = providerName;
               node = "c-router-lighthouse";
               ipv4 = [ "10.90.10.100" ];
@@ -485,6 +488,7 @@ eval_host_placement_fixture() {
               )
             );
           services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            runtimeTargets = { };
             inherit lib helpers common uniqueStrings;
             sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
             policyEndpointBindings = {
@@ -515,7 +519,7 @@ eval_host_placement_fixture() {
                 trafficType = "nebula";
               } ];
             };
-            providerEndpointForServiceProvider = providerName: null;
+            providerEndpointForServiceProvider = serviceName: providerName: null;
             providerTenantsForServiceProvider = providerName: [ "dmz" ];
             preferredDnsUplinksForService = serviceName: [ ];
             preferredDnsUplinksByRelationForService = serviceName: { };

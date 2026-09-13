@@ -90,7 +90,7 @@ REPO_ROOT="$repo_root" \
             };
             relations = [ relation1 relation2 ];
           };
-          providerEndpointForServiceProvider = providerName: null;
+          providerEndpointForServiceProvider = serviceName: providerName: null;
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };
@@ -200,7 +200,7 @@ REPO_ROOT="$repo_root" \
             };
             relations = [ relationA relationB ];
           };
-          providerEndpointForServiceProvider = providerName: null;
+          providerEndpointForServiceProvider = serviceName: providerName: null;
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };
@@ -321,7 +321,7 @@ REPO_ROOT="$repo_root" \
             # No dispatcher declared — services.dmz-web has no dispatcher field
             relations = [ relation80 relation443 ];
           };
-          providerEndpointForServiceProvider = providerName: null;
+          providerEndpointForServiceProvider = serviceName: providerName: null;
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };
@@ -421,7 +421,7 @@ REPO_ROOT="$repo_root" \
             };
             relations = [ relation ];
           };
-          providerEndpointForServiceProvider = providerName: null;
+          providerEndpointForServiceProvider = serviceName: providerName: null;
           providerTenantsForServiceProvider = providerName: [ ];
           preferredDnsUplinksForService = serviceName: [ ];
           preferredDnsUplinksByRelationForService = serviceName: { };

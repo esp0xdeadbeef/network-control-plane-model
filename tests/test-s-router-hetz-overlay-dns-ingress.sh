@@ -20,6 +20,10 @@ let
   upstream = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector";
   upstreamIfs = upstream.effectiveRuntimeRealization.interfaces;
   upstreamRules = upstream.forwardingIntent.rules or [ ];
+  # The overlay DNS ingress return route lands on the nebula core own egress
+  # surface (FS-540: the resolver bound to the modeled egress surface), not on
+  # the upstream selector fabric link.
+  nebulaCoreIfs = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-nebula-core".effectiveRuntimeRealization.interfaces;
 
   hasRule = relation: fromIf: toIf:
     builtins.any
@@ -45,9 +49,9 @@ in
   hasRule "allow-east-west-to-sitec-dmz-dns" "core-nebula" "pol-dmz-ew"
   && hasDnsReturnRule "allow-east-west-to-sitec-dmz-dns" "pol-dmz-ew" "core-nebula"
   && hasRoute4
-    (upstreamIfs."p2p-c-router-nebula-core-c-router-upstream-selector".routes or { })
+    (nebulaCoreIfs."core-uplink-egress".routes or { })
     "10.90.10.0/24"
-    "10.80.0.16"
+    "10.80.0.11"
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
