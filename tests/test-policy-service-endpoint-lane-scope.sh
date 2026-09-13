@@ -48,11 +48,15 @@ let
     && (rule.fromInterface or null) == "downstream-dmz"
     && (rule.toInterface or null) == "up-dmz-wan";
 in
-  builtins.length forwardRules == 2
-  && builtins.any (expectedRuleFor "up-client-wan") forwardRules
+  # FS-210: a public-ingress relation carrying publicIngressTupleAuthority is
+  # scoped to the access node that owns the target service, so only that node
+  # uplink lane carries the forward rule. FS-230: this relation uses
+  # returnBehavior = stateful-return, so it emits no relation-reverse rule
+  # (only symmetric does, FS-180-SMS-040).
+  builtins.length forwardRules == 1
   && builtins.any (expectedRuleFor "up-dmz-wan") forwardRules
-  && builtins.length reverseRules == 1
-  && builtins.any expectedReverseRule reverseRules
+  && !(builtins.any (expectedRuleFor "up-client-wan") forwardRules)
+  && builtins.length reverseRules == 0
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
