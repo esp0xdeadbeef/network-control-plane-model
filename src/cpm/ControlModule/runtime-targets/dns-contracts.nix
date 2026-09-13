@@ -10,6 +10,15 @@
 let
   inherit (common) attrsOrEmpty failInventory listOrEmpty;
   ipam = common.ipam or { };
+  # FS-540-HDS-010-SDS-010-SMS-010: the resolver source (the resolver own host or
+  # loopback identity) binds to the modeled egress surface as exactly one
+  # preferred-source default per address family on the modeled deterministic
+  # route to that surface. Reuse the runtime-origin mechanic so the access DNS
+  # resolver egress matches the overlay-egress core rule.
+  runtimeOriginEgress = import ../../Unit/runtime-targets/runtime-origin-egress.nix {
+    inherit lib helpers common;
+    overlayNames = [ ];
+  };
 
   stripPrefixLength =
     value:
@@ -477,7 +486,20 @@ let
     if interfaces == { } || forwarders == [ ] then
       target
     else
-      target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
+      let
+        withRoutes = target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
+        # Bind the resolver source to the modeled egress as exactly one
+        # preferred-source default per family (FS-540).
+        roe = withRoutes.runtimeOriginEgress or null;
+      in
+      withRoutes
+      // {
+        effectiveRuntimeRealization =
+          (withRoutes.effectiveRuntimeRealization)
+          // {
+            interfaces = runtimeOriginEgress.applyToInterfaces roe updatedInterfaces;
+          };
+      };
 
   dnsServiceRuntimeOriginEgressContract =
     target: dns:
