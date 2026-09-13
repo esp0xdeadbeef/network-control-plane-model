@@ -442,6 +442,11 @@ let
           baseTaxonomy {
             adapterClass = "tenant-role-surface";
             inherit nodeRole direction;
+            # FS-255: a core role has exactly one ingress and one egress
+            # host-facing surface. A tenant attachment on a core is a role
+            # surface, not a host attachment, so it does not count toward the
+            # core host-facing cardinality.
+            hostFacing = !(nodeRole != null && builtins.substring 0 4 nodeRole == "core");
           }
         else if sourceKind == "wan" then
           baseTaxonomy {

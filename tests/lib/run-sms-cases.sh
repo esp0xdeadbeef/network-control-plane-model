@@ -19,5 +19,10 @@ mapfile -t cases < <(find "${case_root}" -maxdepth 1 \( -type f -o -type l \) -n
 }
 
 for test_case in "${cases[@]}"; do
-  SMS_TEST_REPO_ROOT="${repo_root}" SMS_TEST_TRACE_ID="${trace_id}" bash "${test_case}"
+  if ! SMS_TEST_REPO_ROOT="${repo_root}" SMS_TEST_TRACE_ID="${trace_id}" bash "${test_case}"; then
+    rc=$?
+    printf 'FAIL %s: internal case %s exited %s without a PASS/FAIL line\n' \
+      "${trace_id}" "$(basename "${test_case}")" "${rc}" >&2
+    exit 1
+  fi
 done
