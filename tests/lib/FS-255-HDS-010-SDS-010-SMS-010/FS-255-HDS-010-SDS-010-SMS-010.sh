@@ -40,7 +40,9 @@ build_cpm() {
 
 validate_core_cardinality() {
   local input="$1"
-  jq -e '
+  local label="${2:-core host-facing cardinality}"
+  local result
+  if ! result="$(jq -e '
     def core_targets:
       [
         .control_plane_model.data
@@ -95,7 +97,15 @@ validate_core_cardinality() {
         violations: $violations
       }
     | select(.coreTargetCount > 0 and (.violations | length) == 0)
-  ' "${input}" >/dev/null
+  ' "${input}")"; then
+    echo "FAIL FS-255-HDS-010-SDS-010-SMS-010 ${label}: core host-facing cardinality violated (every core needs exactly one ingress-facing and one egress-facing host surface)" >&2
+    jq '
+      def core_targets: [ .control_plane_model.data | to_entries[] as $e | $e.value | to_entries[] as $s | $s.value.runtimeTargets | to_entries[] | select((.value.role // "") | startswith("core")) | { target: $s.key, interfaces: ((.value.effectiveRuntimeRealization.interfaces // {}) | to_entries) } ];
+      def host_facing($t): $t.interfaces | map(select(.value.hostFacing == true));
+      [ core_targets[] | host_facing(.) as $h | { target, n: ($h|length), ingress: ($h|map(select(.value.direction=="ingress"))|length), egress: ($h|map(select(.value.direction=="egress"))|length), surfaces: ($h|map(.key)) } | select(.n != 2 or .ingress != 1 or .egress != 1) ]
+    ' "${input}" >&2 || true
+    return 1
+  fi
 }
 
 mutate_first_core() {
@@ -160,8 +170,8 @@ assert_rejects() {
 build_cpm "${hat_dir}/inventory-nixos.nix" "${nixos_output}"
 build_cpm "${hat_dir}/inventory-clab.nix" "${clab_output}"
 
-validate_core_cardinality "${nixos_output}"
-validate_core_cardinality "${clab_output}"
+validate_core_cardinality "${nixos_output}" "baseline nixos"
+validate_core_cardinality "${clab_output}" "baseline clab"
 
 for output in "${nixos_output}" "${clab_output}"; do
   fanout="${tmp_dir}/$(basename "${output}").fanout.json"
