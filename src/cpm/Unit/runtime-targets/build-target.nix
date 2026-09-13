@@ -9,7 +9,7 @@ let
     requireString
     sortedNames
     ;
-  inherit (common) attrsOrEmpty failInventory;
+  inherit (common) attrsOrEmpty failInventory listOrEmpty;
   buildContext = import ./build-context.nix {
     inherit
       lib
@@ -177,11 +177,58 @@ let
       runtimeInterfacesBase = addOverlayUnderlayEndpointRoutes nodeRole (
         builtins.listToAttrs (explicitEntries ++ syntheticEntries ++ inventoryOverlayEntries)
       );
+      # FS-370-HDS-010-SDS-010-SMS-010: the egress identity is owned by the
+      # forwarding model. Consume nodeAttrs.egressIntent to synthesize the core
+      # egress surface rather than inferring it from a fabric p2p shape.
+      egressIntent = attrsOrEmpty (nodeAttrs.egressIntent or null);
+      modeledExit = (egressIntent.exit or false) == true;
+      modeledEligible = (egressIntent.eligible or false) == true;
+      egressSurfaceNames = builtins.filter (n: n != null) (
+        listOrEmpty (egressIntent.egressSurfaces or null)
+        ++ listOrEmpty (egressIntent.wanInterfaces or null)
+      );
+      _ifaceList = builtins.attrValues runtimeInterfacesBase;
+      _hostP2p = builtins.filter
+        (i: (i.hostFacing or false) == true && (i.sourceKind or "") == "p2p")
+        _ifaceList;
+      _hasTenant = builtins.any (i: (i.sourceKind or "") == "tenant") _ifaceList;
+      _hasEgress = builtins.any
+        (i: (i.hostFacing or false) == true && (i.direction or "") == "egress" && (i.sourceKind or "") != "core-egress")
+        _ifaceList;
+      _hostP2pForEgress = builtins.filter
+        (i: builtins.elem (i.logicalInterface or "") egressSurfaceNames)
+        _hostP2p;
+      _egressP2p =
+        if _hostP2pForEgress != [ ] then
+          builtins.head _hostP2pForEgress
+        else if modeledExit && modeledEligible && builtins.length _hostP2p == 1 then
+          builtins.head _hostP2p
+        else
+          null;
+      needsCoreEgress =
+        modeledExit && modeledEligible && !_hasTenant && !_hasEgress && _egressP2p != null;
+      runtimeInterfacesWithEgress =
+        if needsCoreEgress then
+          let
+            stripped = builtins.removeAttrs _egressP2p [ "runtimeIfName" "renderedIfName" "runtimeInterface" ];
+          in
+          runtimeInterfacesBase // {
+            "core-uplink-egress" = stripped // {
+              sourceKind = "core-egress";
+              adapterClass = "core-role-egress";
+              direction = "egress";
+              hostFacing = true;
+              virtualAdapter = false;
+            };
+          }
+        else
+          runtimeInterfacesBase;
       runtimeOriginEgressContract = runtimeOriginEgress.contractFor {
         inherit nodeRole uplinkAttrs loopback;
-        interfaces = runtimeInterfacesBase;
+        interfaces = runtimeInterfacesWithEgress;
+        egressIntent = nodeAttrs.egressIntent or null;
       };
-      runtimeInterfaces = runtimeOriginEgress.applyToInterfaces runtimeOriginEgressContract runtimeInterfacesBase;
+      runtimeInterfaces = runtimeOriginEgress.applyToInterfaces runtimeOriginEgressContract runtimeInterfacesWithEgress;
       routeFilteredRuntimeInterfaces =
         if isBgpRouter then
           lib.mapAttrs (
@@ -621,36 +668,10 @@ let
           runtimeDiagnostics
           ;
         effectiveRuntimeInterfaces =
-          let
-            ifaceList = builtins.attrValues effectiveRuntimeInterfaces;
-            hostP2p = builtins.filter
-              (i: (i.hostFacing or false) == true && (i.sourceKind or "") == "p2p")
-              ifaceList;
-            hasTenant = builtins.any
-              (i: (i.sourceKind or "") == "tenant")
-              ifaceList;
-            hasEgress = builtins.any
-              (i: (i.hostFacing or false) == true && (i.direction or "") == "egress" && (i.sourceKind or "") != "core-egress")
-              ifaceList;
-            nodeRoleStr = nodeRole;
-            isCore = builtins.substring 0 4 nodeRoleStr == "core";
-            needsCoreEgress = isCore && !hasTenant && !hasEgress && builtins.length hostP2p == 1;
-            p2pVal = if needsCoreEgress then builtins.head hostP2p else null;
-          in
-          if needsCoreEgress then
-            let
-              stripped = builtins.removeAttrs p2pVal [ "runtimeIfName" "renderedIfName" "runtimeInterface" ];
-            in
-            effectiveRuntimeInterfaces // {
-              "core-uplink-egress" = stripped // {
-                sourceKind = "core-egress";
-                adapterClass = "core-role-egress";
-                direction = "egress";
-                hostFacing = true;
-                virtualAdapter = false;
-              };
-            }
-          else effectiveRuntimeInterfaces;
+          # The core egress surface is synthesized earlier from the modeled
+          # egress intent; runtimeInterfaces already carries it and the
+          # runtime-origin preferred source.
+          effectiveRuntimeInterfaces;
         hasRuntimeServices = runtimeServicesResult.present;
         runtimeServices = runtimeServicesResult.value;
       };

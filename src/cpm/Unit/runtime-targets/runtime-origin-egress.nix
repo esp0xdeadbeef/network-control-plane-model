@@ -84,6 +84,7 @@ in
       uplinkAttrs,
       loopback,
       interfaces ? null,
+      egressIntent ? null,
     }:
     let
       overlayUplinks = builtins.filter (uplinkName: builtins.elem uplinkName overlayNames) (
@@ -97,8 +98,17 @@ in
       ];
       sourceHasModeledUnderlay =
         if interfaces == null then true else hasModeledRuntimeOriginUnderlay interfaces;
+      # FS-370-HDS-010-SDS-010-SMS-010: the egress identity is owned by the
+      # forwarding model. The overlay-egress preferred source belongs to the node
+      # the forwarding model marks as a modeled exit with an eligible egress
+      # surface, not to every core by role. A node with no modeled egress is not
+      # an overlay-egress runtime-origin owner.
+      modeledEgress =
+        egressIntent != null
+        && (egressIntent.exit or false) == true
+        && (egressIntent.eligible or false) == true;
     in
-    if nodeRole == "core" && overlayUplinks != [ ] && sourcePrefixes != [ ] && sourceHasModeledUnderlay then
+    if modeledEgress && sourcePrefixes != [ ] && sourceHasModeledUnderlay then
       {
         enabled = true;
         uplinks = overlayUplinks;
@@ -117,17 +127,35 @@ in
     else
       let
         preferredSources = runtimeOriginEgress.preferredSources or { };
-        isRuntimeOriginP2p =
+        carriesDefault =
           iface:
-          (iface.sourceKind or null) == "p2p"
-          && (
-            hasDefault 4 ((attrsOrEmpty (iface.routes or null)).ipv4 or [ ])
-            || hasDefault 6 ((attrsOrEmpty (iface.routes or null)).ipv6 or [ ])
-          );
+          hasDefault 4 ((attrsOrEmpty (iface.routes or null)).ipv4 or [ ])
+          || hasDefault 6 ((attrsOrEmpty (iface.routes or null)).ipv6 or [ ]);
+        # FS-370-HDS-010-SDS-010-SMS-010 / FS-540-HDS-010-SDS-010-SMS-010: the
+        # preferred source is realized as exactly ONE preferred-source default
+        # per address family on the modeled deterministic route to the selected
+        # egress surface. Decorate exactly one default-carrying interface (the
+        # egress route), preferring the modeled core-egress surface; never
+        # duplicate the mechanic across several default-carrying interfaces.
+        isEgressSurface =
+          name: iface: (iface.sourceKind or null) == "core-egress";
+        defaultInterfaces =
+          builtins.filter
+            (entry: carriesDefault entry.v)
+            (map (n: { inherit n; v = interfaces.${n}; }) (builtins.attrNames interfaces));
+        chosenName =
+          if defaultInterfaces == [ ] then
+            null
+          else
+            let
+              egressSurface =
+                builtins.filter (e: isEgressSurface e.n e.v) defaultInterfaces;
+            in
+            (if egressSurface != [ ] then builtins.head egressSurface else builtins.head defaultInterfaces).n;
       in
       lib.mapAttrs (
-        _ifName: iface:
-        if isRuntimeOriginP2p iface then
+        ifName: iface:
+        if ifName == chosenName then
           iface // { routes = addToRoutes preferredSources (iface.routes or { }); }
         else
           iface

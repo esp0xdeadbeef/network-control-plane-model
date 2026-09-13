@@ -422,12 +422,13 @@ jq -e '
   def origin_uplinks($prefix):
     $prefix.origin.uplinks // [];
   def prefix_matches_egress($prefix; $access; $uplink):
-    (origin_accesses($prefix) | length) == 0
-    or (
-      $access != null
-      and any(origin_accesses($prefix)[]; . == $access)
-      and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not))
-    );
+    # FS-370: a source prefix binds to the modeled egress surface that may
+    # carry it, not to every lane. A prefix whose origin names no access does
+    # not egress through an access lane (it is the egress-owning node own
+    # loopback and uses its own egress surface).
+    $access != null
+    and any(origin_accesses($prefix)[]; . == $access)
+    and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not));
   def has_source_rule($rules; $from; $to; $prefix):
     any($rules[]?;
       (.action // "") == "accept"
@@ -774,12 +775,13 @@ jq -e '
   def origin_uplinks($prefix):
     $prefix.origin.uplinks // [];
   def prefix_matches_egress($prefix; $access; $uplink):
-    (origin_accesses($prefix) | length) == 0
-    or (
-      $access != null
-      and any(origin_accesses($prefix)[]; . == $access)
-      and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not))
-    );
+    # FS-370: a source prefix binds to the modeled egress surface that may
+    # carry it, not to every lane. A prefix whose origin names no access does
+    # not egress through an access lane (it is the egress-owning node own
+    # loopback and uses its own egress surface).
+    $access != null
+    and any(origin_accesses($prefix)[]; . == $access)
+    and ($uplink == null or (any(origin_uplinks($prefix)[]; . == $uplink) | not));
   def has_source_rule($rules; $from; $to; $prefix):
     any($rules[]?;
       (.action // "") == "accept"
