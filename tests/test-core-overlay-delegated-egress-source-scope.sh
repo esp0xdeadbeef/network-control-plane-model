@@ -62,6 +62,7 @@ jq -e '
         (.action // "") == "accept"
         and (.fromInterface // "") == "upstream"
         and (.toInterface // "") == "nebula1"
+        and (.intent // null) != null
         and ((.sourcePrefixes // []) == [])
         and ((.sourceFiles // []) == [])
       )
