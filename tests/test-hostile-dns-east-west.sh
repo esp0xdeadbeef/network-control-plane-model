@@ -64,6 +64,18 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
           && (rule.toInterface or null) == to
           && (rule.trafficType or null) == trafficType)
         rules;
+    # A rule carrying tenant/relation traffic, excluding the router-owned
+    # runtime-origin-egress (the selector identity egress toward the WAN, which
+    # legitimately has trafficType any; FS-370-HDS-010-SDS-010-SMS-010).
+    hasTrafficRule = rules: from: to: trafficType:
+      builtins.any
+        (rule:
+          (rule.action or null) == "accept"
+          && (rule.fromInterface or null) == from
+          && (rule.toInterface or null) == to
+          && (rule.trafficType or null) == trafficType
+          && (rule.relationId or null) != "runtime-origin-egress")
+        rules;
     hostileEw =
       siteB.runtimeTargets."espbranch-site-b-b-router-policy"
         .effectiveRuntimeRealization.interfaces
@@ -88,11 +100,11 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
   in
     {
       hostileEwHasSiteaMgmtV4 = hasDst hostileEw "10.20.10.0/24";
-      hostileEwHasSiteaMgmtV6 = hasDst hostileEw "fd42:dead:beef:0010:0000:0000:0000:0000/64";
+      hostileEwHasSiteaMgmtV6 = hasDst hostileEw "fd42:dead:beef:10::/64";
       hostileEwDnsUsesEastWestV4 = hasRouteVia4 hostileEw "10.90.10.0/24" "10.50.0.17";
-      hostileEwDnsUsesEastWestV6 = hasRouteVia6 hostileEw "fd42:dead:cafe:0010:0000:0000:0000:0000/64" "fd42:dead:feed:1000:0:0:0:11";
+      hostileEwDnsUsesEastWestV6 = hasRouteVia6 hostileEw "fd42:dead:cafe:10::/64" "fd42:dead:feed:1000:0:0:0:11";
       hostileUpstreamCoreDnsUsesNebulaV4 = hasRouteVia4 hostileUpstreamCore "10.90.10.0/24" "10.50.0.4";
-      hostileUpstreamCoreDnsUsesNebulaV6 = hasRouteVia6 hostileUpstreamCore "fd42:dead:cafe:0010:0000:0000:0000:0000/64" "fd42:dead:feed:1000:0:0:0:4";
+      hostileUpstreamCoreDnsUsesNebulaV6 = hasRouteVia6 hostileUpstreamCore "fd42:dead:cafe:10::/64" "fd42:dead:feed:1000:0:0:0:4";
       hostileUpstreamPolicyEastWestDoesNotLoopSitecDnsV4 = !(hasDst hostileUpstreamPolicyEastWest "10.90.10.1");
       hostileUpstreamPolicyEastWestDoesNotLoopSitecDnsV6 = !(hasDst hostileUpstreamPolicyEastWest "fd42:dead:cafe:10::1");
       hostileAccessAdsPresent = hostileAccessAds != [ ];
@@ -126,7 +138,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
       branchUpstreamHostileEw = hasRule branchUpstream.rules "pol-hostile-ew" "core-nebula";
       branchUpstreamCoreNebulaToWanOnlyNebulaUnderlay =
         (hasTypedRule branchUpstream.rules "core-nebula" "core-isp" "nebula-storage")
-        && !(hasTypedRule branchUpstream.rules "core-nebula" "core-isp" "any");
+        && !(hasTrafficRule branchUpstream.rules "core-nebula" "core-isp" "any");
       branchUpstreamNoWanToCoreNebula = !(hasRule branchUpstream.rules "core-isp" "core-nebula");
       branchUpstreamNoHostileToBranch = !(hasRule branchUpstream.rules "policy-hostile" "policy-branch");
       branchUpstreamNoBranchToHostile = !(hasRule branchUpstream.rules "policy-branch" "policy-hostile");
