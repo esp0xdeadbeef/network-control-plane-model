@@ -97,10 +97,12 @@ in
   && !(hasEndpointRoute coreIngressRoutes4 "10.90.10.100")
   && !(hasEndpointRoute coreIngressRoutes6 "fd42:dead:cafe:10::100")
   && !(hasRoute coreIngressRoutes4 "10.90.10.100" "10.80.0.4")
-  && hasIngressServiceRoute dmzWanRoutes "10.90.10.100" "10.80.0.18" "c-router-access-dmz" "wan"
-  && hasIngressServiceRoute6 dmzWanRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:12" "c-router-access-dmz" "wan"
-  && hasIngressServiceRoute policyDownstreamDmzRoutes "10.90.10.100" "10.80.0.8" "c-router-access-dmz" "wan"
-  && hasIngressServiceRoute6 policyDownstreamDmzRoutes6 "fd42:dead:cafe:10::100" "fd42:dead:cafe:1000:0:0:0:8" "c-router-access-dmz" "wan"
+  # On the upstream selector the lane is the egress binding point: FS-370
+  # SMS-050 says an uplink lane carries the uplink and may have access null.
+  && hasIngressServiceRoute dmzWanRoutes "10.90.10.100/32" "10.80.0.18" null "wan"
+  && hasIngressServiceRoute6 dmzWanRoutes6 "fd42:dead:cafe:10::100/128" "fd42:dead:cafe:1000:0:0:0:12" null "wan"
+  && hasIngressServiceRoute policyDownstreamDmzRoutes "10.90.10.100/32" "10.80.0.8" "c-router-access-dmz" "wan"
+  && hasIngressServiceRoute6 policyDownstreamDmzRoutes6 "fd42:dead:cafe:10::100/128" "fd42:dead:cafe:1000:0:0:0:8" "c-router-access-dmz" "wan"
   && !(hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.19")
   && !(hasRoute dmzEastWestRoutes "10.90.10.100" "10.80.0.16")
 '
