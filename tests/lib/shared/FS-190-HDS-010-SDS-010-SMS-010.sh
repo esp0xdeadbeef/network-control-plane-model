@@ -66,7 +66,7 @@ eval_service() {
           iface = interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan" or { };
           routes = (iface.routes or { }).ipv4 or [ ];
           hasProviderEndpointRoute =
-            builtins.any (route: (route.dst or null) == "10.90.10.100") routes;
+            builtins.any (route: (route.dst or null) == "10.90.10.100/32") routes;
         in
         {
           inherit service hasProviderEndpointRoute;
@@ -390,7 +390,7 @@ reachability_separation_ok="$(
     and (.emitted.exposureOnlyMetadata | index("host-placement") != null)
     and .emitted.noPathServiceEndpointRoutes == []
     and (.emitted.routedPathServiceEndpointRoutes | length) == 1
-    and .emitted.routedPathServiceEndpointRoutes[0].dst == "10.90.10.100"
+    and .emitted.routedPathServiceEndpointRoutes[0].dst == "10.90.10.100/32"
     and .emitted.routedPathServiceEndpointRoutes[0].intent == {"kind":"service-endpoint-reachability","service":"dmz-nebula"}
     and .emitted.routedPathServiceEndpointRoutes[0].relationId == "allow-public-dmz-nebula"
     and .emitted.routedPathServiceEndpointRoutes[0].trafficType == "nebula"

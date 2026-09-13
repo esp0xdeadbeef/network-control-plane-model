@@ -171,16 +171,19 @@ let
       mask = lib.toInt (builtins.elemAt parts 1);
     in
     if builtins.match ".*:.*" addr != null then
-      let
-        hextets = ipam.parseIPv6 addr;
-        nibbles = lib.concatMap
-          (h: [
-            (lib.mod h 16)
-            (builtins.div h 16)
-          ])
-          (lib.reverseList hextets);
-      in
-      "${builtins.concatStringsSep "." (map builtins.toString nibbles)}.ip6.arpa."
+      if !(builtins.hasAttr "parseIPv6" ipam) then
+        null
+      else
+        let
+          hextets = ipam.parseIPv6 addr;
+          nibbles = lib.concatMap
+            (h: [
+              (lib.mod h 16)
+              (builtins.div h 16)
+            ])
+            (lib.reverseList hextets);
+        in
+        "${builtins.concatStringsSep "." (map builtins.toString nibbles)}.ip6.arpa."
     else
       let
         octets = builtins.filter builtins.isString (builtins.split "\\." addr);
