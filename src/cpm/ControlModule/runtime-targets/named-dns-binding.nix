@@ -194,6 +194,36 @@ let
         else
           let
             selectedAddresses = interfaceAddresses selectedInterface;
+            ifaceRoutes = attrsOrEmpty (selectedInterface.routes or null);
+            # FS-481: static routing is a precomputed next-hop member set. The
+            # selected egress interface's default routes are precomputed here
+            # (device plus optional gateway) so the renderer installs them into
+            # the DNS policy table directly instead of recomputing them at
+            # runtime. A device-only default (overlay/point-to-point) carries no
+            # gateway; a DHCP provider default is realised by the platform's
+            # own default route and is handled by next-hop up detection.
+            defaultRouteFor =
+              family: route:
+              if
+                !(builtins.isAttrs route)
+                || !(builtins.isString (route.dst or null))
+                || !(builtins.elem route.dst [
+                  "0.0.0.0/0"
+                  "::/0"
+                ])
+              then
+                null
+              else
+                {
+                  inherit family;
+                  destination = route.dst;
+                  via = if builtins.isString (route.via or null) then route.via else null;
+                  dev = runtimeIfName;
+                };
+            defaultRoutes = lib.filter (route: route != null) (
+              (map (defaultRouteFor "ipv4") (listOrEmpty (ifaceRoutes.ipv4 or null)))
+              ++ (map (defaultRouteFor "ipv6") (listOrEmpty (ifaceRoutes.ipv6 or null)))
+            );
           in
           {
             source = "control-plane-model";
@@ -201,6 +231,7 @@ let
             selectedInterface = selectedInterfaceName;
             inherit runtimeIfName;
             inherit selectedAddresses;
+            inherit defaultRoutes;
             tableId = allocation.tableId;
             rulePriority = allocation.tableRulePriority;
             # The mark is model-owned and intentionally equals the selected
