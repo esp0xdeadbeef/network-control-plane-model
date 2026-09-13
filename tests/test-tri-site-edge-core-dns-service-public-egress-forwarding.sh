@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-DNS-TRISITE-CORE-EGRESS-001
 # GAMP-SCOPE: software-module-test
+# GAMP-SKIP: fixture scenario removed from network-labs; tri-site-s-router-overlay-egress removed in network-labs 4ffce424
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

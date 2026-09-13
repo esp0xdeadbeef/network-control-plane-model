@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-DHCP-SMALL-PREFIX-001
 # GAMP-SCOPE: software-module-test
+# GAMP-SKIP: fixture scenario removed from network-labs; tri-site-dual-wan-overlay-integration-bgp removed in network-labs 4ffce424
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
