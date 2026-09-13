@@ -69,6 +69,10 @@
             };
           };
         };
+        # FS-540: an access node that advertises DNS listeners must carry a
+        # modeled DNS policy before renderer-facing advertisement output; an
+        # empty services.dns records that the access serves DNS explicitly.
+        services.dns = { };
       };
 
       policy-runtime = {
@@ -217,6 +221,7 @@
             };
           };
         };
+        services.dns = { };
       };
 
       globex-nyc-policy-runtime = {

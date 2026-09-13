@@ -157,6 +157,16 @@ let
       # intent.nix ownership prefixes and flows through the forwarding-model
       # domains table. It is never a renderer-local default.
       dnsDomain = tenantDefinition.dnsDomain or null;
+      # Search-domain LIST: the tenant's own namespace plus its shared parent
+      # zone, derived by the compiler (compiler-output tenants[].domainSearch).
+      # Falls back to the single domain when the compiled list is absent.
+      domainSearch =
+        if builtins.isList (tenantDefinition.domainSearch or null) then
+          tenantDefinition.domainSearch
+        else if (tenantDefinition.dnsDomain or null) != null then
+          [ tenantDefinition.dnsDomain ]
+        else
+          [ ];
       interfaceAddr4 = stripMask (runtimeInterface.addr4 or null);
       interfaceAddr6 = stripMask (runtimeInterface.addr6 or null);
       tenantIPv4Prefix = tenantDefinition.ipv4 or null;
