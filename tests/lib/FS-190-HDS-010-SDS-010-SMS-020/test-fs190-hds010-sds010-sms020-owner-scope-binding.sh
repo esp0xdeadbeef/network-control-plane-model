@@ -49,6 +49,7 @@ eval_ch1_fixture() {
               )
             );
           services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            runtimeTargets = { };
             inherit lib helpers common uniqueStrings;
             sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
             policyEndpointBindings = {
@@ -74,7 +75,7 @@ eval_ch1_fixture() {
                 trafficType = "nebula";
               } ];
             };
-            providerEndpointForServiceProvider = providerName: null;
+            providerEndpointForServiceProvider = serviceName: providerName: null;
             providerTenantsForServiceProvider = providerName: [ "dmz" ];
             preferredDnsUplinksForService = serviceName: [ ];
             preferredDnsUplinksByRelationForService = serviceName: { };
@@ -145,6 +146,7 @@ eval_sn1_fixture() {
               )
             );
           services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            runtimeTargets = { };
             inherit lib helpers common uniqueStrings;
             sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
             policyEndpointBindings = {
@@ -171,7 +173,7 @@ eval_sn1_fixture() {
                 trafficType = "nebula";
               } ];
             };
-            providerEndpointForServiceProvider = providerName: null;
+            providerEndpointForServiceProvider = serviceName: providerName: null;
             providerTenantsForServiceProvider = providerName: [ "dmz" ];
             preferredDnsUplinksForService = serviceName: [ ];
             preferredDnsUplinksByRelationForService = serviceName: { };
@@ -232,6 +234,7 @@ eval_sn2_fixture() {
               )
             );
           services = import (repoRoot + "/src/cpm/Site/build-data/services.nix") {
+            runtimeTargets = { };
             inherit lib helpers common uniqueStrings;
             sitePath = "forwardingModel.enterprise.esp0xdeadbeef.site.site-c";
             policyEndpointBindings = {
@@ -258,7 +261,7 @@ eval_sn2_fixture() {
                 trafficType = "nebula";
               } ];
             };
-            providerEndpointForServiceProvider = providerName: null;
+            providerEndpointForServiceProvider = serviceName: providerName: null;
             providerTenantsForServiceProvider = providerName: [ "dmz" ];
             preferredDnsUplinksForService = serviceName: [ ];
             preferredDnsUplinksByRelationForService = serviceName: { };

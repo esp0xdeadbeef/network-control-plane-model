@@ -41,9 +41,14 @@ jq -e '
     ));
   .control_plane_model.data.esp0xdeadbeef["site-a"].runtimeTargets."esp0xdeadbeef-site-a-s-router-downstream-selector".forwardingIntent.rules as $siteARules
   | .control_plane_model.data.esp0xdeadbeef["site-c"].runtimeTargets."esp0xdeadbeef-site-c-c-router-downstream-selector".forwardingIntent.rules as $siteCRules
-  | (($siteARules | matching("access-client"; "access-stream"; "allow-sitea-client-to-streaming-chromecast"; "any") | length) == 1)
-    and (($siteARules | matching("access-client"; "access-mgmt"; "allow-sitea-tenants-to-mgmt-dns"; "dns") | length) == 1)
-    and (($siteCRules | matching("access-client"; "access-dmz"; "allow-sitec-client-to-dmz-dns"; "dns") | length) == 1)
+  # FS-260/FS-270: the downstream distribution role realizes the policy->access
+  # egress hop of a tenant->service relation; the policy point realizes the
+  # decision (downstream/tenant -> downstream/service). The downstream selector
+  # does not carry an access-client -> access-service scope, which would skip the
+  # downstream and policy roles.
+  | (($siteARules | matching("policy-stream"; "access-stream"; "allow-sitea-client-to-streaming-chromecast"; "any") | length) == 1)
+    and (($siteARules | matching("policy-mgmt"; "access-mgmt"; "allow-sitea-tenants-to-mgmt-dns"; "dns") | length) == 1)
+    and (($siteCRules | matching("policy-dmz"; "access-dmz"; "allow-sitec-client-to-dmz-dns"; "dns") | length) == 1)
 ' "${output_json}" >/dev/null
 
 echo "PASS example-downstream-local-service-forwarding"
