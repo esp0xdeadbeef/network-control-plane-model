@@ -402,8 +402,6 @@ let
       };
       providerDns = dnsFor targets authorityTargetName;
       providerAllowFrom = listOrEmpty (providerDns.allowFrom or null);
-      requesterDnsForRecords = dnsFor targets requesterTargetName;
-      requesterLocalRecords = listOrEmpty (requesterDnsForRecords.localRecords or null);
       providerPatch = {
         allowFrom = builtins.filter (prefix: !builtins.elem prefix requesterPrefixes) providerAllowFrom;
         requesterPolicies = listOrEmpty (providerDns.requesterPolicies or null) ++ [
@@ -414,13 +412,6 @@ let
             inherit namespaces relationId;
           }
         ];
-        # FS-560 legacy compatibility: propagate the requester's local records
-        # to the authority so clients querying the authority directly (without
-        # going through the forward zone) still get answers for authority-owned
-        # names. The authority keeps its own records; the requester's records
-        # are appended, never replacing them. Remove when the parity contract
-        # stops requiring hasVlan2RuntimeLocalDns to include s-nebula-container.
-        localRecords = listOrEmpty (providerDns.localRecords or null) ++ requesterLocalRecords;
         reproducibilityWarnings = allWarnings;
       };
       projected = mergeDns (mergeDns targets requesterTargetName
