@@ -32,7 +32,10 @@ base
           access-runtime =
             base.realization.nodes.access-runtime
             // {
-              services.mdns = {
+              # Deep-merge services so the node own DNS policy (required by
+              # FS-540 before advertisement output) is preserved.
+              services = (base.realization.nodes.access-runtime.services or { }) // {
+                mdns = {
                 reflector = true;
                 discoveryPolicy.relationships = [
                   {
@@ -52,6 +55,7 @@ base
                 publish = {
                   enable = false;
                   addresses = false;
+                };
                 };
               };
             };
