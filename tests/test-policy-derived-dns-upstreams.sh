@@ -45,6 +45,7 @@ base
                       ++ [
                         {
                           id = "allow-tenant-a-to-site-dns";
+                          returnBehavior = "stateful-return";
                           from = {
                             kind = "tenant";
                             name = "tenant-a";
