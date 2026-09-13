@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-HOSTILE-RETURN-001
 # GAMP-SCOPE: software-module-test
+# GAMP-SKIP: fixture scenario removed from network-labs; tri-site-s-router-overlay-egress removed in network-labs 4ffce424
 set -euo pipefail
 # LAB-SMT-ID: LAB-SMT-009
 # LAB-SMT-SCOPE: examples-only; see network-labs/tests/SMT.md

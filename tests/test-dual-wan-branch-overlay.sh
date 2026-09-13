@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-OVERLAY-DUALWAN-001
 # GAMP-SCOPE: software-module-test
+# GAMP-SKIP: fixture scenario removed from network-labs; dual-wan-branch-overlay and -bgp removed in network-labs 4ffce424 (examples consolidated)
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

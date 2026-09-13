@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # GAMP-ID: SMT-CPM-ROUTED-PREFIX-NO-SHORTCUT-001
 # GAMP-SCOPE: software-module-test
+# GAMP-SKIP: fixture scenario removed from network-labs; ipv6-pd-downstream-delegation removed in network-labs 4ffce424
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -21,10 +21,21 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Auto-discover tests
 # ============================================================
 tests=()
+retired=()
 for f in "${repo_root}/tests/test-"*.sh "${repo_root}/tests/FS-"*.sh; do
   [[ -f "${f}" ]] || continue
+  # A test marked retired is skipped: the scenario it exercises was removed from
+  # network-labs and no equivalent fixture exists. The marker stays in the file
+  # so the reason remains visible and greppable.
+  if grep -q '^# GAMP-SKIP: ' "${f}"; then
+    retired+=("$(basename "${f}")")
+    continue
+  fi
   tests+=("${f}")
 done
+if [[ "${#retired[@]}" -gt 0 ]]; then
+  printf 'SKIP (retired, no fixture): %s\n' "${retired[@]}"
+fi
 
 if [[ "${#tests[@]}" -eq 0 ]]; then
   echo "ERROR: no test-*.sh files found under ${repo_root}/tests/" >&2
