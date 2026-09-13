@@ -182,14 +182,19 @@ in
           null;
       # FS-550: a modeled recursive resolver shall not fall back to system
       # default resolvers, default routes, unselected uplinks, or host resolver
-      # state. Strict egress is therefore the model posture for a modeled
-      # resolver; an explicit strictEgress = false is a modeled relaxation, not
-      # a default.
+      # state. Strict egress is the model posture whenever the resolver has an
+      # upstream to recurse through (a forwarder, a registered upstream, or a
+      # provider DNS file). A resolver with no upstream answers only from its
+      # own local authority and has no fallback path, so strict egress is not
+      # applicable there. An explicit strictEgress = false is a modeled
+      # relaxation.
+      hasUpstream =
+        forwarders != [ ] || registeredUpstreams != [ ] || dns.dnsFile or null != null;
       strictEgress =
         if dns ? strictEgress then
-          boolOrDefault "${dnsPath}.strictEgress" dns.strictEgress true
+          boolOrDefault "${dnsPath}.strictEgress" dns.strictEgress hasUpstream
         else
-          true;
+          hasUpstream;
       localForwardZones = builtins.map
         (zone:
           let
