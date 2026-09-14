@@ -407,8 +407,19 @@ let
           baseTaxonomy {
             adapterClass = "p2p-realization";
             inherit nodeRole direction;
+            # FS-267: a modeled point-to-point FABRIC link between two fabric
+            # roles is dedicated transport, not a host-facing attachment. The
+            # classification is derived from the modeled link identity, so it
+            # holds even when neither endpoint carries a core or access role
+            # (the policy-to-upstream-selector uplink and the
+            # upstream-selector-to-core transport are both fabric links).
+            # Deriving it from the role name alone marked those links
+            # host-facing, which rejected the unclassified fabric forward rule
+            # that carries the modeled relation.
             hostFacing =
-              if
+              if backingRefName != null && (backingRef.kind or null) == "link" then
+                false
+              else if
                 nodeRole != null
                 && builtins.substring 0 4 nodeRole == "core"
                 && backingRefName != null
