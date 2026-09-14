@@ -21,7 +21,8 @@ nix eval \
       pkgs = import flake.inputs.nixpkgs { inherit system; };
       lib = pkgs.lib;
       helpers = import ./src/cpm/cpm-contract-support.nix { inherit lib; };
-      buildNatIntent = import ./src/cpm/firewall-intent/nat.nix { inherit helpers; };
+      ipam = import ./src/cpm/ipam.nix { inherit lib; };
+      buildNatIntent = import ./src/cpm/firewall-intent/nat.nix { inherit helpers lib ipam; };
 
       # --- positive case: NAT44 enabled with bridge/VLAN from inventory ---
       siteAttrs = {
