@@ -609,6 +609,14 @@ let
         );
       roles = attrsOrEmpty (existingDns.roles or null);
       recursionRole = attrsOrEmpty (roles.recursion or null);
+      # FS-540: a resolver that originates its own upstream query binds its
+      # source through its modeled resolver path. For a resolver listening on
+      # an explicit service address that is its own resolver identity, so the
+      # query must leave from that address rather than from whichever fabric
+      # address the default route happens to select. Without this the upstream
+      # resolver receives the fabric p2p source, which is not the requester
+      # identity it authorized, and answers REFUSED.
+      resolverIdentitySources = builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners;
       recursionOutgoingInterfaces =
         if listOrEmpty (recursionRole.outgoingInterfaces or null) != [ ] then
           listOrEmpty (recursionRole.outgoingInterfaces or null)
@@ -616,6 +624,8 @@ let
           listOrEmpty (existingDns.outgoingInterfaces or null)
         else if safeForwarders != [ ] then
           builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners
+        else if upstreamResolvers != [ ] then
+          resolverIdentitySources
         else
           [ ];
       localContracts = builtins.map routeContractForListener listeners;
@@ -634,6 +644,8 @@ let
               listOrEmpty (existingDns.outgoingInterfaces or null)
             else if safeForwarders != [ ] then
               builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners
+            else if upstreamResolvers != [ ] then
+              resolverIdentitySources
             else
               [ ];
           roles = roles // { recursion = recursionRole // { outgoingInterfaces = recursionOutgoingInterfaces; }; };
