@@ -22,7 +22,8 @@ nix eval \
       pkgs = import flake.inputs.nixpkgs { inherit system; };
       lib = pkgs.lib;
       helpers = import ./src/cpm/cpm-contract-support.nix { inherit lib; };
-      buildNatIntent = import ./src/cpm/firewall-intent/nat.nix { inherit helpers; };
+      ipam = import ./src/cpm/ipam.nix { inherit lib; };
+      buildNatIntent = import ./src/cpm/firewall-intent/nat.nix { inherit helpers lib ipam; };
       siteAttrs = {
         domains.tenants = [
           {
@@ -44,7 +45,7 @@ nix eval \
         };
         wan.egress.ipv6.translation = {
           mode = "nat66";
-          translatedPrefix = "2001:db8:430::/64";
+          translatedPrefixes = [ "2001:db8:430::/64" ];
         };
       };
       alternateWan = {
@@ -58,7 +59,7 @@ nix eval \
         };
         wan.egress.ipv6.translation = {
           mode = "nat66";
-          translatedPrefix = "2001:db8:999::/64";
+          translatedPrefixes = [ "2001:db8:999::/64" ];
         };
       };
       transitInterface = {
@@ -72,8 +73,12 @@ nix eval \
           trafficClass = "tenant-internet";
           uplinks = [ "wan" ];
           wanInterfaces = [ "wan" ];
+          # The forwarding model materialises the modelled uplink translation
+          # into egressIntent.nat66.<uplink>, so the translated prefix lives
+          # here and not only on the interface record.
           nat66.wan = {
             mode = "nat66";
+            translatedPrefixes = [ "2001:db8:430::/64" ];
             sourcePrefixes = [ "fd42:dead:beef:10::/64" ];
           };
         };
@@ -83,7 +88,19 @@ nix eval \
         egressIntent = selectedNat66Target.egressIntent // {
           nat66.wan = {
             mode = "nat66";
+            translatedPrefixes = [ "2001:db8:430::/64" ];
             sourcePrefixes = [ ];
+          };
+        };
+      };
+      # The translated prefix is modelled in the egress intent, so a scenario
+      # that removes the WAN translation must remove it there too.
+      noTranslationTarget = {
+        role = "core";
+        egressIntent = selectedNat66Target.egressIntent // {
+          nat66.wan = {
+            mode = "nat66";
+            sourcePrefixes = [ "fd42:dead:beef:10::/64" ];
           };
         };
       };
@@ -97,7 +114,7 @@ nix eval \
           interfaceRecords = interfaces;
         };
       unavailableEgress = natFor selectedNat66Target [ baseWan alternateWan transitInterface ] [ ];
-      missingTranslation = natFor selectedNat66Target [ noWanTranslation alternateWan transitInterface ] [ ];
+      missingTranslation = natFor noTranslationTarget [ noWanTranslation alternateWan transitInterface ] [ ];
       missingSourceScope = natFor noSourceScopeTarget [ baseWan alternateWan transitInterface ] [ ];
       unavailableDiagnostic = builtins.head unavailableEgress.diagnostics.nat66;
       missingTranslationDiagnostic = builtins.head missingTranslation.diagnostics.nat66;
@@ -195,6 +212,7 @@ nix eval \
     }
   ' >"${output_json}"
 
+cp "${output_json}" /tmp/f430-out.json
 failed_checks="$(jq -r '.checks | to_entries[] | select(.value != true) | .key' "${output_json}")"
 if [[ -n "${failed_checks}" ]]; then
   echo "FAIL translation-failure-diagnostics-fail-closed" >&2

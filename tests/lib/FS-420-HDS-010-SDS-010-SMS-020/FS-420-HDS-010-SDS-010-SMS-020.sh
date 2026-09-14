@@ -20,8 +20,21 @@ nix eval \
       pkgs = import flake.inputs.nixpkgs { inherit system; };
       lib = pkgs.lib;
       helpers = import ./src/cpm/cpm-contract-support.nix { inherit lib; };
-      buildNatIntent = import ./src/cpm/firewall-intent/nat.nix { inherit helpers; };
+      ipam = import ./src/cpm/ipam.nix { inherit lib; };
+      buildNatIntent = import ./src/cpm/firewall-intent/nat.nix { inherit helpers lib ipam; };
       siteAttrs = {
+        # A tenant prefix is only a NAT44 source when the model also grants it
+        # internet egress: the contract relation is what marks tenant-a as an
+        # internet tenant, so its prefix is not filtered out as non-internet.
+        communicationContract.relations = [
+          {
+            id = "allow-tenant-a-to-wan";
+            from = { kind = "tenant"; name = "tenant-a"; };
+            to = { kind = "external"; name = "wan"; };
+            trafficType = "any";
+            action = "allow";
+          }
+        ];
         domains.tenants = [
           {
             name = "tenant-a";
@@ -50,7 +63,7 @@ nix eval \
       nat66Wan = nat44Wan // {
         wan.egress.ipv6.translation = {
           mode = "nat66";
-          translatedPrefix = "2001:db8:420::/64";
+          translatedPrefixes = [ "2001:db8:420::/64" ];
         };
       };
       noAuthorityWan = nat66Wan // {
@@ -69,8 +82,12 @@ nix eval \
             mode = "nat44";
             sourcePrefixes = [ "10.20.10.0/24" ];
           };
+          # The forwarding model materialises the modelled uplink translation
+          # into egressIntent.nat66.<uplink>; the CPM reads the translated
+          # prefix from there.
           nat66.wan = {
             mode = "nat66";
+            translatedPrefixes = [ "2001:db8:420::/64" ];
             sourcePrefixes = [ "fd42:dead:beef:10::/64" ];
           };
         };
@@ -133,6 +150,7 @@ nix eval \
     }
   ' >"${output_json}"
 
+cp "${output_json}" /tmp/f420-out.json
 failed_checks="$(jq -r '.checks | to_entries[] | select(.value != true) | .key' "${output_json}")"
 if [[ -n "${failed_checks}" ]]; then
   echo "FAIL fs420-translation-record-emission" >&2

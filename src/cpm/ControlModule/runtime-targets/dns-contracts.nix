@@ -205,18 +205,35 @@ let
           (builtins.filter
             (zone: builtins.isAttrs zone && builtins.isString (zone.name or null))
             (targetDns.localForwardZones or [ ]));
-      # FS-560: skip default protected-reservation publication when the DNS
-      # service is local-only or already has a forwarding/transparent handler
-      # for the tenant's own modeled namespace. Only the authority (recursive)
-      # server should publish runtime reservation hostnames. The namespace is
-      # the tenant's modeled DNS domain (advertisement.domain), never a
-      # renderer-local default such as "lan.".
+      # FS-560: a DNS service that forwards a shared namespace to another
+      # authority still owns the runtime reservation names of its OWN served
+      # subnets. Skipping its publication because it has a forward or
+      # transparent handler for the namespace drops those names entirely: the
+      # authority publishes only its own records, so the forwarding scope's
+      # reservations exist in the DHCP service and nowhere in DNS. Publication
+      # is therefore skipped only when the resolver cannot own any name in the
+      # namespace at all (local-only, or no advertised subnet of its own), not
+      # merely because it forwards the rest of the namespace onward.
+      advertisedSubnets =
+        builtins.filter (value: builtins.isString value && value != "") (
+          map (advertisement: advertisement.subnet or "") (listOrEmpty (advertisements.dhcp4 or null))
+          ++ map (advertisement: advertisement.subnet or "") (listOrEmpty (advertisements.dhcp6 or null))
+          ++ map (advertisement: advertisement.subnet or "") (listOrEmpty (advertisements.ipv6Ra or null))
+        );
       skipPublicationFor = domainNs:
         targetRecursionMode == "local-only"
-        || builtins.elem domainNs targetLocalForwardNamespaces
-        || builtins.any
-          (zone: builtins.isAttrs zone && (zone.name or "") == domainNs && (zone.type or "static") == "transparent")
-          (targetDns.localZones or [ ]);
+        || advertisedSubnets == [ ]
+        || (
+          # A namespace this resolver neither forwards nor answers locally is
+          # not its business at all.
+          !(builtins.elem domainNs targetLocalForwardNamespaces)
+          && !(builtins.any (
+            zone: builtins.isAttrs zone && (zone.name or "") == domainNs
+          ) (targetDns.localZones or [ ]))
+          && !(builtins.any (
+            zone: builtins.isAttrs zone && (zone.name or "") == domainNs
+          ) (targetDns.localRecords or [ ]))
+        );
       publicationsFor = family: entries:
         builtins.filter (entry: entry != null) (
           builtins.map
