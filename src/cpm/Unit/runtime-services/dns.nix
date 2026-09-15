@@ -195,19 +195,48 @@ in
           boolOrDefault "${dnsPath}.strictEgress" dns.strictEgress hasUpstream
         else
           hasUpstream;
-      localForwardZones = builtins.map
-        (zone:
+      localForwardZones =
+        (builtins.map
+          (zone:
+            let
+              name = requireString "${dnsPath}.localForwardZones[*].name" (zone.name or null);
+              relationId = requireString "${dnsPath}.localForwardZones[*].relationId" (zone.relationId or null);
+              forwardTo = normalizeForwarderList "${dnsPath}.localForwardZones[*]" zone "forwardTo";
+              forwardFirst = boolOrDefault "${dnsPath}.localForwardZones[*].forwardFirst" (zone.forwardFirst or null) false;
+            in
+            if name == "" || relationId == "" || forwardTo == [ ] then
+              failInventory "${dnsPath}.localForwardZones[*]" "requires non-empty name, relationId, and forwardTo"
+            else
+              { inherit name relationId forwardTo forwardFirst; })
+          (attrsList "${dnsPath}.localForwardZones" (dns.localForwardZones or [ ])))
+        # FS-440/FS-540: when the exit forwards public names, the controlled
+        # validation namespace must still be served by the controlled
+        # authority, so the core forwards that namespace to the authority
+        # rather than to the public resolver.
+        ++ (
           let
-            name = requireString "${dnsPath}.localForwardZones[*].name" (zone.name or null);
-            relationId = requireString "${dnsPath}.localForwardZones[*].relationId" (zone.relationId or null);
-            forwardTo = normalizeForwarderList "${dnsPath}.localForwardZones[*]" zone "forwardTo";
-            forwardFirst = boolOrDefault "${dnsPath}.localForwardZones[*].forwardFirst" (zone.forwardFirst or null) false;
+            va = dns.validationAuthority or null;
+            fg = if builtins.isAttrs va then (va.forwardingGateway or { }) else { };
+            delegation = if builtins.isAttrs va then (va.delegation or { }) else { };
           in
-          if name == "" || relationId == "" || forwardTo == [ ] then
-            failInventory "${dnsPath}.localForwardZones[*]" "requires non-empty name, relationId, and forwardTo"
+          if
+            builtins.isAttrs va
+            && (fg.enable or false)
+            && builtins.isString (delegation.zone or null)
+            && builtins.isList (delegation.ipv4 or null)
+            && (delegation.ipv4) != [ ]
+          then
+            [
+              {
+                name = delegation.zone;
+                relationId = "controlled-authority";
+                forwardTo = delegation.ipv4 ++ (delegation.ipv6 or [ ]);
+                forwardFirst = false;
+              }
+            ]
           else
-            { inherit name relationId forwardTo forwardFirst; })
-        (attrsList "${dnsPath}.localForwardZones" (dns.localForwardZones or [ ]));
+            [ ]
+        );
       requesterPolicies = builtins.map
         (policy:
           let
