@@ -83,7 +83,17 @@ let
               prefix = prefixPart;
             })
         (builtins.filter
-          (key: (tenantPrefixOwners.${key}.owner or null) == "access-${tenantName}")
+          (key:
+            let
+              entry = tenantPrefixOwners.${key};
+            in
+            # FS-322/FS-330: bind the tenant's source prefixes by the modeled
+            # tenant identity (`netName`), which is what a relation's `from`
+            # names. The prefix owner is the access scope that owns the prefix
+            # (URS 33); it is not derivable from the tenant name by string
+            # concatenation.
+            (entry.netName or null) == tenantName
+            || (entry.owner or null) == "access-${tenantName}")
           (builtins.attrNames tenantPrefixOwners)));
 
   isNonEmptyString = value: builtins.isString value && value != "";
