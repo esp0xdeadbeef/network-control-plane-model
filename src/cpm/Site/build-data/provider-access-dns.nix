@@ -194,6 +194,7 @@ let
       to = attrsOrEmpty (relationAttrs.to or null);
       uplinks =
         if builtins.isList (to.uplinks or null) then builtins.filter builtins.isString to.uplinks
+        else if isNonEmptyString (to.scope or null) then [ to.scope ]
         else if isNonEmptyString (to.name or null) then [ to.name ]
         else [ ];
       relationId =

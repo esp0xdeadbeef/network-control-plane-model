@@ -46,6 +46,8 @@ let
           uplinks =
             if builtins.isList (to.uplinks or null) then
               requireStringList "${sitePath}.communicationContract.allowedRelations[*].to.uplinks" to.uplinks
+            else if builtins.isString (to.scope or null) && to.scope != "" then
+              [ to.scope ]
             else if builtins.isString (to.name or null) && to.name != "" then
               [ to.name ]
             else
@@ -89,6 +91,8 @@ let
                 toUplinks =
                   if builtins.isList (to.uplinks or null) then
                     requireStringList "${sitePath}.communicationContract.allowedRelations[*].to.uplinks" to.uplinks
+                  else if builtins.isString (to.scope or null) && to.scope != "" then
+                    [ to.scope ]
                   else if builtins.isString (to.name or null) && to.name != "" then
                     [ to.name ]
                   else
