@@ -155,5 +155,10 @@ in {
     else {
       inherit kind scope traceId selectedUplink alternateUplinks provider root
         delegation terminal trust;
+    }
+    // lib.optionalAttrs (builtins.isAttrs (authority.forwardingGateway or null)) {
+      # FS-440: a forwarding-gateway exit is a realization fact; pass it through
+      # so the renderer can forward the provider prefix to the real upstream.
+      inherit (authority) forwardingGateway;
     };
 }
