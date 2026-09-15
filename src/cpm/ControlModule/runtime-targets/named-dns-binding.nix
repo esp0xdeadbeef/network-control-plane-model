@@ -595,9 +595,9 @@ let
       coreTargetName = targetNameForNode coreNodeName;
       requesterTargetName = requesterTargetNameForService requesterServiceName;
       families = listOrEmpty (binding.allowedAddressFamilies or null);
-      # FS-322/FS-540 SMS-010: the binding's `egressSurface` names the selected
-      # exit; the relation never names an uplink. Resolve the surface through the
-      # shared resolver (honoring `uplinks`, `scope`, or `name`).
+      # FS-540 SMS-010 / URS 113: the compiler owns and emits the binding's
+      # resolved `egressSurface` ({ kind; uplinks }); the control-plane model
+      # consumes it (it does not re-derive the exit from the intent).
       selectedUplinks = egressSurfaces.pinnedSurfaces (attrsOrEmpty (binding.egressSurface or null));
       matchingRelations = builtins.filter (
         relation:
