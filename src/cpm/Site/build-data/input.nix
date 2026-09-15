@@ -86,21 +86,36 @@ let
   inventoryEndpoints = attrsOrEmpty (inventoryAttrs.endpoints or null);
 
   serviceDefinitions =
-    if communicationContract != null && builtins.isList (communicationContract.services or null) then
-      builtins.listToAttrs
-        (
-          builtins.genList
-            (idx:
-              let
-                servicePath = "${sitePath}.communicationContract.services[${toString idx}]";
-                service = requireAttrs servicePath (builtins.elemAt communicationContract.services idx);
-                serviceName = requireString "${servicePath}.name" (service.name or null);
-              in
-              { name = serviceName; value = service; })
-            (builtins.length communicationContract.services)
-        )
-    else
-      { };
+    let
+      commServices =
+        if communicationContract != null && builtins.isList (communicationContract.services or null) then
+          builtins.listToAttrs
+            (
+              builtins.genList
+                (idx:
+                  let
+                    servicePath = "${sitePath}.communicationContract.services[${toString idx}]";
+                    service = requireAttrs servicePath (builtins.elemAt communicationContract.services idx);
+                    serviceName = requireString "${servicePath}.name" (service.name or null);
+                  in
+                  { name = serviceName; value = service; })
+                (builtins.length communicationContract.services)
+            )
+        else
+          { };
+      # FS-540: the recursive-DNS services (for example the named core
+      # resolver) are addressed by service name from a recursive binding; they
+      # carry the resolver's recursion mode and upstream forwarders.
+      recursiveServices =
+        let
+          recursiveRaw = if builtins.isAttrs (dnsContract.recursive or null) then dnsContract.recursive else { };
+          svcs = if builtins.isList (recursiveRaw.services or null) then recursiveRaw.services else [ ];
+        in
+        builtins.listToAttrs (
+          map (svc: { name = toString (svc.name or "<missing>"); value = svc; }) svcs
+        );
+    in
+    recursiveServices // commServices;
 
   allowedRelations =
     if communicationContract != null && builtins.isList (communicationContract.relations or null) then
