@@ -428,7 +428,8 @@ let
           && (from.name or null) == serviceName
           && (to.kind or null) == "external"
         then
-          listOrEmpty (to.uplinks or null)
+          (listOrEmpty (to.uplinks or null))
+          ++ (if (to.scope or null) != null then [ to.scope ] else [ ])
         else
           [ ]
       ) allowedRelations

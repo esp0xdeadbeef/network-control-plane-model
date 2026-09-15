@@ -14,7 +14,8 @@ let
     let
       from = attrsOrEmpty (relation.from or null);
       to = attrsOrEmpty (relation.to or null);
-      uplinks = listOrEmpty (to.uplinks or null);
+      uplinks = (listOrEmpty (to.uplinks or null))
+        ++ (if (to.scope or null) != null then [ to.scope ] else [ ]);
     in
     (relation.action or null) == "allow"
     && (relation.trafficType or null) == "any"
