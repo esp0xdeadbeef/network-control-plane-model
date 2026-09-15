@@ -759,7 +759,12 @@ let
           enabled = true;
           source = "dns-service";
           policyRoutingRequired = true;
-          inherit preferredSources sourcePrefixes uplinks;
+          # FS-540 SMS-010/045: the resolver egress is bound to the selected exit
+          # surface. The emitted `uplinks` is that selection, and it must equal
+          # the policy-routing `selectedUplink` so the renderer sees one complete
+          # model-owned selection.
+          inherit preferredSources sourcePrefixes;
+          uplinks = if selectedUplinks != [ ] then selectedUplinks else uplinks;
           policyRouting = egressPolicy.policy;
         };
       };
