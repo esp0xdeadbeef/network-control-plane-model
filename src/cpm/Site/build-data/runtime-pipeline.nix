@@ -101,6 +101,7 @@ let
       serviceDefinitions
       inventoryEndpoints
       overlayProvisioning
+      nodes
       ;
     siteDns = dnsContract;
   };

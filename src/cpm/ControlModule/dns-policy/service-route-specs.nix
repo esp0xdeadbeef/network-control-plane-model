@@ -6,6 +6,7 @@
 , serviceDefinitions
 , dnsRelations
 , providersForService
+, nodes ? { }
 ,
 }:
 
@@ -32,6 +33,12 @@ let
       [ ]
       list;
 
+  # FS-322: reachability is the selecting scope's `selects`. For a bare external
+  # destination, resolve the selected exit surfaces from the scope that attaches
+  # the relation's from-tenant (shared resolver, FS-322/FS-370).
+  egressSurfaces = import ../lib/egress-surfaces.nix { inherit lib; };
+  selectedSurfacesForEndpoint = egressSurfaces.surfacesForEndpoint nodes;
+
   dnsExternalUplinksForEndpoint =
     endpoint: trafficType:
     let
@@ -51,7 +58,7 @@ let
             else if builtins.isString (to.name or null) && to.name != "" then
               [ to.name ]
             else
-              [ ];
+              selectedSurfacesForEndpoint (relationAttrs.from or null);
         in
         if
           (relationAttrs.action or "allow") == "allow"
@@ -96,7 +103,7 @@ let
                   else if builtins.isString (to.name or null) && to.name != "" then
                     [ to.name ]
                   else
-                    [ ];
+                    selectedSurfacesForEndpoint (relationAttrs.from or null);
               in
               if
                 (relationAttrs.action or "allow") == "allow"
