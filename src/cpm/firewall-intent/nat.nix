@@ -46,16 +46,45 @@ let
   siteTenantPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.domains or null)).tenants or null);
   siteOwnershipPrefixes = listOrEmpty ((attrsOrEmpty (siteAttrs.ownership or null)).prefixes or null);
   internetTenantNames = uniqueStrings (
+    let
+      cc = attrsOrEmpty (siteAttrs.communicationContract or null);
+      relations =
+        if builtins.isList (cc.relations or null) then
+          cc.relations
+        else
+          listOrEmpty (cc.allowedRelations or null);
+      nodes = attrsOrEmpty (siteAttrs.nodes or null);
+      # FS-322/FS-370: a tenant has internet egress when its access scope
+      # declares a selection (it routes toward an exit), and a permission
+      # relation allows the tenant to reach an external destination. The exit
+      # is named by the scope's `selects`, not by a relation uplink field.
+      tenantScopeSelects =
+        tenantName:
+        builtins.any (
+          nodeName:
+          builtins.any (
+            a: (a.kind or null) == "tenant" && (a.name or null) == tenantName
+          ) (((attrsOrEmpty (nodes.${nodeName} or null)).attachments) or [ ])
+          && (((attrsOrEmpty (nodes.${nodeName} or null)).selects or [ ]) != [ ])
+        ) (builtins.attrNames nodes);
+    in
     builtins.map (rel: (attrsOrEmpty (rel.from or null)).name or "") (
-      builtins.filter (rel:
-        ((attrsOrEmpty (rel.from or null)).kind or null) == "tenant"
-        && ((attrsOrEmpty (rel.to or null)).kind or null) == "external"
-        && (((attrsOrEmpty (rel.to or null)).name or null) == "wan" || ((attrsOrEmpty (rel.to or null)).uplinks or []) != [ ])
-        && (rel.action or "allow") == "allow")
-      (let
-        cc = attrsOrEmpty (siteAttrs.communicationContract or null);
-      in
-      if builtins.isList (cc.relations or null) then cc.relations else listOrEmpty (cc.allowedRelations or null))
+      builtins.filter (
+        rel:
+        let
+          from = attrsOrEmpty (rel.from or null);
+          to = attrsOrEmpty (rel.to or null);
+          tenantName = from.name or "";
+        in
+        (from.kind or null) == "tenant"
+        && (to.kind or null) == "external"
+        && (rel.action or "allow") == "allow"
+        && (
+          (to.name or null) == "wan"
+          || (to.uplinks or [ ]) != [ ]
+          || tenantScopeSelects tenantName
+        )
+      ) relations
     )
   );
   siteNat44SourcePrefixes =
