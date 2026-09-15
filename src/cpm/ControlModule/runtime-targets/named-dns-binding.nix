@@ -717,7 +717,13 @@ let
       boundCoreBase = mergeDns coreTarget {
         listen = endpoints;
         allowFrom = requesterAllowFromFor coreServiceName;
-        forwarders = [ ];
+        # FS-540/FS-440: a forwarding-gateway exit's core resolver uses the
+        # modeled upstream forwarders for public recursion. An iterative
+        # controlled resolver declares none.
+        forwarders = uniqueStrings (
+          listOrEmpty (service coreServiceName).forwarders or null
+          ++ listOrEmpty (service coreServiceName).upstreamResolvers or null
+        );
         outgoingInterfaces =
           if builtins.isAttrs (egressPolicy.policy or null) then
             lib.optional
