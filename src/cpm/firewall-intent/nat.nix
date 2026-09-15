@@ -53,7 +53,7 @@ let
           cc.relations
         else
           listOrEmpty (cc.allowedRelations or null);
-      nodes = attrsOrEmpty (siteAttrs.nodes or null);
+      nodes = if builtins.isAttrs (siteAttrs.nodes or null) then siteAttrs.nodes else { };
       # FS-322/FS-370: a tenant has internet egress when its access scope
       # declares a selection (it routes toward an exit), and a permission
       # relation allows the tenant to reach an external destination. The exit
@@ -64,8 +64,8 @@ let
           nodeName:
           builtins.any (
             a: (a.kind or null) == "tenant" && (a.name or null) == tenantName
-          ) (((attrsOrEmpty (nodes.${nodeName} or null)).attachments) or [ ])
-          && (((attrsOrEmpty (nodes.${nodeName} or null)).selects or [ ]) != [ ])
+          ) ((if builtins.isAttrs (nodes.${nodeName} or null) then (nodes.${nodeName}.attachments or [ ]) else [ ]))
+          && ((if builtins.isAttrs (nodes.${nodeName} or null) then (nodes.${nodeName}.selects or [ ]) else [ ]) != [ ])
         ) (builtins.attrNames nodes);
     in
     builtins.map (rel: (attrsOrEmpty (rel.from or null)).name or "") (
