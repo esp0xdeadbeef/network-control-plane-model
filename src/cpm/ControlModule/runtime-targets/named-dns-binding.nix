@@ -9,12 +9,14 @@
   allowedRelations,
   inventoryEndpoints,
   overlayProvisioning ? { },
+  nodes ? { },
 }:
 
 runtimeTargets:
 
 let
   inherit (common) attrsOrEmpty failForwarding uniqueStrings;
+  egressSurfaces = import ../lib/egress-surfaces.nix { inherit lib; };
   listOrEmpty = value: if builtins.isList value then value else [ ];
   isNonEmptyString = value: builtins.isString value && value != "";
   recursive = attrsOrEmpty (siteDns.recursive or null);
@@ -428,8 +430,9 @@ let
           && (from.name or null) == serviceName
           && (to.kind or null) == "external"
         then
-          (listOrEmpty (to.uplinks or null))
-          ++ (if (to.scope or null) != null then [ to.scope ] else [ ])
+          # FS-322/FS-370: the egress surface is the selected exit the from-scope
+          # declares in `selects`; a relation never names an uplink.
+          egressSurfaces.relationEgressSurfaces nodes relation
         else
           [ ]
       ) allowedRelations
@@ -592,9 +595,10 @@ let
       coreTargetName = targetNameForNode coreNodeName;
       requesterTargetName = requesterTargetNameForService requesterServiceName;
       families = listOrEmpty (binding.allowedAddressFamilies or null);
-      selectedUplinks = uniqueStrings (
-        listOrEmpty ((attrsOrEmpty (binding.egressSurface or null)).uplinks or null)
-      );
+      # FS-322/FS-540 SMS-010: the binding's `egressSurface` names the selected
+      # exit; the relation never names an uplink. Resolve the surface through the
+      # shared resolver (honoring `uplinks`, `scope`, or `name`).
+      selectedUplinks = egressSurfaces.pinnedSurfaces (attrsOrEmpty (binding.egressSurface or null));
       matchingRelations = builtins.filter (
         relation:
         let
@@ -646,7 +650,11 @@ let
       coreRecursion = attrsOrEmpty (coreRoles.recursion or null);
       egressPolicy = dnsEgressPolicyFor {
         target = coreTarget;
-        selectedUplinks = uplinks;
+        # FS-540 SMS-010/045: the resolver source binds to the exit selected for
+        # the recursive relationship, declared by the binding's `egressSurface`.
+        # The relation names the exit scope, not the surface; the binding
+        # selects the surface deterministically (route order is not authority).
+        selectedUplinks = if selectedUplinks != [ ] then selectedUplinks else uplinks;
         requester = "service:${coreServiceName}";
         resolverService = coreServiceName;
         resolverNode = coreNodeName;

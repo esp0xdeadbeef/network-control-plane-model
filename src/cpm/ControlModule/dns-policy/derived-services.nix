@@ -26,6 +26,7 @@ let
       dnsRelations
       providersForService
       ;
+    nodes = dnsPolicy.nodes or { };
   };
 
   allowedClasses = import ./allowed-classes.nix {
