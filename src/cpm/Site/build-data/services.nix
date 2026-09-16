@@ -112,9 +112,22 @@ let
       let
         hasName = isNonEmptyString (source.name or null);
         hasUplinks = (listOrEmpty (source.uplinks or null)) != [ ];
+        hasScope = isNonEmptyString (source.scope or null);
       in
-      if hasName && hasUplinks then
-        failExposureScope relation "from" "external requester scope to use exactly one of name or uplinks"
+      if builtins.length (builtins.filter (x: x) [
+        hasName
+        hasUplinks
+        hasScope
+      ]) > 1 then
+        failExposureScope relation "from" "external requester scope to use exactly one of name, uplinks, or scope"
+      else if hasScope then
+        # FS-322: an ingress source may name the exit scope it arrives from.
+        {
+          kind = "external";
+          names = [ source.scope ];
+          selector = "scope";
+          public = endpointIsPublicExternal source;
+        }
       else if hasName then
         {
           kind = "external";
