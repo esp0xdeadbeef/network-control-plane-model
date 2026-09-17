@@ -224,7 +224,12 @@ let
       authority = attrsOrEmpty relation.publicIngressTupleAuthority;
       family = if (authority.family or null) == "ipv6" then 6 else 4;
       relationSurfaces = externalNames (relation.from or null);
-      relationUplinks =
+      # FS-322: reachability is a scope property; a relation never names
+      # uplinks/interfaces. A legacy `from.uplinks` on a public-ingress
+      # relation is a superseded contract (FS-081/FS-984) and is rejected
+      # loudly instead of being consulted. The modeled ingress surface is the
+      # authority's declared `publicSurface`, for both address families.
+      legacyRelationUplinks =
         let
           endpoint = attrsOrEmpty (relation.from or null);
         in
@@ -234,10 +239,19 @@ let
           uniqueStrings (listOrEmpty (endpoint.uplinks or null));
       declaredPublicSurface = authority.publicSurface or null;
       publicSurface =
-        if family == 6 then
-          requireOne "relation '${toString id}' public uplink" relationUplinks
+        if legacyRelationUplinks != [ ] then
+          throw {
+            code = "E_UPLINK_LEGACY_SELECTOR";
+            message = "public ingress relation '${toString id}' names uplinks on 'from'; reachability is a scope property";
+            hints = [
+              "Remove 'uplinks' from 'from'; declare the exit scope with 'scope' on 'from'."
+              "Name the ingress surface with publicIngressTupleAuthority.publicSurface."
+            ];
+          }
+        else if isNonEmptyString declaredPublicSurface then
+          declaredPublicSurface
         else
-          declaredPublicSurface;
+          throw "public ingress relation '${toString id}' is missing publicIngressTupleAuthority.publicSurface";
       surfaces = uniqueStrings (relationSurfaces ++ [ publicSurface ]);
       targetService = authority.targetService or ((attrsOrEmpty (relation.to or null)).name or null);
       service =
