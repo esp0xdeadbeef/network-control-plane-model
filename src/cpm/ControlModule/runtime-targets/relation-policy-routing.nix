@@ -266,7 +266,12 @@ let
           family = pair.family;
           incomingInterface = incoming.runtimeIfName;
           policyInterface = policy.runtimeIfName;
-          tableId = policy.policyRoutingAllocation.tableId;
+          # The rule matches the ingress lane (policyInterface) but selects the
+          # table that owns the destination route -- the far-side lane's table --
+          # so the lookup resolves the modeled destination next hop instead of
+          # the ingress lane's table.
+          routeInterface = (if forward then destinationPolicy else sourcePolicy).name;
+          tableId = (if forward then destinationPolicy else sourcePolicy).value.policyRoutingAllocation.tableId;
           policyStateOwner = policyNodeName;
           returnBehavior = relation.returnBehavior;
           trafficType = relation.trafficType;
