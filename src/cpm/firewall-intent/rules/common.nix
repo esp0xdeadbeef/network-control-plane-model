@@ -8,6 +8,8 @@ let
   lane = iface: attrsOrEmpty ((backingRef iface).lane or { });
 in
 rec {
+  laneScope = iface: (lane iface).scope or null;
+
   laneKind = iface: (lane iface).kind or null;
 
   laneAccess = iface: (lane iface).access or null;

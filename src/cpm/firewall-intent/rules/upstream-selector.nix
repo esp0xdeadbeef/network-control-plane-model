@@ -112,15 +112,52 @@ let
     in
     if cores == [ ] then null else builtins.head cores;
 
-  # Every core whose uplink(s) intersect the policy lane's uplink(s). For a
-  # single-uplink lane this is one core; for a multi-uplink lane (e.g.
-  # clients-vpn with uplinks [onyx opal]) it is every matching provider core,
-  # so the selector emits a handoff to each and tenant traffic can ECMP across
-  # them instead of being dropped for lack of a policy→core forward rule.
+  # FS-370 / FS-481: a policy->upstream-selector lane binds one **source
+  # scope** to one selected exit, so a scope with N permitted exits is
+  # realized as N per-exit lanes (FS-370-SMS-050 requires a non-null
+  # lane.uplink on every access-uplink lane). The upstream-selector -- not
+  # the individual lane -- owns the multi-exit (ECMP) choice: it installs one
+  # ECMP default across every core reachable via the scope's exit set
+  # (policyLaneCombinedCoreDefaultPlan). A packet can therefore ingress on the
+  # lane for exit `onyx` and egress the core for `opal`. The forwarding rule
+  # must mirror that authority, so the admissible core set is derived from the
+  # scope's **full exit set**, not from the single exit named by the ingress
+  # lane. Pairing each lane only with its own exit core leaves cross-exit ECMP
+  # traffic (e.g. clients-vpn ingressing `--uplink-onyx` but routed out the
+  # `opal` core) with no forward accept, so it is dropped.
+  scopeUplinks =
+    builtins.foldl' (
+      acc: iface:
+      let
+        scope = common.laneScope iface;
+        exits = common.laneUplinks iface;
+      in
+      if scope == null then
+        acc
+      else
+        acc
+        // {
+          ${toString scope} = builtins.attrNames (
+            builtins.listToAttrs (
+              map (u: {
+                name = u;
+                value = true;
+              }) (builtins.filter (u: u != null) ((acc.${toString scope} or [ ]) ++ exits))
+            )
+          );
+        }
+    ) { } policyInterfaces;
+
+  # Every core whose uplink(s) intersect the **scope's** exit set.
   coresForPolicy =
     policyIface:
     let
-      policyUplinks = common.laneUplinks policyIface;
+      scope = common.laneScope policyIface;
+      policyUplinks =
+        if scope != null && builtins.hasAttr (toString scope) scopeUplinks then
+          scopeUplinks.${toString scope}
+        else
+          common.laneUplinks policyIface;
     in
     builtins.filter (
       coreIface:
