@@ -443,15 +443,59 @@ let
     let
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
+      allocations = indexedInterfaceAllocations target interfaces;
+      # FS-315-HDS-010-SDS-010-SMS-020: the target-originated selection. A
+      # lookup the runtime target originates itself -- a hop-generated ICMP
+      # error, which carries no ingress selector -- must select a context table
+      # from modeled selection instead of an ambient fallback table. The owner
+      # context table is the table of the target's highest-ranked context
+      # interface (the same ordering that assigns the policy-routing slots);
+      # the selection priority is the lowest of the target's rule space so it
+      # never shadows an ingress-scoped selector.
+      ownerInterfaceNames = builtins.attrNames interfaces;
+      ownerInterface =
+        if ownerInterfaceNames == [ ] then
+          null
+        else
+          builtins.head (
+            builtins.sort
+              (
+                left: right:
+                let
+                  leftRank = interfacePolicyRoutingRank target interfaces.${left};
+                  rightRank = interfacePolicyRoutingRank target interfaces.${right};
+                in
+                if leftRank == rightRank then
+                  (interfaceRuntimeName interfaces left) < (interfaceRuntimeName interfaces right)
+                else
+                  leftRank < rightRank
+              )
+              ownerInterfaceNames
+          );
+      targetOriginatedSelection =
+        if ownerInterface == null then
+          null
+        else
+          {
+            source = "control-plane-model";
+            ownerInterface = ownerInterface;
+            tableId = (allocations.${ownerInterface}).tableId;
+            priority = 20000;
+          };
     in
     if interfaces == { } then
       target
     else
       target
       // {
-        effectiveRuntimeRealization = effective // {
-          interfaces = addPolicyRoutingAllocations target interfaces;
-        };
+        effectiveRuntimeRealization =
+          effective
+          // {
+            interfaces = addPolicyRoutingAllocations target interfaces;
+          }
+          // lib.optionalAttrs (targetOriginatedSelection != null) {
+            inherit targetOriginatedSelection;
+          };
       };
 
   interfaceRouteSource =
