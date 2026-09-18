@@ -480,7 +480,15 @@ let
             source = "control-plane-model";
             ownerInterface = ownerInterface;
             tableId = (allocations.${ownerInterface}).tableId;
-            priority = 20000;
+            # FS-315-HDS-010-SDS-010-SMS-020: a target-originated lookup must
+            # first consult the connected/local routes (the target's own on-link
+            # peer addresses), and only fall through to the owner context table
+            # for prefixes main has no route for. Emitting a bare `lookup
+            # <context>` would shadow a connected /31 peer route and the target
+            # could not reach its own neighbour. Two ordered selections are
+            # modeled: a `main` fallthrough selection, then the context table.
+            mainSelectionPriority = 20000;
+            selectionPriority = 20001;
           };
     in
     if interfaces == { } then
