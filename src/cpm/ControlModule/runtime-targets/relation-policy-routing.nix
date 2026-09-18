@@ -283,7 +283,15 @@ let
         selector:
         let
           forward = selector.direction == "forward";
-          policyEntry = if forward then sourcePolicy else destinationPolicy;
+          # FS-315-HDS-010-SDS-010-SMS-020: this route carries the selector's
+          # destination prefix to the far side of the relation, not back into
+          # the incoming lane. The forward selector enters from the source edge,
+          # so its destination prefix resolves via the destination policy lane;
+          # the return selector enters from the destination edge, so its
+          # destination prefix (the original source) resolves via the source
+          # policy lane. Using the incoming lane here routed the destination
+          # prefix back toward the ingress side (a wrong next hop).
+          policyEntry = if forward then destinationPolicy else sourcePolicy;
           addressField = if selector.family == 4 then "addr4" else "addr6";
           viaField = if selector.family == 4 then "via4" else "via6";
           peer = p2pPeerAddress selector.family (policyEntry.value.${addressField} or null);
