@@ -293,33 +293,76 @@ let
             else
               failForwarding "${sitePath}.runtimeTargets.${targetName}.effectiveRuntimeRealization.interfaces.${policyEntry.name}.${addressField}" "FS-270-HDS-010-SDS-010-SMS-020: selected policy-state lane requires a point-to-point peer";
         in
-        builtins.seq _hasPeer {
-          interfaceName = policyEntry.name;
-          family = selector.family;
-          route = {
-            dst = selector.destinationPrefix;
-            proto = "internal";
-            policyOnly = true;
-            lane = (attrsOrEmpty policyEntry.value.backingRef).lane or { };
-            reason = "relation-policy-state-owner";
-            relationId = selector.relationId;
-            relationIds = [ selector.relationId ];
-            returnBehavior = selector.returnBehavior;
-            trafficType = selector.trafficType;
-            ${viaField} = peer;
-            intent = {
-              kind = "relation-policy-reachability";
-              source = "trafficPaths";
+        builtins.seq _hasPeer (
+          let
+            # FS-315-SMS-040: the owner-and-lane return occurrence must resolve for
+            # the owner's own originated traffic, not only for forwarded packets
+            # with a matching ingress interface. A hop-generated reply (an ICMP
+            # time-exceeded or unreachable) has no ingress selector, so it selects
+            # the main table; the ingress-scoped policy occurrence does not answer
+            # it and the hop silently fails to return the error. Emit the return
+            # destination prefix as a main-table occurrence on the same return
+            # lane, so the owner can route to the modeled return prefix itself.
+            # The forward direction keeps its policy-only occurrence: the owner is
+            # not the source of a forward-new flow.
+            baseRoute = {
+              dst = selector.destinationPrefix;
+              proto = "internal";
+              lane = (attrsOrEmpty policyEntry.value.backingRef).lane or { };
               relationId = selector.relationId;
-              direction = selector.direction;
-              policyStateOwner = selector.policyStateOwner;
+              relationIds = [ selector.relationId ];
+              returnBehavior = selector.returnBehavior;
+              trafficType = selector.trafficType;
+              ${viaField} = peer;
+              intent = {
+                kind = "relation-policy-reachability";
+                source = "trafficPaths";
+                relationId = selector.relationId;
+                direction = selector.direction;
+                policyStateOwner = selector.policyStateOwner;
+              };
             };
-          };
-        };
+            returnOccurrences =
+              if forward then
+                [ ]
+              else
+                [
+                  (baseRoute
+                    // {
+                      policyOnly = false;
+                      reason = "relation-policy-owner-origin-return";
+                      intent = baseRoute.intent // { kind = "relation-policy-owner-origin-return"; };
+                    })
+                ];
+          in
+          {
+            interfaceName = policyEntry.name;
+            family = selector.family;
+            routes =
+              [
+                (baseRoute
+                  // {
+                    policyOnly = true;
+                    reason = "relation-policy-state-owner";
+                  })
+              ]
+              ++ returnOccurrences;
+          }
+        );
     in
     {
       inherit selectors;
-      routeEntries = builtins.map routeEntryFor selectors;
+      routeEntries = builtins.concatMap (
+        selector:
+        let
+          entry = routeEntryFor selector;
+        in
+        map (route: {
+          interfaceName = entry.interfaceName;
+          family = entry.family;
+          inherit route;
+        }) entry.routes
+      ) selectors;
     };
 
   addForTarget =
