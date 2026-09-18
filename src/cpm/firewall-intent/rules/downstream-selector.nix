@@ -172,6 +172,99 @@ let
           fromIfaces
       );
 
+  # FS-315-HDS-010-SDS-010-SMS-040: on the downstream-selector, a
+  # policy-routed lateral relation (source access -> policy -> destination
+  # access) has two selector legs per direction. The source-access -> the
+  # destination access's policy-egress lane leg carries the forward packet in,
+  # and its stateful reverse mirrors it. Without this leg the selector's
+  # default-drop forward chain drops the lateral packet, even though the route
+  # resolves it toward the destination policy-egress lane.
+  policyIngressRules = relationRaw:
+    let
+      relation = attrsOrEmpty relationRaw;
+      fromIfaces = accessIfacesForEndpoint (relation.from or null);
+      toIfaces = accessIfacesForEndpoint (relation.to or null);
+      id = relationId relation;
+      action = if (relation.action or "allow") == "deny" then "deny" else "accept";
+      direction = "relation-forward-access-ingress";
+    in
+    if action != "accept" || !(relationRequiresPolicy relation) then
+      [ ]
+    else
+      builtins.concatLists (
+        map
+          (
+            toIface:
+            let
+              toPolicyIface = policyForAccess toIface;
+              toAccessNode = common.laneAccess toIface;
+            in
+            if
+              toPolicyIface == null
+              || toAccessNode == null
+              || !(pathContainsPolicyEgressToAccess relation toAccessNode)
+            then
+              [ ]
+            else
+              builtins.concatLists (
+                map
+                  (fromIface:
+                    [
+                      ({
+                        inherit action;
+                        relationId = id;
+                        comment = id;
+                        priority = relation.priority or null;
+                        trafficType = relation.trafficType or "any";
+                        inherit direction;
+                        matches = relationMatches relation;
+                        from = attrsOrEmpty (relation.from or null);
+                        to = attrsOrEmpty (relation.to or null);
+                        transportAuthority = {
+                          basis = "modeled-relation";
+                          provenanceIsAuthority = false;
+                          admissible = true;
+                        };
+                        relationCardinality = {
+                          unit = "selector-forwarding-rule";
+                          decomposition = "decomposed-by-explicit-policy-ingress-path-leg";
+                          decomposed = true;
+                        };
+                        fromInterface = fromIface.runtimeIfName;
+                        toInterface = toPolicyIface.runtimeIfName;
+                        applyTcpMssClamp = false;
+                      }
+                      // common.relationHandoff {
+                        relationId = id;
+                        inherit action direction fromIface;
+                        toIface = toPolicyIface;
+                        policyPoint = "downstream-selector";
+                      })
+                      ({
+                        action = "accept";
+                        fromInterface = toPolicyIface.runtimeIfName;
+                        toInterface = fromIface.runtimeIfName;
+                        applyTcpMssClamp = false;
+                        connectionState = "established,related";
+                        returnRule = true;
+                        relationId = id;
+                        comment = id;
+                      }
+                      // common.relationHandoff {
+                        relationId = id;
+                        action = "accept";
+                        direction = "relation-reverse-access-ingress";
+                        fromIface = toPolicyIface;
+                        inherit toIface;
+                        policyPoint = "downstream-selector";
+                      })
+                    ])
+                  fromIfaces
+              )
+          )
+          toIfaces
+      );
+
   policyEgressRules = relationRaw:
     let
       relation = attrsOrEmpty relationRaw;
@@ -250,5 +343,6 @@ builtins.concatLists
       accessInterfaces
   )
 ++ builtins.concatLists (map localRelationRules (listOrEmpty relations))
+++ builtins.concatLists (map policyIngressRules (listOrEmpty relations))
 ++ builtins.concatLists (map policyEgressRules (listOrEmpty relations))
 ++ common.runtimeOriginDefaultForwardRules runtimeOriginSourcePrefixes transitInterfaces
