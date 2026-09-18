@@ -252,6 +252,18 @@ let
           policy = if forward then sourcePolicy.value else destinationPolicy.value;
           sourcePrefix = if forward then pair.sourcePrefix else pair.destinationPrefix;
           destinationPrefix = if forward then pair.destinationPrefix else pair.sourcePrefix;
+          # FS-315-HDS-010-SDS-010-SMS-020: the route must send the packet to the
+          # lane the *next* hop expects, which depends on this target's role.
+          #  - downstream-selector (ingress side): the packet entered from the
+          #    source access and must reach the policy on the policy's *source*
+          #    lane (down0), so the policy can apply its down0 -> down1 egress.
+          #  - policy (egress side): the packet must reach the destination
+          #    access via the policy's *destination* lane (down1).
+          routePolicyFor =
+            if (target.role or null) == "downstream-selector" then
+              (if forward then sourcePolicy else destinationPolicy)
+            else
+              (if forward then destinationPolicy else sourcePolicy);
         in
         {
           authority = "relation-policy-state-owner";
@@ -266,12 +278,8 @@ let
           family = pair.family;
           incomingInterface = incoming.runtimeIfName;
           policyInterface = policy.runtimeIfName;
-          # The rule matches the ingress lane (policyInterface) but selects the
-          # table that owns the destination route -- the far-side lane's table --
-          # so the lookup resolves the modeled destination next hop instead of
-          # the ingress lane's table.
-          routeInterface = (if forward then destinationPolicy else sourcePolicy).name;
-          tableId = (if forward then destinationPolicy else sourcePolicy).value.policyRoutingAllocation.tableId;
+          routeInterface = routePolicyFor.name;
+          tableId = routePolicyFor.value.policyRoutingAllocation.tableId;
           policyStateOwner = policyNodeName;
           returnBehavior = relation.returnBehavior;
           trafficType = relation.trafficType;
@@ -288,15 +296,15 @@ let
         selector:
         let
           forward = selector.direction == "forward";
-          # FS-315-HDS-010-SDS-010-SMS-020: this route carries the selector's
-          # destination prefix to the far side of the relation, not back into
-          # the incoming lane. The forward selector enters from the source edge,
-          # so its destination prefix resolves via the destination policy lane;
-          # the return selector enters from the destination edge, so its
-          # destination prefix (the original source) resolves via the source
-          # policy lane. Using the incoming lane here routed the destination
-          # prefix back toward the ingress side (a wrong next hop).
-          policyEntry = if forward then destinationPolicy else sourcePolicy;
+          # FS-315-HDS-010-SDS-010-SMS-020: the route sent to the next hop must
+          # use the same lane the selector named as `routeInterface`, which is
+          # role-aware (downstream-selector -> source lane; policy -> destination
+          # lane). Recomputed here to match `routePolicyFor`.
+          policyEntry =
+            if (target.role or null) == "downstream-selector" then
+              (if forward then sourcePolicy else destinationPolicy)
+            else
+              (if forward then destinationPolicy else sourcePolicy);
           addressField = if selector.family == 4 then "addr4" else "addr6";
           viaField = if selector.family == 4 then "via4" else "via6";
           peer = p2pPeerAddress selector.family (policyEntry.value.${addressField} or null);
