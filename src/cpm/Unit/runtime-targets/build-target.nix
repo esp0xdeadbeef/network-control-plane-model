@@ -174,9 +174,25 @@ let
               (sortedNames siteOverlays)
           );
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
-      runtimeInterfacesBase = addOverlayUnderlayEndpointRoutes nodeRole (
+      runtimeInterfacesBase0 = addOverlayUnderlayEndpointRoutes nodeRole (
         builtins.listToAttrs (explicitEntries ++ syntheticEntries ++ inventoryOverlayEntries)
       );
+      overlayMtuFor =
+        overlayName:
+        let
+          providerContract = attrsOrEmpty ((attrsOrEmpty siteOverlays.${overlayName}).providerContract or null);
+          generatedPeer = attrsOrEmpty ((attrsOrEmpty (providerContract.profile or null)).generatedPeer or null);
+          mtu = generatedPeer.mtu or null;
+        in
+        if builtins.isInt mtu && mtu > 0 then mtu else null;
+      runtimeInterfacesBase = builtins.mapAttrs (
+        _ifName: iface:
+        let
+          overlayName = iface.overlay or null;
+          mtu = if builtins.isString overlayName && !(iface ? mtu) then overlayMtuFor overlayName else null;
+        in
+        if mtu != null then iface // { inherit mtu; } else iface
+      ) runtimeInterfacesBase0;
       # FS-370-HDS-010-SDS-010-SMS-010: the egress identity is owned by the
       # forwarding model. Consume nodeAttrs.egressIntent to synthesize the core
       # egress surface rather than inferring it from a fabric p2p shape.
