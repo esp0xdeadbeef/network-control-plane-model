@@ -243,6 +243,7 @@ let
         , toEndpoint
         , reverseSource ? false
         , stateful ? false
+        , sourceScoped ? true
         }:
         let
           fromIfaces = endpointIfaces relation fromEndpoint toEndpoint;
@@ -266,7 +267,7 @@ let
               in
               map
                 (toIface:
-                  withRelationSourceScope relationForSource {
+                  (if sourceScoped then withRelationSourceScope relationForSource else (rule: rule)) {
                     inherit action;
                     relationId = id;
                     comment = id;
@@ -318,13 +319,27 @@ let
       };
 
       reverseRules =
-        if builtins.elem (relation.returnBehavior or null) [ "symmetric" "stateful-return" ] then
+        if (relation.returnBehavior or null) == "symmetric" then
           buildDirectionRules {
             direction = "relation-reverse";
             fromEndpoint = relation.to or null;
             toEndpoint = relation.from or null;
             reverseSource = true;
             stateful = true;
+          }
+        else if (relation.returnBehavior or null) == "stateful-return" then
+          # FS-230-HDS-010-SDS-010-SMS-030 / FS-270-HDS-010-SDS-010-SMS-040:
+          # a public-ingress stateful return is bounded established,related
+          # reply traffic, not a reverse tuple. Do not source-match it to the
+          # target's static address: with translationMode=none the reply source
+          # is the runtime public /128, not the modeled ULA.
+          buildDirectionRules {
+            direction = "relation-reverse";
+            fromEndpoint = relation.to or null;
+            toEndpoint = relation.from or null;
+            reverseSource = true;
+            stateful = true;
+            sourceScoped = false;
           }
         else
           [ ];
