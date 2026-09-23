@@ -36,6 +36,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     };
     ipv6Authority = {
       sourceScope = "internet";
+      publicSurface = "wan";
       targetService = "nebula";
       targetPort = 4242;
       returnBehavior = "stateful-return";
@@ -99,7 +100,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     relation = {
       id = "allow-wan-to-nebula-ipv6";
       action = "allow";
-      from = { kind = "external"; uplinks = [ "wan" ]; };
+      from = { kind = "external"; };
       to = { kind = "service"; name = "nebula"; };
       publicIngressTupleAuthority = ipv6Authority;
     };
@@ -359,12 +360,9 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
       target = core;
       targetName = "core";
     }) true);
-    conflictingLegacyBinding = builtins.tryEval (builtins.deepSeq (build {
+    missingSurface = builtins.tryEval (builtins.deepSeq (build {
       siteAttrs.communicationContract.relations = [ (relation // {
-        publicIngressTupleAuthority = ipv6Authority // {
-          publicSurface = "wrong-uplink";
-          targetEndpoint = "wrong-endpoint";
-        };
+        publicIngressTupleAuthority = builtins.removeAttrs ipv6Authority [ "publicSurface" ];
       }) ];
       inherit services policyEndpointBindings;
       interfaceRecords = builtins.attrValues core.effectiveRuntimeRealization.interfaces;
@@ -402,8 +400,8 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
     throw ("failed checks: " + builtins.concatStringsSep ", " failed)
   else if missingSource.success then
     throw "missing protected runtime source was accepted"
-  else if conflictingLegacyBinding.success then
-    throw "conflicting relation-owned surface or endpoint was accepted"
+  else if missingSurface.success then
+    throw "public ingress relation without a declared publicSurface was accepted"
   else if ambiguousInventoryEndpoint.success then
     throw "ambiguous inventory-owned endpoint was accepted"
   else if familyNeutral != [ ] then
