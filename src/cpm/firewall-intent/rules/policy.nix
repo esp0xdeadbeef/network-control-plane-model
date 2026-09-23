@@ -318,7 +318,7 @@ let
       };
 
       reverseRules =
-        if (relation.returnBehavior or null) == "symmetric" then
+        if builtins.elem (relation.returnBehavior or null) [ "symmetric" "stateful-return" ] then
           buildDirectionRules {
             direction = "relation-reverse";
             fromEndpoint = relation.to or null;

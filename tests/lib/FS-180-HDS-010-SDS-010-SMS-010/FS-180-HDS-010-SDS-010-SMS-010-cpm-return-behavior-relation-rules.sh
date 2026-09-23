@@ -165,7 +165,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
         };
 
         reverseRules =
-          if (relation.returnBehavior or null) == "symmetric" then
+          if builtins.elem (relation.returnBehavior or null) [ "symmetric" "stateful-return" ] then
             buildDirectionRules {
               direction = "relation-reverse";
               fromEndpoint = relation.to or null;
@@ -191,6 +191,10 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
     # After NFM fix: returnBehavior="symmetric" is present on allow relations
     symmetricAllow = productionAllow // { returnBehavior = "symmetric"; };
 
+    # Public-ingress relations use returnBehavior="stateful-return"; the policy
+    # point must still emit the bounded established,related reverse leg.
+    statefulReturnAllow = productionAllow // { returnBehavior = "stateful-return"; };
+
     # Seeded negative: wrong returnBehavior value → should NOT emit reverse rules
     wrongReturnAllow = productionAllow // { returnBehavior = "unsupported-value"; };
 
@@ -209,6 +213,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
 
     prodAllowRules   = relationRules productionAllow;
     symAllowRules    = relationRules symmetricAllow;
+    statefulRetRules = relationRules statefulReturnAllow;
     wrongRetRules    = relationRules wrongReturnAllow;
     prodDenyRules    = relationRules productionDeny;
     symDenyRules     = relationRules symmetricDeny;
@@ -234,6 +239,10 @@ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
     symAllowHasForward = forwardCount symAllowRules == 1;
     symAllowHasReverse = reverseCount symAllowRules == 1;
     symAllowTotalCount = builtins.length symAllowRules == 2;
+
+    # stateful-return also emits forward + stateful reverse
+    statefulReturnHasForward = forwardCount statefulRetRules == 1;
+    statefulReturnHasReverse = reverseCount statefulRetRules == 1;
 
     # ── SMS-020: adjacent denial → no returnBehavior → forward only ──────────
 
