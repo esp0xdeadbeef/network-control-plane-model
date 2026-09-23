@@ -131,7 +131,7 @@ let
       else if role == "upstream-selector" then
         (lane.kind or null) == "access-uplink"
         && (lane.access or null) == targetAccess
-        && (lane.uplink or null) == publicSurface
+        && ((lane.uplink or null) == publicSurface || (lane.ingressReturn or false) == true)
       else if role == "policy" then
         (lane.kind or null) == "access" && (lane.access or null) == targetAccess
       else if role == "downstream-selector" then
@@ -163,7 +163,7 @@ let
       else if role == "policy" then
         (lane.kind or null) == "access-uplink"
         && (lane.access or null) == targetAccess
-        && (lane.uplink or null) == publicSurface
+        && ((lane.uplink or null) == publicSurface || (lane.ingressReturn or false) == true)
       else if role == "downstream-selector" then
         (lane.kind or null) == "access" && (lane.access or null) == targetAccess
       else if role == "access" && logicalNode == targetAccess then
