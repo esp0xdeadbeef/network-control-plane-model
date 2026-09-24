@@ -26,6 +26,11 @@
 {
         logicalNode = logical;
         role = nodeAttrs.role or null;
+        # FS-470: explicit node advertisement of, or answering for, a tenant or
+        # protected prefix. The compiler resolves the intent declaration to
+        # concrete prefixes; the control-plane model consumes them as-is and
+        # never re-infers reachability from the NAT source set.
+        advertises = if builtins.isList (nodeAttrs.advertises or null) then nodeAttrs.advertises else [ ];
         routingMode = if isBgpRouter then "bgp" else "static";
         placement = placement;
         effectiveRuntimeRealization = {
