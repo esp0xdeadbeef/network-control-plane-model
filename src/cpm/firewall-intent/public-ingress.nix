@@ -217,8 +217,22 @@ let
     (attrsOrEmpty ((attrsOrEmpty target.effectiveRuntimeRealization).loopback or null)).addr4 or null
   );
 
+  # FS-230-HDS-010-SDS-010 / FS-270-HDS-010-SDS-010: the post-translation
+  # source-rewrite identity is per relation, not per core. Two public-ingress
+  # services on one core must not share a rewrite address, so give each relation
+  # its own address inside the core's existing loopback pool.
+  rewriteAddress =
+    index:
+    let
+      base = ipam.parseIPv4 loopback4;
+    in
+    if base == null then
+      loopback4
+    else
+      ipam.renderIPv4 (ipam.ipv4FromInt (ipam.ipv4ToInt base + index));
+
   buildRecord =
-    relation:
+    index: relation:
     let
       id = relationId relation;
       authority = attrsOrEmpty relation.publicIngressTupleAuthority;
@@ -426,7 +440,7 @@ let
             if rewriteSource then
               {
                 mode = "snat";
-                address = loopback4;
+                address = rewriteAddress index;
                 owner = targetName;
               }
             else
@@ -444,4 +458,4 @@ let
         })
         tupleRecords;
 in
-builtins.concatMap buildRecord publicIngressRelations
+builtins.concatLists (lib.imap0 buildRecord publicIngressRelations)
