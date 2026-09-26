@@ -499,5 +499,16 @@ let
 in
 builtins.foldl' (
   targets: record:
-  builtins.mapAttrs (targetName: target: augmentForRecord targetName target record) targets
+  builtins.mapAttrs (
+    targetName: target:
+    # A public-ingress relation is owned by the core scope that carries its
+    # ingress surface (record._translationOwner). Other core scopes in the
+    # same site -- for example a second overlay/remote-egress core -- have no
+    # path for this relation and must be left unchanged instead of failing the
+    # whole model.
+    if (target.role or null) == "core" && targetName != (record._translationOwner or null) then
+      target
+    else
+      augmentForRecord targetName target record
+  ) targets
 ) runtimeTargets records
