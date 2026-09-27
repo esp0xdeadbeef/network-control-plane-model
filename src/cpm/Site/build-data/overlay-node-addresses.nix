@@ -107,6 +107,11 @@ let
                 inherit addr4 addr6;
                 addressSource = if hasStaticAddress then "inventory-realization" else "provider-runtime";
               }
+              # FS-460-HDS-010-SDS-010-SMS-010 / FS-310-HDS-010-SDS-010-SMS-110:
+              # node service/interface and groups are target-only facts the CPM
+              # passes through from the per-node configuration (never invents).
+              // (if builtins.isAttrs (nodeCfg.service or null) then { inherit (nodeCfg) service; } else { })
+              // (if builtins.isList (nodeCfg.groups or null) then { inherit (nodeCfg) groups; } else { })
               // (if hasStaticAddress then
                 {
                   inventoryRealization = realizationRecord { inherit addr4 addr6 nodeName; };
