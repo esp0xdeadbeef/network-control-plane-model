@@ -101,7 +101,7 @@ let
       builtins.filter isPrivate4Prefix (
         builtins.filter (p: p != "") (
           (builtins.map (tenant: if builtins.isAttrs tenant then (if builtins.elem (tenant.name or "") internetTenantNames then tenant.ipv4 or "" else "") else tenant) siteTenantPrefixes)
-          ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if builtins.elem (prefix.name or "") internetTenantNames then prefix.ipv4 or prefix.prefix or "" else "") else prefix) siteOwnershipPrefixes)
+          ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if (prefix.name or null) == null || builtins.elem (prefix.name or "") internetTenantNames then prefix.ipv4 or prefix.prefix or "" else "") else prefix) siteOwnershipPrefixes)
         )
       )
     );
@@ -131,10 +131,18 @@ let
       )
     )
   );
+  # FS-380: egressIntent.nat44.sourcePrefixes is the explicit NAT44 selection for
+  # the source scope. Those prefixes are internet-NAT by definition, so they are
+  # not subject to the non-internet (routed-public) exclusion that applies to
+  # fabricated fabric prefixes.
+  intentNat44SourcePrefixes = uniqueStrings (
+    builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
+  );
   nat44SourcePrefixes = uniqueStrings (
-    builtins.filter (prefix: !(builtins.elem prefix nonInternetTenantPrefixes4)) (
-      builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
-      ++ runtimeOriginNat44SourcePrefixes
+    intentNat44SourcePrefixes
+    ++ siteNat44SourcePrefixes
+    ++ builtins.filter (prefix: !(builtins.elem prefix nonInternetTenantPrefixes4)) (
+      runtimeOriginNat44SourcePrefixes
       ++ masqueradeFabricPrefixes4
     )
   );
