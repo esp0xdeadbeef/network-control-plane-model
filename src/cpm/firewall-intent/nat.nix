@@ -68,24 +68,33 @@ let
           && ((if builtins.isAttrs (nodes.${nodeName} or null) then (nodes.${nodeName}.selects or [ ]) else [ ]) != [ ])
         ) (builtins.attrNames nodes);
     in
-    builtins.map (rel: (attrsOrEmpty (rel.from or null)).name or "") (
-      builtins.filter (
-        rel:
-        let
-          from = attrsOrEmpty (rel.from or null);
-          to = attrsOrEmpty (rel.to or null);
-          tenantName = from.name or "";
-        in
-        (from.kind or null) == "tenant"
-        && (to.kind or null) == "external"
-        && (rel.action or "allow") == "allow"
-        && (
-          (to.name or null) == "wan"
-          || (to.uplinks or [ ]) != [ ]
-          || tenantScopeSelects tenantName
-        )
-      ) relations
-    )
+    builtins.concatMap (
+      rel:
+      let
+        from = attrsOrEmpty (rel.from or null);
+        to = attrsOrEmpty (rel.to or null);
+        fromKind = from.kind or null;
+        # FS-322/FS-410: a tenant-set source names several tenants; each member
+        # tenant has internet egress through the same relation.
+        tenantNames =
+          if fromKind == "tenant" && (from.name or null) != null then
+            [ (toString from.name) ]
+          else if fromKind == "tenant-set" && builtins.isList (from.members or null) then
+            map toString from.members
+          else
+            [ ];
+        externalTo =
+          (to.kind or null) == "external"
+          && (rel.action or "allow") == "allow";
+      in
+      if !externalTo then
+        [ ]
+      else
+        builtins.filter (
+          tenantName:
+          (to.name or null) == "wan" || (to.uplinks or [ ]) != [ ] || tenantScopeSelects tenantName
+        ) tenantNames
+    ) relations
   );
   siteNat44SourcePrefixes =
     builtins.map prefixValue (
