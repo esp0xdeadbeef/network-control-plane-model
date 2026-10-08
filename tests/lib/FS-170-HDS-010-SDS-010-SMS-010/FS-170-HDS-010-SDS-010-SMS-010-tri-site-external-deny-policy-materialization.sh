@@ -2,6 +2,7 @@
 # GAMP-ID: FS-170-HDS-010-SDS-010-SMS-010
 # GAMP-ID: SMT-CPM-EXPLICIT-DENY-MATERIALIZATION-001
 # GAMP-SCOPE: software-module-test
+# GAMP-SKIP: fixture scenario removed from network-labs; tri-site-s-router-overlay-egress removed in network-labs 4ffce424
 set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"

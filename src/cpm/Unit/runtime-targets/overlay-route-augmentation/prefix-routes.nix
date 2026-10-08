@@ -10,22 +10,18 @@ let
   inherit (common) listOrEmpty;
 in
 {
+  # FS-171 (single writer): the forwarding model is the authoritative writer of
+  # the overlay peer route set.  It emits `overlayReachability.<overlay>.
+  # routes4/routes6` from the overlay's MODELED imported prefixes (URS:
+  # "Overlay transport shall model endpoint identity, permitted peers, bootstrap
+  # dependencies, imported and exported prefixes, ..."), each record carrying
+  # the concrete peer-site identity (FS-460), and those entries already reach
+  # the runtime target as interface routes.  The control plane model consumes
+  # that set; it must not synthesize a second copy here.  A second writer for
+  # the same route meaning is a duplicate-owner defect (FS-171) and produced
+  # duplicate overlay routes (FS-315).
   overlayPeerTenantRoutes =
-    overlayName:
-    builtins.map
-      (prefix: {
-        family = prefix.family;
-        dst = prefix.dst;
-        proto = "overlay";
-        tenant = prefix.tenantName or null;
-        intent = {
-          kind = "overlay-reachability";
-          source = "peer-tenant-prefix";
-        };
-      }
-      // (if isNonEmptyString (prefix.overlay or null) then { overlay = prefix.overlay; } else { })
-      // (if isNonEmptyString (prefix.peerSite or null) then { peerSite = prefix.peerSite; } else { }))
-      (listOrEmpty (overlayProvisioning.${overlayName}.peerTenantPrefixes or null));
+    _overlayName: [ ];
 
   overlayRuntimeRoutedPrefixRoutesVia =
     overlayNamesForInterface: via:
