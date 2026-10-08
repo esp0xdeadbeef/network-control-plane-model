@@ -60,10 +60,13 @@ eval_service() {
           site = out.control_plane_model.data.esp0xdeadbeef."site-c";
           service =
             builtins.head (builtins.filter (item: (item.name or null) == "dmz-nebula") site.services);
-          target = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-upstream-selector" or { };
+          # FS-315/FS-270: the service endpoint route into the dmz access space is
+          # carried on the policy point access lane, not on the upstream
+          # selector dmz uplink.
+          target = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy" or { };
           realization = target.effectiveRuntimeRealization or { };
           interfaces = realization.interfaces or { };
-          iface = interfaces."p2p-c-router-policy-c-router-upstream-selector--access-c-router-access-dmz--uplink-wan" or { };
+          iface = interfaces."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz" or { };
           routes = (iface.routes or { }).ipv4 or [ ];
           hasProviderEndpointRoute =
             builtins.any (route: (route.dst or null) == "10.90.10.100/32") routes;
@@ -158,9 +161,29 @@ eval_reachability_separation_fixture() {
             action = "allow";
             from = {
               kind = "external";
-              uplinks = [ "wan" ];
+              scope = "c-router-core";
             };
             id = "allow-public-dmz-nebula";
+            # FS-210: public ingress is authorized by an explicit
+            # publicIngressTupleAuthority, not inferred from the requester form.
+            publicIngressTupleAuthority = {
+              sourceScope = "internet";
+              publicSurface = "wan";
+              targetService = "dmz-nebula";
+              targetEndpoint = "c-router-lighthouse";
+              targetPort = 4242;
+              returnBehavior = "stateful-return";
+              sourcePreservation = "preserve-source";
+              translationMode = "none";
+              hairpin = "not-modeled";
+              asymmetricRouting = "not-allowed";
+              tuples = [
+                {
+                  protocol = "udp";
+                  publicPort = 4242;
+                }
+              ];
+            };
             to = {
               kind = "service";
               name = "dmz-nebula";
@@ -253,7 +276,7 @@ baseline_ok="$(
     and (.service.exposure.notInferredFrom | index("service-existence") != null)
     and (.service.exposure.notInferredFrom | index("route-availability") != null)
     and (.service.exposure.notInferredFrom | index("host-placement") != null)
-    and any(.service.exposure.records[]; .relationId == "allow-sitec-wan-to-dmz-nebula" and .exposureClass == "public-ingress" and .ownerScope == {"kind":"service","name":"dmz-nebula"} and .requesterScope.kind == "external" and .requesterScope.names == ["wan"] and .requesterScope.selector == "uplinks" and .requesterScope.public == true and .sourceKind == "external" and .sourceNames == ["wan"])
+    and any(.service.exposure.records[]; .relationId == "allow-sitec-wan-to-dmz-nebula" and .exposureClass == "public-ingress" and .ownerScope == {"kind":"service","name":"dmz-nebula"} and .requesterScope.kind == "external" and .requesterScope.names == ["c-router-core"] and .requesterScope.selector == "scope" and .sourceKind == "external" and .sourceNames == ["c-router-core"])
     and .hasProviderEndpointRoute == true
   ' "$baseline_json"
 )"
@@ -448,7 +471,7 @@ if eval_service_scope_binding_fixture "$ambiguous_scope_intent" "$ambiguous_scop
   jq '.' "$ambiguous_scope_json" >&2
   exit 1
 fi
-if ! grep -Fq "service exposure scope binding requires external requester scope to use exactly one of name or uplinks" "$ambiguous_scope_stderr"; then
+if ! grep -Fq "service exposure scope binding requires external requester scope to use exactly one of name, uplinks, or scope" "$ambiguous_scope_stderr"; then
   echo "FAIL service-exposure-classification: ambiguous requester scope diagnostic did not name scope binding failure" >&2
   cat "$ambiguous_scope_stderr" >&2
   exit 1
