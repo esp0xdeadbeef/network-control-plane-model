@@ -84,8 +84,10 @@ run_nat() {
   local site_expr="$1" ifaces_expr="$2" nat44_expr="$3" nat66_expr="${4:-{}}"
   nix eval --impure --json --expr "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = ${site_expr};
       interfaceRecords = ${ifaces_expr};
       target = {
@@ -111,8 +113,10 @@ nix_eval_list_contains \
   "P2P /31 prefix in masqueradeFabricPrefixes4" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {};
       interfaceRecords = [
         {
@@ -152,8 +156,10 @@ nix_eval_list_contains \
   "Tenant /24 prefix in masqueradeFabricPrefixes4" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {};
       interfaceRecords = [
         {
@@ -193,8 +199,10 @@ nix_eval_list_not_contains \
   "WAN /32 host route NOT in fabric prefixes" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {};
       interfaceRecords = [
         {
@@ -224,8 +232,10 @@ nix_eval_list_not_contains \
   "P2P /32 host route excluded from fabric prefixes" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {};
       interfaceRecords = [
         {
@@ -265,8 +275,10 @@ nix_eval_bool \
   "WAN subnet NOT in masqueradeFabricPrefixes4 when p2p is present" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {};
       interfaceRecords = [
         {
@@ -307,8 +319,10 @@ nix_eval_bool \
   "Overlay subnet NOT in masqueradeFabricPrefixes4" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {};
       interfaceRecords = [
         {
@@ -348,8 +362,10 @@ nix_eval_bool \
   "masqueradeSourcePrefixes4 contains tenant prefix and fabric prefix" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {
         domains.tenants = [
           { name = \"tenant-a\"; ipv4 = \"10.20.10.0/24\"; }
@@ -394,8 +410,10 @@ nix_eval_bool \
   "masqueradeSourcePrefixes4 contains routed internal p2p prefixes but excludes default and host routes" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {
         domains.tenants = [
           { name = \"tenant-a\"; ipv4 = \"10.20.10.0/24\"; }
@@ -454,8 +472,10 @@ nix_eval_bool \
   "masqueradeFabricPrefixes4 empty when nat44 not configured" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { lib = import <nixpkgs/lib>; };
-      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };
+      ipam = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/ipam.nix\") { inherit lib; };
+      buildNatIntent = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/nat.nix\") { inherit helpers lib ipam; };
       siteAttrs = {};
       interfaceRecords = [
         {
