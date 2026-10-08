@@ -57,7 +57,7 @@ jq -e --arg trace "${trace_id}" '
   | ($enterpriseClient.destinationClass == "enterprise-client")
     and ($enterpriseClient.ownerKind == "tenant")
     and ($enterpriseClient.ownerName == "client")
-    and ($enterpriseClient.source == "ownership.prefixes")
+    and ($enterpriseClient.source == "domains.tenants")
     and ($tenantService.destinationClass == "tenant-service")
     and ($tenantService.ownerName == "tenant-api")
     and ($seededTenantService.destinationClass == "tenant-service")
