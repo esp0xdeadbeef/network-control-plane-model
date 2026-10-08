@@ -55,6 +55,7 @@ validate_core_cardinality() {
         | {
             target: $target.key,
             role: $target.value.role,
+            egressIntent: ($target.value.egressIntent // { }),
             interfaces: (($target.value.effectiveRuntimeRealization.interfaces // {}) | to_entries)
           }
       ];
@@ -65,15 +66,11 @@ validate_core_cardinality() {
     # FS-255: a core that owns a LOCAL non-virtual egress surface must have the
     # ingress/egress pair. A core whose egress is a selected remote tenant
     # context has no local host-facing egress and is not required to model one.
-    # Determine this from the MODELED WAN surface (a wan/pppoe-handoff interface
-    # that is not virtual), not from the host-facing flag, so removing the
-    # host-facing egress of a modeled WAN core is still a violation.
+    # Ownership is read from the MODELED egress intent, not from the host-facing
+    # interface list, so removing the host-facing egress of a modeled WAN core
+    # while its egress intent still declares a local exit is still a violation.
     def owns_local_egress($target):
-      any($target.interfaces[]?;
-        (.value.direction == "egress")
-        and (.value.virtualAdapter != true)
-        and ((.value.sourceKind // "") == "wan" or (.value.sourceKind // "") == "pppoe-handoff"
-             or (.value.external // false) == true));
+      (($target.egressIntent.exit // false) == true) or (($target.egressIntent.eligible // false) == true);
 
     def valid_host_surface($iface):
       ($iface.value.hostFacing == true
