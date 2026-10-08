@@ -170,6 +170,18 @@ let
     (attrs.kind or null) == "external"
     && ((listOrEmpty (attrs.uplinks or null)) != [ ] || (listOrEmpty (binding.uplinks or null)) != [ ]);
 
+  # FS-210: a relation that carries an explicit publicIngressTupleAuthority is a
+  # modeled public-ingress authorization. With FS-322 an ingress source may name
+  # the exit scope it arrives from (selector = "scope"), which is not itself an
+  # uplink-bearing external endpoint, so public ingress must be recognized from
+  # the authority record, not only from the requester selector form.
+  relationHasPublicIngressAuthority =
+    relation:
+    let
+      authority = attrsOrEmpty (relation.publicIngressTupleAuthority or null);
+    in
+    (relation.action or null) == "allow" && authority != { };
+
   exposureClassForRelation =
     providerTenants: relation: requesterScope:
     let
@@ -180,7 +192,7 @@ let
         && providerTenants != [ ]
         && builtins.all (tenant: builtins.elem tenant providerTenants) sourceTenants;
     in
-    if sourceKind == "external" && requesterScope.public then
+    if sourceKind == "external" && (requesterScope.public || relationHasPublicIngressAuthority relation) then
       "public-ingress"
     else if sourceKind == "external" then
       "cross-site"
