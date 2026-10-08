@@ -15,15 +15,22 @@ let
     builtins.filter (iface: builtins.elem (common.laneAccess iface) accessNodes) accessInterfaces;
 
   uplinkIfacesFor = accessNodes: uplinks:
-    builtins.filter
-      (iface:
-        (accessNodes == [ ] || builtins.elem (common.laneAccess iface) accessNodes)
-        && (
-          uplinks == [ ]
-          || builtins.elem (common.laneUplink iface) uplinks
-          || builtins.any (u: builtins.elem u uplinks) (common.laneUplinks iface)
-        ))
-      uplinkInterfaces;
+    if uplinks == [ ] && accessNodes == [ ] then
+      # FS-315: a core-hosted service with no provider-node uplink lane reaches
+      # nothing on the fabric. Returning every uplink interface here would copy
+      # an unassigned route into sibling policy lanes and shadow the provider
+      # core's connected fabric route.
+      [ ]
+    else
+      builtins.filter
+        (iface:
+          (accessNodes == [ ] || builtins.elem (common.laneAccess iface) accessNodes)
+          && (
+            uplinks == [ ]
+            || builtins.elem (common.laneUplink iface) uplinks
+            || builtins.any (u: builtins.elem u uplinks) (common.laneUplinks iface)
+          ))
+        uplinkInterfaces;
 
   serviceIfacesFor = endpoint: peerAccessNodes:
     let
