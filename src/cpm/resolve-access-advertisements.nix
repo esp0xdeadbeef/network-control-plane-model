@@ -109,12 +109,22 @@ let
                 (iface.sourceKind or null) == "tenant")
               (sortedNames interfaces);
 
+          # FS-540: an access target that realizes tenant interfaces must carry
+          # explicit advertisements realization for each of them.  An empty (or
+          # absent) block is only valid when there are no tenant interfaces to
+          # advertise; otherwise the coverage check must fire with its own
+          # diagnostic rather than letting the value lookup below throw a raw
+          # 'attribute missing' for the first uncovered interface.
           _dhcp4Coverage =
-            if dhcp4Entries == { } then true
-            else requireCoverage "${targetDef.nodePath}.advertisements.dhcp4" tenantInterfaceNames dhcp4Entries;
+            if dhcp4Entries == { } && tenantInterfaceNames == [ ] then
+              true
+            else
+              requireCoverage "${targetDef.nodePath}.advertisements.dhcp4" tenantInterfaceNames dhcp4Entries;
           _ipv6RaCoverage =
-            if ipv6RaEntries == { } then true
-            else requireCoverage "${targetDef.nodePath}.advertisements.ipv6Ra" tenantInterfaceNames ipv6RaEntries;
+            if ipv6RaEntries == { } && tenantInterfaceNames == [ ] then
+              true
+            else
+              requireCoverage "${targetDef.nodePath}.advertisements.ipv6Ra" tenantInterfaceNames ipv6RaEntries;
           _dhcp4NoUnexpected =
             validateNoUnexpectedInterfaces "${targetDef.nodePath}.advertisements.dhcp4" tenantInterfaceNames dhcp4Entries;
           _dhcpv6NoUnexpected =

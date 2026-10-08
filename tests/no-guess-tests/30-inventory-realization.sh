@@ -23,17 +23,17 @@ run_case \
 
 run_case \
   "bgp-mode-without-explicit-asn" \
-  "bgp mode requires integer 'asn'" \
-  "$(cat "${golden_input_file}")" \
+  "routing.bgp.asn is required and must be an integer when routing.mode = \"bgp\"" \
   "$(cat <<EOF
 let
-  base = import ${default_egress_inventory_file};
+  base = import ${golden_input_file};
+  site = base.enterprise.acme.site.ams;
 in
 base // {
-  controlPlane = {
-    sites = {
-      acme = {
-        ams = {
+  enterprise = base.enterprise // {
+    acme = base.enterprise.acme // {
+      site = base.enterprise.acme.site // {
+        ams = site // {
           routing = {
             mode = "bgp";
             bgp = {
@@ -46,7 +46,8 @@ base // {
   };
 }
 EOF
-)"
+)" \
+  "$(cat ${default_egress_inventory_file})"
 
 run_case \
   "realized-link-interface-requires-explicit-matching-link" \
