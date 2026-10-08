@@ -26,7 +26,7 @@ let
     inherit addressPolicy common helpers lib;
   };
   peerRuntimePrefixes = import ./overlay-peer-runtime-prefixes.nix {
-    inherit lib helpers common allSiteEntries inventoryAttrs enterpriseName;
+    inherit lib helpers common allSiteEntries inventoryAttrs enterpriseName siteAttrs;
   };
   providerBootstrapDns = import ./provider-bootstrap-dns.nix {
     inherit common helpers;
@@ -107,7 +107,6 @@ let
             };
             overlayNodePrefixRecords = overlayNodePrefixRecordsFor overlayName;
             overlayNodePrefixes = overlayNodePrefixesFor overlayName;
-            addOverlayMetadata = prefix: prefix // { overlay = overlayName; };
           in
           {
             name = overlayName;
@@ -121,8 +120,8 @@ let
                 nodes = overlayNodeAddrs;
                 nodeRoutePrefixRecords = overlayNodePrefixRecords;
                 nodeRoutePrefixes = overlayNodePrefixes;
-                peerTenantPrefixes = builtins.map addOverlayMetadata (overlayPeerTenantPrefixes peerSites);
-                peerRuntimeRoutedPrefixes = builtins.map addOverlayMetadata (overlayPeerRuntimeRoutedPrefixes peerSites);
+                peerTenantPrefixes = overlayPeerTenantPrefixes [ overlayName ];
+                peerRuntimeRoutedPrefixes = overlayPeerRuntimeRoutedPrefixes [ overlayName ];
               }
               // (
                 if ipamV4Prefix != null || ipamV6Prefix != null then

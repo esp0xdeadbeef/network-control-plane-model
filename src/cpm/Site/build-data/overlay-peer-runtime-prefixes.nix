@@ -4,12 +4,58 @@
 , allSiteEntries
 , inventoryAttrs
 , enterpriseName
+, siteAttrs
 ,
 }:
 
 let
-  inherit (helpers) isNonEmptyString;
-  inherit (common) attrsOrEmpty listOrEmpty resolveSiteEntry uniqueStrings;
+  inherit (common) attrsOrEmpty listOrEmpty uniqueStrings;
+
+  # FS-171 (single writer): the forwarding model is the authoritative writer of
+  # the overlay peer route set.  It emits
+  # `overlayReachability.<overlay>.routes4/routes6` from the overlay's MODELED
+  # imported prefixes (URS: "Overlay transport shall model endpoint identity,
+  # permitted peers, bootstrap dependencies, imported and exported prefixes,
+  # ..."), each route carrying the concrete peer-site identity (FS-460).  The
+  # control plane model consumes that set instead of re-deriving the same
+  # prefixes by reaching into the peer site's domains, which both duplicates the
+  # computation and only worked when the peer happened to be compiled in.
+  overlayReachability = attrsOrEmpty (siteAttrs.overlayReachability or null);
+
+  routesForOverlay =
+    overlayName:
+    let
+      ov = attrsOrEmpty (overlayReachability.${overlayName} or null);
+      toEntry =
+        family: route:
+        {
+          inherit family;
+          dst = route.dst or null;
+          overlay = route.overlay or overlayName;
+          peerSite = route.peerSite or ov.peerSite or null;
+          tenantName = route.tenant or null;
+        }
+        // lib.optionalAttrs (route ? sourceFile) {
+          sourceFile = route.sourceFile;
+          prefixName = route.prefixName or null;
+          delegatedPrefixLength = route.delegatedPrefixLength or null;
+          perTenantPrefixLength = route.perTenantPrefixLength or null;
+          slot = route.slot or null;
+        };
+    in
+    builtins.filter (r: r.dst != null) (
+      map (toEntry 4) (listOrEmpty (ov.routes4 or null))
+      ++ map (toEntry 6) (listOrEmpty (ov.routes6 or null))
+    );
+
+  routesFor =
+    overlayNames:
+    lib.unique (lib.concatMap routesForOverlay overlayNames);
+
+  isRuntimeRouted =
+    route:
+    (route.sourceFile or null) != null
+    || (route.slot or null) != null;
 
   controlPlaneSites =
     let
@@ -19,81 +65,16 @@ let
 
   currentEnterpriseSiteEntries =
     builtins.filter (entry: entry.enterpriseKey == enterpriseName) allSiteEntries;
-
-  runtimeRoutedPrefixesForPeerSite =
-    peerSite:
-    let
-      peerEntry = resolveSiteEntry peerSite;
-      peerDomains = if peerEntry == null then { } else attrsOrEmpty (peerEntry.site.domains or null);
-      peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
-    in
-    lib.concatMap
-      (tenant:
-      let
-        tenantAttrs = attrsOrEmpty tenant;
-        tenantName = tenantAttrs.name or null;
-        routedPrefixes = listOrEmpty (tenantAttrs.routedPrefixes or null);
-      in
-      lib.concatMap
-        (prefix:
-        let
-          prefixAttrs = attrsOrEmpty prefix;
-          sourceFile = prefixAttrs.sourceFile or null;
-        in
-        if (prefixAttrs.allocation or "runtime") == "runtime" && (prefixAttrs.family or "ipv6") == "ipv6" && isNonEmptyString sourceFile then
-          [
-            {
-              family = 6;
-              inherit peerSite;
-              inherit sourceFile;
-              tenant = tenantName;
-              prefixName = prefixAttrs.name or null;
-              delegatedPrefixLength = prefixAttrs.delegatedPrefixLength or 64;
-              perTenantPrefixLength = prefixAttrs.perTenantPrefixLength or 64;
-              slot = prefixAttrs.slot or 0;
-            }
-          ]
-        else
-          [ ])
-        routedPrefixes)
-      peerTenants;
-
-  tenantPrefixesForPeerSite =
-    peerSite:
-    let
-      peerEntry = resolveSiteEntry peerSite;
-      peerDomains = if peerEntry == null then { } else attrsOrEmpty (peerEntry.site.domains or null);
-      peerTenants = if builtins.isList (peerDomains.tenants or null) then peerDomains.tenants else [ ];
-      prefixFor =
-        family: tenantName: value:
-        if isNonEmptyString value then
-          [
-            {
-              inherit family peerSite tenantName;
-              dst = value;
-            }
-          ]
-        else
-          [ ];
-    in
-    lib.concatMap
-      (tenant:
-      let
-        tenantAttrs = attrsOrEmpty tenant;
-        tenantName = tenantAttrs.name or null;
-      in
-      prefixFor 4 tenantName (tenantAttrs.ipv4 or null)
-      ++ prefixFor 6 tenantName (tenantAttrs.ipv6 or null))
-      peerTenants;
 in
 rec {
+  # Overlay peer prefixes, from the forwarding model's single overlay route
+  # set.  Runtime-routed (IPv6 delegated) prefixes are those the forwarding
+  # model tagged with runtime realization metadata.
   overlayPeerRuntimeRoutedPrefixes =
-    peerSites:
-    lib.unique (lib.concatMap runtimeRoutedPrefixesForPeerSite peerSites);
+    overlayNames: builtins.filter isRuntimeRouted (routesFor overlayNames);
 
   overlayPeerTenantPrefixes =
-    peerSites:
-    lib.unique (lib.concatMap tenantPrefixesForPeerSite peerSites);
+    overlayNames: builtins.filter (route: !(isRuntimeRouted route)) (routesFor overlayNames);
 
   overlayNodePrefixRecordsFor =
     overlayName:

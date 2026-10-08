@@ -51,9 +51,11 @@ let
     };
     id = "deny-admin-to-wan";
     priority = 90;
+    # FS-322: an exit is selected by scope, not by a permission-relation name.
+    # A bare name is only valid for a modeled overlay; the WAN exit is the
+    # unnamed external selector used by the single-wan example.
     to = {
       kind = "external";
-      name = "wan";
     };
     trafficType = "any";
   };
@@ -104,7 +106,10 @@ nix eval --impure --expr '
       fromKindMatch = (denyRule.from.kind or null) == "tenant-set";
       fromMembersContainAdmin = builtins.elem "admin" (denyRule.from.members or []);
       toKindMatch = (denyRule.to.kind or null) == "external";
-      toNameMatch = (denyRule.to.name or null) == "wan";
+      # FS-322: an exit is selected by scope, not by a relation-level name; the
+      # single-wan WAN exit is the unnamed external selector. The deny record
+      # must preserve that target (hasToInterface below proves it resolved).
+      toNameAbsent = !(denyRule.to or { } ? name);
       hasFromInterface = builtins.isString (denyRule.fromInterface or "") && (denyRule.fromInterface or "") != "";
       hasToInterface = builtins.isString (denyRule.toInterface or "") && (denyRule.toInterface or "") != "";
     };
