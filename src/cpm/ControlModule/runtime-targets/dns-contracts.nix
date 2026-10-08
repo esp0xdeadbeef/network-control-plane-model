@@ -251,7 +251,13 @@ let
                     "${rawDomain}.";
                 skipPublication = skipPublicationFor domainNs;
               in
-              if publication != { } && !skipPublication then
+              # FS-560-HDS-010-SDS-010-SMS-050: an explicit namePublication record
+              # is the inventory's declaration of the publication namespace
+              # owner and boundary. Publication is materialized as its own local
+              # authoritative boundary, so it must not additionally require a
+              # pre-existing local/forward zone of the same name (that gate
+              # applies to the default-publication path below).
+              if publication != { } then
                 let
                   pubSubnet = advertisement.subnet or "";
                   pubReverseZone =
