@@ -31,6 +31,7 @@
             tenants = [
               {
                 name = "tenant-a";
+                dnsDomain = "lab.";
                 ipv4 = "10.20.0.0/24";
                 ipv6 = "fd00:20::/64";
               }
@@ -213,6 +214,7 @@
                   name = "wan";
                 };
                 action = "allow";
+                returnBehavior = "one-way";
               }
             ];
           };
@@ -387,6 +389,7 @@
             tenants = [
               {
                 name = "tenant-b";
+                dnsDomain = "lab.";
                 ipv4 = "10.30.0.0/24";
                 ipv6 = "fd00:30::/64";
               }
@@ -569,6 +572,7 @@
                   name = "wan";
                 };
                 action = "allow";
+                returnBehavior = "one-way";
               }
             ];
           };
@@ -739,6 +743,7 @@
             tenants = [
               {
                 name = "tenant-c";
+                dnsDomain = "lab.";
                 ipv4 = "10.40.0.0/24";
                 ipv6 = "fd00:40::/64";
               }
@@ -900,6 +905,7 @@
                 };
                 to = "any";
                 action = "allow";
+                returnBehavior = "one-way";
               }
             ];
           };

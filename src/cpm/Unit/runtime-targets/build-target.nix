@@ -180,7 +180,13 @@ let
       overlayMtuFor =
         overlayName:
         let
-          providerContract = attrsOrEmpty ((attrsOrEmpty siteOverlays.${overlayName}).providerContract or null);
+          # An overlay interface may exist on a runtime target without any
+          # overlay provider configuration (for example a canonical/forwarding
+          # fixture that carries overlay interfaces but no overlays config).
+          # Such an overlay has no provider contract and therefore no tunnel
+          # MTU; the lookup must not throw on the missing attribute.
+          overlayCfg = attrsOrEmpty (siteOverlays.${overlayName} or null);
+          providerContract = attrsOrEmpty (overlayCfg.providerContract or null);
           generatedPeer = attrsOrEmpty ((attrsOrEmpty (providerContract.profile or null)).generatedPeer or null);
           mtu = generatedPeer.mtu or null;
         in

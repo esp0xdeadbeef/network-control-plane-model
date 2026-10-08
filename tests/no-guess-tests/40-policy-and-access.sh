@@ -39,6 +39,7 @@ run_case_from_golden \
                   name = "wan";
                 };
                 action = "allow";
+                returnBehavior = "one-way";
               }' \
   '              {
                 id = "allow-tenant-a-to-internet";
@@ -51,11 +52,12 @@ run_case_from_golden \
                   name = "internet";
                 };
                 action = "allow";
+                returnBehavior = "one-way";
               }'
 
 run_case \
   "missing-explicit-access-advertisements-realization" \
-  "access runtime target 'access-runtime' requires explicit advertisements realization" \
+  "missing explicit advertisement realization for tenant interface" \
   "$(cat "${repo_root}/fixtures/passing/default-egress-reachability/input.nix")" \
   "$(mutate_inventory delete \
 '        advertisements = {
