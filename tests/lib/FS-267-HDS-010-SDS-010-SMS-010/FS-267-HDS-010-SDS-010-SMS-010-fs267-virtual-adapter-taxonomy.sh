@@ -57,8 +57,18 @@ validate_taxonomy() {
   | ($interfaces | map(select(.adapterClass == "selector-fabric-link"))) as $selector
   | ($interfaces | map(select(.adapterClass == "provider-session"))) as $provider
   | ($interfaces | map(select(.sourceKind == "overlay" and .adapterClass == "vpn"))) as $overlayVpn
-  | ($interfaces | map(select(.sourceKind == "p2p" and .virtualAdapter == false))) as $hostP2p
-  | ($interfaces | map(select(.sourceKind == "tenant" and .virtualAdapter == false))) as $hostTenant
+  | ($interfaces | map(select(.sourceKind == "p2p" and .virtualAdapter == false))) as $nonVirtualP2p
+  # FS-267: a non-virtual p2p on a core/access host role is that role own
+  # host-facing lane surface; the same link seen from a fabric role (policy,
+  # downstream-selector, upstream-selector) is dedicated fabric transport and
+  # is modeled non-host-facing. Only the host-role end is a host surface.
+  | ($nonVirtualP2p | map(select((.owningRole // "") == "core" or (.owningRole // "") == "access"))) as $hostP2p
+  | ($nonVirtualP2p | map(select((.owningRole // "") != "core" and (.owningRole // "") != "access"))) as $fabricP2p
+  | ($interfaces | map(select(.sourceKind == "tenant" and .virtualAdapter == false))) as $nonVirtualTenant
+  # FS-255: a tenant attachment on a core role is a role surface, not a host
+  # attachment, and is deliberately non-host-facing. Only tenants terminating
+  # on an access role are host-facing tenant surfaces.
+  | ($nonVirtualTenant | map(select((.owningRole // "") == "access"))) as $hostTenant
   | [
       $virtual[]
       | select(
@@ -133,6 +143,10 @@ validate_taxonomy() {
         )
     ] as $badHostP2p
   | [
+      $fabricP2p[]
+      | select(.hostFacing != false)
+    ] as $badFabricP2p
+  | [
       $hostTenant[]
       | select(
           .adapterClass != "tenant-role-surface"
@@ -156,6 +170,7 @@ validate_taxonomy() {
       badVirtualHostFacingCount: ($badVirtualHostFacing | length),
       badRuntimeNameAuthorityCount: ($badRuntimeNameAuthority | length),
       badHostP2pCount: ($badHostP2p | length),
+      badFabricP2pCount: ($badFabricP2p | length),
       badHostTenantCount: ($badHostTenant | length)
     }
   | select(
@@ -171,6 +186,7 @@ validate_taxonomy() {
       and .badVirtualHostFacingCount == 0
       and .badRuntimeNameAuthorityCount == 0
       and .badHostP2pCount == 0
+      and .badFabricP2pCount == 0
       and .badHostTenantCount == 0
     )
   ' "${input}" >/dev/null

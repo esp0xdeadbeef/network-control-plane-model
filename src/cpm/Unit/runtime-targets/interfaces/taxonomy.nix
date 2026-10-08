@@ -416,8 +416,27 @@ let
             # Deriving it from the role name alone marked those links
             # host-facing, which rejected the unclassified fabric forward rule
             # that carries the modeled relation.
+            #
+            # FS-255: a core role still owns exactly one ingress host-facing
+            # surface, and that surface is its own modeled uplink lane (the
+            # core-to-upstream transport carrying lane.kind = "uplink").
+            # Excluding every "link"-kind p2p therefore removed the core
+            # ingress surface and broke the mandated ingress/egress pair. The
+            # exclusion applies to the intra-fabric hops FS-267 names
+            # (policy/selector lane kinds), not to a core or access role's own
+            # uplink ingress.
             hostFacing =
-              if backingRefName != null && (backingRef.kind or null) == "link" then
+              if
+                backingRefName != null
+                && (backingRef.kind or null) == "link"
+                && !(
+                  nodeRole != null
+                  && (
+                    (builtins.substring 0 4 nodeRole == "core" && direction == "ingress")
+                    || (builtins.substring 0 6 nodeRole == "access" && direction == "egress")
+                  )
+                )
+              then
                 false
               else if
                 nodeRole != null
