@@ -97,11 +97,18 @@ let
     ) relations
   );
   siteNat44SourcePrefixes =
+    let
+      # When the site models no relation authority, the explicit tenant and
+      # ownership prefixes are the source authority (FS-380-HDS-020-SDS-010
+      # SMS-100: compute the set from explicit semantic authority). When
+      # relations exist, only tenants with modeled internet egress are sources.
+      tenantIsSource = name: internetTenantNames == [ ] || builtins.elem name internetTenantNames;
+    in
     builtins.map prefixValue (
       builtins.filter isPrivate4Prefix (
         builtins.filter (p: p != "") (
-          (builtins.map (tenant: if builtins.isAttrs tenant then (if builtins.elem (tenant.name or "") internetTenantNames then tenant.ipv4 or "" else "") else tenant) siteTenantPrefixes)
-          ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if (prefix.name or null) == null || builtins.elem (prefix.name or "") internetTenantNames then prefix.ipv4 or prefix.prefix or "" else "") else prefix) siteOwnershipPrefixes)
+          (builtins.map (tenant: if builtins.isAttrs tenant then (if tenantIsSource (tenant.name or "") then tenant.ipv4 or "" else "") else tenant) siteTenantPrefixes)
+          ++ (builtins.map (prefix: if builtins.isAttrs prefix then (if (prefix.name or null) == null || tenantIsSource (prefix.name or "") then prefix.ipv4 or prefix.prefix or "" else "") else prefix) siteOwnershipPrefixes)
         )
       )
     );
@@ -177,9 +184,14 @@ let
   # masquerading when they source traffic through a NAT-eligible core. Tenant
   # subnets are carried by the explicit egressIntent.nat44 source prefixes
   # (surface-bound by the forwarding model), never re-derived here.
+  # FS-380-HDS-020-SDS-010-SMS-100: the complete NAT-eligible source-prefix set
+  # is computed from explicit semantic authority AND structurally classified
+  # fabric interfaces. Eligible fabric interfaces are the p2p transit surfaces
+  # and the tenant-facing surfaces; WAN, overlay, provider-session, host-only,
+  # and unrelated prefixes are excluded.
   fabricSourceInterfaces = builtins.filter
     (iface:
-      iface.sourceKind == "p2p"
+      (iface.sourceKind == "p2p" || iface.sourceKind == "tenant")
       && !(declined iface)
     )
     interfaceRecords;
