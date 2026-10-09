@@ -139,11 +139,12 @@ let
     )
   );
   # FS-380: egressIntent.nat44.sourcePrefixes is the explicit NAT44 selection for
-  # the source scope. Those prefixes are internet-NAT by definition, so they are
-  # not subject to the non-internet (routed-public) exclusion that applies to
-  # fabricated fabric prefixes.
+  # the source scope. Only private source space is masqueraded: routed public
+  # IPv4 endpoint space is routed without implicit NAT (FS-380), so it is excluded
+  # from the NAT source set.
   intentNat44SourcePrefixes = uniqueStrings (
-    builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents
+    builtins.filter isPrivate4Prefix
+      (builtins.concatMap (intent: listOrEmpty (intent.sourcePrefixes or null)) nat44SelectedIntents)
   );
   nat44SourcePrefixes = uniqueStrings (
     intentNat44SourcePrefixes
