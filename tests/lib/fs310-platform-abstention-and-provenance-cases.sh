@@ -461,6 +461,8 @@ VALIDATED_ACCESS_FILES=(
   "src/cpm/Unit/runtime-targets/interfaces/explicit.nix"
   # Access advertisement resolution
   "src/cpm/resolve-access-advertisements.nix"
+  # Host-management binding consumes the deployment-level host contract
+  "src/cpm/Site/build-data/host-management.nix"
   # Top-level main.nix — root contract entry point
   "src/main.nix"
 )

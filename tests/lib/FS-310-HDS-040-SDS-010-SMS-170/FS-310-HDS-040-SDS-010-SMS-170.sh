@@ -154,6 +154,12 @@ def forwarding_rule_origin(rule):
         return "dns-service-public-egress"
     if delegated_public_egress_ok(rule):
         return "delegated-public-egress"
+    # FS-310-HDS-040-SDS-010-SMS-170: an interface-pair transport accept is
+    # permitted when CPM emits a complete isolated-transport authority proving
+    # dedicated, non-host-facing, link-bound isolation (the transportAuthority
+    # record), distinct from topology provenance.
+    if transport_authority_ok(rule):
+        return "transport-authority-isolation"
     return None
 
 
