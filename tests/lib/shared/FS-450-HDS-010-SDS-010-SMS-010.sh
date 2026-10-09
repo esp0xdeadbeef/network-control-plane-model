@@ -18,8 +18,8 @@ run_case() {
 
 run_case "SMS-010" "${repo_root}/tests/test-public-overlay-service-binding.sh"
 run_case "SMS-010/SMS-030" "${repo_root}/tests/FS-190-HDS-010-SDS-010-SMS-010.sh"
-run_case "SMS-010/SMS-030" "${repo_root}/tests/test-service-provider-endpoints.sh"
-run_case "SMS-020" "${repo_root}/tests/test-routed-public-ipv6-contract.sh"
+run_case "SMS-010/SMS-030" "${repo_root}/tests/lib/FS-060-HDS-010-SDS-010-SMS-010/test-service-provider-endpoints.sh"
+run_case "SMS-020" "${repo_root}/tests/lib/FS-400-HDS-010-SDS-010-SMS-030/test-routed-public-ipv6-contract.sh"
 run_case "SMS-020" "${repo_root}/tests/FS-400-HDS-010-SDS-010-SMS-040.sh"
 run_case "SMS-030" "${repo_root}/tests/test-provider-bootstrap-dns-contract.sh"
 run_case "SMS-030" "${repo_root}/tests/FS-250-HDS-010-SDS-010-SMS-010.sh"

@@ -24,7 +24,8 @@ let
       (relation:
         (relation.id or null) == "allow-sitec-wan-to-dmz-nebula"
         && (relation.from.kind or null) == "external"
-        && (relation.from.uplinks or [ ]) == [ "wan" ]
+        # FS-322: the ingress source names the exit scope, not an uplink list.
+        && (relation.from.scope or null) == "c-router-core"
         && (relation.to.kind or null) == "service"
         && (relation.to.name or null) == "dmz-nebula"
         && (relation.trafficType or null) == "nebula")
