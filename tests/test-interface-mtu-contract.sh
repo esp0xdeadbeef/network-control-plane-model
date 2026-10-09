@@ -42,7 +42,7 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 cp "${inventory_source}" "${tmp_dir}/inventory.nix"
 chmod u+w "${tmp_dir}/inventory.nix"
 
-if ! perl -0pi -e 's/interface = \{ name = "ens4"; addr4 = "192\.0\.2\.2\/24"; \}; uplink = "wan";/interface = { name = "ens4"; addr4 = "192.0.2.2\/24"; mtu = 1492; }; uplink = "wan";/' "${tmp_dir}/inventory.nix"; then
+if ! perl -0pi -e 's/interface = \{\n(\s+)name = "ens4";\n(\s+)addr4 = "192\.0\.2\.2\/24";\n(\s+)\};\n(\s+)uplink = "wan";/interface = {\n${1}name = "ens4";\n${2}addr4 = "192.0.2.2\/24";\n${2}mtu = 1492;\n${3}\};\n${4}uplink = "wan";/' "${tmp_dir}/inventory.nix"; then
   echo "failed to patch inventory fixture with explicit MTU" >&2
   exit 1
 fi
