@@ -63,10 +63,17 @@ let
           builtins.isAttrs (relationValue.publicIngressTupleAuthority or null);
         exact =
           if peerIsService && hasPublicIngressAuthority then
-          # A public ingress relation is bound to the access node that owns
-          # the target service.  Selecting every lane for the same uplink
-          # widens one WAN/service tuple over unrelated tenant lanes.
-            uplinkIfacesFor peerAccessNodes uplinks
+          # FS-210/FS-220: a public-ingress tuple binds exactly one ingress
+          # (public) surface. Restrict the forward lane to the tuple's modeled
+          # publicSurface; do not widen it over every uplink/overlay the source
+          # scope owns, which would authorize a second surface.
+            let
+              authority = attrsOrEmpty (relationValue.publicIngressTupleAuthority or null);
+              publicSurface = authority.publicSurface or null;
+              scopedUplinks =
+                if publicSurface != null then [ publicSurface ] else uplinks;
+            in
+            uplinkIfacesFor peerAccessNodes scopedUplinks
           else if peerIsService then
           # Named non-public external fabrics (for example east-west) retain
           # their explicit service projection over every matching fabric
