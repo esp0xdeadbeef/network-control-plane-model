@@ -174,6 +174,16 @@ let
       (map (entry: ((attrsOrEmpty (entry.relation or null)).id or null)) localSharingRelations)
   );
 
+  # FS-560-HDS-010-SDS-020-SMS-010: a relation the compiler already rejected
+  # (naming it in a fail-closed warning, e.g. the local-only authority leak) is
+  # not an unmodeled relation; do not double-report it as a missing
+  # namespace-sharing intent.
+  compilerRejectedRelationIds = uniqueStrings (
+    builtins.concatMap
+      (warning: listOrEmpty (warning.candidateIds or null))
+      baseWarnings
+  );
+
   unmodeledLocalAuthorityRelations = builtins.filter
     (relation:
       let
@@ -191,6 +201,7 @@ let
             && builtins.isString relationId
             && relationId != ""
             && !(builtins.elem relationId modeledLocalSharingRelationIds)
+            && !(builtins.elem relationId compilerRejectedRelationIds)
           then
             targetNameForService to.name
           else
