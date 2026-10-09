@@ -25,6 +25,39 @@ let
     else
       trafficTypeMatches.${relation.trafficType or "any"} or [ ];
 
+  # FS-322: a permission relation names the exit scope, not an uplink. Resolve
+  # a named exit scope to the uplinks the scope owns (the modeled lanes whose
+  # `lane.scope` is that scope, or whose `lane.uplink`/`backingRef.uplinks` name
+  # it), in addition to the legacy uplink/name forms.
+  scopeUplinks =
+    scopeName:
+    let
+      scopeStr = toString scopeName;
+      uplinksOf =
+        iface:
+        (listOrEmpty ((attrsOrEmpty (iface.backingRef or null)).uplinks or null))
+        ++ (let u = (attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null)).uplink or null; in
+            if u == null then [ ] else [ (toString u) ])
+        ++ (listOrEmpty ((attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null)).uplinks or null));
+      matching = builtins.filter (
+        iface:
+        toString ((attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null)).scope or "") == scopeStr
+        || builtins.elem scopeStr (uplinksOf iface)
+      ) transitInterfaces;
+      # FS-322/FS-370: a relation names the exit scope (a modeled node). When
+      # no lane carries the scope name, the scope is the core boundary that owns
+      # the exit; its offered exits are the core interfaces' uplinks on this
+      # target. Resolve the scope to those owned uplinks.
+      coreOwned =
+        uniqueStrings (
+          builtins.concatMap uplinksOf (builtins.filter (iface: common.uplinks iface != [ ]) coreInterfaces)
+        );
+    in
+    if matching != [ ] then
+      uniqueStrings (builtins.concatMap uplinksOf matching)
+    else
+      coreOwned;
+
   externalUplinks =
     endpoint:
     let
@@ -33,7 +66,9 @@ let
     if (value.kind or null) != "external" then
       [ ]
     else
-      (listOrEmpty (value.uplinks or null)) ++ (if value ? name then [ value.name ] else [ ]);
+      (listOrEmpty (value.uplinks or null))
+      ++ (if value ? name then [ value.name ] else [ ])
+      ++ (if (value.scope or null) != null then scopeUplinks value.scope else [ ]);
 
   coreInterfacesFor =
     endpoint:
