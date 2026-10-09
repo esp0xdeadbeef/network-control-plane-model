@@ -123,7 +123,7 @@ let
   # must mirror that authority, so the admissible core set is derived from the
   # scope's **full exit set**, not from the single exit named by the ingress
   # lane. Pairing each lane only with its own exit core leaves cross-exit ECMP
-  # traffic (e.g. clients-vpn ingressing `--uplink-onyx` but routed out the
+  # traffic (e.g. clients-vpn ingressing the onyx exit lane but routed out the
   # `opal` core) with no forward accept, so it is dropped.
   scopeUplinks =
     builtins.foldl' (
