@@ -31,6 +31,7 @@ BASE_ARGS='
   dnsContract = null;
   domainsValue = { tenants = { t1 = { ipv4 = "10.20.0.0/24"; }; }; };
   endpointAssignment = null; forwardingSemantics = {};
+  hostManagement = {};
   ipv4InternetMode = {}; ipv6Plan = null;
   overlayClientGuaMode = { records = []; diagnostics = []; };
   overlayProvisioning = {}; policyAttrs = {}; policyEndpointBindings = { relations = []; interfaceTags = {}; };

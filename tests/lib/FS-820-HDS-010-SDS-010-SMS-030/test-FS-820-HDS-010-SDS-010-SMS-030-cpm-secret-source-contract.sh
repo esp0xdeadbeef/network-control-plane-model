@@ -29,8 +29,8 @@ labs_path="$(
   jq -er '.inputs["network-labs"].path' "${archive_json}"
 )"
 
-intent_path="${labs_path}/HAT/emulated-isp-residential-testnet/intent.nix"
-inventory_path="${labs_path}/HAT/emulated-isp-residential-testnet/inventory-nixos.nix"
+intent_path="${labs_path}/GAMP/HAT/emulated-isp-residential-testnet/intent.nix"
+inventory_path="${labs_path}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix"
 
 build_cpm() {
   local inventory="$1"
