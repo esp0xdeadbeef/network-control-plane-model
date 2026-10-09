@@ -49,14 +49,21 @@ let
     && (rule.toInterface or null) == "up-dmz-wan";
 in
   # FS-210: a public-ingress relation carrying publicIngressTupleAuthority is
-  # scoped to the access node that owns the target service, so only that node
-  # uplink lane carries the forward rule. FS-230: this relation uses
-  # returnBehavior = stateful-return, so it emits no relation-reverse rule
-  # (only symmetric does, FS-180-SMS-040).
+  # scoped to the modeled public surface (publicIngressTupleAuthority.publicSurface),
+  # so only that ingress lane carries the forward rule.
+  # FS-230-SMS-010 / FS-180-SMS-040: returnBehavior = stateful-return authorizes
+  # established,related return traffic only; a stateful return rule with no
+  # new-flow source scope is expected, and no independently initiated
+  # reverse new-flow accept may be emitted.
   builtins.length forwardRules == 1
   && builtins.any (expectedRuleFor "up-dmz-wan") forwardRules
   && !(builtins.any (expectedRuleFor "up-client-wan") forwardRules)
-  && builtins.length reverseRules == 0
+  && builtins.all
+    (rule:
+      (rule.connectionState or null) == "established,related"
+      && (rule.returnRule or false) == true
+      && (rule.sourcePrefixes or [ ]) == [ ])
+    reverseRules
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
