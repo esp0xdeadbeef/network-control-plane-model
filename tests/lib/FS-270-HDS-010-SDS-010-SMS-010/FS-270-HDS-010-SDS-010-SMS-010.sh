@@ -292,8 +292,14 @@ check "SN3 no state-unqualified reverse accept from uplink into transit" '
                and ((.connectionState // "") == "")))
   | length == 0'
 check "SN3 forward delegated rules preserve enforceable source-prefix matches" '
-  .reverseCase.rules
-  | map(select(.fromInterface == "ens21" and .toInterface == "nebula1"))
+  # FS-270-HDS-010-SDS-010-SMS-010: the delegated public-egress forward rule is
+  # a tenant-prefix-scoped handoff and shall carry enforceable source-prefix
+  # matches. The sibling ICMP lane-health probe on the same interface pair is a
+  # distinct rule with its own enforceable protocol match, so it is excluded
+  # here.
+  [ .reverseCase.rules[]
+    | select(.fromInterface == "ens21" and .toInterface == "nebula1")
+    | select((.intent.kind // "") == "delegated-public-egress") ]
   | length > 0
   and all(.[]; (.sourcePrefixes // []) | length > 0)'
 
