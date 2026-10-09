@@ -632,14 +632,28 @@ let
         );
       roles = attrsOrEmpty (existingDns.roles or null);
       recursionRole = attrsOrEmpty (roles.recursion or null);
-      # FS-540: a resolver that originates its own upstream query binds its
-      # source through its modeled resolver path. For a resolver listening on
-      # an explicit service address that is its own resolver identity, so the
-      # query must leave from that address rather than from whichever fabric
-      # address the default route happens to select. Without this the upstream
-      # resolver receives the fabric p2p source, which is not the requester
-      # identity it authorized, and answers REFUSED.
-      resolverIdentitySources = builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners;
+      # FS-540-HDS-010-SDS-010-SMS-020: the resolver's own modeled service
+      # identity is the non-loopback addresses it was given as a resolver. When
+      # the resolver does not advertise listeners (a core resolver reached
+      # through a service path), that identity is its modeled, non-loopback
+      # interface addresses; leaving the source unbound would let the query
+      # egress from whichever address the default route selects.
+      serviceIdentitySources =
+        let
+          ifaces = attrsOrEmpty ((attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null);
+          addressesOf =
+            iface:
+            builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") (
+              (lib.optional (builtins.isString (iface.addr4 or null)) (stripPrefixLength iface.addr4))
+              ++ (lib.optional (builtins.isString (iface.addr6 or null)) (stripPrefixLength iface.addr6))
+            );
+        in
+        lib.unique (builtins.concatMap addressesOf (builtins.attrValues ifaces));
+      resolverIdentitySources =
+        let
+          advertised = builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners;
+        in
+        if advertised != [ ] then advertised else serviceIdentitySources;
       recursionOutgoingInterfaces =
         if listOrEmpty (recursionRole.outgoingInterfaces or null) != [ ] then
           listOrEmpty (recursionRole.outgoingInterfaces or null)
@@ -666,7 +680,7 @@ let
             if listOrEmpty (existingDns.outgoingInterfaces or null) != [ ] then
               listOrEmpty (existingDns.outgoingInterfaces or null)
             else if safeForwarders != [ ] then
-              builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners
+              resolverIdentitySources
             else if upstreamResolvers != [ ] then
               resolverIdentitySources
             else
@@ -688,9 +702,17 @@ let
           inherit protectedReservationPublications;
         };
     in
-    if (target.role or null) != "access" || listeners == [ ] then
+    # FS-540-HDS-010-SDS-010-SMS-020: a core resolver reached through a service
+    # path still binds its recursion source to its modeled service identity
+    # (its non-loopback listener/interface addresses). Only the
+    # advertisement-driven synthesis is access-specific; the identity binding
+    # applies whenever the resolver has modeled DNS policy or forwarders, or
+    # advertised listeners.
+    if (target.role or null) != "access" && listeners == [ ] && !hasModeledDnsPolicy && existingForwarders == [ ] then
       target
-    else if !hasModeledDnsPolicy then
+    else if (target.role or null) == "access" && listeners == [ ] then
+      target
+    else if (target.role or null) == "access" && !hasModeledDnsPolicy then
       builtins.deepSeq listenerPolicyForwarders
         (
           builtins.deepSeq listenerPolicyUpstreamResolvers (

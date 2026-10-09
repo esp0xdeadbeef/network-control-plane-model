@@ -56,25 +56,30 @@ nix run "${repo_root}#compile-and-build-control-plane-model" -- \
 
 jq -e '
   .control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets as $targets
-  | $targets["esp0xdeadbeef-site-a-s-router-core-nebula"].runtimeOriginEgress.sourcePrefixes as $sources
+  | $targets["esp0xdeadbeef-site-a-s-router-core-nebula"].services.dns.outgoingInterfaces as $sources
   | $targets["esp0xdeadbeef-site-a-s-router-access-mgmt"].services.dns.allowFrom as $allow
   | {
       ok:
-        (($sources | map(.prefix) | index("10.19.0.8/32")) != null)
-        and (($sources | map(.prefix) | index("fd42:dead:beef:1900:0:0:0:8/128")) != null)
-        and ($allow | index("10.19.0.8/32") != null)
-        and ($allow | index("fd42:dead:beef:1900:0:0:0:8/128") != null),
-      runtimeOriginSourcePrefixes: $sources,
+        # FS-540-HDS-010-SDS-010-SMS-020: a resolver that owns no modeled exit
+        # binds its recursion source to its own modeled service identity (its
+        # non-loopback resolver addresses), not its ownership loopback, and the
+        # exit-side requester ACL agrees with that identity.
+        (($sources | index("100.96.10.1")) != null)
+        and (($sources | index("fd42:dead:beef:ee::1")) != null)
+        and (($sources | index("10.19.0.8")) == null)
+        and ($allow | index("100.96.10.1/32") != null)
+        and ($allow | index("fd42:dead:beef:ee::1/128") != null)
+        and ($allow | index("10.19.0.8/32") == null),
+      recursionSourceInterfaces: $sources,
       accessMgmtDnsAllowFrom: $allow
     }
   | select(.ok == true)
 ' "${output_json}" >/dev/null || {
-  echo "FAIL runtime-origin-dns-provider-allow-from: DNS providers used by runtime-origin core recursion must allow the runtime-origin loopback source prefixes" >&2
+  echo "FAIL runtime-origin-dns-provider-allow-from: a resolver with no modeled exit must bind its recursion source to its non-loopback service identity and the provider ACL must agree" >&2
   jq '
     .control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets
     | {
-        coreNebulaRuntimeOrigin: ."esp0xdeadbeef-site-a-s-router-core-nebula".runtimeOriginEgress.sourcePrefixes,
-        coreNebulaDns: ."esp0xdeadbeef-site-a-s-router-core-nebula".services.dns,
+        coreNebulaRecursionSource: ."esp0xdeadbeef-site-a-s-router-core-nebula".services.dns.outgoingInterfaces,
         accessMgmtDnsAllowFrom: ."esp0xdeadbeef-site-a-s-router-access-mgmt".services.dns.allowFrom
       }
   ' "${output_json}" >&2
