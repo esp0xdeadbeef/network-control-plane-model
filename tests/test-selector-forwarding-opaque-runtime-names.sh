@@ -103,6 +103,16 @@ nix eval --impure "${nix_args[@]}" --json --expr '
         (iface: (iface.sourceKind or null) == "p2p" && (uplinksFor iface) != [ ])
         (builtins.attrValues upstreamInterfaces);
 
+    # FS-260: the modeled overlay/remote-egress exits are the interfaces whose
+    # backingRef is an overlay; the overlay core carries no local uplink.
+    overlayNames =
+      let
+        allIfaces = builtins.concatMap (t: builtins.attrValues (t.effectiveRuntimeRealization.interfaces or { }))
+          (builtins.attrValues (out.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets));
+      in
+      builtins.filter (n: n != null) (map (iface: (attrsOrEmpty (iface.backingRef or null)).name or null)
+        (builtins.filter (iface: (attrsOrEmpty (iface.backingRef or null)).kind or null == "overlay") allIfaces));
+
     upstreamPolicyInterfaces =
       builtins.filter
         (iface:
@@ -118,11 +128,20 @@ nix eval --impure "${nix_args[@]}" --json --expr '
       if matching == [ ] then null else builtins.head matching;
 
     upstreamPolicyPairOk = policyIface:
-      let coreIface = matchingCoreForPolicy policyIface;
+      let
+        coreIface = matchingCoreForPolicy policyIface;
+        # FS-260: a core that is an OVERLAY or remote-egress endpoint is not
+        # required to declare a local exit; its reachability is the modeled
+        # overlay relation. An overlay-exit policy lane therefore has no
+        # core-side uplink partner and is not a selector-pair lane.
+        overlayUplink =
+          let lane = laneFor policyIface; in builtins.elem (lane.uplink or null) overlayNames;
       in
-      coreIface != null
-      && unscopedRuleExists upstreamRules policyIface.runtimeIfName coreIface.runtimeIfName
-      && unscopedRuleExists upstreamRules coreIface.runtimeIfName policyIface.runtimeIfName;
+      if coreIface == null then
+        overlayUplink
+      else
+        unscopedRuleExists upstreamRules policyIface.runtimeIfName coreIface.runtimeIfName
+        && unscopedRuleExists upstreamRules coreIface.runtimeIfName policyIface.runtimeIfName;
 
     downstreamAccessInterfaces =
       builtins.filter
