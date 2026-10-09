@@ -108,6 +108,10 @@ in
         if dns ? implementation then requireString "${dnsPath}.implementation" dns.implementation else null;
       outgoingInterfaces =
         if dns ? outgoingInterfaces then normalizeStringList dnsPath dns "outgoingInterfaces" else [ ];
+      # FS-540: the selected exit surface the resolver source binds to on the
+      # exit-owning node. Preserved platform-neutrally for canonical realization.
+      egress = if builtins.isAttrs (dns.egress or null) then dns.egress else null;
+      serviceEndpointBindings = if dns ? serviceEndpointBindings then dns.serviceEndpointBindings else null;
       rolesInput = if dns ? roles then requireAttrs "${dnsPath}.roles" dns.roles else { };
       localRoleInput = if rolesInput ? local then requireAttrs "${dnsPath}.roles.local" rolesInput.local else { };
       recursionRoleInput = if rolesInput ? recursion then requireAttrs "${dnsPath}.roles.recursion" rolesInput.recursion else { };
@@ -317,8 +321,9 @@ in
           // lib.optionalAttrs (implementation != null) { inherit implementation; }
           // lib.optionalAttrs (listen != [ ]) { inherit listen; }
           // lib.optionalAttrs (allowFrom != [ ]) { inherit allowFrom; }
-          // lib.optionalAttrs (forwarders != [ ]) { inherit forwarders; }
-          // lib.optionalAttrs (outgoingInterfaces != [ ]) { inherit outgoingInterfaces; }
+          // { inherit forwarders outgoingInterfaces; }
+          // lib.optionalAttrs (egress != null) { inherit egress; }
+          // lib.optionalAttrs (serviceEndpointBindings != null) { inherit serviceEndpointBindings; }
           // lib.optionalAttrs (roles != { }) { inherit roles; }
           // lib.optionalAttrs (directEgressBlockedTenants != null) { inherit directEgressBlockedTenants; }
           // lib.optionalAttrs (upstreamResolvers != [ ]) { inherit upstreamResolvers; }

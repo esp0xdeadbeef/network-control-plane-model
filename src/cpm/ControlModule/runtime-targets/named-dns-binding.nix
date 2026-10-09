@@ -724,8 +724,16 @@ let
           listOrEmpty (service coreServiceName).forwarders or null
           ++ listOrEmpty (service coreServiceName).upstreamResolvers or null
         );
+        # FS-540-HDS-010-SDS-010-SMS-020: a resolver that owns a modeled exit
+        # binds its source through that exit surface (the runtime-origin
+        # preferred-source default on the egress), so it carries no resolver
+        # identity source-prefix list. Only a resolver that owns no modeled exit
+        # binds through its modeled resolver path (its non-loopback service
+        # identity).
         outgoingInterfaces =
-          if builtins.isAttrs (egressPolicy.policy or null) then
+          if uplinks != [ ] then
+            [ ]
+          else if builtins.isAttrs (egressPolicy.policy or null) then
             lib.optional
               (builtins.isString (egressPolicy.policy.runtimeIfName or "") && egressPolicy.policy.runtimeIfName != "")
               egressPolicy.policy.runtimeIfName
@@ -737,11 +745,18 @@ let
           else
             (service coreServiceName).recursionMode or "iterative";
         dnsFile = overlayDnsFile;
-        egress = { inherit uplinks; };
+        egress = {
+          # FS-540-SMS-010/045: the selected exit is declared by the binding's
+          # `egressSurface`; the relation names only the resolved scope. Use the
+          # binding-derived selected exits for the emitted egress surface.
+          uplinks = if selectedUplinks != [ ] then selectedUplinks else uplinks;
+        };
         roles = coreRoles // {
           recursion = coreRecursion // {
             outgoingInterfaces =
-              if builtins.isAttrs (egressPolicy.policy or null) then
+              if uplinks != [ ] then
+                [ ]
+              else if builtins.isAttrs (egressPolicy.policy or null) then
                 lib.optional
                   (builtins.isString (egressPolicy.policy.runtimeIfName or "") && egressPolicy.policy.runtimeIfName != "")
                   egressPolicy.policy.runtimeIfName
