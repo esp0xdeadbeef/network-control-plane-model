@@ -146,13 +146,16 @@ let
                 matches = relationMatches relation;
                 from = attrsOrEmpty (relation.from or null);
                 to = attrsOrEmpty (relation.to or null);
-                # FS-270-HDS-010-SDS-010-SMS-040: this accept is authorized by
-                # an explicitly modeled intent relation, not by interface
-                # fanout or provenance labels.
-                transportAuthority = {
-                  basis = "modeled-relation";
-                  provenanceIsAuthority = false;
-                  admissible = true;
+                # FS-270-HDS-010-SDS-010-SMS-040 / FS-310-HDS-040-SDS-010-SMS-170:
+                # an unclassified (trafficType = any) interface-pair transport
+                # accept is admissible only with a complete dedicated-link
+                # isolation proof; a rule that preserves modeled matches is
+                # admissible as enforceable-matches. A bare "modeled-relation"
+                # label is topology provenance, not packet authority.
+                transportAuthority = common.selectorTransportAuthority {
+                  inherit fromIface toIface;
+                  trafficType = relation.trafficType or "any";
+                  sourcePrefixes = [ ];
                 };
                 relationCardinality = {
                   unit = "selector-forwarding-rule";
