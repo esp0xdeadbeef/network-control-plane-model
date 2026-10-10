@@ -6,7 +6,18 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-NETWORK_LABS_PATH="${NETWORK_LABS_PATH:-${repo_root}/../network-labs}" \
+# FS-380-HDS-020-SDS-010-SMS-120: the prod-like IPv4 SMS lab is assembled by the
+# current-lab selector. Generate it deterministically for this trace-id so the
+# case does not depend on the shared, single-valued `current-lab` selection (two
+# SMS rows cannot both be current at once).
+labs_root="${NETWORK_LABS_ROOT:-${repo_root}/../network-labs}"
+tmp_lab="$(mktemp -d)"
+trap 'rm -rf "${tmp_lab}"' EXIT
+mkdir -p "${tmp_lab}/core"
+ln -s "${labs_root}/GAMP" "${tmp_lab}/core/GAMP"
+NETWORK_LABS_CURRENT_LAB_DIR="${tmp_lab}/core/current-lab" \
+  bash "${labs_root}/scripts/select-current-lab.sh" SMT FS-380-HDS-020-SDS-010-SMS-120 >/dev/null
+NETWORK_LABS_PATH="${tmp_lab}/core" \
 REPO_ROOT="${repo_root}" \
 nix eval --impure --expr '
   let
@@ -15,17 +26,12 @@ nix eval --impure --expr '
     labsPathEnv = builtins.getEnv "NETWORK_LABS_PATH";
     flake = builtins.getFlake ("path:" + repoRoot);
     system = builtins.currentSystem;
-    labs =
-      if labsPathEnv != "" then
-        labsPathEnv
-      else
-        flake.inputs.network-labs.outPath;
+    labs = labsPathEnv;
 
-    metadata = import (labs + "/current-lab/metadata.nix");
     input = import (labs + "/current-lab/intent-s-router-nixos.nix");
     baseInventory = import (labs + "/current-lab/inventory-s-router-nixos.nix");
 
-    accessNodeKey = "mini-smt-${traceId}-access-vlan2";
+    accessNodeKey = "mini-smt-fs-380-hds-020-sds-010-sms-120-access-vlan2";
     accessNode = baseInventory.realization.nodes.${accessNodeKey};
     p2pIfName = "p2p-access-vlan2-downstream-selector";
     tenantIfName = "tenant-client";
@@ -82,9 +88,7 @@ nix eval --impure --expr '
 
     require = cond: msg: if cond then true else throw msg;
   in
-    require ((metadata.traceId or "") == traceId)
-      "${traceId}: current-lab selector must point at the prod-like IPv4 SMS"
-    && require ((tenantIface.sourceKind or null) == "tenant")
+    require ((tenantIface.sourceKind or null) == "tenant")
       "${traceId}: access tenant interface must carry explicit tenant sourceKind"
     && require ((p2pIface.sourceKind or null) == "p2p")
       "${traceId}: access-edge interface must carry explicit p2p sourceKind"

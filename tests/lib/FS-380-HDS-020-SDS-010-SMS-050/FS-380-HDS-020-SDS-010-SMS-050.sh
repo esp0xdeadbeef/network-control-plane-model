@@ -19,30 +19,19 @@ require_cmd nix
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-labs_path="${NETWORK_LABS_ROOT:-}"
-if [[ -z "${labs_path}" && -d "${repo_root}/../network-labs/current-lab" ]]; then
-  labs_path="$(cd "${repo_root}/../network-labs" && pwd)"
-fi
-
-if [[ -z "${labs_path}" ]]; then
-  archive_json="${tmp_dir}/archive.json"
-  nix flake archive --json "path:${repo_root}" >"${archive_json}"
-  labs_path="$(
-    ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
-      let
-        archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
-        labs = archived.inputs."network-labs" or null;
-        labsPath = if labs == null then null else labs.path or null;
-      in
-        if labsPath == null then throw "FS-380 active-lab upstream selector egress: missing network-labs input path" else labsPath
-    '
-  )"
-fi
+labs_root="${NETWORK_LABS_ROOT:-${repo_root}/../network-labs}"
+# FS-380-HDS-020-SDS-010-SMS-050: the internet-mode-verification lab is the SIT
+# FS-380-HDS-020-SDS-010 selection. Generate it deterministically for this case
+# rather than depending on the shared, single-valued current-lab selection.
+mkdir -p "${tmp_dir}/lab"
+ln -s "${labs_root}/GAMP" "${tmp_dir}/lab/GAMP"
+NETWORK_LABS_CURRENT_LAB_DIR="${tmp_dir}/lab/current-lab" \
+  bash "${labs_root}/scripts/select-current-lab.sh" SIT FS-380-HDS-020-SDS-010 >/dev/null
+labs_path="${tmp_dir}/lab"
 
 selection_ok="$(
   LABS_PATH="${labs_path}" nix eval --impure --raw --expr '
-    let current = import ((builtins.getEnv "LABS_PATH") + "/current-lab");
-        selection = current.selection or { };
+    let selection = import ((builtins.getEnv "LABS_PATH") + "/current-lab/metadata.nix");
         selected =
           (
             (selection.layer or "") == "SIT"
@@ -58,8 +47,7 @@ selection_ok="$(
 )"
 selection_label="$(
   LABS_PATH="${labs_path}" nix eval --impure --raw --expr '
-    let current = import ((builtins.getEnv "LABS_PATH") + "/current-lab");
-        selection = current.selection or { };
+    let selection = import ((builtins.getEnv "LABS_PATH") + "/current-lab/metadata.nix");
     in "${selection.layer or ""}:${selection.selector or ""}:${selection.traceId or ""}"
   '
 )"
@@ -142,7 +130,7 @@ check_inventory() {
 
     def fs380_target($site; $suffix):
       $site.runtimeTargets[("mini-smt-internet-mode-verification-" + $suffix)]
-      // $site.runtimeTargets[("mini-smt-FS-380-HDS-020-SDS-010-SMS-050-" + $suffix)];
+      // $site.runtimeTargets[("mini-smt-fs-380-hds-020-sds-010-sms-050-" + $suffix)];
 
 	    fs380_site as $site
 	    | [
@@ -217,7 +205,7 @@ check_inventory() {
 
         def fs380_target($site; $suffix):
           $site.runtimeTargets[("mini-smt-internet-mode-verification-" + $suffix)]
-          // $site.runtimeTargets[("mini-smt-FS-380-HDS-020-SDS-010-SMS-050-" + $suffix)];
+          // $site.runtimeTargets[("mini-smt-fs-380-hds-020-sds-010-sms-050-" + $suffix)];
 
 	      fs380_site as $site
 	      | fs380_target($site; "upstream-selector") as $upstream
