@@ -24,9 +24,16 @@ def dns_contract_violations:
   | ($target.data.services.dns // {}) as $dns
   | ($dns.forwarders // []) as $forwarders
   | ($forwarders | map(. as $forwarder | select(public_resolvers | index($forwarder) != null))) as $publicForwarders
+  | ($dns.upstreamResolvers // []) as $upstreamResolvers
+  | ($dns.registeredUpstreams // []) as $registeredUpstreams
+  # FS-550: strict egress is the model posture whenever the resolver has an
+  # upstream to recurse through. A resolver with no upstream answers only from
+  # its own local authority and has no fallback path, so strict egress is not
+  # applicable there (the control-plane model omits it in that case).
+  | (($forwarders | length) > 0 or ($upstreamResolvers | length) > 0 or ($registeredUpstreams | length) > 0) as $hasUpstream
   | if ($target.data.role // "") == "access" and ($dns.routePreference // []) != expected_dns_route_preference then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "access DNS routePreference is not deterministic")
-    elif bool_or($dns; "strictEgress"; false) != true then
+    elif $hasUpstream and bool_or($dns; "strictEgress"; false) != true then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "DNS strict egress is not enabled")
     elif ($target.data.role // "") == "access" and ($dns.routeContracts // [] | length) == 0 then
       violation("dns-contract"; $target.name; $target.enterprise; $target.site; $target.id; "access DNS forwarders lack explicit route contracts")
