@@ -31,6 +31,68 @@ let
     runtimeOriginEgress
     ;
 
+  # FS-460 / SDS-HDS-SMS-030: every `proto = overlay` reachability route must
+  # carry the peer-site overlay next hop (`via4`/`via6`).  The forwarding model
+  # is the authoritative writer of the overlay peer route set and emits each
+  # route with the concrete peer-site identity, but the peer site is not always
+  # compiled in this site's pass; the peer's overlay participant address is a
+  # modeled provider fact on this overlay (`nebula.lighthouse`).  Attach it as
+  # the route next hop so a single-site compile still yields an installable
+  # route.  A reachability route whose family has no modeled peer address fails
+  # closed rather than being emitted without a next hop.
+  overlayPeerNextHopFor =
+    overlayName: family:
+    let
+      overlay = attrsOrEmpty (overlayProvisioning.${overlayName} or null);
+      lh = attrsOrEmpty ((overlay.nebula or { }).lighthouse or null);
+      raw = if family == 4 then lh.addr4 or null else lh.addr6 or null;
+    in
+    if isNonEmptyString raw then (builtins.head (lib.splitString "/" raw)) else null;
+
+  addOverlayReachabilityVia =
+    interfaces:
+    let
+      augmentRoute =
+        family: route:
+        let
+          isOverlayReach =
+            (route.proto or null) == "overlay"
+            && ((route.intent or { }).kind or null) == "overlay-reachability";
+          viaField = if family == 4 then "via4" else "via6";
+          overlayName = route.overlay or null;
+        in
+        if !isOverlayReach || (route.${viaField} or null) != null then
+          route
+        else
+          let
+            via =
+              if isNonEmptyString overlayName then
+                overlayPeerNextHopFor overlayName family
+              else
+                null;
+          in
+          if via == null then
+            throw "overlay-peer-next-hop-unbound: overlay '${toString overlayName}' ${if family == 4 then "ipv4" else "ipv6"} reachability route for ${builtins.toJSON (route.dst or null)} has no modeled peer overlay address (nebula.lighthouse.addr4/addr6) to use as its next hop"
+          else
+            route // { ${viaField} = via; };
+      augmentIface =
+        iface:
+        let
+          routes = attrsOrEmpty (iface.routes or null);
+        in
+        iface
+        // {
+          routes = routes
+          // lib.optionalAttrs (routes ? ipv4) {
+            ipv4 = map (augmentRoute 4) (listOrEmpty (routes.ipv4 or null));
+          }
+          // lib.optionalAttrs (routes ? ipv6) {
+            ipv6 = map (augmentRoute 6) (listOrEmpty (routes.ipv6 or null));
+          };
+        };
+    in
+    builtins.mapAttrs (_: augmentIface) interfaces;
+
   buildServices = import ./build-services.nix {
     inherit resolveRuntimeServices;
   };
@@ -174,9 +236,9 @@ let
               (sortedNames siteOverlays)
           );
       loopback = requireAttrs "${nodePath}.loopback" (nodeAttrs.loopback or null);
-      runtimeInterfacesBase0 = addOverlayUnderlayEndpointRoutes nodeRole (
+      runtimeInterfacesBase0 = addOverlayReachabilityVia (addOverlayUnderlayEndpointRoutes nodeRole (
         builtins.listToAttrs (explicitEntries ++ syntheticEntries ++ inventoryOverlayEntries)
-      );
+      ));
       overlayMtuFor =
         overlayName:
         let
