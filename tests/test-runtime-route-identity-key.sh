@@ -58,8 +58,38 @@ nix eval --impure --expr '
       malformedNestedValues
       malformedNestedValues
     ];
+
+    # FS-315: two modeled allow tuples that differ only by traffic class,
+    # protocol, port or service are distinct selection authorities even when
+    # they share a destination prefix, address family and next hop.  Their
+    # per-relation policy routes must not collapse into one route identity.
+    sharedDestinationRelationA = {
+      dst = "10.3.60.10/32";
+      proto = "internal";
+      policyOnly = true;
+      relationId = "allow-wan-to-s-gameserver-mc-test";
+      via4 = "10.10.0.53";
+      intent = {
+        kind = "relation-policy-reachability";
+        source = "public-ingress-tuple-authority";
+        direction = "forward";
+        policyStateOwner = "policy";
+      };
+    };
+    sharedDestinationRelationB = sharedDestinationRelationA // {
+      relationId = "allow-wan-to-s-gameserver-valheim";
+    };
+    sharedDestinationRoutes = routeIdentity.uniqueRoutes 4 [
+      sharedDestinationRelationA
+      sharedDestinationRelationB
+    ];
   in
-    if builtins.length unique == 5 then true else throw "runtime route identity key collapsed distinct route identities"
+    if builtins.length unique != 5 then
+      throw "runtime route identity key collapsed distinct route identities"
+    else if builtins.length sharedDestinationRoutes != 2 then
+      throw "runtime route identity key collapsed distinct shared-destination relation authorities (FS-315)"
+    else
+      true
 ' >/dev/null
 
 echo "PASS runtime-route-identity-key"

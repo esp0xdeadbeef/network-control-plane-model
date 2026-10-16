@@ -35,6 +35,13 @@ let
         (stringOrNull (route.via4 or null))
         (stringOrNull (route.via6 or null))
         (stringOrNull (route.scope or null))
+        # FS-315: distinct modeled allow tuples (FS-180) that differ only by
+        # traffic class, protocol, port or service are distinct selection
+        # authorities even when they share a destination prefix, address
+        # family and next hop.  The owning relation id therefore belongs to
+        # the route identity; without it, per-relation policy routes for two
+        # tuples that share a destination collapse into one authority.
+        (stringOrNull (route.relationId or intent.relationId or null))
       ];
 
   uniqueRoutes =

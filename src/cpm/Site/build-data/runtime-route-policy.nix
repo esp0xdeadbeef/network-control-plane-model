@@ -93,23 +93,22 @@ let
         route:
         let
           routeLaneAccess = (attrsOrEmpty (route.lane or null)).access or null;
+          # FS-315: a route's policy-table presence is its modeled lane
+          # relation. An unlaned route has no lane relation and shall not be
+          # copied into any sibling policy lane, so it produces no complement.
+          # A laned route is copied only into the defaults on its own lane.
           matching =
-            if routeLaneAccess != null then
-              builtins.filter (d: (attrsOrEmpty (d.lane or null)).access or null == routeLaneAccess) defaults
+            if routeLaneAccess == null then
+              [ ]
             else
-              defaults;
+              builtins.filter (d: (attrsOrEmpty (d.lane or null)).access or null == routeLaneAccess) defaults;
         in
         builtins.map (
-          defaultRoute:
-          let
-            routeLane = attrsOrEmpty (route.lane or null);
-            defaultLane = attrsOrEmpty (defaultRoute.lane or null);
-            complementLane =
-              if routeLane == { } || (routeLane.access or null) == null then defaultLane else routeLane;
-          in
+          _defaultRoute:
           route
           // {
-            lane = complementLane;
+            # FS-315: the complement keeps the route's own lane relation; it
+            # is never reassigned to a sibling lane.
             policyOnly = true;
             reason = "policy-table-internal-reachability";
             intent = (attrsOrEmpty (route.intent or null)) // {
