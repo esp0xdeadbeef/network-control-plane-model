@@ -407,9 +407,9 @@ jq -e '
   def has_default($iface):
     any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
   def lane_access($iface):
-    $iface.backingRef.lane.access // null;
+    ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
   def lane_uplink($iface):
-    $iface.backingRef.lane.uplink // null;
+    ($iface.backingRef.lane | if type == "object" then .uplink else null end) // null;
   def source_prefixes:
     [ (.runtimeTargets // {})
       | to_entries[]
@@ -449,10 +449,10 @@ jq -e '
       | ($target.forwardingIntent.rules // []) as $rules
       | $ifaces
       | to_entries[] as $from
-      | select(($from.value.backingRef.lane.kind // "") == "access")
+      | select((($from.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "access")
       | $ifaces
       | to_entries[] as $to
-      | select(($to.value.backingRef.lane.kind // "") == "access-uplink")
+      | select((($to.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "access-uplink")
       | select(lane_access($to.value) == lane_access($from.value))
       | select(has_default($to.value))
       | $sources[] as $source
@@ -474,9 +474,9 @@ jq -e '
     def has_default($iface):
       any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
     def lane_access($iface):
-      $iface.backingRef.lane.access // null;
+      ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
     def lane_uplink($iface):
-      $iface.backingRef.lane.uplink // null;
+      ($iface.backingRef.lane | if type == "object" then .uplink else null end) // null;
     def source_prefixes:
       [ (.runtimeTargets // {})
         | to_entries[]
@@ -515,10 +515,10 @@ jq -e '
         | ($target.forwardingIntent.rules // []) as $rules
         | $ifaces
         | to_entries[] as $from
-        | select(($from.value.backingRef.lane.kind // "") == "access")
+        | select((($from.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "access")
         | $ifaces
         | to_entries[] as $to
-        | select(($to.value.backingRef.lane.kind // "") == "access-uplink")
+        | select((($to.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "access-uplink")
         | select(lane_access($to.value) == lane_access($from.value))
         | select(has_default($to.value))
         | $sources[] as $source
@@ -537,9 +537,9 @@ jq -e '
 
 jq -e '
   def lane_access($iface):
-    $iface.backingRef.lane.access // null;
+    ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
   def lane_uplink($iface):
-    $iface.backingRef.lane.uplink // null;
+    ($iface.backingRef.lane | if type == "object" then .uplink else null end) // null;
   def origin_accesses($prefix):
     $prefix.origin.accesses // [];
   def origin_uplinks($prefix):
@@ -586,9 +586,9 @@ jq -e '
   echo "FAIL runtime-origin-loopback-egress: runtime-origin source prefixes must stay on the modeled origin access lane, not leak to every default-bearing policy lane" >&2
   jq '
     def lane_access($iface):
-      $iface.backingRef.lane.access // null;
+      ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
     def lane_uplink($iface):
-      $iface.backingRef.lane.uplink // null;
+      ($iface.backingRef.lane | if type == "object" then .uplink else null end) // null;
     def origin_accesses($prefix):
       $prefix.origin.accesses // [];
     def origin_uplinks($prefix):
@@ -757,11 +757,11 @@ jq -e '
   def has_default($iface):
     any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
   def lane_access($iface):
-    $iface.backingRef.lane.access // null;
+    ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
   def lane_uplink($iface):
-    $iface.backingRef.lane.uplink // null;
+    ($iface.backingRef.lane | if type == "object" then .uplink else null end) // null;
   def lane_uplinks($iface):
-    ($iface.backingRef.lane.uplinks // []) + (if lane_uplink($iface) == null then [] else [lane_uplink($iface)] end);
+    (($iface.backingRef.lane | if type == "object" then .uplinks else null end) // []) + (if lane_uplink($iface) == null then [] else [lane_uplink($iface)] end);
   def runtime_origin_policy_sources:
     [ (.runtimeTargets // {})
       | to_entries[]
@@ -802,10 +802,10 @@ jq -e '
       | ($target.forwardingIntent.rules // []) as $rules
       | $ifaces
       | to_entries[] as $from
-      | select(($from.value.backingRef.lane.kind // "") == "access-uplink")
+      | select((($from.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "access-uplink")
       | $ifaces
       | to_entries[] as $to
-      | select(($to.value.backingRef.lane.kind // "") == "uplink")
+      | select((($to.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "uplink")
       | select(any(lane_uplinks($from.value)[]?; . == lane_uplink($to.value)))
       | select(has_default($to.value))
       | $sources[] as $source
@@ -827,11 +827,11 @@ jq -e '
     def has_default($iface):
       any(route_list($iface)[]?; (.dst // "") == "0.0.0.0/0" or (.dst // "") == "::/0");
     def lane_access($iface):
-      $iface.backingRef.lane.access // null;
+      ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
     def lane_uplink($iface):
-      $iface.backingRef.lane.uplink // null;
+      ($iface.backingRef.lane | if type == "object" then .uplink else null end) // null;
     def lane_uplinks($iface):
-      ($iface.backingRef.lane.uplinks // []) + (if lane_uplink($iface) == null then [] else [lane_uplink($iface)] end);
+      (($iface.backingRef.lane | if type == "object" then .uplinks else null end) // []) + (if lane_uplink($iface) == null then [] else [lane_uplink($iface)] end);
     def runtime_origin_policy_sources:
       [ (.runtimeTargets // {})
         | to_entries[]
@@ -871,10 +871,10 @@ jq -e '
         | ($target.forwardingIntent.rules // []) as $rules
         | $ifaces
         | to_entries[] as $from
-        | select(($from.value.backingRef.lane.kind // "") == "access-uplink")
+        | select((($from.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "access-uplink")
         | $ifaces
         | to_entries[] as $to
-        | select(($to.value.backingRef.lane.kind // "") == "uplink")
+        | select((($to.value.backingRef.lane | if type == "object" then .kind else null end) // "") == "uplink")
         | select(any(lane_uplinks($from.value)[]?; . == lane_uplink($to.value)))
         | select(has_default($to.value))
         | $sources[] as $source
@@ -895,7 +895,7 @@ jq -e '
   def route_list($iface; $family):
     if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
   def lane_access($iface):
-    $iface.backingRef.lane.access // null;
+    ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
   def has_return_route($iface; $prefix):
     any(route_list($iface; $prefix.family)[]?;
       (.dst // "") == ($prefix.prefix // "")
@@ -916,7 +916,7 @@ jq -e '
     | select((.relationId // "") == "runtime-origin-egress")
     | . as $rule
     | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
-    | select(($fromIface.backingRef.lane.kind // "") == "access")
+    | select((($fromIface.backingRef.lane | if type == "object" then .kind else null end) // "") == "access")
     | ($rule.sourcePrefixes // [])[] as $prefix
     | select(
         (lane_access($fromIface) != null)
@@ -937,7 +937,7 @@ jq -e '
     def route_list($iface; $family):
       if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
     def lane_access($iface):
-      $iface.backingRef.lane.access // null;
+      ($iface.backingRef.lane | if type == "object" then .access else null end) // null;
     def has_return_route($iface; $prefix):
       any(route_list($iface; $prefix.family)[]?;
         (.dst // "") == ($prefix.prefix // "")
@@ -958,7 +958,7 @@ jq -e '
       | select((.relationId // "") == "runtime-origin-egress")
       | . as $rule
       | ($ifaces | to_entries[] | select(.value.runtimeIfName == ($rule.fromInterface // "")) | .value) as $fromIface
-      | select(($fromIface.backingRef.lane.kind // "") == "access")
+      | select((($fromIface.backingRef.lane | if type == "object" then .kind else null end) // "") == "access")
       | ($rule.sourcePrefixes // [])[] as $prefix
       | select(
           (lane_access($fromIface) != null)
@@ -980,7 +980,7 @@ jq -e '
   def route_list($iface; $family):
     if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
   def lane_kind($iface):
-    $iface.backingRef.lane.kind // null;
+    ($iface.backingRef.lane | if type == "object" then .kind else null end) // null;
   [
     .control_plane_model.data
     | to_entries[].value
@@ -1021,7 +1021,7 @@ jq -e '
     def route_list($iface; $family):
       if $family == 4 then ($iface.routes.ipv4 // []) else ($iface.routes.ipv6 // []) end;
     def lane_kind($iface):
-      $iface.backingRef.lane.kind // null;
+      ($iface.backingRef.lane | if type == "object" then .kind else null end) // null;
     [
       .control_plane_model.data
       | to_entries[].value
@@ -1063,7 +1063,7 @@ jq -e '
   def route_list($iface):
     (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
   def lane_kind($iface):
-    $iface.backingRef.lane.kind // null;
+    ($iface.backingRef.lane | if type == "object" then .kind else null end) // null;
   [
     .control_plane_model.data
     | to_entries[].value
@@ -1090,7 +1090,7 @@ jq -e '
   echo "FAIL runtime-origin-loopback-egress: runtime-origin egress must not create policy/access-uplink to access-uplink crossconnect rules" >&2
   jq '
     def lane_kind($iface):
-      $iface.backingRef.lane.kind // null;
+      ($iface.backingRef.lane | if type == "object" then .kind else null end) // null;
     [
       .control_plane_model.data
       | to_entries[].value
@@ -1120,7 +1120,7 @@ jq -e '
   def route_list($iface):
     (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
   def lane_kind($iface):
-    $iface.backingRef.lane.kind // null;
+    ($iface.backingRef.lane | if type == "object" then .kind else null end) // null;
   [
     .control_plane_model.data
     | to_entries[].value
@@ -1163,7 +1163,7 @@ jq -e '
     def route_list($iface):
       (($iface.routes.ipv4 // []) + ($iface.routes.ipv6 // []));
     def lane_kind($iface):
-      $iface.backingRef.lane.kind // null;
+      ($iface.backingRef.lane | if type == "object" then .kind else null end) // null;
     [
       .control_plane_model.data
       | to_entries[].value
