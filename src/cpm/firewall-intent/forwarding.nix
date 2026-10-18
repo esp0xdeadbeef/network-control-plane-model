@@ -63,6 +63,30 @@ let
       || (iface.sourceKind == "overlay" && selectedUplinkFor iface)
     )
   ) interfaceRecords;
+  # FS-460: a core that terminates an overlay but is not itself an exit may
+  # still forward a delegated tenant's public egress over that overlay to a
+  # remote exit.  Such an overlay interface carries modeled
+  # `delegated-public-egress` routes but is not in `uplinkInterfaces` (which is
+  # gated on the node being an egress exit).  Surface it separately so the core
+  # can emit the source-scoped transit -> overlay allowance without granting a
+  # generic WAN bypass.
+  hasDelegatedPublicEgressRoute =
+    iface:
+    let
+      routes = attrsOrEmpty (iface.routes or null);
+      all = listOrEmpty (routes.ipv4 or null) ++ listOrEmpty (routes.ipv6 or null);
+    in
+    builtins.any (
+      route:
+      builtins.isAttrs route
+      && ((attrsOrEmpty (route.intent or null)).kind or null) == "delegated-public-egress"
+    ) all;
+  delegatedOverlayEgressInterfaces = builtins.filter (
+    iface:
+    iface.sourceKind == "overlay"
+    && !(builtins.elem iface uplinkInterfaces)
+    && hasDelegatedPublicEgressRoute iface
+  ) interfaceRecords;
 
   addressFamily =
     value: if builtins.isString value && builtins.match ".*:.*" value != null then 6 else 4;
@@ -298,6 +322,7 @@ else if role == "core" then
         tenantPrefixOwners
         transitInterfaces
         uplinkInterfaces
+        delegatedOverlayEgressInterfaces
         dnsServicePublicEgressRules
         ;
     };
