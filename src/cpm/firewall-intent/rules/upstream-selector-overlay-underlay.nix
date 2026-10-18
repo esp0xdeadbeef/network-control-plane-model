@@ -47,8 +47,18 @@ let
   overlayName = fromExternal.name or null;
   fromIsNamedOverlay =
     (fromExternal.kind or null) == "external" && fromExternal ? name && !(fromExternal ? uplinks);
+  # FS-322 / FS-440: a relation names the exit SCOPE, not an uplink list.  An
+  # external `to` is a WAN exit target in either the legacy uplinks form or the
+  # current scope/name form.  Without this, an overlay -> WAN-exit-scope
+  # relation is not recognized as the overlay-underlay transit case and is
+  # emitted as a broad relation-forward rule instead of the narrow
+  # Nebula-underlay allowance (FS-460).
   toIsWanUplink =
-    (toExternal.kind or null) == "external" && builtins.isList (toExternal.uplinks or null);
+    (toExternal.kind or null) == "external"
+    && (
+      builtins.isList (toExternal.uplinks or null)
+      || builtins.isString (toExternal.scope or null)
+    );
   toCores = builtins.filter (
     iface: overlayName != null && hasOverlayUnderlayEndpointRoute overlayName iface
   ) (coreInterfacesFor toExternal);
