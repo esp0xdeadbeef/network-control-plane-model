@@ -3,6 +3,7 @@
 { tenantPrefixOwners ? { }
 , transitInterfaces
 , uplinkInterfaces
+, delegatedOverlayEgressInterfaces ? [ ]
 , dnsServicePublicEgressRules ? [ ]
 ,
 }:
@@ -277,8 +278,25 @@ let
           ))
         admissibleTransitInterfaces
     );
+  # FS-460: a core that terminates an overlay but is not itself an exit still
+  # forwards a delegated tenant's public egress over that overlay to a remote
+  # exit.  Emit the source-scoped transit -> overlay allowance for the overlay
+  # interfaces that carry modeled delegated-public-egress routes (paired with
+  # the core's transit interfaces).  These rules carry the delegated source
+  # prefixes from the routes, so they cannot become a generic WAN bypass.
+  delegatedOverlayTransitRules =
+    builtins.concatLists (
+      builtins.map
+        (transitIface:
+          builtins.concatLists (
+            builtins.map
+              (overlayIface: delegatedOverlayEgress.rulesFor transitIface overlayIface)
+              delegatedOverlayEgressInterfaces
+          ))
+        admissibleTransitInterfaces
+    );
 in
 {
-  rules = meshRules ++ dnsServicePublicEgressRules ++ exitRules;
+  rules = meshRules ++ dnsServicePublicEgressRules ++ delegatedOverlayTransitRules ++ exitRules;
   inherit transitAdmission;
 }
