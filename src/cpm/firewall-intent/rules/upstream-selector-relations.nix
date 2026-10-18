@@ -199,8 +199,14 @@ in
       toExternal = attrsOrEmpty (relation.to or null);
       fromIsNamedOverlay =
         (fromExternal.kind or null) == "external" && fromExternal ? name && !(fromExternal ? uplinks);
+      # FS-322: see upstream-selector-overlay-underlay.nix — an external `to`
+      # names the WAN exit either by uplink list or by exit scope/name.
       toIsWanUplink =
-        (toExternal.kind or null) == "external" && builtins.isList (toExternal.uplinks or null);
+        (toExternal.kind or null) == "external"
+        && (
+          builtins.isList (toExternal.uplinks or null)
+          || builtins.isString (toExternal.scope or null)
+        );
     in
     if
       (relation.action or "allow") != "allow"
