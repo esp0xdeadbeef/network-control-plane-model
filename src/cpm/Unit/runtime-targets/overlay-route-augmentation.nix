@@ -144,6 +144,7 @@ let
       addRuntimePrefixReturnsToCoreOverlay
       addRuntimePrefixReturnsToWanCore
       underlayEndpointRoutes
+      overlayEndpointRoutesVia
       delegatedOverlayDefaultsVia
       delegatedOverlayExitDefaultsVia
       policyUplinkReturnRoutesVia

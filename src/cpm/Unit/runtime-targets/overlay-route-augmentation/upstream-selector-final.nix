@@ -15,6 +15,7 @@
 , addRuntimePrefixReturnsToCoreOverlay
 , addRuntimePrefixReturnsToWanCore
 , underlayEndpointRoutes
+, overlayEndpointRoutesVia
 , delegatedOverlayDefaultsVia
 , delegatedOverlayExitDefaultsVia
 , policyUplinkReturnRoutesVia
@@ -147,9 +148,41 @@ else
               ipv4 = [ ];
               ipv6 = [ ];
             };
+        # FS-460 / FS-171: the upstream-selector's core-facing overlay
+        # interface must carry the modeled overlay underlay-endpoint
+        # reachability of its overlay so the policy lane can forward underlay
+        # bootstrap traffic to the core and the overlay-underlay firewall rule
+        # has an endpoint to match.  `underlayEndpointRoutes` only attaches
+        # these where the interface has a default via; on a core-facing overlay
+        # lane there is no default, so attach them via the interface's own p2p
+        # peer (the core) instead.  Never emit a via-less underlay route.
+        coreUnderlayEndpointRoutes =
+          let
+            hasUnderlay =
+              family: builtins.any (
+                route:
+                (route.intent.kind or null) == "overlay-underlay-reachability"
+              ) (listOrEmpty ((attrsOrEmpty (routes."ipv${builtins.toString family}" or null))));
+          in
+          if
+            (iface.sourceKind or null) == "p2p"
+            && laneOverlayNames != [ ]
+            && !hasUnderlay 4
+            && !hasUnderlay 6
+          then
+            {
+              ipv4 = overlayEndpointRoutesVia 4 laneOverlayNames peer4;
+              ipv6 = overlayEndpointRoutesVia 6 laneOverlayNames peer6;
+            }
+          else
+            {
+              ipv4 = [ ];
+              ipv6 = [ ];
+            };
         extraRoutes = {
           ipv4 =
             (underlayEndpointRoutes 4 routes)
+            ++ coreUnderlayEndpointRoutes.ipv4
             ++ delegatedDefaults.ipv4
             ++ accessDefaults.ipv4
             ++ overlayIngressDefaults.ipv4
@@ -157,6 +190,7 @@ else
             ++ policyUplinkReturns.ipv4;
           ipv6 =
             (underlayEndpointRoutes 6 routes)
+            ++ coreUnderlayEndpointRoutes.ipv6
             ++ delegatedDefaults.ipv6
             ++ accessDefaults.ipv6
             ++ overlayIngressDefaults.ipv6
