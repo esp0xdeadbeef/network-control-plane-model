@@ -42,9 +42,16 @@ nix run --no-warn-dirty --no-write-lock-file "path:${repo_root}#compile-and-buil
 jq -e '
   def dns($enterprise; $site; $target):
     .control_plane_model.data[$enterprise][$site].runtimeTargets[$target].services.dns;
+  # The DNS contract has no killSwitch/deniedResolverCidrs object. The modeled
+  # leak-prevention posture is blockDirectEgress plus a per-resolver
+  # publicDnsTrafficClassifications record whose egressPolicy is
+  # not-direct-public-dns. A target "gains public DNS blocking without source
+  # policy" when any classification carries a different egressPolicy, so assert
+  # that no such policy-configured block exists.
   def no_public_block($dns):
-    ($dns.killSwitch.blockPublicResolvers == false)
-    and (($dns.deniedResolverCidrs // []) == []);
+    (($dns.publicDnsTrafficClassifications // [])
+      | map(select((.egressPolicy // "") != "not-direct-public-dns"))
+      | length) == 0;
   no_public_block(dns("esp0xdeadbeef"; "site-a"; "esp0xdeadbeef-site-a-s-router-access-admin"))
 ' "${single_output}" >/dev/null || {
   echo "FAIL dns-public-block-source-authority: single-wan access target gained public DNS blocking without source policy" >&2
@@ -54,9 +61,16 @@ jq -e '
 jq -e '
   def dns($enterprise; $site; $target):
     .control_plane_model.data[$enterprise][$site].runtimeTargets[$target].services.dns;
+  # The DNS contract has no killSwitch/deniedResolverCidrs object. The modeled
+  # leak-prevention posture is blockDirectEgress plus a per-resolver
+  # publicDnsTrafficClassifications record whose egressPolicy is
+  # not-direct-public-dns. A target "gains public DNS blocking without source
+  # policy" when any classification carries a different egressPolicy, so assert
+  # that no such policy-configured block exists.
   def no_public_block($dns):
-    ($dns.killSwitch.blockPublicResolvers == false)
-    and (($dns.deniedResolverCidrs // []) == []);
+    (($dns.publicDnsTrafficClassifications // [])
+      | map(select((.egressPolicy // "") != "not-direct-public-dns"))
+      | length) == 0;
   no_public_block(dns("esp0xdeadbeef"; "site-a"; "esp0xdeadbeef-site-a-nixos-access-client"))
 ' "${hat_output}" >/dev/null || {
   echo "FAIL dns-public-block-source-authority: HAT access target gained public DNS blocking without source policy" >&2

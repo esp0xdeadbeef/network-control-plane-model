@@ -624,7 +624,7 @@ validate_transit_non_bypass() {
     | ($nebulaPolicy | map(select(has_handoff(.) | not))) as $badNebulaPolicy
     | ($wireguardPolicy | map(select(has_handoff(.) | not))) as $badWireguardPolicy
     | ($dnsAllows | map(select((has_handoff(.) and .action == "accept" and .trafficType == "dns" and ((.sourcePrefixes // []) | length > 0)) | not))) as $badDnsAllows
-    | ($dnsDenies | map(select((has_handoff(.) and .action == "deny" and .trafficType == "dns" and ((.sourcePrefixes // []) == [])) | not))) as $badDnsDenies
+    | ($dnsDenies | map(select((has_handoff(.) and .action == "deny" and .trafficType == "dns") | not))) as $badDnsDenies
     | ([
         $dnsAllows[] as $allow
         | $dnsDenies[] as $deny
@@ -699,7 +699,6 @@ validate_transit_non_bypass() {
             has_handoff(.)
             and .action == "deny"
             and .trafficType == "dns"
-            and ((.sourcePrefixes // []) == [])
           )
           and (($dnsCollapsed | length) == 0)
       }
