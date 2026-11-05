@@ -8,7 +8,13 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-labs_path="/home/deadbeef/github/network-labs"
+labs_path="${NETWORK_LABS_PATH:-}"
+if [[ -z "${labs_path}" ]]; then
+  # CI has no developer home directory; resolve the sibling repository from the
+  # flake inputs this repository already pins.
+  labs_path="$(nix eval --impure --raw --expr \
+    "(builtins.getFlake \"path:${repo_root}\").inputs.network-labs.outPath" 2>/dev/null || true)"
+fi
 output_json="$(mktemp)"
 bad_inventory="$(mktemp)"
 bad_output="$(mktemp)"
