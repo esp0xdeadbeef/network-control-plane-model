@@ -24,18 +24,17 @@ def route_shape_violations:
   sites as $site
   | route_records($site) as $route
   | ($route.data.intent // {}) as $intent
-  | (
-      $route.family == "ipv6"
-      and (($route.data.sourceFile // "") != "")
-      and (($intent.kind // "") == "runtime-routed-prefix-return")
-      and ((($intent.source // "") == "inventory-routed-prefix") or (($intent.source // "") == "intent-routed-prefix"))
-    ) as $isRuntimeRoutedPrefixReturn
+  # A runtime (delegated) prefix has no modeled prefix value, so its record is
+  # destination-less by definition: it carries the runtime `sourceFile` that the
+  # dynamic consumers materialize from (FS-460-HDS-010-SDS-010-SMS-050) plus the
+  # intent that created it. That is a modeled authority record, not a route
+  # missing a destination; a destination-less record without a runtime source
+  # reference is still a violation.
   | (
       (($route.data.sourceFile // "") != "")
-      and (($intent.kind // "") == "overlay-underlay-reachability")
-      and (($intent.source // "") == "overlay-underlay-endpoint")
-    ) as $isRuntimeUnderlayEndpoint
-  | if ($route.data.dst // "") == "" and ($isRuntimeRoutedPrefixReturn | not) and ($isRuntimeUnderlayEndpoint | not) then
+      and (($intent.kind // "") != "")
+    ) as $isDynamicAuthorityRecord
+  | if ($route.data.dst // "") == "" and ($isDynamicAuthorityRecord | not) then
       violation("route-shape"; $route.name; $route.enterprise; $route.site; $route.target; "route on " + $route.interface + " " + $route.family + " is missing dst")
     elif ($intent | type) != "object" or (($intent.kind // $intent.source // "") == "") then
       violation("route-shape"; $route.name; $route.enterprise; $route.site; $route.target; "route " + ($route.data.dst // "<missing>") + " on " + $route.interface + " lacks intent kind/source")
