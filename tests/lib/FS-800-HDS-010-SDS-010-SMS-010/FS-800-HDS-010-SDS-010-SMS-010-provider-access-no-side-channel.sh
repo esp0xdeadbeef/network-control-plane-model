@@ -231,8 +231,8 @@ jq -e '
     and has_pppoe_client_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "client"; "203.0.113.4"; "203.0.113.5"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
     and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b"; "ppp1"; "server"; "203.0.113.1"; "203.0.113.2"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
     and has_pppoe_client_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "ppp1"; "client"; "203.0.113.2"; "203.0.113.1"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
-    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "tenant-provider-handoff-a"; "ppp0")
-    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "tenant-provider-handoff-a")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "prov-handoff-a"; "ppp0")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "prov-handoff-a")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "ens80")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ens80"; "ppp0")
     and pppoe_targets == [

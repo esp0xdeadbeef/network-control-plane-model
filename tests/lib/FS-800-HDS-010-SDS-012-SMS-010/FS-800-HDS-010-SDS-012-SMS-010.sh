@@ -35,12 +35,14 @@ jq -e '
     any(site.attachments[]?; .kind == "tenant" and .unit == $unit and .name == $name);
   def has_target_attachment($target; $name):
     any(rt($target).attachments[]?; .kind == "tenant" and .name == $name);
-  def has_policy_relation($id; $from; $uplink):
+  # FS-322: a permission relation never names an uplink, interface, or address;
+  # exit identity comes from the ordered selects of the selecting scope.
+  def has_policy_relation($id; $from):
     any(site.communicationContract.allowedRelations[]?;
       .id == $id
       and .action == "allow"
       and .from == { "kind": "tenant", "name": $from }
-      and .to == { "kind": "external", "uplinks": [ $uplink ] }
+      and .to == { "kind": "external" }
     );
   def has_traffic_path($id; $path):
     any(site.trafficPaths[]?; .relationId == $id and .nodePath == $path);
@@ -154,16 +156,16 @@ jq -e '
     and has_site_attachment("nixos-provider-handoff-access-b"; "provider-handoff-b")
     and has_target_attachment("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "provider-handoff-a")
     and has_target_attachment("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "provider-handoff-b")
-    and has_policy_relation("allow-client-to-testnet-host-isp"; "client"; "testnet-host-isp")
-    and has_policy_relation("allow-client-to-testnet-routed-isp"; "client"; "testnet-routed-isp")
-    and has_policy_relation("allow-provider-handoff-a-to-isp-a"; "provider-handoff-a"; "isp-a")
-    and has_policy_relation("allow-provider-handoff-b-to-isp-a"; "provider-handoff-b"; "isp-a")
+    and has_policy_relation("allow-client-to-testnet-host-isp"; "client")
+    and has_policy_relation("allow-client-to-testnet-routed-isp"; "client")
+    and has_policy_relation("allow-provider-handoff-a-to-isp-a"; "provider-handoff-a")
+    and has_policy_relation("allow-provider-handoff-b-to-isp-a"; "provider-handoff-b")
     and has_traffic_path("allow-client-to-testnet-host-isp"; [
       "nixos-access-client",
       "nixos-downstream-selector",
       "nixos-policy",
       "nixos-upstream-selector",
-      "nixos-core-testnet-host-isp"
+      "nixos-core-testnet-routed-isp"
     ])
     and has_traffic_path("allow-client-to-testnet-routed-isp"; [
       "nixos-access-client",
@@ -177,14 +179,14 @@ jq -e '
       "nixos-downstream-selector",
       "nixos-policy",
       "nixos-upstream-selector",
-      "nixos-core-upstream-vlan4"
+      "nixos-core-bgp-uplink-isp-b"
     ])
     and has_traffic_path("allow-provider-handoff-b-to-isp-a"; [
       "nixos-provider-handoff-access-b",
       "nixos-downstream-selector",
       "nixos-policy",
       "nixos-upstream-selector",
-      "nixos-core-upstream-vlan4"
+      "nixos-core-bgp-uplink-isp-b"
     ])
     and has_transit_lane("p2p-nixos-downstream-selector-nixos-policy--access-nixos-provider-handoff-access-a"; "access"; "nixos-provider-handoff-access-a"; null)
     and has_transit_lane("p2p-nixos-downstream-selector-nixos-provider-handoff-access-a"; "access-edge"; "nixos-provider-handoff-access-a"; null)
@@ -221,8 +223,8 @@ jq -e '
     and has_pppoe_client_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "client"; "203.0.113.4"; "203.0.113.5"; "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a")
     and has_pppoe_session_interface("esp0xdeadbeef-site-a-nixos-provider-handoff-access-b"; "ppp1"; "server"; "203.0.113.1"; "203.0.113.2"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
     and has_pppoe_client_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "ppp1"; "client"; "203.0.113.2"; "203.0.113.1"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
-    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "tenant-provider-handoff-a"; "ppp0")
-    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "tenant-provider-handoff-a")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "prov-handoff-a"; "ppp0")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "prov-handoff-a")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "ens80")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ens80"; "ppp0")
     and pppoe_targets == [

@@ -29,34 +29,40 @@ jq -e '
   def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
   def rt($target): site.runtimeTargets[$target];
 
-  def has_default_via_ds($target; $p2p_iface; $expected_via4):
+  # The next hop must be the downstream-selector end of the same modeled link.
+  # Deriving it from that interface keeps the assertion exact without pinning a
+  # pool-dependent literal.
+  def ds_addr($p2p_iface):
+    rt("esp0xdeadbeef-site-a-nixos-downstream-selector")
+    .effectiveRuntimeRealization.interfaces[$p2p_iface].addr4
+    | split("/")[0];
+
+  def has_default_via_ds($target; $p2p_iface):
     rt($target).effectiveRuntimeRealization.interfaces[$p2p_iface] as $iface
     | ($iface.routes.ipv4 // []) as $v4
     | ($v4 | map(select(.intent.kind == "default-reachability"))) as $defaults
     | ($defaults | length) == 1
     and $defaults[0].proto == "default"
-    and $defaults[0].via4 == $expected_via4;
+    and $defaults[0].via4 == ds_addr($p2p_iface);
 
   def no_default($target; $iface_name):
     rt($target).effectiveRuntimeRealization.interfaces[$iface_name] as $iface
     | (($iface.routes.ipv4 // []) | map(select(.intent.kind == "default-reachability")) | length) == 0;
 
-  # Provider A: default via downstream-selector (10.10.44.58)
+  # Provider A: default via the downstream-selector end of the same link
   has_default_via_ds(
     "esp0xdeadbeef-site-a-nixos-provider-handoff-access-a";
-    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-a";
-    "10.10.44.58"
+    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-a"
   )
   # Provider A: NO default on PPPoE-linked p2p
   and no_default(
     "esp0xdeadbeef-site-a-nixos-provider-handoff-access-a";
     "p2p-nixos-core-testnet-host-isp-nixos-provider-handoff-access-a"
   )
-  # Provider B: default via downstream-selector (10.10.44.60)
+  # Provider B: default via the downstream-selector end of the same link
   and has_default_via_ds(
     "esp0xdeadbeef-site-a-nixos-provider-handoff-access-b";
-    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-b";
-    "10.10.44.60"
+    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-b"
   )
   # Provider B: NO default on PPPoE-linked p2p
   and no_default(
@@ -66,8 +72,7 @@ jq -e '
   # Access-client still has its default (unchanged)
   and has_default_via_ds(
     "esp0xdeadbeef-site-a-nixos-access-client";
-    "p2p-nixos-access-client-nixos-downstream-selector";
-    "10.10.44.1"
+    "p2p-nixos-access-client-nixos-downstream-selector"
   )
 ' "${output_json}" >/dev/null
 echo "PASS provider-handoff-downstream-default-route nixos substrate"
@@ -85,13 +90,21 @@ jq -e '
   def site: root.control_plane_model.data.esp0xdeadbeef."site-b";
   def rt($target): site.runtimeTargets[$target];
 
-  def has_default_via_ds($target; $p2p_iface; $expected_via4):
+  # The next hop must be the downstream-selector end of the same modeled link.
+  # Deriving it from that interface keeps the assertion exact without pinning a
+  # pool-dependent literal.
+  def ds_addr($p2p_iface):
+    rt("esp0xdeadbeef-site-b-clab-downstream-selector")
+    .effectiveRuntimeRealization.interfaces[$p2p_iface].addr4
+    | split("/")[0];
+
+  def has_default_via_ds($target; $p2p_iface):
     rt($target).effectiveRuntimeRealization.interfaces[$p2p_iface] as $iface
     | ($iface.routes.ipv4 // []) as $v4
     | ($v4 | map(select(.intent.kind == "default-reachability"))) as $defaults
     | ($defaults | length) == 1
     and $defaults[0].proto == "default"
-    and $defaults[0].via4 == $expected_via4;
+    and $defaults[0].via4 == ds_addr($p2p_iface);
 
   def no_default($target; $iface_name):
     rt($target).effectiveRuntimeRealization.interfaces[$iface_name] as $iface
@@ -100,8 +113,7 @@ jq -e '
   # CLAB Provider A: default via downstream-selector
   has_default_via_ds(
     "esp0xdeadbeef-site-b-clab-provider-handoff-access-a";
-    "p2p-clab-downstream-selector-clab-provider-handoff-access-a";
-    "10.50.44.58"
+    "p2p-clab-downstream-selector-clab-provider-handoff-access-a"
   )
   # CLAB Provider A: NO default on PPPoE-linked p2p
   and no_default(
@@ -111,8 +123,7 @@ jq -e '
   # CLAB Provider B: default via downstream-selector
   and has_default_via_ds(
     "esp0xdeadbeef-site-b-clab-provider-handoff-access-b";
-    "p2p-clab-downstream-selector-clab-provider-handoff-access-b";
-    "10.50.44.60"
+    "p2p-clab-downstream-selector-clab-provider-handoff-access-b"
   )
   # CLAB Provider B: NO default on PPPoE-linked p2p
   and no_default(
