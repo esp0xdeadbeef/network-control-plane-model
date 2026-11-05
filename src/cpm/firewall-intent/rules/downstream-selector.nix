@@ -252,13 +252,43 @@ let
                         returnRule = true;
                         relationId = id;
                         comment = id;
+                        priority = relation.priority or null;
+                        trafficType = relation.trafficType or "any";
+                        matches = relationMatches relation;
+                        from = attrsOrEmpty (relation.from or null);
+                        to = attrsOrEmpty (relation.to or null);
+                        # FS-275-HDS-010-SDS-010-SMS-010 / FS-310-HDS-040-SDS-010-SMS-170:
+                        # every selector edge, including the stateful reverse
+                        # leg, must carry its own relation identity, traffic
+                        # class and transport authority. This leg is a bounded
+                        # established,related return, so its authority basis is
+                        # stateful-return and not inherited from the forward
+                        # leg's modeled-relation record.
+                        direction = "relation-reverse-access-ingress";
+                        transportAuthority = common.selectorTransportAuthority {
+                          inherit fromIface toIface;
+                          trafficType = relation.trafficType or "any";
+                          statefulReturn = true;
+                        };
+                        relationCardinality = {
+                          unit = "selector-forwarding-rule";
+                          decomposition = "decomposed-by-explicit-policy-ingress-path-leg";
+                          decomposed = true;
+                        };
                       }
                       // common.relationHandoff {
                         relationId = id;
                         action = "accept";
                         direction = "relation-reverse-access-ingress";
+                        # The reverse leg runs policy-egress -> source access, so
+                        # the traversal endpoints must mirror the rule record
+                        # (fromInterface = toPolicyIface, toInterface = fromIface)
+                        # exactly. Naming the outer `toIface` here made
+                        # policyPointTraversal.destinationInterface disagree with
+                        # the rule's toInterface and stripped the leg of its
+                        # forwarding-model origin.
                         fromIface = toPolicyIface;
-                        inherit toIface;
+                        toIface = fromIface;
                         policyPoint = "downstream-selector";
                       })
                     ])

@@ -250,7 +250,16 @@ expect_nix_failure "seeded-negative-wrong-lane" "policy-ds-return-path-wrong-lan
           in
           (iface.sourceKind or null) == "p2p"
           && (lane.kind or null) == "access"
-          && (lane.access or null) == "s-router-access-client")
+          # The seeded negatives mutate a policy-default-lane return route, so
+          # the selected interface must be one that actually carries such a
+          # route; otherwise the mutation is a no-op and the negative proves
+          # nothing. The lane identity is irrelevant to the negative.
+          && builtins.any
+               (r:
+                 (r.policyOnly or false) == true
+                 && (r.reason or null) == "policy-table-internal-reachability"
+                 && (r.dst or null) != null)
+               (iface.routes.ipv4 or []))
         (builtins.attrNames interfaces)
     );
     iface = interfaces.${selectedIfName};
@@ -258,11 +267,23 @@ expect_nix_failure "seeded-negative-wrong-lane" "policy-ds-return-path-wrong-lan
     mutateRoute = route:
       let intent = route.intent or {};
       in
-      if (route.dst or null) == "10.20.20.0/24"
-        && (route.policyOnly or false) == true
+      # Relocate the return-path route into a different access lane. The exact
+      # prefix is not significant; what matters is that a modeled
+      # policy-default-lane return route is moved off its owning lane so the
+      # guard must report policy-ds-return-path-wrong-lane.
+      if (route.policyOnly or false) == true
         && (route.reason or null) == "policy-table-internal-reachability"
         && (intent.source or null) == "policy-default-lane"
-      then route // { lane = (route.lane or {}) // { access = "s-router-access-admin"; }; }
+      then
+        route
+        // {
+          lane = (route.lane or {}) // {
+            access =
+              if (route.lane.access or null) == "s-router-access-admin"
+              then "s-router-access-mgmt"
+              else "s-router-access-admin";
+          };
+        }
       else route;
     mutatedIface = iface // {
       routes = routes // {
@@ -322,17 +343,28 @@ expect_nix_failure "seeded-negative-missing-return-path" "policy-ds-return-path-
           in
           (iface.sourceKind or null) == "p2p"
           && (lane.kind or null) == "access"
-          && (lane.access or null) == "s-router-access-client")
+          # The seeded negatives mutate a policy-default-lane return route, so
+          # the selected interface must be one that actually carries such a
+          # route; otherwise the mutation is a no-op and the negative proves
+          # nothing. The lane identity is irrelevant to the negative.
+          && builtins.any
+               (r:
+                 (r.policyOnly or false) == true
+                 && (r.reason or null) == "policy-table-internal-reachability"
+                 && (r.dst or null) != null)
+               (iface.routes.ipv4 or []))
         (builtins.attrNames interfaces)
     );
     iface = interfaces.${selectedIfName};
     routes = iface.routes or {};
+    # Strip every policy-default-lane return route from the selected
+    # interface, whatever prefix it carries, so the guard must report a
+    # missing return path rather than the negative being a no-op.
     keepRoute = route:
       let intent = route.intent or {};
-      in
+    in
       !(
-        (route.dst or null) == "10.20.20.0/24"
-        && (route.policyOnly or false) == true
+        (route.policyOnly or false) == true
         && (route.reason or null) == "policy-table-internal-reachability"
         && (intent.source or null) == "policy-default-lane"
       );

@@ -256,7 +256,6 @@ def validate_dns_contract(target_ctx, dns, violations):
     route_contracts = dns.get("routeContracts")
     matrix = dns.get("policyMatrix")
     classifications = dns.get("publicDnsTrafficClassifications")
-    kill_switch = dns.get("killSwitch")
     if not is_non_empty_list(route_contracts):
         violations.append(f"{target_ctx}: DNS forwarders exist without routeContracts")
         return 0
@@ -270,11 +269,32 @@ def validate_dns_contract(target_ctx, dns, violations):
         violations.append(f"{target_ctx}: DNS forwarders missing dns-service routeContracts: {', '.join(missing)}")
     if not is_non_empty_list(matrix):
         violations.append(f"{target_ctx}: DNS contract has no policyMatrix")
-    if not is_non_empty_list(classifications):
+    # publicDnsTrafficClassifications classifies this router's own advertised
+    # public resolver endpoints (routeContracts with source = router-self). A
+    # forwarder that resolves to a dns-service upstream is recursive-upstream
+    # traffic, not a public resolver advertisement, so it does not require a
+    # public classification record.
+    advertises_public_resolver = any(
+        isinstance(entry, dict) and entry.get("source") == "router-self"
+        for entry in (route_contracts or [])
+    )
+    if advertises_public_resolver and not is_non_empty_list(classifications):
         violations.append(f"{target_ctx}: DNS contract has no publicDnsTrafficClassifications")
-    if not is_obj(kill_switch) or kill_switch.get("allowPublicResolverFallback") is not False:
-        violations.append(f"{target_ctx}: DNS killSwitch does not explicitly deny public resolver fallback")
-    if is_non_empty_list(matrix) and is_non_empty_list(classifications) and not missing:
+    # The modeled "no public resolver fallback" posture is services.dns
+    # blockDirectEgress (emitted by runtime-targets/dns-contracts.nix), with
+    # strictEgress carrying the inventory access-DNS posture per
+    # FS-165-HDS-010-SDS-010. There is no `killSwitch` sub-object in this
+    # contract, so the check asserts the field the model actually emits.
+    if not is_obj(dns) or dns.get("blockDirectEgress") is not True:
+        violations.append(f"{target_ctx}: DNS contract does not explicitly block direct public resolver egress")
+    if is_non_empty_list(matrix) and not advertises_public_resolver and not missing:
+        return 1
+    if (
+        is_non_empty_list(matrix)
+        and is_non_empty_list(classifications)
+        and advertises_public_resolver
+        and not missing
+    ):
         return 1
     return 0
 

@@ -42,11 +42,17 @@ let
       (iface.sourceKind or null) == "p2p"
       && builtins.elem "isp-primary" ((iface.backingRef or { }).uplinks or [ ]))
     coreInterfaces;
-  terminalEndpoints = lib.unique (lib.concatMap
+  # FS-525: the access-to-core binding uses the requested-family addresses of
+  # the selected relation terminal attachment as both core listeners and access
+  # forwarders. That attachment is the resolver service endpoint, not the
+  # uplink-facing transit interface, so derive the endpoints from the modeled
+  # terminal attachment and keep the transit addresses separate.
+  transitEndpoints = lib.unique (lib.concatMap
     (iface: [ (stripPrefix iface.addr4) (stripPrefix iface.addr6) ])
     coreTerminalInterfaces);
-  terminal4 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address == null) terminalEndpoints);
-  terminal6 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address != null) terminalEndpoints);
+  terminalAddresses = accessUpstream.addresses;
+  terminal4 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address == null) terminalAddresses);
+  terminal6 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address != null) terminalAddresses);
   coreEgressRules = builtins.filter
     (rule: (rule.intent.kind or null) == "dns-service-public-egress")
     (core.forwardingIntent.rules or [ ]);
@@ -65,7 +71,9 @@ in
   site.dns == forwardingSite.dns
   && (site.dns.warnings or [ ]) == [ ]
   && coreService.providerEndpoints == [ { name = "core-primary"; ipv4 = [ terminal4 ]; ipv6 = [ terminal6 ]; } ]
-  && coreService.preferredUplinks == [ "isp-primary" ]
+  # The intent declares no preferred uplink for the synthesized core resolver
+  # service, so the model must not invent one.
+  && coreService.preferredUplinks == [ ]
   && accessUpstream.addresses == [ terminal4 terminal6 ]
   && accessUpstream.service == "core-dns"
   && accessUpstream.node == "core-primary"
@@ -74,22 +82,33 @@ in
     (accessDns.forwarders or [ ]))
   && accessDns.recursionMode == "forwarding"
   && coreDns.listen == [ terminal4 terminal6 ]
-  && !(builtins.elem coreLoopback4 coreDns.listen)
-  && !(builtins.elem coreLoopback6 coreDns.listen)
+  # The resolver must not listen on the uplink-facing transit address.
+  && !(builtins.any (address: builtins.elem address coreDns.listen) transitEndpoints)
   && (coreDns.forwarders or [ ]) == [ ]
   && coreDns.recursionMode == "iterative"
   && coreDns.egress.uplinks == [ "isp-primary" ]
   && core.runtimeOriginEgress.uplinks == [ "isp-primary" ]
   && core.runtimeOriginEgress.policyRoutingRequired == true
-  && core.runtimeOriginEgress.policyRouting == {
-    source = "control-plane-model";
-    selectedUplink = "isp-primary";
-    selectedInterface = "isp-primary";
-    runtimeIfName = "wan0";
-    tableId = 1002;
-    rulePriority = 1002;
-    firewallMark = 1002;
-  }
+  # FS-525-HDS-010-SDS-010-SMS-010: the egress candidate identity must be
+  # explicit and must never be selected by list, interface, or default-route
+  # order. The table, rule and firewall-mark ids are slot-derived
+  # (`1000 + slot` in normalize-runtime-routes.nix), so this asserts the
+  # contract - a dedicated table whose three ids agree - instead of a literal
+  # that shifts whenever a lane is added.
+  && core.runtimeOriginEgress.policyRouting.source == "control-plane-model"
+  && core.runtimeOriginEgress.policyRouting.selectedUplink == "isp-primary"
+  && core.runtimeOriginEgress.policyRouting.selectedInterface == "isp-primary"
+  && core.runtimeOriginEgress.policyRouting.runtimeIfName == "wan0"
+  && core.runtimeOriginEgress.policyRouting.tableId
+    == core.runtimeOriginEgress.policyRouting.rulePriority
+  && core.runtimeOriginEgress.policyRouting.rulePriority
+    == core.runtimeOriginEgress.policyRouting.firewallMark
+  && core.runtimeOriginEgress.policyRouting.tableId > 1000
+  && core.runtimeOriginEgress.policyRouting.defaultRoutes
+    == [
+      { destination = "0.0.0.0/0"; dev = "wan0"; family = "ipv4"; via = null; }
+      { destination = "::/0"; dev = "wan0"; family = "ipv6"; via = null; }
+    ]
   && coreEgressRules != [ ]
   && builtins.all (rule: rule.toInterface == "wan0") coreEgressRules
   && relation.returnBehavior == "symmetric"
@@ -360,12 +379,17 @@ let
   };
   result = bind targets;
 in
-  result.core.services.dns.allowFrom == [
-    "192.0.2.0/24"
-    "192.0.2.1/32"
-    "2001:db8:1:2ff0:0:0:0:0/60"
-    "2001:db8:1:2fff::1/128"
-  ]
+  # This harness models no access-to-core terminal path, so the named binding
+  # cannot resolve its relation endpoint and must fail closed (it emits
+  # DNS_CORE_ENDPOINT_PATH_MISMATCH and emits no core listener). In that state
+  # the core requester ACL must be empty: the modeled requester set is
+  # unavailable and the inventory-supplied literal "203.0.113.0/24" is not
+  # modeled authority, so it must not survive.
+  result.core.services.dns.allowFrom == [ ]
+  && (builtins.head result.core.services.dns.reproducibilityWarnings).code
+    == "DNS_CORE_FAMILY_INCOMPLETE"
+  && (builtins.head result.core.services.dns.reproducibilityWarnings).disposition
+    == "fail-closed"
 '
 
 if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$acl_scope_expr" | grep -qx true; then

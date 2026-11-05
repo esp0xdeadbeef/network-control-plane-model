@@ -584,6 +584,37 @@ let
         target
     ) targets;
 
+  # FS-525-HDS-010-SDS-010-SMS-010: the core requester ACL must come from the
+  # modeled access-to-core requester relations, never from an inventory
+  # literal. When the binding cannot resolve its relation endpoint (or the exit
+  # policy is inconsistent) the module fails closed, so any pre-existing
+  # `services.dns.allowFrom` literal on the core target must not survive: it was
+  # not derived from modeled authority. Clearing it makes the resolver
+  # deny-by-default instead of silently trusting unmodeled inventory.
+  clearUnmodeledCoreAcl =
+    targets: coreTargetName:
+    if !(builtins.hasAttr coreTargetName targets) then
+      targets
+    else
+      let
+        target = attrsOrEmpty targets.${coreTargetName};
+        services = attrsOrEmpty (target.services or null);
+        dns = attrsOrEmpty (services.dns or null);
+      in
+      if !(builtins.isAttrs (services.dns or null)) then
+        targets
+      else
+        targets
+        // {
+          ${coreTargetName} = target // {
+            services = services // {
+              dns = dns // {
+                allowFrom = [ ];
+              };
+            };
+          };
+        };
+
   applyBinding =
     targets: binding:
     let
@@ -791,9 +822,9 @@ let
       };
     in
     if relationEndpoint.endpointWarning != null then
-      attachWarnings targets [ relationEndpoint.endpointWarning ]
+      attachWarnings (clearUnmodeledCoreAcl targets coreTargetName) [ relationEndpoint.endpointWarning ]
     else if egressPolicy.diagnostic != null then
-      attachWarnings targets [ egressPolicy.diagnostic ]
+      attachWarnings (clearUnmodeledCoreAcl targets coreTargetName) [ egressPolicy.diagnostic ]
     else
       targets
       // {
