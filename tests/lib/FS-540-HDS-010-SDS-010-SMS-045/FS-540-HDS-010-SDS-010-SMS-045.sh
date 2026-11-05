@@ -11,9 +11,8 @@ nix eval --impure --expr '
 let
   flake = builtins.getFlake (toString ./.);
   system = builtins.currentSystem;
-  labs = /home/deadbeef/github/network-labs;
   trace = "FS-540-HDS-010-SDS-010-SMS-045";
-  row = labs + "/GAMP/SMT/${trace}";
+  row = "${flake.inputs.network-labs}/GAMP/SMT/${trace}";
   source = import (row + "/intent.nix");
   nixosInventory = import (row + "/inventory-nixos.nix");
   clabInventory = import (row + "/inventory-clab.nix");
