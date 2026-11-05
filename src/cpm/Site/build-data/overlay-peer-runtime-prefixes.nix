@@ -42,8 +42,16 @@ let
           perTenantPrefixLength = route.perTenantPrefixLength or null;
           slot = route.slot or null;
         };
+      # A runtime (delegated) prefix has no modeled prefix value of its own: the
+      # forwarding model emits it as a destination-less record that keeps the
+      # runtime `sourceFile` reference and its delegated derivation metadata.
+      # Consumers materialize dynamic authority from that record (the policy-only
+      # `delegated-public-egress` default, dynamic firewall CIDRs and dynamic
+      # unsafe routes -- FS-460-HDS-010-SDS-010-SMS-050), so keeping only
+      # destination-bearing records here silently dropped the whole class.
+      keepPeerRoute = r: r.dst != null || isRuntimeRouted r;
     in
-    builtins.filter (r: r.dst != null) (
+    builtins.filter keepPeerRoute (
       map (toEntry 4) (listOrEmpty (ov.routes4 or null))
       ++ map (toEntry 6) (listOrEmpty (ov.routes6 or null))
     );
