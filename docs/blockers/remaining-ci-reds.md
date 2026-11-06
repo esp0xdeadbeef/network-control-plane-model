@@ -41,5 +41,15 @@ and `test-network-labs-inventory-sweep` (21 outputs, no duplicate routes).
 `test-preferred-uplink-defaults`, `test-sitec-overlay-service-ingress`,
 `test-s-router-hetz-overlay-dns-ingress`.
 
-They are module/example migrations outside the DNS requester-lane contract. Each
-fails on the pre-change revision as well, so none is a regression of this fix.
+The full suite is 224 PASS / 18 FAIL. Every one of these 18 also fails on the
+pre-change revision `64ec24f^` (that revision had 20; `FS-525-HDS-010-SDS-010-SMS-010`
+and `test-dns-service-policy-routes` are the two this run moved to PASS), so none
+is a regression of the DNS work.
+
+The `test-preferred-uplink-defaults` group needs the policy point's access-uplink
+lane to carry the selected exit default. The forwarding model emits that default
+on the upstream selector side of the lane only; the policy point has none, and
+`normalize-runtime-routes.nix` complements policy lanes only from core-facing
+default interfaces. Closing it needs an upstream forwarding-model output plus its
+FS text (the owning requirement lives in the GAMP set); inferring the next hop in
+the control plane would violate FS-315, so it is not repaired here.
