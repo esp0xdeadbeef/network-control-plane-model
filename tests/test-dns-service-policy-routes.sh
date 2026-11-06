@@ -102,6 +102,14 @@ INVENTORY_PATH="${inventory_path}" \
           siteaUpstream."p2p-s-router-core-nebula-s-router-upstream-selector".routes;
         siteaPolicyAdmin =
           siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-admin".routes;
+        siteaPolicyClient =
+          siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-client".routes;
+        siteaPolicyDmz =
+          siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-dmz".routes;
+        # Not a member of allow-sitea-tenants-to-mgmt-dns: proves requester-lane
+        # authority is not fanned out to a sibling access lane (SMS-040).
+        siteaPolicyStreaming =
+          siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-streaming".routes;
         sitecClient =
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-client".routes;
         sitecDmz =
@@ -118,20 +126,55 @@ INVENTORY_PATH="${inventory_path}" \
           sitebNebulaCore."p2p-b-router-core-nebula-b-router-upstream-selector".routes;
       in {
         checks = {
+          # FS-540-HDS-010-SDS-010-SMS-020: "relation-owned requester-lane
+          # route authority containing policy table, outgoing lane, selected
+          # next-hop identity, and provenance for each requested family and
+          # resolver endpoint prefix." The requester leg carries the emitted
+          # resolver endpoint prefix on the requester access lane with the
+          # relation identity, and the fix must not fan that prefix out to a
+          # sibling access lane the relation did not admit (SMS-040).
           clientLaneLearnsAllowedMgmtDnsV4 =
-            hasScopedRoute
-              (siteaUpstreamClient.ipv4 or [ ])
-              "10.20.10.0/24"
-              "10.10.0.36"
-              "s-router-access-client"
-              "east-west";
+            hasDnsServiceRoute
+              (siteaPolicyClient.ipv4 or [ ])
+              "10.20.10.1/32"
+              "allow-sitea-tenants-to-mgmt-dns";
           clientLaneLearnsAllowedMgmtDnsV6 =
-            hasScopedRoute
-              (siteaUpstreamClient.ipv6 or [ ])
-              "fd42:dead:beef:0010:0000:0000:0000:0000/64"
-              "fd42:dead:beef:1000:0:0:0:24"
-              "s-router-access-client"
-              "east-west";
+            hasDnsServiceRoute
+              (siteaPolicyClient.ipv6 or [ ])
+              "fd42:dead:beef:10::1/128"
+              "allow-sitea-tenants-to-mgmt-dns";
+          clientLaneRouteIsPolicyTableAuthorityV4 =
+            builtins.any
+              (route:
+                (route.dst or null) == "10.20.10.1/32"
+                && ((route.intent or { }).kind or null) == "service-endpoint-reachability"
+                && ((route.intent or { }).policyTableComplement or false)
+                && ((route.lane or { }).access or null) == "s-router-access-client"
+                && ((route.relationId or null) == "allow-sitea-tenants-to-mgmt-dns")
+                && (route.via4 or null) != null)
+              (siteaPolicyClient.ipv4 or [ ]);
+          clientLaneRouteIsPolicyTableAuthorityV6 =
+            builtins.any
+              (route:
+                (route.dst or null) == "fd42:dead:beef:10::1/128"
+                && ((route.intent or { }).kind or null) == "service-endpoint-reachability"
+                && ((route.intent or { }).policyTableComplement or false)
+                && ((route.lane or { }).access or null) == "s-router-access-client"
+                && ((route.relationId or null) == "allow-sitea-tenants-to-mgmt-dns")
+                && (route.via6 or null) != null)
+              (siteaPolicyClient.ipv6 or [ ]);
+          admittedDmzLaneLearnsMgmtDnsV4 =
+            hasDnsServiceRoute
+              (siteaPolicyDmz.ipv4 or [ ])
+              "10.20.10.1/32"
+              "allow-sitea-tenants-to-mgmt-dns";
+          unadmittedStreamingLaneDoesNotLearnMgmtDnsV4 =
+            !(hasDnsServiceRoute
+              (siteaPolicyStreaming.ipv4 or [ ])
+              "10.20.10.1/32"
+              "allow-sitea-tenants-to-mgmt-dns");
+          clientLaneDoesNotCloneMgmtDnsPrefixV4 =
+            !(hasRoute (siteaPolicyClient.ipv4 or [ ]) "10.20.10.0/24" "10.10.0.20");
           mgmtLaneLearnsMgmtDnsV4 =
             hasDnsServiceRoute
               (siteaUpstreamMgmt.ipv4 or [ ])

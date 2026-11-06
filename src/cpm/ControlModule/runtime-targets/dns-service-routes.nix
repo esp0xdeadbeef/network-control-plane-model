@@ -130,7 +130,7 @@ let
 
   laneKindFor =
     iface:
-    (ingressLaneFor iface).kind or null;
+      (ingressLaneFor iface).kind or null;
 
   withIngressPolicyLane =
     fromIface: route:
@@ -236,16 +236,105 @@ let
               acc // { ${routeIfName} = mergeRoutes previous extraRoutes; })
           extraByIf
           (externalServiceRules (forwarding.rules or [ ]));
+      # FS-540-HDS-010-SDS-010-SMS-020 requester-lane authority is independent
+      # of the provider-facing rule class: a tenant-set/service relation is the
+      # requester leg the resolver relation admitted, and it must carry the
+      # emitted endpoint prefix on that requester lane with the lane's modelled
+      # next hop.
+      requesterServiceRules = builtins.filter
+        (rule:
+          (rule.action or null) == "accept"
+          && ((attrsOrEmpty (rule.to or null)).kind or null) == "service"
+          # Rules already handled by the provider-facing pass must not be
+          # emitted a second time on the same interface (FS-315: no duplicate
+          # route meaning).
+          && ((attrsOrEmpty (rule.from or null)).kind or null) != "external")
+        (listOrEmpty (forwarding.rules or [ ]));
+      requesterExtraByIf = builtins.foldl'
+        (acc: rule:
+          let
+            serviceName = (attrsOrEmpty (rule.to or null)).name or null;
+            fromName = rule.fromInterface or null;
+            toName = rule.toInterface or null;
+          in
+          if
+            !(builtins.hasAttr fromName byRuntime)
+            || !(builtins.hasAttr toName byRuntime)
+            || !(builtins.hasAttr serviceName servicesByName)
+            || fromName == toName
+            # Only a downstream access lane may carry requester-lane authority.
+            # An uplink lane is an exit surface, and putting an internal
+            # resolver endpoint on it would create a return route for a
+            # runtime-origin source prefix (FS-550 leak prevention, SMS-040).
+            || builtins.elem (laneKindFor byRuntime.${fromName}.iface) [
+              "uplink"
+              "access-uplink"
+            ]
+          then
+            acc
+          else
+            let
+              fromIface = byRuntime.${fromName}.iface;
+              fromIfName = byRuntime.${fromName}.ifName;
+              service = servicesByName.${serviceName};
+              requesterRoutes = tagIngressRoutes fromIface (dropRoutesAlreadyOnInterface fromIface {
+                ipv4 = endpointRoutes 4 rule service {
+                  fromIface = fromIface;
+                  toIface = fromIface;
+                  routeIface = fromIface;
+                };
+                ipv6 = endpointRoutes 6 rule service {
+                  fromIface = fromIface;
+                  toIface = fromIface;
+                  routeIface = fromIface;
+                };
+              });
+              # The destination-facing pass may already have put the same
+              # endpoint prefix on this interface; never emit a second atom for
+              # the same destination (FS-315: no duplicate route meaning).
+              alreadyThere =
+                family: routes:
+                builtins.filter
+                  (route:
+                    !(builtins.any
+                      (existing:
+                      (existing.dst or null) == (route.dst or null)
+                      && (existing.via4 or existing.via6 or null) == (route.via4 or route.via6 or null))
+                      (listOrEmpty ((attrsOrEmpty (acc.${fromIfName} or null)).${family} or null))))
+                  routes;
+              deduped = {
+                ipv4 = alreadyThere "ipv4" (requesterRoutes.ipv4 or [ ]);
+                ipv6 = alreadyThere "ipv6" (requesterRoutes.ipv6 or [ ]);
+              };
+            in
+            if requesterRoutes == { } || (deduped.ipv4 == [ ] && deduped.ipv6 == [ ]) then
+              acc
+            else
+              acc // {
+                ${fromIfName} = mergeRoutes (attrsOrEmpty (acc.${fromIfName} or null)) deduped;
+              })
+        endpointExtraByIf
+        requesterServiceRules;
+      mergeByIf =
+        left: right:
+        builtins.foldl'
+          (acc: name:
+          acc // {
+            ${name} = mergeRoutes (attrsOrEmpty (acc.${name} or null)) (attrsOrEmpty (right.${name} or null));
+          })
+          left
+          (builtins.attrNames right);
+      allExtraByIf = mergeByIf endpointExtraByIf requesterExtraByIf;
       updatedInterfaces =
         builtins.mapAttrs
           (ifName: iface:
-            if !(builtins.hasAttr ifName endpointExtraByIf) then
+            if !(builtins.hasAttr ifName allExtraByIf) then
               iface
             else
-              iface // { routes = mergeRoutes (attrsOrEmpty (iface.routes or null)) endpointExtraByIf.${ifName}; })
+              iface // { routes = mergeRoutes (attrsOrEmpty (iface.routes or null)) allExtraByIf.${ifName}; })
           interfaces;
     in
-    if interfaces == { } || endpointExtraByIf == { } then
+    if interfaces == { } || allExtraByIf == { } then
       target
     else
       target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };

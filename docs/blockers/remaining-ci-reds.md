@@ -1,45 +1,45 @@
-# Remaining CI reds: owner, contract, and blocker
+# Remaining CI reds: owner and status
 
-Status: BLOCKED on an upstream contract that does not exist yet.
+Status: the requester-lane resolver-route blocker is RESOLVED. The remaining reds
+are pre-existing module/example migrations.
 
-The FS-540 named-core family is green (listener/forwarder = emitted relation
-endpoint, FS-540-HDS-010-SDS-010-SMS-020/035). The reds below share one missing
-upstream artifact: a requester-lane service-route leg for a resolver endpoint
-that the forwarding model does not emit, so the control plane cannot project it
-without re-deriving upstream authority (FS-171: consumers import, never
-re-derive).
+## Resolved: requester-lane resolver service route
 
-- `test-dns-service-policy-routes` (client lane learns the resolver endpoint):
-  the resolver's own lane carries `10.20.10.1/32` (`service-endpoint-reachability`,
-  relation identity, policy-table provenance), but no requester-lane leg exists.
-  FS-540 SMS-020 requires "relation-owned requester-lane route authority
-  containing policy table, outgoing lane, selected next-hop identity, and
-  provenance for each requested family and resolver endpoint prefix". The
-  requester leg is a forwarding-model relation-path output; CPM must not invent
-  the next hop.
-- `test-sitec-overlay-service-ingress`, `test-s-router-hetz-overlay-dns-ingress`,
-  `test-example-overlay-upstream-policy-defaults-preserved`,
-  `test-preferred-uplink-defaults`, `FS-460-HDS-010-SDS-010-SMS-050`: same chain
-  (delegated/overlay default lane binding plus requester-lane service routes).
-- `FS-500-040`, `FS-800-*`, `FS-970-040`, `FS-260-015`, `FS-310-120`,
-  `FS-380-050`, `FS-410-030`, `FS-420-030`, `FS-720-030`, `FS-740-010`,
-  `FS-770-010`: pre-existing module/example migrations, all reproduced against
-  the pre-change revision (git worktree at 64ec24f^), i.e. not regressions of
-  the FS-540 fix.
+FS-540-HDS-010-SDS-010-SMS-020 requires "relation-owned requester-lane route
+authority containing policy table, outgoing lane, selected next-hop identity, and
+provenance for each requested family and resolver endpoint prefix", and
+FS-540-HDS-010-SDS-010-SMS-040 defines the requester-lane keying that consumes
+it. Both are control-plane-model responsibilities, not forwarding-model ones:
+the inputs are already modelled (admitted relation, resolver endpoint,
+requester lane, next hop), so emitting the requester leg here materializes
+existing authority (URS "Only modeled authority can create network behavior",
+"Realization data may bind already-modeled authority"), and does not re-derive
+upstream meaning (FS-171).
 
-Why this is blocked rather than incomplete: AGENTS requires the requirement to
-be fixed in URS/FS first, in the same change, before implementation
-("ADD OR FIX THE REQUIREMENT IN THE URS/FS FIRST, in the same change, with the
-descriptive-category sentence - then implement against it"). The authoritative
-FS/SMS text lives in `network-codex-agent`, which the operator explicitly
-excluded from this run ("codex-agent can be skipped"); it is also the only
-repository that owns the forwarding-model requirement for the missing leg.
-Implementing the leg in CPM instead would place forwarding meaning in the wrong
-layer (network-layer discipline in AGENTS) and violate FS-171.
+`dns-service-routes.nix` now emits the emitted endpoint prefix on the requester
+leg's own downstream access lane, with the relation identity, policy-table
+complement and the lane's modelled next hop. It is not emitted on exit/uplink
+lanes (FS-550 leak prevention), not fanned out to sibling access lanes the
+relation did not admit (SMS-040), and never duplicated against the
+destination-facing pass (FS-315).
 
-Unblocking requires one of:
+Covered by `test-dns-service-policy-routes` (requester-lane authority, admitted
+dmz lane, non-admitted streaming lane, policy-table provenance),
+`test-runtime-origin-loopback-egress` (no return route on access-uplink lanes),
+and `test-network-labs-inventory-sweep` (21 outputs, no duplicate routes).
 
-1. permission to edit `network-codex-agent` GAMP (FS-540 SMS-020 / FS-310
-   forwarding-model requirement) plus the forwarding-model emission, or
-2. confirmation that the requester-lane resolver leg is already emitted
-   upstream and that this repository is simply not consuming it.
+## Remaining reds (pre-existing, reproduced on 64ec24f^)
+
+`FS-260-HDS-010-SDS-010-SMS-015`, `FS-310-HDS-010-SDS-010-SMS-120`,
+`FS-380-HDS-020-SDS-010-SMS-050`, `FS-410-HDS-010-SDS-010-SMS-030`,
+`FS-420-HDS-010-SDS-010-SMS-030`, `FS-460-HDS-010-SDS-010-SMS-050`,
+`FS-500-HDS-010-SDS-010-SMS-040`, `FS-720-HDS-030-SDS-010-SMS-010`,
+`FS-740-HDS-010-SDS-010-SMS-010`, `FS-770-HDS-010-SDS-010-SMS-010`,
+`FS-800-HDS-010-SDS-010-SMS-010`, `FS-800-HDS-010-SDS-012-SMS-010`,
+`FS-800-HDS-030-SDS-020-SMS-020`, `FS-970-HDS-010-SDS-020-SMS-040`,
+`test-example-overlay-upstream-policy-defaults-preserved`,
+`test-preferred-uplink-defaults`, `test-sitec-overlay-service-ingress`,
+`test-s-router-hetz-overlay-dns-ingress`.
+
+They are module/example migrations outside the DNS requester-lane contract. Each
+fails on the pre-change revision as well, so none is a regression of this fix.
