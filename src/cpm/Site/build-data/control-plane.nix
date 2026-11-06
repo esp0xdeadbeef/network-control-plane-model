@@ -36,10 +36,17 @@ let
   siteTenantsCfg = attrsOrEmpty (siteControlPlaneCfg.tenants or null);
   siteIpv6Cfg = attrsOrEmpty (siteAttrs.ipv6 or null) // attrsOrEmpty (siteControlPlaneCfg.ipv6 or null);
 
-  # FS-481: the routing style is forwarding-model authority. The NFM computes
-  # `routing = { mode; bgp = { asn; topology; } }` from the intent and the CPM
-  # consumes that normalized output; it never parses the intent topology.
+  # FS-481: the routing STYLE (static vs. requiring the BGP behavior) is intent
+  # authority. A scope requires the behavior on its modeled selection, the
+  # compiler validates it, and the NFM emits `routing.mode`; the CPM consumes
+  # that and never parses the intent topology.
+  #
+  # The BGP mechanism parameters (ASN, route-reflector topology) are inventory
+  # facts (FS-481: "the mechanism parameters ... are inventory or runtime
+  # facts"), so the ASN/topology are realized from the site's control-plane
+  # inventory rather than re-derived from intent.
   siteRouting = attrsOrEmpty (siteAttrs.routing or null);
+  inventoryRouting = attrsOrEmpty (siteControlPlaneCfg.routing or null);
 
   routingMode =
     let
@@ -49,7 +56,7 @@ let
 
   bgpSite =
     if routingMode == "bgp" then
-      attrsOrEmpty (siteRouting.bgp or null)
+      attrsOrEmpty (inventoryRouting.bgp or null)
     else
       { };
 
