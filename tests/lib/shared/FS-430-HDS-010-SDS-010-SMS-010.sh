@@ -13,7 +13,7 @@ trap 'rm -f "${output_json}"' EXIT
 
 cd "${repo_root}"
 
-nix eval \
+nix eval --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   --impure --json --expr '
     let

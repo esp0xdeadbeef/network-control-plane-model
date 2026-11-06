@@ -23,7 +23,7 @@ fail() { echo "FAIL $1"; FAIL=$((FAIL+1)); }
 run_check() {
   local desc="$1" intent_expr="$2"
   local result
-  result=$(REPO_ROOT="$repo_root" nix eval --impure --raw --expr "
+  result=$(REPO_ROOT="$repo_root" nix eval --no-write-lock-file --impure --raw --expr "
     let flake = builtins.getFlake (toString ./.); system = builtins.currentSystem;
         labs = flake.inputs.network-labs.outPath;
         baseIntent = import (labs + \"/examples/single-wan-with-nebula/intent.nix\");

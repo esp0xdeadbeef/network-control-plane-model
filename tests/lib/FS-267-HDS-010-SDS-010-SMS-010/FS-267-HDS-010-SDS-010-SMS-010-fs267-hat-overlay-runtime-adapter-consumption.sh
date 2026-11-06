@@ -25,7 +25,7 @@ intent_path="${hat_dir}/intent.nix"
 nixos_output="${tmp_dir}/nixos-cpm.json"
 clab_output="${tmp_dir}/clab-cpm.json"
 
-nix run \
+nix run --no-write-lock-file \
   --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \
@@ -33,7 +33,7 @@ nix run \
   "${hat_dir}/inventory-nixos.nix" \
   "${nixos_output}" >/dev/null
 
-nix run \
+nix run --no-write-lock-file \
   --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \

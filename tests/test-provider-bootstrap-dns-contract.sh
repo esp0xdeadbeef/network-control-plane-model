@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -80,13 +80,13 @@ EOF
 
 output_json="${tmp_dir}/output.json"
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${example_dir}/intent.nix" \
   "${tmp_dir}/inventory-with-provider-bootstrap-dns.nix" \
   "${output_json}" \
   >"${tmp_dir}/compile-stdout.txt"
 
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     site = data.control_plane_model.data.esp0xdeadbeef."site-a";
@@ -144,7 +144,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   exit 1
 }
 
-if nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+if nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${example_dir}/intent.nix" \
   "${tmp_dir}/inventory-missing-provider-bootstrap-forwarders.nix" \
   "${tmp_dir}/missing-output.json" \

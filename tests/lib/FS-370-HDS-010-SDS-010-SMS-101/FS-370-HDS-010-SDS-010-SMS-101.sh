@@ -29,7 +29,7 @@ expect_nix_failure() {
   local output
 
   output="$(mktemp)"
-  if REPO_ROOT="${repo_root}" nix eval --impure --expr "${expr}" >"${output}" 2>&1; then
+  if REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${expr}" >"${output}" 2>&1; then
     echo "FAIL ${label}: expected construction failure containing ${expected}" >&2
     rm -f "${output}"
     exit 1
@@ -45,7 +45,7 @@ expect_nix_failure() {
   echo "PASS ${label}"
 }
 
-REPO_ROOT="${repo_root}" nix eval --impure --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     system = builtins.currentSystem;

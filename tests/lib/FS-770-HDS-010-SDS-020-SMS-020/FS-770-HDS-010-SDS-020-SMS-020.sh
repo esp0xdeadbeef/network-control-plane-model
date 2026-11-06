@@ -19,7 +19,7 @@ inventory_path="${hat_dir}/inventory-nixos.nix"
 output_json="${tmp_dir}/cpm-nixos.json"
 
 echo "--- Compiling CPM with inventory-nixos.nix ---"
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
   "${inventory_path}" \
   "${output_json}" >/dev/null

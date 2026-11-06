@@ -66,7 +66,7 @@ in
     reverseRules
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
   echo "PASS policy-service-endpoint-lane-scope"
 else
   echo "FAIL policy-service-endpoint-lane-scope" >&2

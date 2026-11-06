@@ -27,7 +27,7 @@ in
   && (dns.blockDirectEgress or false)
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
   echo "PASS example-dns-service-wan-forwarders"
 else
   echo "FAIL example-dns-service-wan-forwarders" >&2

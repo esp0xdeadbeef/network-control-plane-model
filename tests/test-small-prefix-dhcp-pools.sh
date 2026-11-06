@@ -16,7 +16,7 @@ output_json="${tmp_dir}/cpm.json"
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${labs_root}/examples/tri-site-dual-wan-overlay-integration-bgp/intent.nix" \
   "${labs_root}/examples/tri-site-dual-wan-overlay-integration-bgp/inventory-clab.nix" \
   "${output_json}" >/dev/null

@@ -6,7 +6,7 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-nix eval --impure --expr '
+nix eval --no-write-lock-file --impure --expr '
 let
   flake = builtins.getFlake (toString '"${repo_root}"');
   system = builtins.currentSystem;

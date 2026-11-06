@@ -27,13 +27,13 @@ fail() {
 }
 
 echo "--- Compiling CPM with inventory-clab.nix ---"
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
   "${clab_inventory}" \
   "${output_clab}" >/dev/null
 
 echo "--- Compiling CPM with inventory-nixos.nix ---"
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
   "${nixos_inventory}" \
   "${output_nixos}" >/dev/null

@@ -181,7 +181,7 @@ in
 EOF
 
 module_eval="${tmp_dir}/module-fixture.json"
-CPM_REPO_ROOT="${repo_root}" nix eval \
+CPM_REPO_ROOT="${repo_root}" nix eval --no-write-lock-file \
   --json --impure \
   --extra-experimental-features 'nix-command flakes' \
   --file "${tmp_dir}/module-fixture.nix" > "${module_eval}"
@@ -423,7 +423,7 @@ in
 EOF
 
 continuity_eval="${tmp_dir}/continuity-fixture.json"
-CPM_REPO_ROOT="${repo_root}" nix eval \
+CPM_REPO_ROOT="${repo_root}" nix eval --no-write-lock-file \
   --json --impure \
   --extra-experimental-features 'nix-command flakes' \
   --file "${tmp_dir}/continuity-fixture.nix" > "${continuity_eval}"
@@ -498,7 +498,7 @@ build_cpm() {
   local inventory="$1"
   local output="$2"
 
-  nix run \
+  nix run --no-write-lock-file \
     --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     "${repo_root}#compile-and-build-control-plane-model" -- \
@@ -825,8 +825,8 @@ in
   }
 CPMCONT
 
-integrated_json="$(CPM_REPO_ROOT="${repo_root}" nix eval --impure --json -f "${tmp_dir}/integrated-continuity.nix" 2>&1)" || {
-  echo "FAIL FS-270-HDS-010-SDS-010-SMS-040 INTEGRATED: nix eval failed: ${integrated_json}" >&2
+integrated_json="$(CPM_REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json -f "${tmp_dir}/integrated-continuity.nix" 2>&1)" || {
+  echo "FAIL FS-270-HDS-010-SDS-010-SMS-040 INTEGRATED: nix eval --no-write-lock-file failed: ${integrated_json}" >&2
   exit 1
 }
 

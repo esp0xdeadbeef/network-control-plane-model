@@ -22,7 +22,7 @@ while IFS= read -r -d '' inventory_path; do
   example_dir="$(dirname "${inventory_path}")"
   rel_inventory="${inventory_path#"${labs_root}/"}"
 
-  CASE_DIR="${example_dir}" INVENTORY_PATH="${inventory_path}" REL_INVENTORY="${rel_inventory}" nix eval \
+  CASE_DIR="${example_dir}" INVENTORY_PATH="${inventory_path}" REL_INVENTORY="${rel_inventory}" nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let
@@ -157,18 +157,18 @@ fi
 bgp_output="${tmp_dir}/s-router-overlay-dns-lane-policy.json"
 static_output="${tmp_dir}/ipv6-pd-downstream-delegation.json"
 
-nix run --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${examples_root}/s-router-overlay-dns-lane-policy/intent.nix" \
   "${examples_root}/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
   "${bgp_output}" >/dev/null
 
-nix run --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${examples_root}/ipv6-pd-downstream-delegation/intent.nix" \
   "${examples_root}/ipv6-pd-downstream-delegation/inventory-nixos.nix" \
   "${static_output}" >/dev/null
 
 check_result="$(
-  BGP_OUTPUT="${bgp_output}" STATIC_OUTPUT="${static_output}" nix eval \
+  BGP_OUTPUT="${bgp_output}" STATIC_OUTPUT="${static_output}" nix eval --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   --impure --expr '
     let

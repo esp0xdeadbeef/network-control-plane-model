@@ -43,7 +43,7 @@ PREFIX='
 eval_checker() {
   local assignment="$1"
   local query="$2"
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr "
     ${PREFIX}

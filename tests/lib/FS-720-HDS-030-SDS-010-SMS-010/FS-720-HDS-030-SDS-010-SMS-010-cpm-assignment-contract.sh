@@ -42,7 +42,7 @@ PREFIX='
 eval_assignment() {
   local fixture="$1"
   local query="$2"
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr "
     ${PREFIX}
@@ -59,7 +59,7 @@ eval_assignment() {
 # Assert that an eval throws
 eval_must_fail() {
   local fixture="$1"
-  if nix eval \
+  if nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr "
     ${PREFIX}

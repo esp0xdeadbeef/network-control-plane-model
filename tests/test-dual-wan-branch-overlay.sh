@@ -27,13 +27,13 @@ run_one() {
   output_json="$(mktemp)"
   trap 'rm -f "'"${output_json}"'"' RETURN
 
-  nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+  nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model" -- \
     "${intent_path}" \
     "${inventory_path}" \
     "${output_json}" >/dev/null
 
   # shellcheck disable=SC2016
-  OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+  OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
     let
       data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
       siteA = data.control_plane_model.data.enterpriseA."site-a";

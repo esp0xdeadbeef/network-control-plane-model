@@ -16,7 +16,7 @@ labs_path="$(
 
 REPO_ROOT="${repo_root}" \
 LABS_PATH="${labs_path}" \
-nix eval \
+nix eval --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   --impure --json --expr '
     let

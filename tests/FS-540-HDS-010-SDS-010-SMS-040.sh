@@ -6,7 +6,7 @@ set -euo pipefail
 repo_root="${NETWORK_CONTROL_PLANE_MODEL_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-REPO_ROOT="${repo_root}" nix eval --impure --raw --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --raw --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     flake = builtins.getFlake ("path:" + repoRoot);

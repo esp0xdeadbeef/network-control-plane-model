@@ -116,7 +116,7 @@ in
   && builtins.any (rule: (rule.direction or null) == "relation-reverse") relationRules
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
   echo "PASS FS-525 named core resolver binding"
 else
   echo "FAIL FS-525 named core resolver binding" >&2
@@ -174,7 +174,7 @@ in
   && (builtins.head accessDns.upstreamResolvers).service == "core-dns"
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$endpoint_alias_expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$endpoint_alias_expr" | grep -qx true; then
   echo "PASS FS-525 requester provider endpoint binds to one modeled access node"
 else
   echo "FAIL FS-525 requester provider endpoint binding" >&2
@@ -273,7 +273,7 @@ in
   && !((result.core.services.dns or {}) ? listen)
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$path_mismatch_expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$path_mismatch_expr" | grep -qx true; then
   echo "PASS FS-525 relation endpoint mismatch warns and fails closed"
 else
   echo "FAIL FS-525 relation endpoint mismatch warning" >&2
@@ -392,7 +392,7 @@ in
     == "fail-closed"
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$acl_scope_expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$acl_scope_expr" | grep -qx true; then
   echo "PASS FS-525 core ACL is derived only from explicit requester relations"
 else
   echo "FAIL FS-525 core requester ACL scope" >&2
@@ -516,7 +516,7 @@ in
   && !(ambiguous.access.services.dns ? forwarders)
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$egress_warning_expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$egress_warning_expr" | grep -qx true; then
   echo "PASS FS-525/FS-540 missing and ambiguous DNS egress warn redacted and fail closed"
 else
   echo "FAIL FS-525/FS-540 DNS egress warning contract" >&2

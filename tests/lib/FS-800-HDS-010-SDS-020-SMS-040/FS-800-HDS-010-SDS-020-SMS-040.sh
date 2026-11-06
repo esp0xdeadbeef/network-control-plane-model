@@ -28,7 +28,7 @@ output_json="${tmp_dir}/cpm.json"
 
 all_checks_passed=true
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${hat_dir}/intent.nix" \
   "${hat_dir}/inventory-nixos.nix" \
   "${output_json}" >/dev/null

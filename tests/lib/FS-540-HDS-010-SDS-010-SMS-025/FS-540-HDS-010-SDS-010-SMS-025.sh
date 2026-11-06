@@ -76,7 +76,7 @@ builtins.toJSON {
 }
 ENDNIX
 
-  nix eval --raw -f "${tmp_dir}/eval.nix" >"${output}" 2>"${tmp_dir}/eval.stderr" || {
+  nix eval --no-write-lock-file --raw -f "${tmp_dir}/eval.nix" >"${output}" 2>"${tmp_dir}/eval.stderr" || {
     echo "Module evaluation failed:" >&2
     cat "${tmp_dir}/eval.stderr" >&2
     return 1

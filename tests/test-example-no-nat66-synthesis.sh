@@ -16,7 +16,7 @@ if [[ -n "${NETWORK_FORWARDING_MODEL_OVERRIDE:-}" ]]; then
   nix_args+=(--override-input network-forwarding-model "${NETWORK_FORWARDING_MODEL_OVERRIDE}")
 fi
 
-nix eval "${nix_args[@]}" \
+nix eval --no-write-lock-file "${nix_args[@]}" \
   --extra-experimental-features 'nix-command flakes' \
   --impure --json "path:${repo_root}#lib.x86_64-linux.compileAndBuildFromPaths" \
   --apply 'f:

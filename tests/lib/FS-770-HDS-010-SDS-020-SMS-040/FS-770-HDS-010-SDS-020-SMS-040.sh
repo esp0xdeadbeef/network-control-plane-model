@@ -50,7 +50,7 @@ check_cpm() {
     in if runner.success then "PASS" else "FAIL"
 NIXEND
   local result
-  result=$(nix eval --impure --raw -f "$tmp_nix" 2>&1) || true
+  result=$(nix eval --no-write-lock-file --impure --raw -f "$tmp_nix" 2>&1) || true
   rm -f "$tmp_nix"
   echo "$result"
 }
@@ -76,7 +76,7 @@ extract_surface() {
     in builtins.removeAttrs data [ "diagnostics" ]
 NIXEND
   local json_output
-  json_output=$(nix eval --impure --json -f "$tmp_nix" 2>&1) || true
+  json_output=$(nix eval --no-write-lock-file --impure --json -f "$tmp_nix" 2>&1) || true
   rm -f "$tmp_nix"
   echo "$json_output"
 }

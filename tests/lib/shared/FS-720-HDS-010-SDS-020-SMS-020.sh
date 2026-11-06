@@ -19,7 +19,7 @@ fail() {
 [[ -f "${hat_root}/inventory-nixos.nix" ]] || fail "missing ${hat_root}/inventory-nixos.nix"
 
 result="$(
-  nix eval --impure --json --expr "
+  nix eval --no-write-lock-file --impure --json --expr "
     let
       flake = builtins.getFlake \"path:${repo_root}\";
       cpm = flake.libBySystem.\${builtins.currentSystem}.compileAndBuildFromPaths {
@@ -78,7 +78,7 @@ if needle not in source:
 path.write_text(source.replace(needle, "", 1))
 PY
 
-if nix eval --impure --json --expr "
+if nix eval --no-write-lock-file --impure --json --expr "
   let
     flake = builtins.getFlake \"path:${repo_root}\";
     cpm = flake.libBySystem.\${builtins.currentSystem}.compileAndBuildFromPaths {
@@ -117,7 +117,7 @@ path.write_text(source.replace(needle, "", 1))
 PY
 
 role_result="$(
-  nix eval --impure --json --expr "
+  nix eval --no-write-lock-file --impure --json --expr "
     let
       flake = builtins.getFlake \"path:${repo_root}\";
       cpm = flake.libBySystem.\${builtins.currentSystem}.compileAndBuildFromPaths {

@@ -15,7 +15,7 @@ export CPM_RELATIONS_FILE="${tmpdir}/relations.json"
 eval_relations() {
   local relations_json="$1"
   printf '%s' "$relations_json" >"${CPM_RELATIONS_FILE}"
-  nix eval --impure --json --expr '
+  nix eval --no-write-lock-file --impure --json --expr '
     let
       repoRoot = builtins.getEnv "CPM_REPO_ROOT";
       lib = import (repoRoot + "/lib/utils.nix");

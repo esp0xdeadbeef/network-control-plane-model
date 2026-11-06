@@ -29,7 +29,7 @@ forwarding_from_cpm="${tmp_dir}/forwarding-from-cpm.json"
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="${tmp_dir}/current-lab/intent-s-router-nixos.nix" \
 INVENTORY_PATH="${tmp_dir}/current-lab/inventory-s-router-nixos.nix" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure \
     --json \

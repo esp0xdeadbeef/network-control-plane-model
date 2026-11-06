@@ -16,7 +16,7 @@ output_json="${tmp_dir}/output.json"
 duplicates_json="${tmp_dir}/duplicates.json"
 equivalence_json="${tmp_dir}/equivalence.json"
 
-REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     precedence = import (repoRoot + "/src/cpm/firewall-intent/precedence.nix") { };
@@ -113,7 +113,7 @@ fi
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -123,7 +123,7 @@ labs_path="$(
   '
 )"
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${labs_path}/examples/single-wan/intent.nix" \
   "${labs_path}/examples/single-wan/inventory-nixos.nix" \
   "${output_json}" >/dev/null

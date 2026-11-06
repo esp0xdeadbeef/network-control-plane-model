@@ -14,7 +14,7 @@ state_eval_expr() {
 state_assert_true() {
   local attr="$1"
   local label="$2"
-  if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$(state_eval_expr "${attr}")" | grep -qx true; then
+  if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$(state_eval_expr "${attr}")" | grep -qx true; then
     printf 'PASS %s\n' "${label}"
   else
     printf 'FAIL %s\n' "${label}" >&2
@@ -28,7 +28,7 @@ state_assert_fails() {
   local label="$3"
   local tmp
   tmp="$(mktemp)"
-  if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$(state_eval_expr "${attr}")" >"${tmp}.out" 2>"${tmp}.err"; then
+  if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$(state_eval_expr "${attr}")" >"${tmp}.out" 2>"${tmp}.err"; then
     printf 'FAIL %s: expression unexpectedly evaluated\n' "${label}" >&2
     rm -f "${tmp}" "${tmp}.out" "${tmp}.err"
     exit 1

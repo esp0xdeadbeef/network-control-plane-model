@@ -26,12 +26,12 @@ echo "--- FS-380-HDS-020-SDS-010-SMS-100: CPM NAT fabric prefix inclusion ---"
 echo ""
 
 # ============================================================
-# Helper: run nix eval expression and check result
+# Helper: run nix eval --no-write-lock-file expression and check result
 # ============================================================
 nix_eval_bool() {
   local desc="$1" expr="$2" expected="$3"
   local result
-  result="$(REPO_ROOT="${repo_root}" nix eval --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
+  result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
   if [[ "${result}" == "${expected}" ]]; then
     echo "PASS: ${desc}"
   else
@@ -43,7 +43,7 @@ nix_eval_bool() {
 nix_eval_list_contains() {
   local desc="$1" expr="$2" element="$3"
   local result
-  result="$(REPO_ROOT="${repo_root}" nix eval --impure --json --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
+  result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
   if echo "${result}" | grep -qF "\"${element}\""; then
     echo "PASS: ${desc}"
   else
@@ -55,7 +55,7 @@ nix_eval_list_contains() {
 nix_eval_list_not_contains() {
   local desc="$1" expr="$2" element="$3"
   local result
-  result="$(REPO_ROOT="${repo_root}" nix eval --impure --json --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
+  result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
   if echo "${result}" | grep -qF "\"${element}\""; then
     echo "FAIL: ${desc} — list should NOT contain \"${element}\", got ${result}"
     all_checks_passed=false
@@ -67,7 +67,7 @@ nix_eval_list_not_contains() {
 nix_eval_list_empty() {
   local desc="$1" expr="$2"
   local result
-  result="$(REPO_ROOT="${repo_root}" nix eval --impure --json --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
+  result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
   if [[ "${result}" == "[ ]" ]]; then
     echo "PASS: ${desc}"
   else
@@ -82,7 +82,7 @@ nix_eval_list_empty() {
 run_nat() {
   # Arguments: siteAttrsExpr, interfacesExpr, nat44Expr, nat66Expr
   local site_expr="$1" ifaces_expr="$2" nat44_expr="$3" nat66_expr="${4:-{}}"
-  nix eval --impure --json --expr "
+  nix eval --no-write-lock-file --impure --json --expr "
     let
       lib = import <nixpkgs/lib>;
       helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/cpm-contract-support.nix\") { inherit lib; };

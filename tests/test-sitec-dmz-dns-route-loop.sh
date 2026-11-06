@@ -8,7 +8,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-nix eval --extra-experimental-features 'nix-command flakes' --impure --expr '
+nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr '
   let
     flake = builtins.getFlake ("path:" + toString '"$repo_root"');
     system = builtins.currentSystem;

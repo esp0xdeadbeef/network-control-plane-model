@@ -59,7 +59,7 @@ in
 }
 NIX
 
-result="$(nix eval --impure --json -f "${tmpdir}/probe.nix" 2>/dev/null)"
+result="$(nix eval --no-write-lock-file --impure --json -f "${tmpdir}/probe.nix" 2>/dev/null)"
 [[ -n "${result}" ]] || fail "probe evaluation produced no result"
 
 # Seeded negative 3a: the fabric links carry no core or access role yet must be

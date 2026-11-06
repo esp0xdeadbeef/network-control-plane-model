@@ -14,7 +14,7 @@ result_json="${tmp_dir}/result.json"
 # This is a CPM module construction test. Current network-labs examples do not
 # emit overlayClientGua records, so the proof uses explicit runtimeTarget
 # fixtures for the positive path and seeded negatives.
-REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     system = builtins.currentSystem;

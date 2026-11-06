@@ -15,7 +15,7 @@ archive_json="${tmp_dir}/archive.json"
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -33,14 +33,14 @@ inventory="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixo
 
 (
   cd "${repo_root}"
-  nix run .#compile-and-build-control-plane-model -- \
+  nix run --no-write-lock-file .#compile-and-build-control-plane-model -- \
     "${intent}" \
     "${inventory}" \
     "${output_json}" >/dev/null
 )
 
 # shellcheck disable=SC2016
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     siteA = data.control_plane_model.data.esp0xdeadbeef."site-a";

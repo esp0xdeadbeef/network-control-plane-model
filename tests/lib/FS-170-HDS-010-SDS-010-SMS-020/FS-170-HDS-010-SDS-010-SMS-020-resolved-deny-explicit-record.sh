@@ -27,7 +27,7 @@ modified_intent="${tmp_dir}/intent-modified.nix"
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -77,7 +77,7 @@ export LABS_PATH="${labs_path}"
 export REPO_ROOT="${repo_root}"
 export MODIFIED_INTENT="${modified_intent}"
 
-nix eval --impure --expr '
+nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     system = builtins.currentSystem;

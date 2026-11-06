@@ -6,7 +6,7 @@
 # Two modes:
 #   default  : parse nft list ruleset output from file/stdin and verify
 #              bidirectional symmetry (intended for live CLAB execution)
-#   CPM_VERIFY=1 : CPM construction-level verification using nix eval
+#   CPM_VERIFY=1 : CPM construction-level verification using nix eval --no-write-lock-file
 #              to prove D18-NEW resolution at the CPM layer
 #
 # SMS Module Responsibilities covered: MR1-MR5 (see SMS lines 26-38)
@@ -196,9 +196,9 @@ run_cpm_verify() {
   nix_file="${REPO_ROOT}/tests/fs260-hds010-sds010-sms015-hat-probe-cpm-verify.nix"
 
   # Evaluate the nix expression
-  nix eval --impure --expr "(import ${nix_file} { repoRoot = \"${REPO_ROOT}\"; })" --json > "${result_json}" 2>&1 || {
+  nix eval --no-write-lock-file --impure --expr "(import ${nix_file} { repoRoot = \"${REPO_ROOT}\"; })" --json > "${result_json}" 2>&1 || {
     echo "FAIL test-hat-policy-nft-rules (CPM verify mode)" >&2
-    echo "nix eval error:" >&2
+    echo "nix eval --no-write-lock-file error:" >&2
     cat "${result_json}" >&2
     rm -f "${result_json}"
     return 1

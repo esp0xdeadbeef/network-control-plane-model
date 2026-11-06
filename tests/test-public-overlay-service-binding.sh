@@ -108,7 +108,7 @@ in
   && !(hasRoute dmzEastWestRoutes "10.90.10.100" "10.80.0.16")
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
   echo "PASS public-overlay-service-binding"
 else
   echo "FAIL public-overlay-service-binding" >&2

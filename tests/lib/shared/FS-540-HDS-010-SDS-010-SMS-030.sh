@@ -7,7 +7,7 @@ repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-p
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 cd "${repo_root}"
 
-result="$(nix eval --json --extra-experimental-features 'nix-command flakes' --impure --expr '
+result="$(nix eval --no-write-lock-file --json --extra-experimental-features 'nix-command flakes' --impure --expr '
 let
   flake = builtins.getFlake ("path:" + toString ./.);
   system = builtins.currentSystem;

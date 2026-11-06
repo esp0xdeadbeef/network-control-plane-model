@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 golden_input_file="${repo_root}/fixtures/passing/golden-no-guessing-base/input.nix"
 default_egress_inventory_file="${repo_root}/fixtures/passing/default-egress-reachability/inventory.nix"
 
@@ -32,7 +32,7 @@ run_case() {
   in
     builder { inherit input inventory; }"
 
-  if nix eval --impure --json --expr "${expr}" >/dev/null 2>"${stderr_file}"; then
+  if nix eval --no-write-lock-file --impure --json --expr "${expr}" >/dev/null 2>"${stderr_file}"; then
     echo "FAIL ${name}: evaluation unexpectedly succeeded"
     status=1
   else
@@ -93,7 +93,7 @@ mutate_once_with_nix() {
       ;;
   esac
 
-  nix eval --impure --raw --expr "${expr}"
+  nix eval --no-write-lock-file --impure --raw --expr "${expr}"
 }
 
 mutate_input() {

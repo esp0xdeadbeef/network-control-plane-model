@@ -22,7 +22,7 @@ tmp_dir="$(mktemp -d)"
 output_json="${tmp_dir}/control-plane.json"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${hat_dir}/intent.nix" \
   "${hat_dir}/inventory-clab.nix" \
   "${output_json}" >/dev/null

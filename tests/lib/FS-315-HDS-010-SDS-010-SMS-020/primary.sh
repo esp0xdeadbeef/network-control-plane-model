@@ -26,8 +26,8 @@ run_nix_eval() {
   local test_label="$2"
   local outfile="${tmpdir}/${test_label}.out"
   local errfile="${tmpdir}/${test_label}.err"
-  nix eval --impure --json --expr "${expr}" >"${outfile}" 2>"${errfile}" || {
-    echo "FAIL ${test_label}: nix eval failed:" >&2
+  nix eval --no-write-lock-file --impure --json --expr "${expr}" >"${outfile}" 2>"${errfile}" || {
+    echo "FAIL ${test_label}: nix eval --no-write-lock-file failed:" >&2
     cat "${errfile}" >&2
     exit 1
   }

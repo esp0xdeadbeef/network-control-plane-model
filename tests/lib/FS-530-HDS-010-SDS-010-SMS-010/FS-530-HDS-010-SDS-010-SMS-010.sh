@@ -83,7 +83,7 @@ in
     && ra.policyReferences.trafficClassification.dnsPolicy == \"modeled-resolver-relationship\"
   )"
 
-if ! REPO_ROOT="${repo_root}" nix eval --impure --expr "${positive_expr}" | grep -qx true; then
+if ! REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${positive_expr}" | grep -qx true; then
   echo "FAIL FS-530 resolver advertisement contract: expected complete DHCP4 and RA records" >&2
   exit 1
 fi
@@ -94,7 +94,7 @@ missing_policy_expr="let
 in
   dnsContracts badTarget"
 
-if REPO_ROOT="${repo_root}" nix eval --impure --expr "${missing_policy_expr}" >/tmp/fs530-missing-policy.out 2>/tmp/fs530-missing-policy.err; then
+if REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${missing_policy_expr}" >/tmp/fs530-missing-policy.out 2>/tmp/fs530-missing-policy.err; then
   echo "FAIL FS-530 resolver advertisement contract: missing DNS policy unexpectedly passed" >&2
   exit 1
 fi
@@ -114,7 +114,7 @@ in
     \"10.20.20.1\"
     null"
 
-if REPO_ROOT="${repo_root}" nix eval --impure --expr "${missing_dhcp4_option_expr}" >/tmp/fs530-missing-dhcp4.out 2>/tmp/fs530-missing-dhcp4.err; then
+if REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${missing_dhcp4_option_expr}" >/tmp/fs530-missing-dhcp4.out 2>/tmp/fs530-missing-dhcp4.err; then
   echo "FAIL FS-530 resolver advertisement contract: missing DHCP option 6 unexpectedly passed" >&2
   exit 1
 fi
@@ -134,7 +134,7 @@ in
     \"fd42:dead:beef:20::1\"
     null"
 
-if REPO_ROOT="${repo_root}" nix eval --impure --expr "${missing_ra_option_expr}" >/tmp/fs530-missing-ra.out 2>/tmp/fs530-missing-ra.err; then
+if REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${missing_ra_option_expr}" >/tmp/fs530-missing-ra.out 2>/tmp/fs530-missing-ra.err; then
   echo "FAIL FS-530 resolver advertisement contract: missing RA RDNSS unexpectedly passed" >&2
   exit 1
 fi

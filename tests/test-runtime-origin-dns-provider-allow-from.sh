@@ -49,7 +49,7 @@ base // {
 }
 EOF
 
-nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model" -- \
   "${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" \
   "${inventory_nix}" \
   "${output_json}" >/dev/null

@@ -160,7 +160,7 @@ in
 EOF
 
 external_eval="${tmp_dir}/external-adapter-fixture.json"
-CPM_REPO_ROOT="${repo_root}" nix eval \
+CPM_REPO_ROOT="${repo_root}" nix eval --no-write-lock-file \
   --json --impure \
   --extra-experimental-features 'nix-command flakes' \
   --file "${tmp_dir}/external-adapter-fixture.nix" > "${external_eval}"
@@ -384,7 +384,7 @@ in
 EOF
 
 ingress_eval="${tmp_dir}/virtual-ingress-fixture.json"
-CPM_REPO_ROOT="${repo_root}" nix eval \
+CPM_REPO_ROOT="${repo_root}" nix eval --no-write-lock-file \
   --json --impure \
   --extra-experimental-features 'nix-command flakes' \
   --file "${tmp_dir}/virtual-ingress-fixture.nix" > "${ingress_eval}"
@@ -433,7 +433,7 @@ build_cpm() {
   local inventory="$1"
   local output="$2"
 
-  nix run \
+  nix run --no-write-lock-file \
     --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     "${repo_root}#compile-and-build-control-plane-model" -- \

@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 input_fixture="${repo_root}/fixtures/passing/default-egress-reachability/input.nix"
 inventory_fixture="${repo_root}/fixtures/passing/default-egress-reachability/inventory.nix"
@@ -40,7 +40,7 @@ base
 }
 EOF
 
-if nix eval \
+if nix eval --no-write-lock-file \
   --impure \
   --json \
   --expr "

@@ -80,7 +80,7 @@ in
   && hasDnsReturnRule upstreamRules "allow-east-west-to-sitec-dmz-dns" "pol-dmz-ew" "core-nebula"
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
   echo "PASS sitec-overlay-service-ingress"
 else
   echo "FAIL sitec-overlay-service-ingress" >&2

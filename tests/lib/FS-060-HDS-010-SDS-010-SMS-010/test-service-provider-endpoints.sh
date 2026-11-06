@@ -12,7 +12,7 @@ labs_path="${NETWORK_LABS_PATH:-}"
 if [[ -z "${labs_path}" ]]; then
   # CI has no developer home directory; resolve the sibling repository from the
   # flake inputs this repository already pins.
-  labs_path="$(nix eval --impure --raw --expr \
+  labs_path="$(nix eval --no-write-lock-file --impure --raw --expr \
     "(builtins.getFlake \"path:${repo_root}\").inputs.network-labs.outPath" 2>/dev/null || true)"
 fi
 output_json="$(mktemp)"
@@ -24,7 +24,7 @@ trap 'rm -f "$output_json" "$bad_inventory" "$bad_output"' EXIT
 REPO_ROOT="$repo_root" \
 INTENT_PATH="${labs_path}/examples/single-wan/intent.nix" \
 INVENTORY_PATH="${labs_path}/examples/single-wan/inventory-nixos.nix" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let
@@ -75,7 +75,7 @@ NIXEOF
 REPO_ROOT="$repo_root" \
 INTENT_PATH="${labs_path}/examples/single-wan/intent.nix" \
 INVENTORY_PATH="$bad_inventory" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --raw --expr '
       let

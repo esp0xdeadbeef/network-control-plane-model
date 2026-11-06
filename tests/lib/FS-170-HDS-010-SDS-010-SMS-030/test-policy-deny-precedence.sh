@@ -9,7 +9,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 # Resolve network-labs directly — avoids flake.lock staleness after fixture restore
 labs_root="$(cd "${repo_root}/../network-labs" && pwd)"
@@ -51,7 +51,7 @@ base
 }
 EOF
 
-nix eval --extra-experimental-features 'nix-command flakes' --impure --json --expr "
+nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --json --expr "
   let
     flake = builtins.getFlake \"path:${repo_root}\";
     built = flake.lib.${system}.compileAndBuildFromPaths {
@@ -104,7 +104,7 @@ if ! jq -e '.ok == true' "${observed_json}" >/dev/null; then
   exit 1
 fi
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "
   let
     flake = builtins.getFlake \"path:${repo_root}\";
     built =

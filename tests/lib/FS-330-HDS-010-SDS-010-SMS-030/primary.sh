@@ -8,7 +8,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -89,7 +89,7 @@ EOF
 compile_inventory() {
   local intent_path="$1"
   local inventory_path="$2"
-  nix eval --impure --json --expr '
+  nix eval --no-write-lock-file --impure --json --expr '
     let
       flake = builtins.getFlake "'"path:${repo_root}"'";
       out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {

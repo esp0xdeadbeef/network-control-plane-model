@@ -7,7 +7,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -96,7 +96,7 @@ EOF
 compile_inventory() {
   local intent_path="$1"
   local inventory_path="$2"
-  nix eval --impure --json --expr '
+  nix eval --no-write-lock-file --impure --json --expr '
     let
       flake = builtins.getFlake "'"path:${repo_root}"'";
       out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
@@ -152,7 +152,7 @@ remap_json="${tmp_dir}/remap.json"
 compile_inventory "${tmp_dir}/intent-base.nix" "${base_inventory}" >"${base_json}"
 compile_inventory "${tmp_dir}/intent-remap.nix" "${remap_inventory}" >"${remap_json}"
 
-if ! BASE_JSON="${base_json}" REMAP_JSON="${remap_json}" nix eval --impure --expr '
+if ! BASE_JSON="${base_json}" REMAP_JSON="${remap_json}" nix eval --no-write-lock-file --impure --expr '
   let
     base = builtins.fromJSON (builtins.readFile (builtins.getEnv "BASE_JSON"));
     remap = builtins.fromJSON (builtins.readFile (builtins.getEnv "REMAP_JSON"));

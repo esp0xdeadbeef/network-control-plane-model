@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 input_fixture="${repo_root}/fixtures/passing/default-egress-reachability/input.nix"
 inventory_fixture="${repo_root}/fixtures/passing/default-egress-reachability/inventory.nix"
@@ -66,7 +66,7 @@ EOF
 
 output_json="${tmp_dir}/output.json"
 
-nix eval \
+nix eval --no-write-lock-file \
   --impure \
   --json \
   --expr "
@@ -79,7 +79,7 @@ nix eval \
       builder { inherit input inventory; }
   " > "${output_json}"
 
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     mdns = data.control_plane_model.data.acme.ams.runtimeTargets.access-runtime.services.mdns;

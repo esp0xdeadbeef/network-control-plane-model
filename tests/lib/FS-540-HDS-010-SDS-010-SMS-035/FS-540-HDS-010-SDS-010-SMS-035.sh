@@ -54,7 +54,7 @@ nix_expr_bindings() {
 nix_eval_test() {
   local desc="$1" expr="$2" expected="$3"
   local result
-  result="$(REPO_ROOT="${repo_root}" nix eval --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
+  result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
   if [[ "${result}" == "${expected}" ]]; then
     echo "PASS: ${desc}"
   else
@@ -149,7 +149,7 @@ nix_eval_test \
 echo "--- Predicate 3: Diagnostic trace emitted ---"
 
 # Run the self-ref case again, capturing stderr
-diag_output="$(REPO_ROOT="${repo_root}" nix eval --impure --expr "${self_ref_expr}.forwarders" 2>&1 1>/dev/null || true)"
+diag_output="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${self_ref_expr}.forwarders" 2>&1 1>/dev/null || true)"
 if echo "${diag_output}" | grep -q "FS-540-HDS-010-SDS-010-SMS-035"; then
   echo "PASS: Diagnostic trace contains FS-540-HDS-010-SDS-010-SMS-035 tag"
 else
@@ -171,7 +171,7 @@ fi
 # ============================================================
 echo "--- Predicate 4: No diagnostic for disjoint forwarders ---"
 
-disjoint_diag="$(REPO_ROOT="${repo_root}" nix eval --impure --expr "${disjoint_expr}.forwarders" 2>&1 1>/dev/null || true)"
+disjoint_diag="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${disjoint_expr}.forwarders" 2>&1 1>/dev/null || true)"
 if echo "${disjoint_diag}" | grep -q "FS-540-HDS-010-SDS-010-SMS-035"; then
   echo "FAIL: Unexpected diagnostic for disjoint forwarders"
   echo "  stderr: ${disjoint_diag}"

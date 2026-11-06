@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 
-REPO_ROOT="${repo_root}" nix eval --impure --raw --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --raw --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     flake = builtins.getFlake ("path:" + repoRoot);

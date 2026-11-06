@@ -36,7 +36,7 @@ echo ""
 run_validate_test() {
   local desc="$1" record_expr="$2"
   local result
-  result=$(REPO_ROOT="$repo_root" nix eval --impure --raw --expr "
+  result=$(REPO_ROOT="$repo_root" nix eval --no-write-lock-file --impure --raw --expr "
     let
       helpers = {
         requireAttrs = path: value:
@@ -131,7 +131,7 @@ echo ""
 run_pipeline_check() {
   local desc="$1" inv_expr="$2"
   local result
-  result=$(REPO_ROOT="$repo_root" nix eval --impure --raw --expr "
+  result=$(REPO_ROOT="$repo_root" nix eval --no-write-lock-file --impure --raw --expr "
     let flake = builtins.getFlake \"path:${repo_root}\"; system = builtins.currentSystem;
         labs = flake.inputs.network-labs.outPath;
         baseIntent = import (labs + \"/examples/single-wan-with-nebula/intent.nix\");
@@ -179,7 +179,7 @@ echo ""
 echo "=== Part C: Verify CPM output binderSourceAudit provenance ==="
 echo ""
 
-REPO_ROOT="$repo_root" nix eval --impure --expr '
+REPO_ROOT="$repo_root" nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     system = builtins.currentSystem;

@@ -45,7 +45,7 @@ else
   inventory_path="${source_dir}/inventory-nixos.nix"
 fi
 
-nix run \
+nix run --no-write-lock-file \
   --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \

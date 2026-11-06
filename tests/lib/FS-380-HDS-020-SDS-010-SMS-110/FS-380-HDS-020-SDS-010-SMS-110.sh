@@ -25,7 +25,7 @@ echo ""
 nix_eval_test() {
   local desc="$1" expr="$2" expected="$3"
   local result
-  result="$(REPO_ROOT="${repo_root}" nix eval --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
+  result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
   if [[ "${result}" == "${expected}" ]]; then
     echo "PASS: ${desc}"
   else

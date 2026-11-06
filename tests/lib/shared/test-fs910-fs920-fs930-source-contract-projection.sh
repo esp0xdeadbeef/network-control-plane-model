@@ -53,7 +53,7 @@ for inventory_path in "${inventory_paths[@]}"; do
   source_json="${tmp_dir}/${profile_name}-source-contracts.json"
   cpm_json="${tmp_dir}/${profile_name}-cpm.json"
 
-  nix eval --impure --json --expr "
+  nix eval --no-write-lock-file --impure --json --expr "
     let
       inventory = import ${inventory_path};
     in
@@ -64,7 +64,7 @@ for inventory_path in "${inventory_paths[@]}"; do
     }
   " >"${source_json}"
 
-  nix run \
+  nix run --no-write-lock-file \
     --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     "${repo_root}#compile-and-build-control-plane-model" -- \

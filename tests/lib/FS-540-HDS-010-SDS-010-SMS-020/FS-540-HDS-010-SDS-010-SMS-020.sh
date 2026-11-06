@@ -19,7 +19,7 @@ for source in intent.nix inventory-nixos.nix inventory-clab.nix; do
 done
 
 taxonomy="$({
-	REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+	REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
     let
       flake = builtins.getFlake (toString (builtins.getEnv "REPO_ROOT"));
       lib = flake.inputs.nixpkgs.lib;
@@ -66,7 +66,7 @@ compile_row() {
 	local inventory="$1"
 	local output="$2"
 
-	nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+	nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
 		"${row}/intent.nix" \
 		"${row}/${inventory}" \
 		"${output}" >/dev/null

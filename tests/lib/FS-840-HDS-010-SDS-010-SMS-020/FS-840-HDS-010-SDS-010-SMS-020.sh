@@ -28,7 +28,7 @@ nix_eval_plaintext_guard() {
   local inventory_expr="$1"
   local attr="$2"
 
-  nix eval --impure --json --expr "
+  nix eval --no-write-lock-file --impure --json --expr "
     let
       flake = builtins.getFlake \"path:${repo_root}\";
       system = builtins.currentSystem;
@@ -553,7 +553,7 @@ delivery_output="$(nix_eval_plaintext_guard '
 }' "plaintextSecretDiagnostics")"
 
 # Need to inspect delivery record directly for secretReference field
-delivery_records_json="$(nix eval --impure --json --expr "
+delivery_records_json="$(nix eval --no-write-lock-file --impure --json --expr "
   let
     flake = builtins.getFlake \"path:${repo_root}\";
     system = builtins.currentSystem;
