@@ -143,71 +143,71 @@ let
     if emulationSubnets == [ ] then
       rtAttrs
     else
-    let
-      fabricRoles = [ "downstream-selector" "policy" "upstream-selector" ];
-      # Compute peer IPv4 address from a /31 interface address.
-      peer4For = addr4:
-        let
-          octets = lib.splitString "." (builtins.head (lib.splitString "/" addr4));
-          addr = builtins.map (builtins.fromJSON) octets;
-        in
-        if builtins.length addr != 4 then null
-        else
+      let
+        fabricRoles = [ "downstream-selector" "policy" "upstream-selector" ];
+        # Compute peer IPv4 address from a /31 interface address.
+        peer4For = addr4:
           let
-            lastOctet = builtins.elemAt addr 3;
-            peerLast = if lib.mod lastOctet 2 == 0 then lastOctet + 1 else lastOctet - 1;
+            octets = lib.splitString "." (builtins.head (lib.splitString "/" addr4));
+            addr = builtins.map (builtins.fromJSON) octets;
           in
-          "${builtins.elemAt addr 0}.${builtins.elemAt addr 1}.${builtins.elemAt addr 2}.${builtins.toString peerLast}";
-      isFabricP2p = iface:
-        (iface.sourceKind or "") == "p2p"
-        && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
-      emulationRoutesFor = peer4:
-        builtins.map
-          (subnet: {
-            dst = subnet;
-            proto = "emulation";
-            via4 = peer4;
-            intent = {
-              kind = "emulation-reachability";
-              source = "hat-emulation-subnet";
-            };
-            emulationSubnet = true;
-          })
-          emulationSubnets;
-      augmentTarget = targetName: target:
-        let
-          role = target.role or "";
-          interfaces = (target.effectiveRuntimeRealization or {}).interfaces or {};
-        in
-        if !(builtins.elem role fabricRoles) then
-          target
-        else
-          let
-            updatedInterfaces =
-              builtins.mapAttrs
-                (ifName: iface:
-                  if !(isFabricP2p iface) then
-                    iface
-                  else
-                    let
-                      peer4 = peer4For (iface.addr4 or "");
-                      routes = iface.routes or {};
-                      newRoutes = if peer4 == null then [] else emulationRoutesFor peer4;
-                      ipv4 = (routes.ipv4 or []) ++ newRoutes;
-                      ipv6 = routes.ipv6 or [];
-                    in
-                    iface // { routes = routes // { inherit ipv4 ipv6; }; }
-                )
-                interfaces;
-          in
-          target // {
-            effectiveRuntimeRealization =
-              (target.effectiveRuntimeRealization or {}) // {
-                interfaces = updatedInterfaces;
+          if builtins.length addr != 4 then null
+          else
+            let
+              lastOctet = builtins.elemAt addr 3;
+              peerLast = if lib.mod lastOctet 2 == 0 then lastOctet + 1 else lastOctet - 1;
+            in
+            "${builtins.elemAt addr 0}.${builtins.elemAt addr 1}.${builtins.elemAt addr 2}.${builtins.toString peerLast}";
+        isFabricP2p = iface:
+          (iface.sourceKind or "") == "p2p"
+          && ((iface.backingRef or { }).lane or { }).uplink or "" != "wan";
+        emulationRoutesFor = peer4:
+          builtins.map
+            (subnet: {
+              dst = subnet;
+              proto = "emulation";
+              via4 = peer4;
+              intent = {
+                kind = "emulation-reachability";
+                source = "hat-emulation-subnet";
               };
-          };
-    in
-    builtins.mapAttrs augmentTarget rtAttrs;
+              emulationSubnet = true;
+            })
+            emulationSubnets;
+        augmentTarget = targetName: target:
+          let
+            role = target.role or "";
+            interfaces = (target.effectiveRuntimeRealization or { }).interfaces or { };
+          in
+          if !(builtins.elem role fabricRoles) then
+            target
+          else
+            let
+              updatedInterfaces =
+                builtins.mapAttrs
+                  (ifName: iface:
+                    if !(isFabricP2p iface) then
+                      iface
+                    else
+                      let
+                        peer4 = peer4For (iface.addr4 or "");
+                        routes = iface.routes or { };
+                        newRoutes = if peer4 == null then [ ] else emulationRoutesFor peer4;
+                        ipv4 = (routes.ipv4 or [ ]) ++ newRoutes;
+                        ipv6 = routes.ipv6 or [ ];
+                      in
+                      iface // { routes = routes // { inherit ipv4 ipv6; }; }
+                  )
+                  interfaces;
+            in
+            target // {
+              effectiveRuntimeRealization =
+                (target.effectiveRuntimeRealization or { }) // {
+                  interfaces = updatedInterfaces;
+                };
+            };
+      in
+      builtins.mapAttrs augmentTarget rtAttrs;
 
   # ── Provider-network route injection ──
   # Scan ALL runtime-target services for provider handoff addressing
@@ -319,7 +319,8 @@ let
                           (i: if i < 4 then builtins.elemAt addr6Parsed i else 0)
                           8;
                         network = "${ipam.renderIPv6 networkHextets}/64";
-                      in svcAcc // { ${network} = true; };
+                      in
+                      svcAcc // { ${network} = true; };
                   accWithProvider6 =
                     if providerAddr6 != "" then deriveProviderSubnet6 providerAddr6 else svcAcc;
                 in
@@ -367,114 +368,116 @@ let
     if allProviderPrefixes == [ ] && allProviderPrefixes6 == [ ] then
       rtAttrs
     else
-    let
-      fabricRoles = [ "downstream-selector" "policy" "upstream-selector" ];
-      peer4For = addr:
-        let
-          parts = lib.splitString "/" addr;
-          addrStr = if builtins.length parts >= 1 then builtins.elemAt parts 0 else "";
-          octets = lib.splitString "." addrStr;
-        in
-        if builtins.length octets != 4 then null
-        else
+      let
+        fabricRoles = [ "downstream-selector" "policy" "upstream-selector" ];
+        peer4For = addr:
           let
-            lastOctet = builtins.elemAt octets 3;
-            lastInt = lib.toInt (if lastOctet == "" then "0" else lastOctet);
-            peerInt = if lib.mod lastInt 2 == 0 then lastInt + 1 else lastInt - 1;
-            peerOctets = builtins.genList
-              (i: if i == 3 then builtins.toString peerInt else builtins.elemAt octets i)
-              4;
-          in builtins.concatStringsSep "." peerOctets;
-      peer6For = addr:
-        let
-          parsed = ipam.splitCIDR addr;
-          addrParsed = if parsed != null then ipam.parseIPv6 parsed.addr else null;
-        in
-        if addrParsed == null then null
-        else
-          let
-            peerHextets = builtins.genList
-              (idx:
-                if idx == 7 then
-                  if lib.mod (builtins.elemAt addrParsed 7) 2 == 0 then
-                    (builtins.elemAt addrParsed 7) + 1
-                  else
-                    (builtins.elemAt addrParsed 7) - 1
-                else
-                  builtins.elemAt addrParsed idx
-              )
-              8;
-          in ipam.renderIPv6 peerHextets;
-      isFabricP2p = iface:
-        (iface.sourceKind or "") == "p2p"
-        && ((iface.backingRef or {}).lane or {}).uplink or "" != "wan";
-      providerRoutesFor = peer4:
-        builtins.map
-          (prefix: {
-            dst = prefix;
-            proto = "provider";
-            via4 = peer4;
-            intent = {
-              kind = "provider-reachability";
-              source = "provider-network";
-            };
-          })
-          allProviderPrefixes;
-      providerRoutesFor6 = peer6:
-        builtins.map
-          (prefix: {
-            dst = prefix;
-            proto = "provider";
-            via6 = peer6;
-            intent = {
-              kind = "provider-reachability";
-              source = "provider-network";
-            };
-          })
-          allProviderPrefixes6;
-      augmentTarget = targetName: target:
-        let
-          role = target.role or "";
-          interfaces = (target.effectiveRuntimeRealization or {}).interfaces or {};
-        in
-        if !(builtins.elem role fabricRoles) then
-          target
-        else
-          let
-            updatedInterfaces =
-              builtins.mapAttrs
-                (ifName: iface:
-                  if !(isFabricP2p iface) then
-                    iface
-                  else
-                    let
-                      peer4 = peer4For (iface.addr4 or "");
-                      peer6 = peer6For (iface.addr6 or "");
-                      routes = iface.routes or {};
-                      newRoutes4 = if peer4 == null then [] else providerRoutesFor peer4;
-                      newRoutes6 = if peer6 == null then [] else providerRoutesFor6 peer6;
-                      ipv4 = (routes.ipv4 or []) ++ newRoutes4;
-                      ipv6 = (routes.ipv6 or []) ++ newRoutes6;
-                    in
-                    iface // { routes = routes // { inherit ipv4 ipv6; }; }
-                )
-                interfaces;
+            parts = lib.splitString "/" addr;
+            addrStr = if builtins.length parts >= 1 then builtins.elemAt parts 0 else "";
+            octets = lib.splitString "." addrStr;
           in
-          target // {
-            effectiveRuntimeRealization =
-              (target.effectiveRuntimeRealization or {}) // {
-                interfaces = updatedInterfaces;
+          if builtins.length octets != 4 then null
+          else
+            let
+              lastOctet = builtins.elemAt octets 3;
+              lastInt = lib.toInt (if lastOctet == "" then "0" else lastOctet);
+              peerInt = if lib.mod lastInt 2 == 0 then lastInt + 1 else lastInt - 1;
+              peerOctets = builtins.genList
+                (i: if i == 3 then builtins.toString peerInt else builtins.elemAt octets i)
+                4;
+            in
+            builtins.concatStringsSep "." peerOctets;
+        peer6For = addr:
+          let
+            parsed = ipam.splitCIDR addr;
+            addrParsed = if parsed != null then ipam.parseIPv6 parsed.addr else null;
+          in
+          if addrParsed == null then null
+          else
+            let
+              peerHextets = builtins.genList
+                (idx:
+                  if idx == 7 then
+                    if lib.mod (builtins.elemAt addrParsed 7) 2 == 0 then
+                      (builtins.elemAt addrParsed 7) + 1
+                    else
+                      (builtins.elemAt addrParsed 7) - 1
+                  else
+                    builtins.elemAt addrParsed idx
+                )
+                8;
+            in
+            ipam.renderIPv6 peerHextets;
+        isFabricP2p = iface:
+          (iface.sourceKind or "") == "p2p"
+          && ((iface.backingRef or { }).lane or { }).uplink or "" != "wan";
+        providerRoutesFor = peer4:
+          builtins.map
+            (prefix: {
+              dst = prefix;
+              proto = "provider";
+              via4 = peer4;
+              intent = {
+                kind = "provider-reachability";
+                source = "provider-network";
               };
-          };
-    in
-    builtins.mapAttrs augmentTarget rtAttrs;
+            })
+            allProviderPrefixes;
+        providerRoutesFor6 = peer6:
+          builtins.map
+            (prefix: {
+              dst = prefix;
+              proto = "provider";
+              via6 = peer6;
+              intent = {
+                kind = "provider-reachability";
+                source = "provider-network";
+              };
+            })
+            allProviderPrefixes6;
+        augmentTarget = targetName: target:
+          let
+            role = target.role or "";
+            interfaces = (target.effectiveRuntimeRealization or { }).interfaces or { };
+          in
+          if !(builtins.elem role fabricRoles) then
+            target
+          else
+            let
+              updatedInterfaces =
+                builtins.mapAttrs
+                  (ifName: iface:
+                    if !(isFabricP2p iface) then
+                      iface
+                    else
+                      let
+                        peer4 = peer4For (iface.addr4 or "");
+                        peer6 = peer6For (iface.addr6 or "");
+                        routes = iface.routes or { };
+                        newRoutes4 = if peer4 == null then [ ] else providerRoutesFor peer4;
+                        newRoutes6 = if peer6 == null then [ ] else providerRoutesFor6 peer6;
+                        ipv4 = (routes.ipv4 or [ ]) ++ newRoutes4;
+                        ipv6 = (routes.ipv6 or [ ]) ++ newRoutes6;
+                      in
+                      iface // { routes = routes // { inherit ipv4 ipv6; }; }
+                  )
+                  interfaces;
+            in
+            target // {
+              effectiveRuntimeRealization =
+                (target.effectiveRuntimeRealization or { }) // {
+                  interfaces = updatedInterfaces;
+                };
+            };
+      in
+      builtins.mapAttrs augmentTarget rtAttrs;
 
   # Apply emulation subnet routes AND provider subnet routes BEFORE core tenant
   # return routes so all augmentations compose correctly.
   runtimeTargetsWithEmulation = addEmulationSubnetFabricRoutes runtimeTargetsWithPublicIngressRoutes;
   runtimeTargetsWithProvider = addProviderSubnetFabricRoutes runtimeTargetsWithEmulation;
 
-  runtimeTargets =
+  normalizedFinalRuntimeTargets =
     # Final pass: normalize (which dedupes route identity, FS-315) after every
     # augmentation so no two identical routes survive on one interface/lane.
     builtins.mapAttrs
@@ -484,6 +487,15 @@ let
           normalizeRuntimeTargetRoutesAfterPolicyComplements target
         ))
       (addCoreTenantReturnRoutes runtimeTargetsWithProvider);
+
+  # FS-540-HDS-010-SDS-010-SMS-045 / FS-315: the policy point carries the
+  # selected exit default in its own policy lane, complemented from the peer
+  # end of the same modeled link (never inferred from names or order).
+  addPolicyLaneDefaults = import ../../ControlModule/runtime-targets/policy-lane-defaults.nix {
+    inherit lib common ipam;
+  };
+
+  runtimeTargets = addPolicyLaneDefaults normalizedFinalRuntimeTargets;
 
 in
 {

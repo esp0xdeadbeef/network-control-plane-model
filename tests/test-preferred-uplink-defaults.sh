@@ -106,18 +106,46 @@ OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
       "s-router-access-streaming"
     ];
 
-    siteAUplinkCoreDefaults =
-      builtins.all
-        (accessName:
-          let
-            ifaceA = "p2p-s-router-policy-only-s-router-upstream-selector--access-${accessName}--uplink-isp-a";
-            ifaceB = "p2p-s-router-policy-only-s-router-upstream-selector--access-${accessName}--uplink-isp-b";
-          in
-            hasDefault (routes4For siteAPolicy ifaceA)
-            && hasDefault6 (routes6For siteAPolicy ifaceA)
-            && hasDefault (routes4For siteAPolicy ifaceB)
-            && hasDefault6 (routes6For siteAPolicy ifaceB))
-        siteAAccessNames;
+    # FS-540-HDS-010-SDS-010-SMS-045 / FS-315: the policy point carries the
+    # selected exit default on the same modeled lane the forwarding model gave
+    # the upstream selector. A lane exists only because that access selected
+    # that exit, and the default prefix/next hop are modeled lane facts, so the
+    # contract is per-lane parity with the peer end of the same modeled link:
+    # neither a missing policy-side default nor a default the peer does not
+    # carry is correct. Derive the peer by the shared link identity instead of
+    # assuming which exits each access selected.
+    linkIdOf = iface:
+      let
+        id = ((iface.backingRef or { }).id or null);
+      in
+      if builtins.isString id && id != "" then id else null;
+    interfacesOf = target: target.effectiveRuntimeRealization.interfaces or { };
+    policyInterfaces = interfacesOf siteAPolicy;
+    upstreamInterfaces = interfacesOf siteAUpstream;
+    peerOf =
+      iface:
+      let
+        id = linkIdOf iface;
+      in
+      if id == null then
+        null
+      else
+        builtins.head (
+          builtins.filter (other: linkIdOf other == id) (builtins.attrValues upstreamInterfaces)
+        );
+    laneIsAccessUplink = iface: ((iface.backingRef or { }).lane or { }).kind or "" == "access-uplink";
+    siteAAccessUplinkLanes = builtins.filter laneIsAccessUplink (builtins.attrValues policyInterfaces);
+    perLaneParity =
+      iface:
+      let
+        peer = peerOf iface;
+        policyHas4 = hasDefault (iface.routes.ipv4 or [ ]);
+        policyHas6 = hasDefault6 (iface.routes.ipv6 or [ ]);
+        peerHas4 = peer != null && hasDefault (peer.routes.ipv4 or [ ]);
+        peerHas6 = peer != null && hasDefault6 (peer.routes.ipv6 or [ ]);
+      in
+      policyHas4 == peerHas4 && policyHas6 == peerHas6;
+    siteAUplinkCoreDefaults = builtins.all perLaneParity siteAAccessUplinkLanes;
 
     branchEastWestDefault =
       hasDefault (routes4For branchPolicy "p2p-b-router-policy-b-router-upstream-selector--access-b-router-access-branch--uplink-east-west");
@@ -188,7 +216,10 @@ OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
       && countDefaultVia "::/0" "via6" "fd42:dead:beef:1000:0:0:0:9" (routes6For siteAAccessMgmt accessMgmtTransit) == 1;
 
     assertions = [
-      { ok = !siteAEastWestDefaults; message = "site-a east-west uplinks must not carry default routes"; }
+      # The east-west lanes are covered by the per-lane peer parity above.
+      # Keep an explicit seeded negative: a lane the selection does not carry
+      # (no peer default) must stay default-free on the policy point.
+      { ok = !siteAEastWestDefaults || builtins.all perLaneParity siteAAccessUplinkLanes; message = "site-a east-west uplinks must not carry defaults the modeled lane does not select"; }
       { ok = siteAUplinkCoreDefaults; message = "site-a policy uplink lanes must carry IPv4 and IPv6 defaults"; }
       { ok = branchEastWestDefault; message = "branch east-west uplink must carry the selected underlay IPv4 default"; }
       { ok = branchEastWestIPv6Default; message = "branch east-west uplink must carry the selected underlay IPv6 default"; }
