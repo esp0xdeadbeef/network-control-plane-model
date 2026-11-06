@@ -329,6 +329,10 @@ let
         ifName:
         let
           iface = interfaces.${ifName};
+          # Ingress copies belong to the downstream access lane only; an
+          # access-uplink lane is an exit surface and its default is the
+          # egress-lane complement (FS-315/FS-550), never an ingress copy.
+          isAccessLane = laneKind iface == "access";
           entries = builtins.filter (route: route != null) (
             builtins.concatMap
               (rule: [
@@ -338,7 +342,7 @@ let
               rules
           );
         in
-        if entries == [ ] then
+        if entries == [ ] || !isAccessLane then
           iface
         else
           let
