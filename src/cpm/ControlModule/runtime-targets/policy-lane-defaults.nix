@@ -238,7 +238,7 @@ let
 
   isLaneLessOriginHostRoute =
     targetName: iface: route:
-    (attrsOrEmpty (runtimeTargets.${targetName}.role or null)) == "policy"
+    (runtimeTargets.${targetName}.role or "") == "policy"
     && laneKind iface == "access-uplink"
     && ((attrsOrEmpty (route.lane or null)).access or "") == ""
     && ((attrsOrEmpty (route.intent or null)).kind or null) == "internal-reachability"
