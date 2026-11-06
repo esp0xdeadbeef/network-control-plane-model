@@ -347,8 +347,29 @@ let
         else
           let
             routes = attrsOrEmpty (iface.routes or null);
-            entries4 = builtins.filter (route: (route.family or null) == 4) entries;
-            entries6 = builtins.filter (route: (route.family or null) == 6) entries;
+            routeKeyOf =
+              route:
+              "${builtins.toString (route.family or 0)}|${route.dst or ""}|${
+                route.via4 or route.via6 or ""
+              }|${(attrsOrEmpty (route.lane or null)).access or ""}";
+            dedupe =
+              routes:
+              let
+                folded = builtins.foldl'
+                  (acc: route:
+                    let
+                      key = routeKeyOf route;
+                    in
+                    if builtins.hasAttr key acc.seen then acc else {
+                      seen = acc.seen // { ${key} = true; };
+                      values = acc.values ++ [ route ];
+                    })
+                  { seen = { }; values = [ ]; }
+                  routes;
+              in
+              folded.values;
+            entries4 = dedupe (builtins.filter (route: (route.family or null) == 4) entries);
+            entries6 = dedupe (builtins.filter (route: (route.family or null) == 6) entries);
           in
           iface
           // {
