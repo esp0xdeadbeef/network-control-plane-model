@@ -316,6 +316,7 @@ let
           else
             base
             // {
+              inherit family;
               lane = laneOf fromIface;
               policyOnly = true;
               reason = "policy-table-default-reachability";
