@@ -7,7 +7,7 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-labs_root="${NETWORK_LABS_ROOT:-/home/deadbeef/github/network-labs}"
+labs_root="${NETWORK_LABS_ROOT:-$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')}"
 hat_root="${labs_root}/GAMP/HAT/emulated-isp-residential-testnet"
 
 fail() {
@@ -65,6 +65,9 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 mkdir -p "${tmp_dir}/GAMP/HAT" "${tmp_dir}/GAMP"
 cp -a "${hat_root}" "${tmp_dir}/GAMP/HAT/emulated-isp-residential-testnet"
 cp -a "${labs_root}/GAMP/SAT" "${tmp_dir}/GAMP/SAT"
+# The labs source can be a read-only flake store path; the copy is mutated and
+# removed, so make the copy writable.
+chmod -R u+w "${tmp_dir}/GAMP"
 
 python3 - "${tmp_dir}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix" <<'PY'
 from pathlib import Path
@@ -103,6 +106,7 @@ trap 'rm -rf "${tmp_dir}" "${tmp_role_dir}"' EXIT
 mkdir -p "${tmp_role_dir}/GAMP/HAT" "${tmp_role_dir}/GAMP"
 cp -a "${hat_root}" "${tmp_role_dir}/GAMP/HAT/emulated-isp-residential-testnet"
 cp -a "${labs_root}/GAMP/SAT" "${tmp_role_dir}/GAMP/SAT"
+chmod -R u+w "${tmp_role_dir}/GAMP"
 
 python3 - "${tmp_role_dir}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix" <<'PY'
 from pathlib import Path

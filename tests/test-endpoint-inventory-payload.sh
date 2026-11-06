@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-labs_repo="${NETWORK_LABS_REPO:-/home/deadbeef/github/network-labs}"
+labs_repo="${NETWORK_LABS_REPO:-$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')}"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
