@@ -53,5 +53,9 @@ the lane's on-link peer address, and only when the modeled runtime-origin source
 relation for that lane exists (FS-550: route by source, not by a broad default).
 `test-preferred-uplink-defaults` asserts the resulting per-lane parity, and
 `test-runtime-origin-loopback-egress` asserts the source-routing condition.
+`policy-lane-defaults.nix` also copies each modeled accept rule's egress default
+into the ingress lane (`policy-ingress-default`, access lanes only, deduplicated)
+so the ingress policy table resolves the selected exit (FS-315); the renderer's
+policy-table parity case now passes with it.
 FS-315 lane hygiene keeps the lane-less duplicate out of the main table and the
 renderer maps the canonical `table` field to systemd `Table`.
