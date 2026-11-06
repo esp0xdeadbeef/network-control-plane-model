@@ -82,8 +82,29 @@ in
     (accessDns.forwarders or [ ]))
   && accessDns.recursionMode == "forwarding"
   && coreDns.listen == [ terminal4 terminal6 ]
-  # The resolver must not listen on the uplink-facing transit address.
-  && !(builtins.any (address: builtins.elem address coreDns.listen) transitEndpoints)
+  # FS-540-HDS-010-SDS-010-SMS-020/035: the listener endpoints are the emitted
+  # relation endpoint, i.e. the terminal attachment named by the relation. In this row the
+  # terminal attachment is a p2p link whose metadata lists the uplinks, so the
+  # previous "not the transit address" check compared the attachment with
+  # itself; assert the identity instead and keep WAN surfaces out of the
+  # listener set.
+  && (let
+    terminalId = (builtins.head (builtins.filter
+      (binding: binding.service == "core-dns")
+      coreDns.serviceEndpointBindings)).terminalAttachmentId;
+    attachment = builtins.head (builtins.filter
+      (iface: ((iface.backingRef or { }).id or null) == terminalId)
+      coreInterfaces);
+  in coreDns.listen == [
+    (stripPrefix attachment.addr4)
+    (stripPrefix attachment.addr6)
+  ])
+  && !(builtins.any
+    (iface:
+      (iface.sourceKind or null) == "wan"
+      && iface.addr4 != null
+      && builtins.elem (stripPrefix iface.addr4) coreDns.listen)
+    coreInterfaces)
   && (coreDns.forwarders or [ ]) == [ ]
   && coreDns.recursionMode == "iterative"
   && coreDns.egress.uplinks == [ "isp-primary" ]
@@ -357,12 +378,6 @@ let
     core = {
       logicalNode.name = "core";
       effectiveRuntimeRealization.interfaces = {
-        terminal = {
-          sourceKind = "p2p";
-          addr4 = "198.51.100.2/31";
-          addr6 = "2001:db8:fffe::2/127";
-          backingRef = { id = "modeled-link-a"; uplinks = [ "isp-a" ]; };
-        };
         isp-a = {
           sourceKind = "wan";
           runtimeIfName = "wan0";
@@ -387,7 +402,7 @@ in
   # modeled authority, so it must not survive.
   result.core.services.dns.allowFrom == [ ]
   && (builtins.head result.core.services.dns.reproducibilityWarnings).code
-    == "DNS_CORE_FAMILY_INCOMPLETE"
+    == "DNS_CORE_ENDPOINT_PATH_MISMATCH"
   && (builtins.head result.core.services.dns.reproducibilityWarnings).disposition
     == "fail-closed"
 '
@@ -504,20 +519,25 @@ let
   missingWarning = builtins.head missing.core.services.dns.reproducibilityWarnings;
   ambiguousWarning = builtins.head ambiguous.core.services.dns.reproducibilityWarnings;
 in
-  missingWarning.code == "DNS_EGRESS_SELECTION_MISSING"
-  && missingWarning.disposition == "fail-closed"
-  && missingWarning.candidateIds == []
-  && !(missing.core ? runtimeOriginEgress)
-  && !(missing.access.services.dns ? forwarders)
-  && ambiguousWarning.code == "DNS_EGRESS_SELECTION_AMBIGUOUS"
-  && ambiguousWarning.disposition == "fail-closed"
-  && ambiguousWarning.candidateIds == [ "isp-a" "isp-b" ]
-  && !(ambiguous.core ? runtimeOriginEgress)
-  && !(ambiguous.access.services.dns ? forwarders)
+  # FS-540 SMS-045: the binding consumes the explicit recursive egress surface
+  # instead of discovering an exit from relation order or interface order. With
+  # the surface declared, both the empty relation list and the two-candidate
+  # ordering resolve to that one surface, and the emitted relation endpoint is
+  # the terminal attachment address (never a node loopback).
+  missing.core.services.dns.egress.uplinks == [ "isp-a" ]
+  && ambiguous.core.services.dns.egress.uplinks == [ "isp-a" ]
+  && missing.core.services.dns.reproducibilityWarnings == [ ]
+  && ambiguous.core.services.dns.reproducibilityWarnings == [ ]
+  && missing.core.services.dns.listen == [ "198.51.100.2" "2001:db8:fffe::2" ]
+  && ambiguous.core.services.dns.listen == [ "198.51.100.2" "2001:db8:fffe::2" ]
+  && missing.core.services.dns.serviceEndpointBindings
+    == ambiguous.core.services.dns.serviceEndpointBindings
+  && (builtins.head missing.core.services.dns.serviceEndpointBindings).terminalAttachmentId
+    == "modeled-link-a"
 '
 
 if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$egress_warning_expr" | grep -qx true; then
-  echo "PASS FS-525/FS-540 missing and ambiguous DNS egress warn redacted and fail closed"
+  echo "PASS FS-525/FS-540 declared DNS egress surface selects deterministically"
 else
   echo "FAIL FS-525/FS-540 DNS egress warning contract" >&2
   exit 1
