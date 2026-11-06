@@ -4,7 +4,7 @@
 set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
-labs_root="${NETWORK_LABS_PATH:-/home/deadbeef/github/network-labs}"
+labs_root="${NETWORK_LABS_PATH:-$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')}"
 row="${labs_root}/GAMP/SMT/FS-540-HDS-010-SDS-010-SMS-020"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
