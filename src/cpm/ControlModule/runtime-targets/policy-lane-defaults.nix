@@ -342,12 +342,14 @@ let
         else
           let
             routes = attrsOrEmpty (iface.routes or null);
+            entries4 = builtins.filter (route: (route.family or null) == 4) entries;
+            entries6 = builtins.filter (route: (route.family or null) == 6) entries;
           in
           iface
           // {
             routes = routes // {
-              ipv4 = listOrEmpty (routes.ipv4 or null) ++ builtins.filter (route: route.family == 4) entries;
-              ipv6 = listOrEmpty (routes.ipv6 or null) ++ builtins.filter (route: route.family == 6) entries;
+              ipv4 = listOrEmpty (routes.ipv4 or null) ++ entries4;
+              ipv6 = listOrEmpty (routes.ipv6 or null) ++ entries6;
             };
           };
     in
