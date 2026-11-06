@@ -655,58 +655,18 @@ let
                   builtins.map (route: route // { lane = ifaceLane; }) complementBase6
                 else
                   complementBase6;
-              # FS-315: "A route present in more than one routing table shall
-              # have a distinct modeled relation to each table and lane; an
-              # unassigned route shall not be copied into sibling policy
-              # lanes." When the lane-assigned copy of an internal-reachability
-              # route is present on this interface, the unlaned copy is an
-              # unassigned duplicate and must not leak into the interface's
-              # main table.
-              viaFieldFor = family: if family == 4 then "via4" else "via6";
-              hasLanedEquivalent =
-                family: route: routes:
-                (attrsOrEmpty (route.lane or null)) == { }
-                && ((attrsOrEmpty (route.intent or null)).kind or null) == "internal-reachability"
-                && builtins.any
-                  (
-                    other:
-                    builtins.isAttrs other
-                    && (other.dst or null) == (route.dst or null)
-                    && (other.${viaFieldFor family} or null) == (route.${viaFieldFor family} or null)
-                    && ((attrsOrEmpty (other.lane or null)).access or "") != ""
-                  )
-                  routes;
-              dropUnassignedCopies =
-                family: routes:
-                builtins.filter (route: !hasLanedEquivalent family route routes) routes;
-              # FS-315: an unassigned (lane-less) host route is not copied into
-              # a sibling policy lane, and FS-550 keeps resolver-source
-              # identities off exit surfaces. A policy access-uplink lane
-              # therefore never carries a lane-less internal-reachability host
-              # route; fabric prefixes (/31, /127) and lane-assigned routes are
-              # unaffected.
-              unassignedHostOnPolicyExit =
-                route:
-                targetRole == "policy"
-                && laneKind iface == "access-uplink"
-                && ((attrsOrEmpty (route.lane or null)).access or "") == ""
-                && ((attrsOrEmpty (route.intent or null)).kind or null) == "internal-reachability"
-                && (
-                  builtins.match ".*/32" (route.dst or "") != null
-                  || builtins.match ".*/128" (route.dst or "") != null
-                );
-              augmented4 = builtins.filter (route: !dropWrongRuntimeOriginComplement route && !unassignedHostOnPolicyExit route) (
+              augmented4 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
                 base4 ++ policyTableComplements 4 policyDefaults4 taggedComplementBase4
               );
-              augmented6 = builtins.filter (route: !dropWrongRuntimeOriginComplement route && !unassignedHostOnPolicyExit route) (
+              augmented6 = builtins.filter (route: !dropWrongRuntimeOriginComplement route) (
                 base6 ++ policyTableComplements 6 policyDefaults6 taggedComplementBase6
               );
             in
             iface
             // {
               routes = routes // {
-                ipv4 = dropUnassignedCopies 4 (uniqueRoutes 4 augmented4);
-                ipv6 = dropUnassignedCopies 6 (uniqueRoutes 6 augmented6);
+                ipv4 = uniqueRoutes 4 augmented4;
+                ipv6 = uniqueRoutes 6 augmented6;
               };
             }
         )

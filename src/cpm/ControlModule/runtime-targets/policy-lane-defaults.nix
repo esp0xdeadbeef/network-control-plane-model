@@ -143,9 +143,32 @@ let
         ${viaField} = via;
       };
 
+  # A policy lane may only carry the exit default when the modeled
+  # runtime-origin source-routing contract for that lane exists: the lane then
+  # routes loopback-sourced overlay bootstrap traffic by source instead of by
+  # a broad default (FS-550 / FS-540 SMS-040). A lane with a peer default but
+  # no source relation is not complemented, so the control plane neither
+  # invents an exit nor creates an unsourced broad default.
+  hasRuntimeSourceRule =
+    target: iface:
+    let
+      runtimeIfName = iface.runtimeIfName or null;
+      rules = listOrEmpty ((attrsOrEmpty (target.forwardingIntent or null)).rules or null);
+    in
+    runtimeIfName != null
+    && builtins.any
+      (
+        rule:
+        builtins.isAttrs rule
+        && (rule.action or null) == "accept"
+        && (rule.toInterface or null) == runtimeIfName
+        && lib.hasPrefix "runtime-origin" (toString (rule.relationId or ""))
+      )
+      rules;
+
   complementInterface =
     targetName: iface:
-    if laneKind iface != "access-uplink" then
+    if laneKind iface != "access-uplink" || !hasRuntimeSourceRule runtimeTargets.${targetName} iface then
       iface
     else
       let
