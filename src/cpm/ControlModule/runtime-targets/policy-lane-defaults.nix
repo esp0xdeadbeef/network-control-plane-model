@@ -258,20 +258,133 @@ let
       };
     };
 
+  # FS-315: an accepted forward flow is steered by the ingress lane's policy
+  # table, so that table must resolve the exit it selects. For every modeled
+  # accept rule (fromInterface -> toInterface), copy the egress lane's
+  # policy-only default into the ingress interface's routes, tagged with the
+  # ingress lane, so the renderer installs it in that interface's table. The
+  # rule and the default are both modeled; only their pairing is materialized.
+  interfaceByRuntime =
+    interfaces:
+    builtins.listToAttrs (
+      builtins.map
+        (ifName: {
+          name = interfaces.${ifName}.runtimeIfName or ifName;
+          value = ifName;
+        })
+        (builtins.attrNames interfaces)
+    );
+
+  ingressDefaultsFor =
+    targetName:
+    let
+      target = runtimeTargets.${targetName};
+      effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (effective.interfaces or null);
+      byRuntime = interfaceByRuntime interfaces;
+      rules = listOrEmpty ((attrsOrEmpty (target.forwardingIntent or null)).rules or null);
+      defaultRouteOn =
+        family: iface:
+        let
+          viaField = if family == 4 then "via4" else "via6";
+          candidates = builtins.filter
+            (route: builtins.isAttrs route && (route.dst or null) == defaultDst family && (route.${viaField} or null) != null)
+            (routesOf family iface);
+        in
+        if candidates == [ ] then null else builtins.head candidates;
+      ingressDefault =
+        family: rule:
+        let
+          fromName = rule.fromInterface or null;
+          toName = rule.toInterface or null;
+        in
+        if
+          !(builtins.hasAttr fromName byRuntime)
+          || !(builtins.hasAttr toName byRuntime)
+          || (rule.action or null) != "accept"
+        then
+          null
+        else
+          let
+            fromIface = interfaces.${byRuntime.${fromName}};
+            toIface = interfaces.${byRuntime.${toName}};
+            base = defaultRouteOn family toIface;
+            existing = defaultRouteOn family fromIface;
+          in
+          if base == null || existing != null then
+            null
+          else
+            base
+            // {
+              lane = laneOf fromIface;
+              policyOnly = true;
+              reason = "policy-table-default-reachability";
+              intent = (attrsOrEmpty (base.intent or null)) // {
+                policyTableComplement = true;
+                source = "policy-ingress-default";
+              };
+            };
+      extraFor =
+        ifName:
+        let
+          iface = interfaces.${ifName};
+          entries = builtins.filter (route: route != null) (
+            builtins.concatMap
+              (rule: [
+                (ingressDefault 4 rule)
+                (ingressDefault 6 rule)
+              ])
+              rules
+          );
+        in
+        if entries == [ ] then
+          iface
+        else
+          let
+            routes = attrsOrEmpty (iface.routes or null);
+          in
+          iface
+          // {
+            routes = routes // {
+              ipv4 = listOrEmpty (routes.ipv4 or null) ++ builtins.filter (route: route.family == 4) entries;
+              ipv6 = listOrEmpty (routes.ipv6 or null) ++ builtins.filter (route: route.family == 6) entries;
+            };
+          };
+    in
+    builtins.mapAttrs (_ifName: iface: extraFor _ifName) interfaces;
+
   complementOrClean =
     targetName: iface:
     complementInterface targetName (dropOriginMainRoutes targetName iface);
 
-in
-builtins.mapAttrs (targetName: target:
-  let
-    effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
-    interfaces = attrsOrEmpty (effective.interfaces or null);
-  in
+  addIngressDefaults =
+    targetName: target:
+    let
+      effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (effective.interfaces or null);
+      extras = ingressDefaultsFor targetName;
+    in
+    target
+    // {
+      effectiveRuntimeRealization = effective // {
+        interfaces = builtins.mapAttrs (_ifName: iface: extras.${_ifName} or iface) interfaces;
+      };
+    };
+
+  withIngressDefaults = builtins.mapAttrs addIngressDefaults runtimeTargets;
+
+  addFinalHygiene =
+    targetName: target:
+    let
+      effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      interfaces = attrsOrEmpty (effective.interfaces or null);
+    in
     target
     // {
       effectiveRuntimeRealization = effective // {
         interfaces = builtins.mapAttrs (_ifName: iface: complementOrClean targetName iface) interfaces;
       };
-    })
-  runtimeTargets
+    };
+
+in
+builtins.mapAttrs addFinalHygiene withIngressDefaults
