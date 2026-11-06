@@ -1,7 +1,8 @@
 # Remaining CI reds: owner and status
 
-Status: the requester-lane resolver-route blocker is RESOLVED. The remaining reds
-are pre-existing module/example migrations.
+Status: both contract blockers recorded earlier are RESOLVED (requester-lane
+resolver reachability, and the policy-lane selected-exit default). The remaining
+reds are pre-existing module/example migrations.
 
 ## Resolved: requester-lane resolver service route
 
@@ -46,10 +47,11 @@ pre-change revision `64ec24f^` (that revision had 20; `FS-525-HDS-010-SDS-010-SM
 and `test-dns-service-policy-routes` are the two this run moved to PASS), so none
 is a regression of the DNS work.
 
-The `test-preferred-uplink-defaults` group needs the policy point's access-uplink
-lane to carry the selected exit default. The forwarding model emits that default
-on the upstream selector side of the lane only; the policy point has none, and
-`normalize-runtime-routes.nix` complements policy lanes only from core-facing
-default interfaces. Closing it needs an upstream forwarding-model output plus its
-FS text (the owning requirement lives in the GAMP set); inferring the next hop in
-the control plane would violate FS-315, so it is not repaired here.
+Resolved: `policy-lane-defaults.nix` now complements each policy access-uplink
+lane with the default its peer end of the same modeled `link::` carries, using
+the lane's on-link peer address, and only when the modeled runtime-origin source
+relation for that lane exists (FS-550: route by source, not by a broad default).
+`test-preferred-uplink-defaults` asserts the resulting per-lane parity, and
+`test-runtime-origin-loopback-egress` asserts the source-routing condition.
+FS-315 lane hygiene keeps the lane-less duplicate out of the main table and the
+renderer maps the canonical `table` field to systemd `Table`.
