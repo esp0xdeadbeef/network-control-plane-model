@@ -204,5 +204,74 @@ let
       };
     };
 
+  # FS-550: the modeled runtime-origin source prefixes are resolver/loopback
+  # identities. They are collected across the site so a policy exit lane can
+  # never carry an ambient (lane-less) main-table route to one of them, even
+  # when the lane has no source-routed default of its own.
+  runtimeOriginPrefixes = lib.unique (
+    builtins.concatLists (
+      builtins.map
+        (
+          targetName:
+          builtins.concatLists (
+            builtins.map
+              (
+                rule:
+                builtins.map (source: source.prefix or null) (
+                  listOrEmpty (rule.sourcePrefixes or null)
+                )
+              )
+              (
+                builtins.filter
+                  (
+                    rule:
+                    builtins.isAttrs rule
+                    && lib.hasPrefix "runtime-origin" (toString (rule.relationId or ""))
+                  )
+                  (listOrEmpty ((attrsOrEmpty (runtimeTargets.${targetName}.forwardingIntent or null)).rules or null))
+              )
+          )
+        )
+        (builtins.attrNames runtimeTargets)
+    )
+  );
+
+  isLaneLessOriginHostRoute =
+    targetName: iface: route:
+    (attrsOrEmpty (runtimeTargets.${targetName}.role or null)) == "policy"
+    && laneKind iface == "access-uplink"
+    && ((attrsOrEmpty (route.lane or null)).access or "") == ""
+    && ((attrsOrEmpty (route.intent or null)).kind or null) == "internal-reachability"
+    && builtins.elem (route.dst or null) runtimeOriginPrefixes;
+
+  dropOriginMainRoutes =
+    targetName: iface:
+    let
+      routes = attrsOrEmpty (iface.routes or null);
+      keep = family: builtins.filter (route: !isLaneLessOriginHostRoute targetName iface route) (listOrEmpty (routes.${family} or null));
+    in
+    iface
+    // {
+      routes = routes // {
+        ipv4 = keep "ipv4";
+        ipv6 = keep "ipv6";
+      };
+    };
+
+  complementOrClean =
+    targetName: iface:
+    complementInterface targetName (dropOriginMainRoutes targetName iface);
+
 in
-builtins.mapAttrs complementTarget runtimeTargets
+builtins.mapAttrs (targetName: target:
+  let
+    effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+    interfaces = attrsOrEmpty (effective.interfaces or null);
+  in
+    target
+    // {
+      effectiveRuntimeRealization = effective // {
+        interfaces = builtins.mapAttrs (_ifName: iface: complementOrClean targetName iface) interfaces;
+      };
+    })
+  runtimeTargets
