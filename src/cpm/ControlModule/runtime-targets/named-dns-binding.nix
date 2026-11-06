@@ -255,9 +255,6 @@ let
     let
       realization = attrsOrEmpty (runtimeTargets.${targetName}.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (realization.interfaces or null);
-      loopback = attrsOrEmpty (realization.loopback or null);
-      loopback4 = stripPrefixLength (loopback.addr4 or loopback.ipv4 or "");
-      loopback6 = stripPrefixLength (loopback.addr6 or loopback.ipv6 or "");
       candidates = builtins.filter (
         iface:
         (iface.sourceKind or null) == "p2p"
@@ -266,15 +263,20 @@ let
       attachmentIds = uniqueStrings (
         map (iface: (attrsOrEmpty (iface.backingRef or null)).id or "") candidates
       );
-      # FS-550: a core-hosted DNS service is addressed by its stable loopback,
-      # never by the fabric p2p up-sel address. Using the up-sel here made the
-      # runtime-origin source prefix (e.g. 10.1.0.18/32) collide with the
-      # connected p2p subnet (10.1.0.18/31) and shadow it with a more-specific
-      # /32, breaking the fabric reachability to the provider core.
-      addresses = uniqueStrings (
-        lib.optional (builtins.elem "ipv4" families && loopback4 != "") loopback4
-        ++ lib.optional (builtins.elem "ipv6" families && loopback6 != "") loopback6
+      # FS-540-HDS-010-SDS-010-SMS-035: "Preserve the emitted relation endpoint
+      # exactly: the provider listener and requester forwarder shall match per
+      # family, and a node loopback or another local address shall not be
+      # substituted." The emitted endpoint is the terminal attachment the
+      # relation names, so the listener/forwarder address is that attachment's
+      # address on this node, never the node loopback.
+      endpointAddresses = uniqueStrings (
+        builtins.filter (
+          address:
+          (builtins.elem "ipv4" families && builtins.match ".*:.*" address == null)
+          || (builtins.elem "ipv6" families && builtins.match ".*:.*" address != null)
+        ) (lib.concatMap interfaceAddresses candidates)
       );
+      addresses = endpointAddresses;
       missingFamilies =
         lib.optional (
           builtins.elem "ipv4" families
