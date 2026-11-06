@@ -276,9 +276,9 @@ let
     );
 
   ingressDefaultsFor =
-    targetName:
+    targets: targetName:
     let
-      target = runtimeTargets.${targetName};
+      target = targets.${targetName};
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
       byRuntime = interfaceByRuntime interfaces;
@@ -360,11 +360,11 @@ let
     complementInterface targetName (dropOriginMainRoutes targetName iface);
 
   addIngressDefaults =
-    targetName: target:
+    targets: targetName: target:
     let
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
-      extras = ingressDefaultsFor targetName;
+      extras = ingressDefaultsFor targets targetName;
     in
     target
     // {
@@ -373,7 +373,7 @@ let
       };
     };
 
-  withIngressDefaults = builtins.mapAttrs addIngressDefaults runtimeTargets;
+
 
   addFinalHygiene =
     targetName: target:
@@ -388,5 +388,7 @@ let
       };
     };
 
+  complementedTargets = builtins.mapAttrs addFinalHygiene runtimeTargets;
+
 in
-builtins.mapAttrs addFinalHygiene withIngressDefaults
+builtins.mapAttrs (addIngressDefaults complementedTargets) complementedTargets
