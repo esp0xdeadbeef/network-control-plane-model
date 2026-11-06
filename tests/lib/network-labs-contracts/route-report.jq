@@ -65,8 +65,31 @@ def default_route_lane_violations:
   sites as $site
   | overlay_names($site) as $overlays
   | delegated_access_nodes($site) as $delegated
-  | runtime_targets($site) as $target
+  | [runtime_targets($site)] as $allTargets
   | $delegated[] as $access
+  # FS-460-HDS-010-SDS-010-SMS-050 (as reconciled with FS-322): the delegated
+  # public-egress default is bound to the delegated scope's overlay lane only
+  # when that scope's modelled selection makes an overlay an egress surface. The
+  # lane set is the model's statement of what the scope selected; a delegated
+  # allocation on a scope that selects only underlay exits is an underlay egress
+  # and must not be handed an overlay default (the overlay is then a peer path
+  # for tenant/service connectivity only).
+  | (
+      [
+        $allTargets[]
+        | (.data.effectiveRuntimeRealization.interfaces // {})
+        | to_entries[]
+        | (.value.backingRef.lane // {})
+        | select((.access // "") == $access)
+        | (
+            ((.uplink // null) | if type == "string" then [.] else [] end)
+            + ((.uplinks // []) | if type == "array" then . else [] end)
+          )[]
+        | . as $uplinkName
+        | select(($overlays | index($uplinkName)) != null)
+      ] | length
+    ) as $modelsOverlayExit
+  | runtime_targets($site) as $target
   | [
       ($target.data.effectiveRuntimeRealization.interfaces // {})
       | to_entries[]
@@ -74,9 +97,10 @@ def default_route_lane_violations:
       | select((.dst // "") == "::/0" or (.dst // "") == "0000:0000:0000:0000:0000:0000:0000:0000/0")
       | select(((.lane // {}).access // "") == $access)
     ] as $defaults
+  | select($modelsOverlayExit > 0)
   | select(($defaults | length) > 0)
   | if (($overlays | length) > 0 and ([$defaults[] as $route | select(($overlays | index((($route.lane // {}).uplink // ""))) != null)] | length) == 0) then
-      violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "delegated IPv6 access " + $access + " has defaults but no overlay default lane")
+      violation("default-route-lane"; $target.name; $target.enterprise; $target.site; $target.id; "delegated IPv6 access " + $access + " selects an overlay exit but has defaults with no overlay default lane")
     else
       empty
     end;
