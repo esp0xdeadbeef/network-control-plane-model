@@ -25,7 +25,7 @@ EOF
 
 stderr_file="${tmp_dir}/stderr.log"
 
-if nix run \
+if nix run --no-write-lock-file \
   --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#debug" -- \

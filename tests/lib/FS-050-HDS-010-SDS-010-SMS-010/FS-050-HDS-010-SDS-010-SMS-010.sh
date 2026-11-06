@@ -29,7 +29,7 @@ eval_contract_attr() {
   local attr="$2"
   local output_json="$3"
 
-  nix eval --impure --json --expr "
+  nix eval --no-write-lock-file --impure --json --expr "
     let
       lib = (import <nixpkgs> {}).lib;
       helpers = import ${helpers_path} { inherit lib; };
@@ -41,7 +41,7 @@ eval_contract_attr() {
     in
       contract.${attr}
   " >"${output_json}" 2>"${tmp_dir}/eval.stderr" || {
-    echo "FAIL ${trace_id}: nix eval failed for ${attr}" >&2
+    echo "FAIL ${trace_id}: nix eval --no-write-lock-file failed for ${attr}" >&2
     cat "${tmp_dir}/eval.stderr" >&2
     exit 1
   }

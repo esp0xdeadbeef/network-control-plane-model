@@ -27,7 +27,7 @@ build_cpm() {
   local inventory="$1"
   local output="$2"
 
-  nix run \
+  nix run --no-write-lock-file \
     --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     "${repo_root}#compile-and-build-control-plane-model" -- \

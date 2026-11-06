@@ -13,7 +13,7 @@ trap 'rm -f "'"${archive_json}"'" "'"${output_json}"'"' EXIT
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -32,7 +32,7 @@ inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="${intent_path}" \
 INVENTORY_PATH="${inventory_path}" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let

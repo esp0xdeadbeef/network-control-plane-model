@@ -18,7 +18,7 @@ hat_dir="$(pinned_hat_dir)"
 # Test NixOS substrate
 echo "--- Testing NixOS substrate ---"
 output_json="${tmp_dir}/cpm-nixos.json"
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${hat_dir}/intent.nix" \
   "${hat_dir}/inventory-nixos.nix" \
   "${output_json}" >/dev/null
@@ -56,7 +56,7 @@ echo "PASS pppoe-provider-default-route-stripping nixos substrate"
 # Test CLAB substrate
 echo "--- Testing CLAB substrate ---"
 output_json="${tmp_dir}/cpm-clab.json"
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${hat_dir}/intent.nix" \
   "${hat_dir}/inventory-clab.nix" \
   "${output_json}" >/dev/null

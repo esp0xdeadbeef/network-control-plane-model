@@ -13,7 +13,7 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 hat_dir="$(pinned_hat_dir)"
 output_json="${tmp_dir}/cpm.json"
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${hat_dir}/intent.nix" \
   "${hat_dir}/inventory-nixos.nix" \
   "${output_json}" >/dev/null

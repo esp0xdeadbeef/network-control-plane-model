@@ -26,7 +26,7 @@ trap 'rm -f "$archive_json" "$baseline_json" "$missing_endpoint_inventory" "$mis
 nix flake archive --json "path:${repo_root}" > "$archive_json"
 
 labs_path="$(
-  ARCHIVE_JSON="$archive_json" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="$archive_json" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -47,7 +47,7 @@ eval_service() {
   REPO_ROOT="$repo_root" \
   INTENT_PATH="$intent_path" \
   INVENTORY_PATH="$inventory_path" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let
@@ -83,7 +83,7 @@ eval_service_scope_binding_fixture() {
 
   REPO_ROOT="$repo_root" \
   RELATION_PATH="$relation_path" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let
@@ -139,7 +139,7 @@ eval_reachability_separation_fixture() {
   local output_path="$1"
 
   REPO_ROOT="$repo_root" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let
@@ -318,7 +318,7 @@ eval_no_exposure_fixture() {
   local output_path="$1"
 
   REPO_ROOT="$repo_root" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let
@@ -488,7 +488,7 @@ eval_host_placement_fixture() {
   local stderr_path="$2"
 
   REPO_ROOT="$repo_root" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let

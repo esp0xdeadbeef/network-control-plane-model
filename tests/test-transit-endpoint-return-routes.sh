@@ -25,7 +25,7 @@ trap 'rm -f "'"${output_json}"'" "'"${output_json}.check"'" "'"${sitec_json}"'" 
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="${intent_path}" \
 INVENTORY_PATH="${inventory_path}" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let
@@ -40,7 +40,7 @@ INVENTORY_PATH="${inventory_path}" \
     ' > "${output_json}"
 
 # shellcheck disable=SC2016
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     routes = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     hasRoute = family: dst: via:
@@ -74,7 +74,7 @@ fi
 REPO_ROOT="${repo_root}" \
 INTENT_PATH="${s_router_intent_path}" \
 INVENTORY_PATH="${s_router_inventory_path}" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let

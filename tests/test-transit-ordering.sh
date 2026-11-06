@@ -17,10 +17,10 @@ inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory
 [[ -f "${intent_path}" ]] || { echo "missing intent fixture: ${intent_path}" >&2; exit 1; }
 [[ -f "${inventory_path}" ]] || { echo "missing inventory fixture: ${inventory_path}" >&2; exit 1; }
 
-nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" "${inventory_path}" "${output_json}" >/dev/null
 
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
 

@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -110,7 +110,7 @@ base // {
 }
 NIX
 
-nix eval \
+nix eval --no-write-lock-file \
   --impure \
   --json \
   --expr "

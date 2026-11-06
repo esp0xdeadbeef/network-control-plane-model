@@ -13,7 +13,7 @@ trap 'rm -f "'"${archive_json}"'" "'"${output_json}"'"' EXIT
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -29,9 +29,9 @@ labs_path="$(
 intent_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix"
 inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix"
 
-nix run "${repo_root}#compile-and-build-control-plane-model" -- "${intent_path}" "${inventory_path}" "${output_json}" >/dev/null
+nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model" -- "${intent_path}" "${inventory_path}" "${output_json}" >/dev/null
 
-OUTPUT_JSON="${output_json}" nix eval --impure --json --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --json --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     siteB = data.control_plane_model.data.espbranch."site-b";

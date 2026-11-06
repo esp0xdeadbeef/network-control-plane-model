@@ -24,7 +24,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 result_json="$(mktemp)"
 trap 'rm -f "${result_json}"' EXIT
 
-REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     common = import (repoRoot + "/src/cpm/firewall-intent/rules/common.nix") { };

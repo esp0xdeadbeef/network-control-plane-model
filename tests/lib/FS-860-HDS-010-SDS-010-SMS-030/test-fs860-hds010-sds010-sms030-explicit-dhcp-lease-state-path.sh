@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 flake_input_path() {
   local input_name="$1"
@@ -67,7 +67,7 @@ EOF
 
 compile_inventory() {
   local inventory_path="$1"
-  nix eval --impure --json --expr '
+  nix eval --no-write-lock-file --impure --json --expr '
     let
       flake = builtins.getFlake "path:'"${repo_root}"'";
     in
@@ -85,7 +85,7 @@ write_inventory \
   "/var/lib/kea/client-v6.leases"
 compile_inventory "${positive_inventory}" >"${tmp_dir}/positive.json"
 
-OUTPUT_JSON="${tmp_dir}/positive.json" nix eval --impure --expr '
+OUTPUT_JSON="${tmp_dir}/positive.json" nix eval --no-write-lock-file --impure --expr '
   let
     output = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     target = output.control_plane_model.data.esp0xdeadbeef."site-a".runtimeTargets."esp0xdeadbeef-site-a-s-router-access-client";

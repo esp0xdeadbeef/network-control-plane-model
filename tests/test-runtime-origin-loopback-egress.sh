@@ -29,7 +29,7 @@ output_json="$(mktemp)"
 gron_txt="$(mktemp)"
 trap 'rm -f "${output_json}" "${gron_txt}"' EXIT
 
-nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model" -- \
   "${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" \
   "${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
   "${output_json}" >/dev/null
@@ -182,7 +182,7 @@ jq -e '
   exit 1
 }
 
-nix eval --impure --raw --expr "
+nix eval --no-write-lock-file --impure --raw --expr "
   let
     common = import ${repo_root}/src/cpm/firewall-intent/rules/common.nix {};
     prefixes = [

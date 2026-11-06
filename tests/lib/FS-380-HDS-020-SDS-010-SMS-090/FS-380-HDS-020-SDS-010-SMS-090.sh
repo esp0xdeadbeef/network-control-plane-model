@@ -28,12 +28,12 @@ echo "--- FS-380-HDS-020-SDS-010-SMS-090: CPM explicit interface role classifica
 echo ""
 
 # ============================================================
-# Helper: run nix eval expression and check result
+# Helper: run nix eval --no-write-lock-file expression and check result
 # ============================================================
 nix_eval_bool() {
   local desc="$1" expr="$2" expected="$3"
   local result
-  result="$(REPO_ROOT="${repo_root}" nix eval --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
+  result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "${expr}" 2>/dev/null || echo "__ERROR__")"
   if [[ "${result}" == "${expected}" ]]; then
     echo "PASS: ${desc}"
   else

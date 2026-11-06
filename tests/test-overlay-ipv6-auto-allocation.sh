@@ -14,7 +14,7 @@ output_json="${tmp_dir}/output.json"
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -27,12 +27,12 @@ labs_path="$(
 intent_path="${labs_path}/examples/single-wan-with-nebula/intent.nix"
 inventory_path="${labs_path}/examples/single-wan-with-nebula/inventory-nixos.nix"
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
   "${inventory_path}" \
   "${output_json}" >/dev/null
 
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     node = data.control_plane_model.data.esp0xdeadbeef."site-a".overlays.nebula.nodes."s-router-core-nebula";

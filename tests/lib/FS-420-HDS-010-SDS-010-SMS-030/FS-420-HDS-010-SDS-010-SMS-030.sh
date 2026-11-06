@@ -14,7 +14,7 @@ single_wan_json="${tmp_dir}/single-wan.json"
 output_json="${tmp_dir}/provider-access.json"
 
 # Compilation 1: single-wan — verify translation containment on standard site
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   $(pinned_network_labs)/examples/single-wan/intent.nix \
   $(pinned_network_labs)/examples/single-wan/inventory-clab.nix \
   "${single_wan_json}" >/dev/null
@@ -42,13 +42,13 @@ jq -e '
   exit 1
 }
 
-# Inline nix eval: provider-access translation containment
+# Inline nix eval --no-write-lock-file: provider-access translation containment
 # Replaces HAT inventory compilation (blocked by NFM link-generation changes
 # that make HAT inventories stale). Exercises the same SMS predicates:
 # - No side-channel paths in CPM output
 # - Translation records contained on core nodes only
 # - Provider-handoff access nodes do not acquire natIntent or exitsSite
-nix eval \
+nix eval --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   --impure --json --expr '
     let

@@ -6,7 +6,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-nix eval --impure --expr "
+nix eval --no-write-lock-file --impure --expr "
 let
   lib = import <nixpkgs/lib>;
   helpers = import ${repo_root}/lib/contract.nix { inherit lib; };

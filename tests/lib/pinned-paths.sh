@@ -26,7 +26,7 @@ _resolve_network_labs() {
     return
   fi
   local resolved
-  if resolved="$(nix eval --impure --raw --expr '
+  if resolved="$(nix eval --no-write-lock-file --impure --raw --expr '
     let flake = builtins.getFlake (toString ./.);
     in flake.inputs.network-labs.outPath or ""
   ' 2>/dev/null)"; then

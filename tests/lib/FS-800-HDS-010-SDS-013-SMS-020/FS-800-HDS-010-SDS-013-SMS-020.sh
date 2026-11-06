@@ -172,7 +172,7 @@ in
 }
 EOF
 
-  nix eval --json --file "${expr}" >"${result_json}"
+  nix eval --no-write-lock-file --json --file "${expr}" >"${result_json}"
   jq -e '
     .pppoeIpv4Count == 0
     and .pppoeIpv6Count == 0
@@ -202,7 +202,7 @@ if [[ -n "${CPM_NIXOS_JSON:-}" ]]; then
   # Use pre-built CPM JSON from flake check
   cp "${CPM_NIXOS_JSON}" "${output_nixos}"
 else
-  nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+  nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${hat_dir}/intent.nix" \
     "${hat_dir}/inventory-nixos.nix" \
     "${output_nixos}" >/dev/null
@@ -227,7 +227,7 @@ if [[ -n "${CPM_CLAB_JSON:-}" ]]; then
   # Use pre-built CPM JSON from flake check
   cp "${CPM_CLAB_JSON}" "${output_clab}"
 else
-  nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+  nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${hat_dir}/intent.nix" \
     "${hat_dir}/inventory-clab.nix" \
     "${output_clab}" >/dev/null

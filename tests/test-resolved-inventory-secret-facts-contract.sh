@@ -13,7 +13,7 @@ trap 'rm -f "${archive_json}"; rm -rf "${tmp_dir}"' EXIT
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -123,12 +123,12 @@ write_inventory positive "${positive_inventory}"
 write_inventory missing-source "${missing_source_inventory}"
 write_inventory out-of-pool "${out_of_pool_inventory}"
 
-nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
   "${positive_inventory}" \
   "${output_json}" >/dev/null
 
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     siteA = data.control_plane_model.data.enterpriseA."site-a";
@@ -146,7 +146,7 @@ OUTPUT_JSON="${output_json}" nix eval --impure --expr '
   exit 1
 }
 
-if nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+if nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
   "${missing_source_inventory}" \
   "${tmp_dir}/missing-source.json" >/dev/null 2>"${source_stderr}"; then
@@ -160,7 +160,7 @@ if ! grep -Fq "source class is required by overlay addressSourcePolicy" "${sourc
   exit 1
 fi
 
-if nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+if nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
   "${intent_path}" \
   "${out_of_pool_inventory}" \
   "${tmp_dir}/out-of-pool.json" >/dev/null 2>"${pool_stderr}"; then

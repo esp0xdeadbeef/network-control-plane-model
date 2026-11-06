@@ -57,7 +57,7 @@ cat >"${inventory_path}" <<'EOF'
 { }
 EOF
 
-nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "
+nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "
   let
     flake = builtins.getFlake \"path:${repo_root}\";
     api = flake.libBySystem.\${builtins.currentSystem};

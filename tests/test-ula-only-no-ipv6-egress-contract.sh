@@ -11,7 +11,7 @@ trap 'rm -f "${output_json}"' EXIT
 
 example_root="$(pinned_network_labs)/examples/single-wan-uplink-static-egress"
 
-nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model" -- \
   "${example_root}/intent.nix" \
   "${example_root}/inventory-nixos.nix" \
   "${output_json}" >/dev/null

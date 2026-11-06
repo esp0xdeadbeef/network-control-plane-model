@@ -74,7 +74,7 @@ command -v nix >/dev/null 2>&1 || { echo "missing required command: nix" >&2; ex
 result_json="$(mktemp)"
 trap 'rm -f "${result_json}"' EXIT
 
-REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     common = import (repoRoot + "/src/cpm/firewall-intent/rules/common.nix") { };
@@ -311,7 +311,7 @@ check "SN3 forward delegated rules preserve enforceable source-prefix matches" '
 continuity_json="$(mktemp)"
 trap 'rm -f "${result_json}" "${continuity_json}"' EXIT
 
-REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     ruleBuilders = import (repoRoot + "/src/cpm/firewall-intent/rules.nix") { };

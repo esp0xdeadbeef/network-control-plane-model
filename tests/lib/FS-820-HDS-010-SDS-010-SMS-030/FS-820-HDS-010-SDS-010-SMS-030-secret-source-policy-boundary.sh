@@ -37,7 +37,7 @@ evaluate_policy_boundary() {
   local inventory_nix="$1"
   local output_json="$2"
 
-  if ! nix eval --impure --json --expr "
+  if ! nix eval --no-write-lock-file --impure --json --expr "
     let
       contract = import ${contract_path} {
         lib = (import <nixpkgs> {}).lib;
@@ -48,7 +48,7 @@ evaluate_policy_boundary() {
     in
     contract.secretPolicyBoundary
   " > "${output_json}" 2>"${tmp_dir}/eval.stderr"; then
-    echo "FAIL: nix eval failed" >&2
+    echo "FAIL: nix eval --no-write-lock-file failed" >&2
     cat "${tmp_dir}/eval.stderr" >&2
     exit 1
   fi
@@ -382,7 +382,7 @@ cat > "${tmp_dir}/delivery-inventory.nix" <<'DELIVERY_NEUTRAL'
 }
 DELIVERY_NEUTRAL
 
-if ! nix eval --impure --json --expr "
+if ! nix eval --no-write-lock-file --impure --json --expr "
   let
     contract = import ${contract_path} {
       lib = (import <nixpkgs> {}).lib;
@@ -397,7 +397,7 @@ if ! nix eval --impure --json --expr "
     allPolicyNeutral = contract.secretPolicyBoundary.allPolicyNeutral;
   }
 " > "${tmp_dir}/delivery.json" 2>"${tmp_dir}/eval2.stderr"; then
-  echo "FAIL: nix eval (delivery) failed" >&2
+  echo "FAIL: nix eval --no-write-lock-file (delivery) failed" >&2
   cat "${tmp_dir}/eval2.stderr" >&2
   exit 1
 fi
@@ -484,7 +484,7 @@ cat > "${tmp_dir}/excluded-inventory.nix" <<'EXCLUDED'
 }
 EXCLUDED
 
-if ! nix eval --impure --json --expr "
+if ! nix eval --no-write-lock-file --impure --json --expr "
   let
     contract = import ${contract_path} {
       lib = (import <nixpkgs> {}).lib;
@@ -501,7 +501,7 @@ if ! nix eval --impure --json --expr "
     bindingCount = builtins.length contract.sourceBindings;
   }
 " > "${tmp_dir}/excluded.json" 2>"${tmp_dir}/eval3.stderr"; then
-  echo "FAIL: nix eval (excluded) failed" >&2
+  echo "FAIL: nix eval --no-write-lock-file (excluded) failed" >&2
   cat "${tmp_dir}/eval3.stderr" >&2
   exit 1
 fi

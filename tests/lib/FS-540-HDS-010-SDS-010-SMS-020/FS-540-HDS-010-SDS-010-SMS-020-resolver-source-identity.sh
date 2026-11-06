@@ -44,7 +44,7 @@ in
 }
 NIX
 
-result="$(nix eval --impure --json -f "${tmpdir}/probe.nix" 2>/dev/null)"
+result="$(nix eval --no-write-lock-file --impure --json -f "${tmpdir}/probe.nix" 2>/dev/null)"
 [[ -n "${result}" ]] || fail "probe evaluation produced no result"
 
 # The resolver carries a modeled listener identity, so the source cannot be

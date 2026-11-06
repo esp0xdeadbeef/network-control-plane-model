@@ -13,7 +13,7 @@ output_json="${tmp_dir}/output.json"
 
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labsPath = archived.inputs."network-labs".path or null;
@@ -22,7 +22,7 @@ labs_path="$(
   '
 )"
 
-nix run "${repo_root}#compile-and-build-control-plane-model" -- \
+nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model" -- \
   "${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" \
   "${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
   "${output_json}" >/dev/null

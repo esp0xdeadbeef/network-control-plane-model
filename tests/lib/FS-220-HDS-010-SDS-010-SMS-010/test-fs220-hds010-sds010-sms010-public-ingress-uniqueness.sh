@@ -28,7 +28,7 @@ unique_output="$(mktemp)"
 trap 'rm -f "$unique_output"' EXIT
 
 REPO_ROOT="$repo_root" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let
@@ -138,7 +138,7 @@ duplicate_output="$(mktemp)"
 trap 'rm -f "$duplicate_output"' EXIT
 
 REPO_ROOT="$repo_root" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let
@@ -258,7 +258,7 @@ split_output="$(mktemp)"
 trap 'rm -f "$split_output"' EXIT
 
 REPO_ROOT="$repo_root" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let
@@ -372,7 +372,7 @@ trap 'rm -f "$ambiguous_output"' EXIT
 # Run in a subshell to catch the expected throw.
 set +e
 REPO_ROOT="$repo_root" \
-  nix eval \
+  nix eval --no-write-lock-file \
     --extra-experimental-features 'nix-command flakes' \
     --impure --json --expr '
       let

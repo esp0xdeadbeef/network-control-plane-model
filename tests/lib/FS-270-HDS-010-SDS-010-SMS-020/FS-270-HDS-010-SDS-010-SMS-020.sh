@@ -8,7 +8,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 cd "${repo_root}"
 
 report="$({
-  REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+  REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
     let
       flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
       system = builtins.currentSystem;

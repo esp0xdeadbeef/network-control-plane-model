@@ -7,7 +7,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 export REPO_ROOT="${repo_root}"
 
-nix eval --impure --expr '
+nix eval --no-write-lock-file --impure --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     routeIdentity = import (repoRoot + "/src/cpm/Site/build-data/runtime-route-identity.nix") {

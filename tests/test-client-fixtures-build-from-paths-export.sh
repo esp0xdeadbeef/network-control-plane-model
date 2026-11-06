@@ -7,7 +7,7 @@ cd "${repo_root}"
 system="${SYSTEM:-x86_64-linux}"
 
 shape="$(
-  nix eval --json --impure --expr "
+  nix eval --no-write-lock-file --json --impure --expr "
     let
       flake = builtins.getFlake (toString ./.);
       system = \"${system}\";

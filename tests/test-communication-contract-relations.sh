@@ -13,7 +13,7 @@ trap 'rm -f "'"${archive_json}"'"' EXIT
 nix flake archive --json "path:${repo_root}" > "${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -46,7 +46,7 @@ in
 '
 
 if TEST_INPUT_PATH="$intent_path" TEST_INVENTORY_PATH="$inventory_path" \
-  nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+  nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
   echo "PASS communication-contract-relations"
 else
   echo "FAIL communication-contract-relations" >&2

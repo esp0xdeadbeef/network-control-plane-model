@@ -17,7 +17,7 @@ output_json="${tmp_dir}/output.json"
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -31,7 +31,7 @@ assert_dynamic_client_addressing() {
   local site_name="$1"
   local target_name="$2"
 
-  nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+  nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${labs_path}/examples/tri-site-s-router-overlay-egress/intent.nix" \
     "${labs_path}/examples/tri-site-s-router-overlay-egress/inventory.nix" \
     "${output_json}" >/dev/null

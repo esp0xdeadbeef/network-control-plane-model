@@ -43,7 +43,7 @@ in
   && dnsRuleFor 6 "fd42:dead:cafe:10::1"
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then
   echo "PASS core-dns-service-public-egress-forwarding"
 else
   echo "FAIL core-dns-service-public-egress-forwarding" >&2

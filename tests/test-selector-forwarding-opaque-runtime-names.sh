@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 archive_json="$(mktemp)"
 output_json="$(mktemp)"
@@ -19,7 +19,7 @@ fi
 nix flake archive "${nix_args[@]}" --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -35,7 +35,7 @@ INTENT_PATH="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" 
 INVENTORY_PATH="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
 REPO_ROOT="${repo_root}" \
 NIX_SYSTEM="${system}" \
-nix eval --impure "${nix_args[@]}" --json --expr '
+nix eval --no-write-lock-file --impure "${nix_args[@]}" --json --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     lib = flake.inputs.nixpkgs.lib;

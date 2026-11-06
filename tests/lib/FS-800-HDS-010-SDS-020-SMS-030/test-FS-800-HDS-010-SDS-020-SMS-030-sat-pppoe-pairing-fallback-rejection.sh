@@ -32,7 +32,7 @@ build_cpm() {
   local inventory="$1"
   local output="$2"
 
-  nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+  nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${intent_path}" \
     "${inventory}" \
     "${output}" >/dev/null

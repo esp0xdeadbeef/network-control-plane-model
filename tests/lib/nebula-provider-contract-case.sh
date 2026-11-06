@@ -12,7 +12,7 @@ trap 'rm -f "${archive_json}" "${violations_json}"' EXIT
 nix flake archive --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
-  ARCHIVE_JSON="${archive_json}" nix eval --impure --raw --expr '
+  ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let
       archived = builtins.fromJSON (builtins.readFile (builtins.getEnv "ARCHIVE_JSON"));
       labs = archived.inputs."network-labs" or null;
@@ -24,7 +24,7 @@ labs_path="$(
 
 example_dir="${labs_path}/examples/${example}"
 
-nix eval --impure --no-warn-dirty --json --expr '
+nix eval --no-write-lock-file --impure --no-warn-dirty --json --expr '
   let
     flake = builtins.getFlake (toString '"${repo_root}"');
     cpmLib = flake.libBySystem.x86_64-linux;

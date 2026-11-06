@@ -30,7 +30,7 @@ NETWORK_LABS_CURRENT_LAB_DIR="${tmp_dir}/lab/current-lab" \
 labs_path="${tmp_dir}/lab"
 
 selection_ok="$(
-  LABS_PATH="${labs_path}" nix eval --impure --raw --expr '
+  LABS_PATH="${labs_path}" nix eval --no-write-lock-file --impure --raw --expr '
     let selection = import ((builtins.getEnv "LABS_PATH") + "/current-lab/metadata.nix");
         selected =
           (
@@ -46,7 +46,7 @@ selection_ok="$(
   '
 )"
 selection_label="$(
-  LABS_PATH="${labs_path}" nix eval --impure --raw --expr '
+  LABS_PATH="${labs_path}" nix eval --no-write-lock-file --impure --raw --expr '
     let selection = import ((builtins.getEnv "LABS_PATH") + "/current-lab/metadata.nix");
     in "${selection.layer or ""}:${selection.selector or ""}:${selection.traceId or ""}"
   '
@@ -61,7 +61,7 @@ check_inventory() {
   local inventory="$2"
   local output_json="${tmp_dir}/${label}.json"
 
-  nix run "path:${repo_root}#compile-and-build-control-plane-model" -- \
+  nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${labs_path}/current-lab/intent.nix" \
     "${labs_path}/current-lab/${inventory}" \
     "${output_json}" >/dev/null

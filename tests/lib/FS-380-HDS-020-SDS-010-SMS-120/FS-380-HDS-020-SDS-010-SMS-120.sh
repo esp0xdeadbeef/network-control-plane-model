@@ -19,7 +19,7 @@ NETWORK_LABS_CURRENT_LAB_DIR="${tmp_lab}/core/current-lab" \
   bash "${labs_root}/scripts/select-current-lab.sh" SMT FS-380-HDS-020-SDS-010-SMS-120 >/dev/null
 NETWORK_LABS_PATH="${tmp_lab}/core" \
 REPO_ROOT="${repo_root}" \
-nix eval --impure --expr '
+nix eval --no-write-lock-file --impure --expr '
   let
     traceId = "FS-380-HDS-020-SDS-010-SMS-120";
     repoRoot = builtins.getEnv "REPO_ROOT";

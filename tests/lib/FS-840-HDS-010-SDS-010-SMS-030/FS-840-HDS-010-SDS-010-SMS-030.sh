@@ -23,13 +23,13 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 # Direct Nix evaluation of secret-source-contract with synthetic inventories
 # that test the overBroadDeliveryDiagnosticForRecord guard.
-# Uses nix eval --impure --expr to construct minimal inventory fixtures.
+# Uses nix eval --no-write-lock-file --impure --expr to construct minimal inventory fixtures.
 
 nix_eval_contract() {
   local inventory_expr="$1"
   local attr="$2"
 
-  nix eval --impure --json --expr "
+  nix eval --no-write-lock-file --impure --json --expr "
     let
       flake = builtins.getFlake \"path:${repo_root}\";
       system = builtins.currentSystem;

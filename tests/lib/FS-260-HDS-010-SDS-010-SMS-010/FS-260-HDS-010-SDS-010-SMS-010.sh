@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 
 result="$({
-  REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+  REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
     let
       repoRoot = builtins.toPath (builtins.getEnv "REPO_ROOT");
       common = import (repoRoot + "/src/cpm/firewall-intent/rules/common.nix") { };

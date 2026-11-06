@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 fixture="${repo_root}/tests/fixtures/fs800-pppoe-ipv6-pd-contract.nix"
-nixpkgs_path="$(REPO_ROOT="${repo_root}" nix eval --impure --raw --expr '
+nixpkgs_path="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --raw --expr '
   (builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT")).inputs.nixpkgs.outPath
 ')"
 tmp_dir="$(mktemp -d)"

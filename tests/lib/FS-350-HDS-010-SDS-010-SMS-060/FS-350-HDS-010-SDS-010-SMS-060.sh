@@ -6,7 +6,7 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-result="$({ REPO_ROOT="${repo_root}" nix eval --impure --json --expr '
+result="$({ REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
   let
     root = builtins.getEnv "REPO_ROOT";
     isNonEmptyString = value: builtins.isString value && value != "";

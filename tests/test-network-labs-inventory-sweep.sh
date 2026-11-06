@@ -46,7 +46,7 @@ compile_output() {
   local jsonl_output="${case_dir}/${safe_name}.jsonl"
   local manifest_output="${case_dir}/${safe_name}.manifest"
 
-  if nix run --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
+  if nix run --no-write-lock-file --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${intent_path}" \
     "${inventory_path}" \
     "${output_json}" >/dev/null 2>"${stderr_log}"; then

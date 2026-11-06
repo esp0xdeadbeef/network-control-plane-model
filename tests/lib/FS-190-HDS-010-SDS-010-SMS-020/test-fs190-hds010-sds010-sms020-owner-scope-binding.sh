@@ -26,7 +26,7 @@ eval_ch1_fixture() {
   local stderr_path="$2"
 
   REPO_ROOT="$repo_root" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let
@@ -123,7 +123,7 @@ eval_sn1_fixture() {
   local stderr_path="$2"
 
   REPO_ROOT="$repo_root" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let
@@ -211,7 +211,7 @@ eval_sn2_fixture() {
   local stderr_path="$2"
 
   REPO_ROOT="$repo_root" \
-    nix eval \
+    nix eval --no-write-lock-file \
       --extra-experimental-features 'nix-command flakes' \
       --impure --json --expr '
         let

@@ -9,7 +9,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-REPO_ROOT="${repo_root}" nix eval --impure --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     lib = import <nixpkgs/lib>;
@@ -167,7 +167,7 @@ REPO_ROOT="${repo_root}" nix eval --impure --expr '
       throw ("fs350 inventory-realization cross-ledger checks failed: " + builtins.toJSON checks)
 ' >/dev/null
 
-if REPO_ROOT="${repo_root}" nix eval --impure --expr '
+if REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
   let
     repoRoot = builtins.getEnv "REPO_ROOT";
     lib = import <nixpkgs/lib>;

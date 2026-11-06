@@ -23,7 +23,7 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 hat_dir="$(pinned_hat_dir)"
 
-nix run \
+nix run --no-write-lock-file \
   --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   "${repo_root}#compile-and-build-control-plane-model" -- \

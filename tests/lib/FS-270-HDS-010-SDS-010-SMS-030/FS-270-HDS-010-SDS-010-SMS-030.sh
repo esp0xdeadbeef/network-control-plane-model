@@ -156,7 +156,7 @@ in
 }
 NIX
 
-REPO_ROOT="${repo_root}" nix eval \
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file \
   --extra-experimental-features 'nix-command flakes' \
   --impure --json --file "${expr_nix}" >"${result_json}"
 

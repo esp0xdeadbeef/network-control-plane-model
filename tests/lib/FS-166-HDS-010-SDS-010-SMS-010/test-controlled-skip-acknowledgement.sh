@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="${NETWORK_CONTROL_PLANE_MODEL_ROOT:-${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}}"
 
-nix eval --impure --json --expr '
+nix eval --no-write-lock-file --impure --json --expr '
   let
     api = (builtins.getFlake "path:'"$ROOT"'").libBySystem.${builtins.currentSystem};
     skip = api.controlledSkip;
@@ -34,7 +34,7 @@ nix eval --impure --json --expr '
 ' >/dev/null
 
 set +e
-diagnostic="$({ nix eval --impure --json --expr '
+diagnostic="$({ nix eval --no-write-lock-file --impure --json --expr '
   let
     api = (builtins.getFlake "path:'"$ROOT"'").libBySystem.${builtins.currentSystem};
     skip = api.controlledSkip;

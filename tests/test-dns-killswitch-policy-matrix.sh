@@ -4,7 +4,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 fixture_dir="${repo_root}/fixtures/passing/dns-killswitch-policy-matrix"
 input_path="${fixture_dir}/input.nix"
 inventory_path="${fixture_dir}/inventory.nix"
@@ -93,7 +93,7 @@ missing_dns_policy_stderr="$(mktemp)"
 conflict_stderr="$(mktemp)"
 trap 'rm -f "${output_json}" "${malformed_stderr}" "${missing_dns_policy_stderr}" "${conflict_stderr}"' EXIT
 
-if nix eval --impure --json --expr "
+if nix eval --no-write-lock-file --impure --json --expr "
   let
     flake = builtins.getFlake (toString ${repo_root});
     builder = flake.lib.${system}.build;
@@ -112,7 +112,7 @@ if ! grep -Fq "runtimeTargets.access-runtime.services.dns" "${missing_dns_policy
   exit 1
 fi
 
-if nix eval --impure --json --expr "
+if nix eval --no-write-lock-file --impure --json --expr "
   let
     flake = builtins.getFlake (toString ${repo_root});
     builder = flake.lib.${system}.build;
@@ -131,7 +131,7 @@ if ! grep -Fq "services.dns" "${conflict_stderr}" && ! grep -Fq "forwarders" "${
   exit 1
 fi
 
-if nix eval --impure --json --expr "
+if nix eval --no-write-lock-file --impure --json --expr "
   let
     flake = builtins.getFlake (toString ${repo_root});
     builder = flake.lib.${system}.build;
@@ -150,7 +150,7 @@ if ! grep -Fq "registeredUpstreams" "${malformed_stderr}"; then
   exit 1
 fi
 
-nix eval --impure --json --expr "
+nix eval --no-write-lock-file --impure --json --expr "
   let
     flake = builtins.getFlake (toString ${repo_root});
     builder = flake.lib.${system}.build;
@@ -160,7 +160,7 @@ nix eval --impure --json --expr "
     builder { inherit input inventory; }
 " > "${output_json}"
 
-OUTPUT_JSON="${output_json}" EXPECTED_JSON="${expected_path}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" EXPECTED_JSON="${expected_path}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     expected = builtins.fromJSON (builtins.readFile (builtins.getEnv "EXPECTED_JSON"));

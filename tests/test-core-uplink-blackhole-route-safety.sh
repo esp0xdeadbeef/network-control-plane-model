@@ -117,7 +117,7 @@ expr='
       && allowedSafety.broadCoreOriginUplinkRoutingAllowed == true
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "${expr}" | grep -qx true; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "${expr}" | grep -qx true; then
   echo "PASS core-uplink-blackhole-route-safety"
 else
   echo "FAIL core-uplink-blackhole-route-safety" >&2
@@ -156,7 +156,7 @@ missing_expr='
       }).routeSafety.coreOriginUplinkDefault.selectedUplinkInterfaces
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "${missing_expr}" >/dev/null 2>"${missing_error}"; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "${missing_expr}" >/dev/null 2>"${missing_error}"; then
   echo "FAIL core-uplink-blackhole-route-safety: missing selected uplink was accepted" >&2
   exit 1
 fi
@@ -200,7 +200,7 @@ declined_expr='
       }).routeSafety.coreOriginUplinkDefault.selectedUplinkInterfaces
 '
 
-if nix eval --extra-experimental-features 'nix-command flakes' --impure --expr "${declined_expr}" >/dev/null 2>"${declined_error}"; then
+if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "${declined_expr}" >/dev/null 2>"${declined_error}"; then
   echo "FAIL core-uplink-blackhole-route-safety: declined selected uplink was accepted" >&2
   exit 1
 fi

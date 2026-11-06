@@ -16,13 +16,13 @@ output_json="${tmp_dir}/cpm.json"
 
 (
   cd "${repo_root}"
-  nix run --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
+  nix run --no-write-lock-file --show-trace "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${example_dir}/intent.nix" \
     "${example_dir}/inventory-clab.nix" \
     "${output_json}" >/dev/null
 )
 
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     siteA = data.control_plane_model.data."enterprise-a"."site-a";

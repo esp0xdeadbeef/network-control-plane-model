@@ -110,7 +110,7 @@ GUARDED_ARGS="${BASE_ARGS} emulationSubnets = [ \"10.11.0.0/24\" \"198.51.100.0/
 nix_eval() {
   local desc="$1" args="$2" apply="$3" expected="$4"
   local result
-  result=$(REPO_ROOT="${repo_root}" nix eval --impure --expr "
+  result=$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr "
     let lib = import <nixpkgs/lib>; in
     import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/Site/build-data/output.nix\") {
       inherit lib; isNonEmptyString = s: builtins.isString s && s != \"\"; ${args}

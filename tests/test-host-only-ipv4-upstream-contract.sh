@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-REPO_ROOT="${repo_root}" nix eval --impure --expr '
+REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
     system = builtins.currentSystem;

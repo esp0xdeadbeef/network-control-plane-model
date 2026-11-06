@@ -6,12 +6,12 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 fixture_dir="${repo_root}/fixtures/passing/dns-killswitch-policy-matrix"
 output_json="$(mktemp)"
 trap 'rm -f "${output_json}"' EXIT
 
-nix eval --impure --json --expr "
+nix eval --no-write-lock-file --impure --json --expr "
   let
     flake = builtins.getFlake (toString ${repo_root});
     builder = flake.lib.${system}.build;
@@ -21,7 +21,7 @@ nix eval --impure --json --expr "
     builder { inherit input inventory; }
 " > "${output_json}"
 
-OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     dns = data.control_plane_model.data.acme.ams.runtimeTargets.access-runtime.services.dns;

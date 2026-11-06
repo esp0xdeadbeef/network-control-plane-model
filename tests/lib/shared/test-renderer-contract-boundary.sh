@@ -14,7 +14,7 @@ trap 'rm -rf "${work_dir}"' EXIT
 
 output_json="${work_dir}/renderer-contracts.json"
 
-nix eval --impure --no-warn-dirty --json --expr '
+nix eval --no-write-lock-file --impure --no-warn-dirty --json --expr '
   let
     flake = builtins.getFlake "path:'"${repo_root}"'";
     lib = flake.inputs.nixpkgs.lib;

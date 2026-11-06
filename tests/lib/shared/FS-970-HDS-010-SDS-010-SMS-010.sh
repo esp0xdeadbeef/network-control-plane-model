@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr 'builtins.currentSystem')}"
+system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -140,7 +140,7 @@ write_inventory "${valid_inventory}" '[
 ]'
 
 output_json="${tmp_dir}/out.json"
-nix eval --impure --json --expr '
+nix eval --no-write-lock-file --impure --json --expr '
   let
     flake = builtins.getFlake "'"path:${repo_root}"'";
     out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
@@ -151,7 +151,7 @@ nix eval --impure --json --expr '
     out
 ' >"${output_json}"
 
-if ! OUTPUT_JSON="${output_json}" nix eval --impure --expr '
+if ! OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
   let
     data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
     site = data.control_plane_model.data.esp0xdeadbeef."site-a";
@@ -192,7 +192,7 @@ write_inventory "${duplicate_mac_inventory}" '[
   { mac = "02:10:20:00:00:10"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 11; ipv6.hostOffset = 11; }
 ]'
 
-if nix eval --impure --expr '
+if nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake "'"path:${repo_root}"'";
     out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
@@ -220,7 +220,7 @@ write_inventory "${duplicate_offset_inventory}" '[
   { mac = "02:10:20:00:00:11"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 11; }
 ]'
 
-if nix eval --impure --expr '
+if nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake "'"path:${repo_root}"'";
     out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
@@ -248,7 +248,7 @@ write_inventory "${duplicate_id_inventory}" '[
   { id = "printer-1"; mac = "02:10:20:00:00:12"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 12; ipv6.hostOffset = 12; }
 ]'
 
-if nix eval --impure --expr '
+if nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake "'"path:${repo_root}"'";
     out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
@@ -274,7 +274,7 @@ write_inventory "${missing_mac_inventory}" '[
   { id = "printer-1"; macSource = { accepted = true; disposable = true; purpose = "dhcpv6-reservation"; sourceClass = "public-synthetic-lab"; }; ipv4.hostOffset = 10; ipv6.hostOffset = 10; }
 ]'
 
-if nix eval --impure --expr '
+if nix eval --no-write-lock-file --impure --expr '
   let
     flake = builtins.getFlake "'"path:${repo_root}"'";
     out = flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
