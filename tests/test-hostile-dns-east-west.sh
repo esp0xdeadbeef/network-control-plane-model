@@ -111,7 +111,7 @@ OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --json --exp
       hostileAccessSubnet = (builtins.head hostileAccessAds).routerInterface.subnet6 == "fd42:dead:feed:70::/64";
       hostileAccessNoHardcodedPrefix =
         builtins.all
-          (entry: !builtins.elem "2a01:4f8:1c17:b337::/64" (entry.prefixes or [ ]))
+          (entry: !builtins.elem "2001:db8:1c17:b337::/64" (entry.prefixes or [ ]))
           hostileAccessAds;
       hostileAccessNoExternalValidation =
         !(siteB.runtimeTargets."espbranch-site-b-b-router-access-hostile" ? externalValidation)
