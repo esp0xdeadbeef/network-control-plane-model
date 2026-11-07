@@ -132,7 +132,8 @@ check_inventory() {
       $site.runtimeTargets[("mini-smt-internet-mode-verification-" + $suffix)]
       // $site.runtimeTargets[("mini-smt-fs-380-hds-020-sds-010-sms-050-" + $suffix)];
 
-	    fs380_site as $site
+	    . as $root
+	    | fs380_site as $site
 	    | [
 	        ($site.runtimeTargets // {}) | to_entries[]?
 	        | .value as $target
@@ -161,39 +162,37 @@ check_inventory() {
             and (($activeUplinks | index(lane($iface).uplink // "")) != null)
           )
       ] as $uplinkInterfaces
-    | ($uplinkInterfaces[0] // {}) as $policy4
-    | ($uplinkInterfaces[1] // {}) as $policy5
-    | (lane($policy4).uplink // "") as $uplink4
-    | (lane($policy5).uplink // "") as $uplink5
+    # FS-481/FS-322: the policy access-uplink lane set is the access scope
+    # modeled selection, not the physical uplink inventory. The core being
+    # eligible for both surfaces does not install a lane for a surface the
+    # tenant did not select; copying the unselected lane would be a duplicate
+    # route meaning (FS-315). Derive the expected surfaces from the compiled
+    # selection and require exactly one lane, with both forwarding directions
+    # and the policy-table return/default complements, per selected surface.
+    | ($root.forwardingOut.enterprise."mini-smt".site."FS-380-HDS-020-SDS-010-SMS-050".nodes."client-edge".selects // []) as $selections
+    | ([ $selections[]? | .surface // empty ] | unique) as $selectedUplinks
     | {
         label: $label,
         activeUplinks: $activeUplinks,
+        selectedUplinks: $selectedUplinks,
         coreRuntimeIfName: ($core.runtimeIfName // null),
-        uplink4RuntimeIfName: ($policy4.runtimeIfName // null),
-        uplink5RuntimeIfName: ($policy5.runtimeIfName // null),
+        laneInterfaces: [ $uplinkInterfaces[]? | {name: .runtimeIfName, uplink: lane(.).uplink} ],
 	        selectorRuleCount: ($rules | length),
 	        missingInterfaceClasses: $missingInterfaceClasses,
 	        ok:
 	          ($missingInterfaceClasses | length) == 0
 	          and ($cores | length) == 1
-          and (($activeUplinks | length) == 2)
-          and (($uplinkInterfaces | length) == 2)
-          and (([$uplink4, $uplink5] | sort) == ($activeUplinks | sort))
+          and ($selections | length) > 0
+          and (($uplinkInterfaces | map(lane(.).uplink) | sort) == ($selectedUplinks | sort))
           and ($core.interfaceClass.coreFacing // false) == true
-          and ($policy4.interfaceClass.exitFacing // false) == true
-          and ($policy5.interfaceClass.exitFacing // false) == true
-          and has_unscoped_rule($rules; $policy4.runtimeIfName; $core.runtimeIfName)
-          and has_unscoped_rule($rules; $core.runtimeIfName; $policy4.runtimeIfName)
-          and has_unscoped_rule($rules; $policy5.runtimeIfName; $core.runtimeIfName)
-          and has_unscoped_rule($rules; $core.runtimeIfName; $policy5.runtimeIfName)
-          and has_return_route4($core; $uplink4)
-          and has_return_route4($core; $uplink5)
-          and has_return_route6($core; $uplink4)
-          and has_return_route6($core; $uplink5)
-          and has_default_route4($policy4; $uplink4)
-          and has_default_route4($policy5; $uplink5)
-          and has_default_route6($policy4; $uplink4)
-          and has_default_route6($policy5; $uplink5)
+          and all($uplinkInterfaces[]; (.interfaceClass.exitFacing // false) == true)
+          and all($uplinkInterfaces[] as $policy
+            | has_unscoped_rule($rules; $policy.runtimeIfName; $core.runtimeIfName)
+            and has_unscoped_rule($rules; $core.runtimeIfName; $policy.runtimeIfName)
+            and has_return_route4($core; lane($policy).uplink)
+            and has_return_route6($core; lane($policy).uplink)
+            and has_default_route4($policy; lane($policy).uplink)
+            and has_default_route6($policy; lane($policy).uplink))
       }
     | select(.ok)
     ' "${output_json}" >/dev/null || {
