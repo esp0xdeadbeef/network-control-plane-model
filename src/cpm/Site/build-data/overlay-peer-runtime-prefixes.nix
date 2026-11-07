@@ -96,18 +96,29 @@ rec {
               overlays = attrsOrEmpty (siteCfg.overlays or null);
               overlayCfg = attrsOrEmpty (overlays.${overlayName} or null);
               peerSite = "${entry.enterpriseKey}.${entry.siteKey}";
+              # URS (overlays): "Overlay transport shall model endpoint
+              # identity". An overlay node address is an endpoint identity, so
+              # the record destination is the host prefix: the interface address
+              # keeps its subnet mask, while the route and ACL entries derived
+              # from this record name the host, never the whole overlay subnet
+              # (FS-171 least privilege, FS-460 reachability).
               recordFor =
                 family: node:
                 let
                   field = if family == 4 then "addr4" else "addr6";
                   value = node.${field} or null;
+                  host =
+                    if builtins.isString value && value != "" then
+                      builtins.head (builtins.split "/" value)
+                    else
+                      null;
                 in
-                if builtins.isString value && value != "" then
+                if builtins.isString host && host != "" then
                   [
                     {
                       inherit family overlayName peerSite;
                       overlay = overlayName;
-                      dst = value;
+                      dst = "${host}/${if family == 4 then "32" else "128"}";
                     }
                   ]
                 else
