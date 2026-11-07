@@ -1,11 +1,11 @@
-{
-  lib,
-  helpers,
-  common,
-  overlayProvisioning,
-  p2pPeerAddress,
-  overlayNodeRoutesVia,
-  overlayRuntimeRoutedPrefixRoutesVia,
+{ lib
+, helpers
+, common
+, overlayProvisioning
+, p2pPeerAddress
+, overlayNodeRoutesVia
+, overlayRuntimeRoutedPrefixRoutesVia
+,
 }:
 
 let
@@ -27,6 +27,12 @@ let
     in
     if overlayAwareLane then overlayLaneNames else [ ];
 
+  # The overlay node record is a host prefix now; compare host parts so the
+  # node's own overlay address is still excluded from its link routes.
+  hostPart =
+    value:
+    if builtins.isString value then builtins.head (builtins.split "/" value) else null;
+
   overlayNodeRoutesOnLink =
     family: overlayName: ownCidr:
     let
@@ -42,75 +48,79 @@ let
     in
     builtins.map
       (prefix:
-        {
-          inherit family;
-          dst = prefix.dst;
-          proto = "overlay";
-          scope = "link";
-          intent = {
-            kind = "overlay-node-reachability";
-            source = "overlay-node-prefix";
-          };
-        }
-        // lib.optionalAttrs (isNonEmptyString (prefix.overlay or null)) { overlay = prefix.overlay; }
-        // lib.optionalAttrs (isNonEmptyString (prefix.peerSite or null)) { peerSite = prefix.peerSite; })
-      (builtins.filter (prefix: (prefix.dst or null) != ownCidr) prefixes);
+      {
+        inherit family;
+        dst = prefix.dst;
+        proto = "overlay";
+        scope = "link";
+        intent = {
+          kind = "overlay-node-reachability";
+          source = "overlay-node-prefix";
+        };
+      }
+      // lib.optionalAttrs (isNonEmptyString (prefix.overlay or null)) { overlay = prefix.overlay; }
+      // lib.optionalAttrs (isNonEmptyString (prefix.peerSite or null)) { peerSite = prefix.peerSite; })
+      (builtins.filter (prefix: hostPart (prefix.dst or null) != hostPart ownCidr) prefixes);
 
   addOverlayNodeRoutesToSelector =
     nodeRole: interfaces:
     if !(nodeRole == "policy" || nodeRole == "upstream-selector") then
       interfaces
     else
-      lib.mapAttrs (
-        _: iface:
-        let
-          laneOverlayNames = laneOverlayNamesFor nodeRole iface;
-          routes = attrsOrEmpty (iface.routes or null);
-          extraRoutes = {
-            ipv4 = overlayNodeRoutesVia 4 laneOverlayNames (p2pPeerAddress 4 (iface.addr4 or null));
-            ipv6 =
-              (overlayNodeRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)))
-              ++ (overlayRuntimeRoutedPrefixRoutesVia laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)));
-          };
-        in
-        if
-          (iface.sourceKind or null) != "p2p"
-          || laneOverlayNames == [ ]
-          || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ])
-        then
-          iface
-        else
-          iface // { routes = mergeRoutes routes extraRoutes; }
-      ) interfaces;
+      lib.mapAttrs
+        (
+          _: iface:
+          let
+            laneOverlayNames = laneOverlayNamesFor nodeRole iface;
+            routes = attrsOrEmpty (iface.routes or null);
+            extraRoutes = {
+              ipv4 = overlayNodeRoutesVia 4 laneOverlayNames (p2pPeerAddress 4 (iface.addr4 or null));
+              ipv6 =
+                (overlayNodeRoutesVia 6 laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)))
+                ++ (overlayRuntimeRoutedPrefixRoutesVia laneOverlayNames (p2pPeerAddress 6 (iface.addr6 or null)));
+            };
+          in
+          if
+            (iface.sourceKind or null) != "p2p"
+            || laneOverlayNames == [ ]
+            || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ])
+          then
+            iface
+          else
+            iface // { routes = mergeRoutes routes extraRoutes; }
+        )
+        interfaces;
 
   addOverlayNodeRoutesToCoreOverlay =
     nodeRole: interfaces:
     if nodeRole != "core" then
       interfaces
     else
-      lib.mapAttrs (
-        _: iface:
-        let
-          overlayName = ((iface.backingRef or { }).name or null);
-          routes = attrsOrEmpty (iface.routes or null);
-          extraRoutes = {
-            ipv4 =
-              if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
-                overlayNodeRoutesOnLink 4 overlayName (iface.addr4 or null)
-              else
-                [ ];
-            ipv6 =
-              if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
-                overlayNodeRoutesOnLink 6 overlayName (iface.addr6 or null)
-              else
-                [ ];
-          };
-        in
-        if (iface.sourceKind or null) != "overlay" || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then
-          iface
-        else
-          iface // { routes = mergeRoutes routes extraRoutes; }
-      ) interfaces;
+      lib.mapAttrs
+        (
+          _: iface:
+          let
+            overlayName = ((iface.backingRef or { }).name or null);
+            routes = attrsOrEmpty (iface.routes or null);
+            extraRoutes = {
+              ipv4 =
+                if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
+                  overlayNodeRoutesOnLink 4 overlayName (iface.addr4 or null)
+                else
+                  [ ];
+              ipv6 =
+                if isNonEmptyString overlayName && hasAttr overlayName overlayProvisioning then
+                  overlayNodeRoutesOnLink 6 overlayName (iface.addr6 or null)
+                else
+                  [ ];
+            };
+          in
+          if (iface.sourceKind or null) != "overlay" || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ]) then
+            iface
+          else
+            iface // { routes = mergeRoutes routes extraRoutes; }
+        )
+        interfaces;
 in
 {
   inherit
