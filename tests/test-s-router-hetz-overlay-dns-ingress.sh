@@ -48,10 +48,15 @@ let
 in
   hasRule "allow-east-west-to-sitec-dmz-dns" "core-nebula" "pol-dmz-ew"
   && hasDnsReturnRule "allow-east-west-to-sitec-dmz-dns" "pol-dmz-ew" "core-nebula"
-  && hasRoute4
-    (nebulaCoreIfs."core-uplink-egress".routes or { })
-    "10.90.10.0/24"
-    "10.80.0.11"
+  # FS-460: the overlay termination node carries the relation-scoped return
+  # route to the provider tenant prefix on its modeled underlay uplink lane.
+  # Select the lane by its modeled kind/uplink instead of a snapshot interface
+  # name, and require the modeled peer next hop.
+  && builtins.any
+    (iface:
+      ((iface.backingRef.lane or { }).kind or "") == "uplink"
+      && hasRoute4 (iface.routes or { }) "10.90.10.0/24" "10.80.0.11")
+    (builtins.attrValues nebulaCoreIfs)
 '
 
 if nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes' --impure --expr "$expr" | grep -qx true; then

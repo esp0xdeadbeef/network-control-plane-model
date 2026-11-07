@@ -495,7 +495,18 @@ let
     inherit lib common ipam;
   };
 
-  runtimeTargets = addPolicyLaneDefaults normalizedFinalRuntimeTargets;
+  runtimeTargetsWithPolicyDefaults = addPolicyLaneDefaults normalizedFinalRuntimeTargets;
+
+  # FS-460 / FS-540 SMS-020: overlay DNS ingress transit on the termination node.
+  addOverlayIngressRoutes = import ../../ControlModule/runtime-targets/overlay-ingress-routes.nix {
+    inherit lib common ipam;
+  };
+
+  runtimeTargets = addOverlayIngressRoutes {
+    runtimeTargets = runtimeTargetsWithPolicyDefaults;
+    services = resolvedServices;
+    allowedRelations = (siteAttrs.communicationContract or { }).allowedRelations or [ ];
+  };
 
 in
 {
