@@ -72,10 +72,15 @@ jq -e '
           and any((.sourcePrefixes // [])[]?; .family == 4 and .prefix == "10.50.20.1")
           and any((.sourcePrefixes // [])[]?; .family == 6 and .prefix == "fd42:dead:feed:20::1")
         )
+        # FS-180/FS-740: the deny is source-scoped to the modeled tenant
+        # prefixes. The seeded negative this guards is a deny that becomes
+        # indistinguishable from the service allow in the same policy tuple;
+        # the source-key comparison below still rejects that.
         and all($clientDenies[];
           .action == "deny"
           and .trafficType == "dns"
-          and ((.sourcePrefixes // []) == [])
+          and any((.sourcePrefixes // [])[]?; .family == 4 and .prefix == "10.50.20.0/24")
+          and any((.sourcePrefixes // [])[]?; .family == 6 and (.prefix | test("^fd42:dead:feed:0*20(:0+){4}/64$")))
         )
         and all($serviceAllows[];
           . as $allow
