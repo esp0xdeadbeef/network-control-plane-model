@@ -38,9 +38,7 @@ and `test-network-labs-inventory-sweep` (21 outputs, no duplicate routes).
 `FS-740-HDS-010-SDS-010-SMS-010`, `FS-770-HDS-010-SDS-010-SMS-010`,
 `FS-800-HDS-010-SDS-010-SMS-010`, `FS-800-HDS-010-SDS-012-SMS-010`,
 `FS-800-HDS-030-SDS-020-SMS-020`, `FS-970-HDS-010-SDS-020-SMS-040`,
-`test-example-overlay-upstream-policy-defaults-preserved`,
-`test-preferred-uplink-defaults`, `test-sitec-overlay-service-ingress`,
-`test-s-router-hetz-overlay-dns-ingress`.
+`test-example-overlay-upstream-policy-defaults-preserved`.
 
 The full suite is 224 PASS / 18 FAIL. Every one of these 18 also fails on the
 pre-change revision `64ec24f^` (that revision had 20; `FS-525-HDS-010-SDS-010-SMS-010`
@@ -59,3 +57,26 @@ so the ingress policy table resolves the selected exit (FS-315); the renderer's
 policy-table parity case now passes with it.
 FS-315 lane hygiene keeps the lane-less duplicate out of the main table and the
 renderer maps the canonical `table` field to systemd `Table`.
+
+## Resolved this run
+
+- Overlay endpoints are host identities everywhere: overlay node records and
+  cross-site DNS ACL entries use /32 and /128 (`overlay-peer-runtime-prefixes.nix`,
+  `overlay-node-cidrs.nix`), with the node's own address compared by host part.
+  `test-sitec-overlay-service-ingress` passes.
+- Overlay DNS ingress transit: `overlay-ingress-routes.nix` emits, on the overlay
+  termination node, one route per provider tenant prefix through the modeled
+  underlay uplink lane (relation id + `overlay-ingress-return` provenance).
+  `test-s-router-hetz-overlay-dns-ingress` passes.
+
+## Remaining overlay-upstream-defaults case
+
+`test-example-overlay-upstream-policy-defaults-preserved` expects the upstream
+selector's core-facing interface to carry a per-access default for all five
+site-a accesses (`admin`, `client`, `client2`, `mgmt`, `streaming`). The model
+emits three there (`admin`, `mgmt`, `streaming`); `client`/`client2` defaults
+appear on a different lane (downstream-selector -> policy, `lane.uplink = null`).
+The forwarding model chooses a combined lane for those two accesses, so the
+question is whether the combined-lane contract or the test's per-uplink
+expectation is authoritative; resolving it is a forwarding-model lane-decision
+change, not a control-plane repair.
