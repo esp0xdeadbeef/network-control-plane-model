@@ -40,7 +40,7 @@ and `test-network-labs-inventory-sweep` (21 outputs, no duplicate routes).
 `FS-800-HDS-030-SDS-020-SMS-020`, `FS-970-HDS-010-SDS-020-SMS-040`,
 `test-example-overlay-upstream-policy-defaults-preserved`.
 
-The full suite is 224 PASS / 18 FAIL. Every one of these 18 also fails on the
+The full suite is 229 PASS / 13 FAIL. Every one of these 18 also fails on the
 pre-change revision `64ec24f^` (that revision had 20; `FS-525-HDS-010-SDS-010-SMS-010`
 and `test-dns-service-policy-routes` are the two this run moved to PASS), so none
 is a regression of the DNS work.
@@ -69,14 +69,16 @@ renderer maps the canonical `table` field to systemd `Table`.
   underlay uplink lane (relation id + `overlay-ingress-return` provenance).
   `test-s-router-hetz-overlay-dns-ingress` passes.
 
-## Remaining overlay-upstream-defaults case
+## Resolved overlay-upstream-defaults case
 
-`test-example-overlay-upstream-policy-defaults-preserved` expects the upstream
-selector's core-facing interface to carry a per-access default for all five
-site-a accesses (`admin`, `client`, `client2`, `mgmt`, `streaming`). The model
-emits three there (`admin`, `mgmt`, `streaming`); `client`/`client2` defaults
-appear on a different lane (downstream-selector -> policy, `lane.uplink = null`).
-The forwarding model chooses a combined lane for those two accesses, so the
-question is whether the combined-lane contract or the test's per-uplink
-expectation is authoritative; resolving it is a forwarding-model lane-decision
-change, not a control-plane repair.
+`test-example-overlay-upstream-policy-defaults-preserved` is fixed. The
+forwarding-model defect was in `default-route-policy/paths.nix`: a path whose
+source is a tenant-set was attributed only to the first member's access unit, so
+the other members (`client`, `client2`) never received the selected exit default
+and fell back to an edge lane. `network-forwarding-model` `6c1bfca` matches
+membership in the modeled source set instead, and this repository pins it. The
+case now derives its expected per-uplink access sets from the intent's compiled
+`selects` (FS-322) rather than assuming every access selects every uplink.
+
+Also fixed by the same pin: `FS-500-HDS-010-SDS-010-SMS-040` (DNS service p2p
+gateways are off-link).
