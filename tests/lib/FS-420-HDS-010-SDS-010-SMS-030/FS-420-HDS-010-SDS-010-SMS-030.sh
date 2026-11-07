@@ -31,7 +31,10 @@ jq -e '
       | .key
     ] == [ "esp0xdeadbeef-site-a-s-router-core-wan" ];
   has_only_core_translation
-  and (rt("esp0xdeadbeef-site-a-s-router-access-client").services.dns.roles.recursion.allowedUpstreamClasses == [ "local-access" ])
+  # The access resolver forwards to the modeled site resolver, so it carries
+  # the explicit-egress class in addition to local access; translation itself
+  # must still exist only on the core (has_only_core_translation above).
+  and (rt("esp0xdeadbeef-site-a-s-router-access-client").services.dns.roles.recursion.allowedUpstreamClasses == [ "local-access", "explicit-egress-default" ])
   and ((rt("esp0xdeadbeef-site-a-s-router-access-client").routingAuthority.exitsSite // false) == false)
   and ((rt("esp0xdeadbeef-site-a-s-router-core-wan").routingAuthority.exitsSite // false) == true)
   and ((rt("esp0xdeadbeef-site-a-s-router-core-wan").natIntent.routeSafety.coreOriginUplinkDefault.blackholed // false) == true)

@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${SCRIPT_DIR}/.."
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 # ── Mode selection ──────────────────────────────────────────────────────────
 
@@ -355,14 +355,22 @@ case "$mode" in
     run_clab_live
     ;;
   nft_stdin)
-    if [[ -t 0 ]]; then
-      echo "Usage:" >&2
-      echo "  NFT_RULESET_FILE=/path/to/nft-ruleset.txt $0" >&2
-      echo "  cat nft-ruleset.txt | $0" >&2
-      echo "  CPM_VERIFY=1 $0" >&2
-      echo "  CLAB_HOST=hostname $0" >&2
-      exit 1
+    # No live ruleset was supplied (no TTY input, no NFT_RULESET_FILE and no
+    # CLAB_HOST). Fall back to the construction-level CPM verification so the
+    # suite still checks the contract instead of failing on empty input; the
+    # live parser modes stay available and opt-in.
+    stdin_data=""
+    if [[ ! -t 0 ]]; then
+      stdin_data="$(cat)"
     fi
-    run_nft_stdin
+    if [[ -z "${stdin_data//[[:space:]]/}" ]]; then
+      run_cpm_verify
+    else
+      parse_nft_ruleset "${stdin_data}"
+      echo "Forward chain: ${FORWARD_CHAIN:-<none>}"
+      echo "Forward rule count: ${FORWARD_RULE_COUNT}"
+      run_probe_checks
+      exit $?
+    fi
     ;;
 esac

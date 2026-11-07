@@ -42,6 +42,13 @@ PERMITTED_PATTERNS=(
   # --- CIDR notation parsing ---
   '"([^/]+)/([0-9]+)"'
   '".*/([0-9]+)$"'
+  # Point-to-point prefix-length detection (structural, not a name).
+  '".*/31"'
+  '".*/127"'
+  '".*/(31|32)$"'
+  '".*/(127|128)$"'
+  # Leading-whitespace parse before trimming (format, not a name).
+  '"([[:space:]]*)(.*)"'
 
   # --- IPv4 octet extraction ---
   '"([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)"'
