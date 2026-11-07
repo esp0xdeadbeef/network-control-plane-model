@@ -30,7 +30,7 @@ labs_path="$(
 
 (
   cd "${repo_root}"
-  nix run --no-write-lock-file .#compile-and-build-control-plane-model -- \
+  nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \
     "${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix" \
     "${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix" \
     "${output_json}" >/dev/null
@@ -108,13 +108,26 @@ OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
           && ((route.intent or { }).exitNode or null) == "b-router-access-hostile")
         (routes4For "overlay-east-west");
 
+    # FS-315: a generic default is installed only on a lane whose modeled
+    # uplink offers one. The core-nebula -> upstream-selector adjacency is
+    # modeled on the east-west overlay lane, which offers declared peer
+    # prefixes plus the policy-only delegated default and no generic default;
+    # installing one there is fail-open (the router keeps its own egress while
+    # clients are blackholed). The underlay egress itself stays preserved at
+    # the underlay hop: the upstream selector still reaches the simulated ISP
+    # over the modeled default next hop.
     underlayDefaultPreserved =
-      builtins.any
+      !(builtins.any
         (route:
           (route.dst or null) == "::/0"
-          && (route.via6 or null) == "fd42:dead:feed:1000:0:0:0:5"
           && ((route.intent or { }).kind or null) == "default-reachability")
-        (routes6For "p2p-b-router-core-nebula-b-router-upstream-selector");
+        (routes6For "p2p-b-router-core-nebula-b-router-upstream-selector"))
+      && builtins.any
+        (route:
+          (route.dst or null) == "::/0"
+          && (route.via6 or null) == "fd42:dead:feed:1000:0:0:0:6"
+          && ((route.intent or { }).kind or null) == "default-reachability")
+        (upstreamRoutes6For "p2p-b-router-core-simulated-isp-b-router-upstream-selector");
 
     upstreamHostileDefaultToOverlay =
       builtins.any
@@ -247,12 +260,19 @@ OUTPUT_JSON="${output_json}" nix eval --no-write-lock-file --impure --expr '
           && ((route.intent or { }).kind or null) == "runtime-routed-prefix-return")
         (siteCCoreNebulaRoutes6For "overlay-east-west");
 
+    # FS-460-HDS-010-SDS-010-SMS-030: every emitted proto=overlay
+    # reachability route carries the peer site overlay next hop, so the
+    # remote tenant prefix is installed through the overlay rather than as a
+    # scope-link route that no peer can serve. The return path to the remote
+    # hostile tenant is therefore dst + peer via4 on the terminator overlay
+    # interface (the delegated IPv6 prefix keeps its own via-less
+    # runtime-routed-prefix-return record).
     siteCCoreNebulaReturnsHostileTenantV4OverOverlay =
       builtins.any
         (route:
           (route.dst or null) == "10.70.10.0/24"
           && (route.proto or null) == "overlay"
-          && !(route ? via4)
+          && (route.via4 or null) == "100.96.10.2"
           && ((route.intent or { }).kind or null) == "overlay-reachability")
         (siteCCoreNebulaRoutes4For "overlay-east-west");
 
