@@ -56,7 +56,11 @@ let
         (
           builtins.filter (
             prefix:
-            (prefix.family or null) == family && isNonEmptyString (prefix.dst or prefix.sourceFile or null)
+            # A runtime (delegated) prefix carries an explicit `dst = null` so
+            # `or` cannot fall through to the sourceFile: test both fields
+            # explicitly, otherwise every delegated return route is dropped.
+            (prefix.family or null) == family
+            && (isNonEmptyString (prefix.dst or null) || isNonEmptyString (prefix.sourceFile or null))
           ) peerReturnPrefixes
         );
 in
@@ -78,7 +82,7 @@ else
       (iface.sourceKind or null) != "p2p"
       || (lane.kind or null) != "uplink"
       || (lane.uplink or null) != "wan"
-      || extraRoutes.ipv6 == [ ]
+      || (extraRoutes.ipv4 == [ ] && extraRoutes.ipv6 == [ ])
     then
       iface
     else
