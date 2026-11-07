@@ -29,13 +29,20 @@ jq -e '
   def site: root.control_plane_model.data.esp0xdeadbeef."site-a";
   def rt($target): site.runtimeTargets[$target];
 
-  def has_default_via_ds($target; $p2p_iface; $expected_via4):
+  # The p2p next hop is the modeled /31 peer of the interface address; derive
+  # it instead of pinning an allocation number that shifts with the inventory.
+  def peer4($cidr):
+    ($cidr | split("/")[0] | split(".")) as $o
+    | ($o[0:3] + [ (($o[3] | tonumber) + (if (($o[3] | tonumber) % 2) == 0 then 1 else -1 end)) ])
+    | join(".");
+
+  def has_default_via_ds($target; $p2p_iface):
     rt($target).effectiveRuntimeRealization.interfaces[$p2p_iface] as $iface
     | ($iface.routes.ipv4 // []) as $v4
     | ($v4 | map(select(.intent.kind == "default-reachability"))) as $defaults
     | ($defaults | length) == 1
     and $defaults[0].proto == "default"
-    and $defaults[0].via4 == $expected_via4;
+    and $defaults[0].via4 == peer4($iface.addr4);
 
   def no_default($target; $iface_name):
     rt($target).effectiveRuntimeRealization.interfaces[$iface_name] as $iface
@@ -44,8 +51,7 @@ jq -e '
   # Provider A: default via downstream-selector (10.10.44.58)
   has_default_via_ds(
     "esp0xdeadbeef-site-a-nixos-provider-handoff-access-a";
-    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-a";
-    "10.10.44.58"
+    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-a"
   )
   # Provider A: NO default on PPPoE-linked p2p
   and no_default(
@@ -55,8 +61,7 @@ jq -e '
   # Provider B: default via downstream-selector (10.10.44.60)
   and has_default_via_ds(
     "esp0xdeadbeef-site-a-nixos-provider-handoff-access-b";
-    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-b";
-    "10.10.44.60"
+    "p2p-nixos-downstream-selector-nixos-provider-handoff-access-b"
   )
   # Provider B: NO default on PPPoE-linked p2p
   and no_default(
@@ -66,8 +71,7 @@ jq -e '
   # Access-client still has its default (unchanged)
   and has_default_via_ds(
     "esp0xdeadbeef-site-a-nixos-access-client";
-    "p2p-nixos-access-client-nixos-downstream-selector";
-    "10.10.44.1"
+    "p2p-nixos-access-client-nixos-downstream-selector"
   )
 ' "${output_json}" >/dev/null
 echo "PASS provider-handoff-downstream-default-route nixos substrate"
@@ -85,13 +89,19 @@ jq -e '
   def site: root.control_plane_model.data.esp0xdeadbeef."site-b";
   def rt($target): site.runtimeTargets[$target];
 
-  def has_default_via_ds($target; $p2p_iface; $expected_via4):
+  # Derive the modeled /31 peer instead of pinning an allocation number.
+  def peer4($cidr):
+    ($cidr | split("/")[0] | split(".")) as $o
+    | ($o[0:3] + [ (($o[3] | tonumber) + (if (($o[3] | tonumber) % 2) == 0 then 1 else -1 end)) ])
+    | join(".");
+
+  def has_default_via_ds($target; $p2p_iface):
     rt($target).effectiveRuntimeRealization.interfaces[$p2p_iface] as $iface
     | ($iface.routes.ipv4 // []) as $v4
     | ($v4 | map(select(.intent.kind == "default-reachability"))) as $defaults
     | ($defaults | length) == 1
     and $defaults[0].proto == "default"
-    and $defaults[0].via4 == $expected_via4;
+    and $defaults[0].via4 == peer4($iface.addr4);
 
   def no_default($target; $iface_name):
     rt($target).effectiveRuntimeRealization.interfaces[$iface_name] as $iface
@@ -100,8 +110,7 @@ jq -e '
   # CLAB Provider A: default via downstream-selector
   has_default_via_ds(
     "esp0xdeadbeef-site-b-clab-provider-handoff-access-a";
-    "p2p-clab-downstream-selector-clab-provider-handoff-access-a";
-    "10.50.44.58"
+    "p2p-clab-downstream-selector-clab-provider-handoff-access-a"
   )
   # CLAB Provider A: NO default on PPPoE-linked p2p
   and no_default(
@@ -111,8 +120,7 @@ jq -e '
   # CLAB Provider B: default via downstream-selector
   and has_default_via_ds(
     "esp0xdeadbeef-site-b-clab-provider-handoff-access-b";
-    "p2p-clab-downstream-selector-clab-provider-handoff-access-b";
-    "10.50.44.60"
+    "p2p-clab-downstream-selector-clab-provider-handoff-access-b"
   )
   # CLAB Provider B: NO default on PPPoE-linked p2p
   and no_default(

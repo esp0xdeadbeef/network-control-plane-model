@@ -487,11 +487,22 @@ let
             true
           else
             failInventory "${sourcePath}.sourceFile" "diagnostic.runtime-reservation-source-file-missing: protected reservation set requires an opaque runtime sourceFile reference";
+        # FS-970: a scope-level protected reservation source and public
+        # per-reservation descriptors are two writers for the same served
+        # reservation set. Mixing them is ambiguous, so fail closed instead of
+        # letting one silently override the other.
+        _scopeSourceConflict =
+          if builtins.isList rawReservations && rawReservations != [ ] then
+            failInventory "${entryPath}.reservations"
+              "diagnostic.runtime-reservation-source-conflict: a protected scope-level reservationSource cannot be combined with public per-reservation descriptors; move every reservation into the protected set or remove the scope source"
+          else
+            true;
       in
       builtins.seq _noInlineRecords (
         builtins.seq _schema (
           builtins.seq _protected (
             builtins.seq _sourceFile (
+              builtins.seq _scopeSourceConflict (
               {
                 inherit schema sourceClass sourceFile;
               }
@@ -517,7 +528,8 @@ let
             )
           )
         )
-      );
+      )
+    );
 
   resolveReservations =
     family: familyName: perNodePrefixLength: entryPath: interfaceName: subnet: rawReservations:

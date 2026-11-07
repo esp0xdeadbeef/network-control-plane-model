@@ -52,16 +52,32 @@ let
   selectedClient =
     if caseName == "valid" then
       baseClient
+    else if caseName == "missing-interface" then
+      builtins.removeAttrs baseClient [ "interface" ]
+    else if caseName == "missing-runtime-interface" then
+      builtins.removeAttrs baseClient [ "runtimeInterface" ]
+    else if caseName == "missing-mtu" then
+      builtins.removeAttrs baseClient [ "mtu" ]
     else if caseName == "missing-iaid" then
       baseClient // { ipv6 = builtins.removeAttrs ipv6 [ "iaid" ]; }
+    else if caseName == "missing-pd-request-id" then
+      baseClient // { ipv6 = builtins.removeAttrs ipv6 [ "prefixDelegationRequestId" ]; }
+    else if caseName == "missing-ipv6-default-route" then
+      baseClient // { ipv6 = builtins.removeAttrs ipv6 [ "defaultRoute" ]; }
     else if caseName == "ipv4-enabled" then
       baseClient // { ipv6 = ipv6 // { ipv4Mode = "enabled"; }; }
     else if caseName == "router-solicitation" then
       baseClient // { ipv6 = ipv6 // { routerSolicitation = true; }; }
     else if caseName == "fallback-enabled" then
       baseClient // { ipv6 = ipv6 // { fallbackPolicy = "slaac"; }; }
+    else if caseName == "resolver-enabled" then
+      baseClient // { ipv6 = ipv6 // { resolverMode = "enabled"; }; }
     else if caseName == "invented-field" then
       baseClient // { ipv6 = ipv6 // { inventedPppInterface = "ppp0"; }; }
+    else if caseName == "changed-iaid" then
+      baseClient // { ipv6 = ipv6 // { iaid = "7"; }; }
+    else if caseName == "changed-pd-request-id" then
+      baseClient // { ipv6 = ipv6 // { prefixDelegationRequestId = "11"; }; }
     else
       throw "unknown FS-800 test case";
   normalized = runtimeServices.resolveRuntimeServices {
