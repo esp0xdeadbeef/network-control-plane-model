@@ -233,8 +233,10 @@ jq -e '
     and has_pppoe_client_session_interface("esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp"; "ppp1"; "client"; "203.0.113.2"; "203.0.113.1"; "p2p-nixos-core-testnet-routed-isp-nixos-provider-handoff-access-b")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "prov-handoff-a"; "ppp0")
     and has_forward_rule("esp0xdeadbeef-site-a-nixos-provider-handoff-access-a"; "ppp0"; "prov-handoff-a")
-    and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ppp0"; "ens80")
-    and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ens80"; "ppp0")
+    # The modeled core forwarding path is uplink <-> upstream-selector; the
+    # PPPoE client session is carried over the provider-handoff p2p link.
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ens21"; "ens80")
+    and has_forward_rule("esp0xdeadbeef-site-a-nixos-core-testnet-host-isp"; "ens80"; "ens21")
     and pppoe_targets == [
       "esp0xdeadbeef-site-a-nixos-core-testnet-host-isp",
       "esp0xdeadbeef-site-a-nixos-core-testnet-routed-isp",
