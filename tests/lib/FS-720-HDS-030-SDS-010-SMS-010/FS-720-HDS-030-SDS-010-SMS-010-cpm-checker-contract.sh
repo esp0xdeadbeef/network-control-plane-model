@@ -50,6 +50,9 @@ eval_checker() {
     let
       checker = import ./src/cpm/Site/check/endpoint-assignment-checker.nix {
         inherit helpers common;
+        # The checker's default row id belongs to its own SMS; this case's
+        # fixtures carry the -030 gampIds, so pass the row id it validates.
+        gampRowId = \"FS-720-HDS-030-SDS-010-SMS-010\";
       };
       result = checker {
         endpointAssignment = ${assignment};

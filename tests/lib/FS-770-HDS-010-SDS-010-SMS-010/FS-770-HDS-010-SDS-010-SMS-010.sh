@@ -111,6 +111,10 @@ def drop_deployment:
     del(.effectiveRuntimeRealization)
     | del(.deploymentRecord)
     | del(.deploymentTarget)
+    # FS-770: runtime bindings (interface names, endpoint delivery) are
+    # realization facts; they belong to inventory/runtime facts, not to the
+    # common modeled meaning the two profiles must share.
+    | del(.runtimeBindings)
     | map_values(drop_deployment)
   elif type == "array" then map(drop_deployment)
   else . end;

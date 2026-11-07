@@ -90,12 +90,10 @@ let
     if access == null || uplink == null then
       null
     else if builtins.elem access requesterLanes then
-      # Downstream half: check that the lane matches an authorized requester
-      let
-        isDownstream = builtins.match ".*downstream.*" (iface.renderedName or iface.renderedIfName or "");
-        isUpstream = builtins.match ".*upstream.*" (iface.renderedName or iface.renderedIfName or "");
-      in
-      if isDownstream != null || isUpstream != null then access else null
+      # Structural classification only (SMS-120): the lane metadata names the
+      # authorized requester scope, so every interface on that lane keeps the
+      # core DNS route set. Interface names are not inspected.
+      access
     else
       null;
 
