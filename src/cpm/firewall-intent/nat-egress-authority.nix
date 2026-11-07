@@ -11,13 +11,28 @@ in
 ,
 }:
 let
+  # FS-410: the intent selects NAT66, but the realization must also put the
+  # selected WAN interface in NAT66 translation mode. An interface that lacks
+  # the modeled translation mode cannot carry the translation, so it is not an
+  # explicit NAT66 egress and the model reports the limitation instead of
+  # enabling NAT66 on an untranslated interface.
+  modeledTranslationMode =
+    iface:
+    let
+      wan = attrsOrEmpty (iface.wan or null);
+      egress = attrsOrEmpty (wan.egress or null);
+      ipv6 = attrsOrEmpty (egress.ipv6 or null);
+      translation = attrsOrEmpty (ipv6.translation or null);
+    in
+      translation.mode or null;
+
   explicitNat66Interfaces = builtins.filter
     (
       iface:
       let
         modeledNat66 = attrsOrEmpty (nat66ByUplink.${iface.upstream or ""} or null);
       in
-      (modeledNat66.mode or null) == "nat66"
+      (modeledNat66.mode or null) == "nat66" && modeledTranslationMode iface == "nat66"
     )
     interfaceRecords;
 
