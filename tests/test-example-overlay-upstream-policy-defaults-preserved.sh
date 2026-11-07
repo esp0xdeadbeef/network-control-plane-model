@@ -30,7 +30,43 @@ nix run --no-write-lock-file "${repo_root}#compile-and-build-control-plane-model
   "${example_dir}/inventory-nixos.nix" \
   "${output_json}" >/dev/null
 
-jq -e '
+# FS-322: the default-exit binding is the access scope's modeled selection. Derive
+# the expected per-uplink access sets from the intent instead of assuming every
+# access selects every uplink.
+selections_json="$(
+  nix eval --no-write-lock-file --impure --json --expr '
+    let
+      intent = import "'"${example_dir}"'/intent.nix";
+      site = intent.esp0xdeadbeef."site-a";
+      nodes = (site.topology or { }).nodes or { };
+      coreUplinks = name:
+        builtins.attrNames ((nodes.${name} or { }).uplinks or { });
+      surfaceUplinks = surface:
+        if builtins.isString surface && builtins.hasAttr surface nodes then coreUplinks surface else [ surface ];
+      accessNames = builtins.filter
+        (name: builtins.match "s-router-access-.*" name != null)
+        (builtins.attrNames nodes);
+      selectionFor = name:
+        let
+          selects = (nodes.${name} or { }).selects or [ ];
+        in
+        builtins.concatMap
+          (entry:
+            if builtins.isAttrs entry then
+              surfaceUplinks (entry.surface or entry.scope or null)
+            else
+              surfaceUplinks (toString entry))
+          selects;
+    in
+    builtins.listToAttrs (map (name: { inherit name; value = selectionFor name; }) accessNames)
+  '
+)"
+
+jq -e --argjson selections "${selections_json}" '
+  def expected_accesses($uplink):
+    [ $selections | to_entries[]
+      | select((.value | index($uplink)) != null)
+      | .key ] | sort;
   def default_routes($routes): $routes[]? | select(.dst == "0.0.0.0/0" or .dst == "::/0");
   def lane_accesses($routes; $uplink):
     [default_routes($routes)
@@ -56,9 +92,8 @@ jq -e '
   | ($siteAUp."p2p-s-router-core-isp-a-s-router-upstream-selector".routes.ipv4 + $siteAUp."p2p-s-router-core-isp-a-s-router-upstream-selector".routes.ipv6) as $ispA
   | ($siteAUp."p2p-s-router-core-isp-b-s-router-upstream-selector".routes.ipv4 + $siteAUp."p2p-s-router-core-isp-b-s-router-upstream-selector".routes.ipv6) as $ispB
   | ($siteAUp."p2p-s-router-core-nebula-s-router-upstream-selector".routes.ipv4 + $siteAUp."p2p-s-router-core-nebula-s-router-upstream-selector".routes.ipv6) as $eastWestA
-  | (["s-router-access-admin","s-router-access-client","s-router-access-client2","s-router-access-mgmt","s-router-access-streaming"] | sort) as $normalSiteA
-  | (lane_accesses($ispA; "isp-a") == $normalSiteA)
-    and (lane_accesses($ispB; "isp-b") == $normalSiteA)
+  | (lane_accesses($ispA; "isp-a") == expected_accesses("isp-a"))
+    and (lane_accesses($ispB; "isp-b") == expected_accesses("isp-b"))
     and (lane_accesses($eastWestA; "east-west") == ["s-router-access-admin","s-router-access-client","s-router-access-client2","s-router-access-mgmt"])
 
   | . and (
