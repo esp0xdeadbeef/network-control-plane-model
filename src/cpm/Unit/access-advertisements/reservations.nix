@@ -487,22 +487,26 @@ let
             true
           else
             failInventory "${sourcePath}.sourceFile" "diagnostic.runtime-reservation-source-file-missing: protected reservation set requires an opaque runtime sourceFile reference";
-        # FS-970: a scope-level protected reservation source and public
-        # per-reservation descriptors are two writers for the same served
-        # reservation set. Mixing them is ambiguous, so fail closed instead of
-        # letting one silently override the other.
-        _scopeSourceConflict =
-          if builtins.isList rawReservations && rawReservations != [ ] then
-            failInventory "${entryPath}.reservations"
-              "diagnostic.runtime-reservation-source-conflict: a protected scope-level reservationSource cannot be combined with public per-reservation descriptors; move every reservation into the protected set or remove the scope source"
+        # FS-970-HDS-010-SDS-020-SMS-040: public assignment fields
+        # (served scope, address family, host offset or explicit address,
+        # optional hostname) compose with a protected-source fragment by the
+        # stable endpoint handle as a field-wise union. A served scope may
+        # therefore carry both an opaque protected reservationSource (the
+        # runtime identity registry the renderer materializer joins against)
+        # and public per-reservation offset descriptors that reference that
+        # registry by handle. Only a field owned by both sources is a
+        # conflict, and that is enforced per reservation below.
+        _composedDescriptors =
+          if rawReservations == null || builtins.isList rawReservations then
+            true
           else
-            true;
+            failInventory "${entryPath}.reservations" "diagnostic.runtime-reservation-descriptors-invalid: a served scope's public offset descriptors must be a list when present";
       in
       builtins.seq _noInlineRecords (
         builtins.seq _schema (
           builtins.seq _protected (
             builtins.seq _sourceFile (
-              builtins.seq _scopeSourceConflict (
+              builtins.seq _composedDescriptors (
               {
                 inherit schema sourceClass sourceFile;
               }
@@ -585,8 +589,8 @@ let
               address = builtins.elemAt (builtins.split "/" cidr) 0;
             in
             builtins.seq _perRecordRuntimeSource (
-              builtins.seq _identityMaterial (
-                builtins.seq _scopedRuntimeIdentity (
+                builtins.seq _identityMaterial (
+                  builtins.seq _scopedRuntimeIdentity (
                   {
                     id =
                       if isNonEmptyString (attrs.id or null) then

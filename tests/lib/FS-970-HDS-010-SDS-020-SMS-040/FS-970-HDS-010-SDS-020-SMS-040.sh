@@ -182,8 +182,8 @@ grep -F "diagnostic.protected-reservation-identity-leaked" \
     exit 1
   }
 
-conflicting_inventory="${tmp_dir}/inventory-conflicting-source-and-record.nix"
-write_inventory "${conflicting_inventory}" '
+composed_inventory="${tmp_dir}/inventory-composed-source-and-record.nix"
+write_inventory "${composed_inventory}" '
   reservationSource = {
     schema = "gamp-protected-reservation-set-v1";
     sourceClass = "protected";
@@ -192,28 +192,99 @@ write_inventory "${conflicting_inventory}" '
   reservations = [
     {
       id = "public-reservation";
-      mac = "02:00:00:00:00:10";
       macSource = {
         accepted = true;
-        disposable = true;
+        disposable = false;
         purpose = "static-dhcp-reservation";
-        sourceClass = "public-synthetic-lab";
+        sourceClass = "protected";
+        source = "protected-inventory";
+        secretRef = "public-reservation";
       };
       ipv4.hostOffset = 10;
     }
   ];
 '
 
-if compile_inventory "${conflicting_inventory}" >"${tmp_dir}/conflicting.out" 2>"${tmp_dir}/conflicting.err"; then
-  echo "FAIL static-reservation-runtime-secret-source: reservationSource plus public per-client descriptors was accepted" >&2
+# FS-970: a served scope composes its public offset descriptors with the
+# opaque protected reservation set by endpoint handle. The composition itself
+# is valid; only a field owned by both sources is a conflict.
+compile_inventory "${composed_inventory}" >"${tmp_dir}/composed.out" 2>"${tmp_dir}/composed.err" || {
+  echo "FAIL static-reservation-runtime-secret-source: public offset descriptors composed with a protected reservation source were rejected" >&2
+  cat "${tmp_dir}/composed.err" >&2
+  exit 1
+}
+
+if ! OUTPUT_JSON="${tmp_dir}/composed.out" nix eval --no-write-lock-file --impure --expr '
+  let
+    data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+    site = data.control_plane_model.data.esp0xdeadbeef."site-a";
+    target = site.runtimeTargets."esp0xdeadbeef-site-a-s-router-access-client";
+    dhcp4 = builtins.head target.advertisements.dhcp4;
+    reservation = builtins.head dhcp4.reservations;
+  in
+    builtins.length dhcp4.reservations == 1
+    && reservation.id == "public-reservation"
+    && reservation.hostOffset == 10
+    && reservation.address == "10.20.20.10"
+    && reservation.secretRef == "public-reservation"
+    && reservation.identitySource.sourceClass == "protected"
+    && dhcp4.reservationSource.sourceFile == "/run/secrets/s-router-prod-vlan2-reservations.json"
+' | grep -qx true; then
+  echo "FAIL static-reservation-runtime-secret-source: CPM did not emit both the composed public descriptor and the protected reservation source" >&2
   exit 1
 fi
-grep -F "diagnostic.runtime-reservation-source-conflict" \
-  "${tmp_dir}/conflicting.err" >/dev/null || {
-    echo "FAIL static-reservation-runtime-secret-source: source/descriptor conflict diagnostic was not emitted" >&2
-    cat "${tmp_dir}/conflicting.err" >&2
-    exit 1
-  }
+
+# FS-970-HDS-010-SDS-020-SMS-020: a descriptor that carries a public MAC and a
+# protected secret handle is accepted input. The public MAC is the effective
+# identity for the selected match mode, and the handle names the protected
+# record that carries the same endpoint. It is not a double-owned field, so
+# composition must not fail closed here.
+dual_reference_inventory="${tmp_dir}/inventory-public-mac-plus-handle.nix"
+write_inventory "${dual_reference_inventory}" '
+  reservationSource = {
+    schema = "gamp-protected-reservation-set-v1";
+    sourceClass = "protected";
+    sourceFile = "/run/secrets/s-router-prod-vlan2-reservations.json";
+  };
+  reservations = [
+    {
+      id = "public-mac-plus-handle";
+      mac = "02:00:00:00:00:10";
+      macSource = {
+        accepted = true;
+        disposable = false;
+        purpose = "static-dhcp-reservation";
+        sourceClass = "protected";
+        source = "protected-inventory";
+        secretRef = "public-mac-plus-handle";
+      };
+      ipv4.hostOffset = 10;
+    }
+  ];
+'
+
+compile_inventory "${dual_reference_inventory}" >"${tmp_dir}/dual-reference.out" 2>"${tmp_dir}/dual-reference.err" || {
+  echo "FAIL static-reservation-runtime-secret-source: a public MAC composed with a protected handle was rejected" >&2
+  cat "${tmp_dir}/dual-reference.err" >&2
+  exit 1
+}
+
+if ! OUTPUT_JSON="${tmp_dir}/dual-reference.out" nix eval --no-write-lock-file --impure --expr '
+  let
+    data = builtins.fromJSON (builtins.readFile (builtins.getEnv "OUTPUT_JSON"));
+    site = data.control_plane_model.data.esp0xdeadbeef."site-a";
+    target = site.runtimeTargets."esp0xdeadbeef-site-a-s-router-access-client";
+    reservation = builtins.head (builtins.head target.advertisements.dhcp4).reservations;
+  in
+    reservation.id == "public-mac-plus-handle"
+    && reservation.mac == "02:00:00:00:00:10"
+    && reservation.address == "10.20.20.10"
+    && !(reservation ? secretRef)
+    && reservation.identitySource.secretRef == "public-mac-plus-handle"
+' | grep -qx true; then
+  echo "FAIL static-reservation-runtime-secret-source: CPM did not keep the public MAC as the effective identity" >&2
+  exit 1
+fi
 
 per_record_source_inventory="${tmp_dir}/inventory-per-record-source.nix"
 write_inventory "${per_record_source_inventory}" '
