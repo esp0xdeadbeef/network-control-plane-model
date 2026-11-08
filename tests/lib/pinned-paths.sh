@@ -4,7 +4,7 @@
 # Results are cached per-session. Set NETWORK_LABS_PATH env var to override.
 set -euo pipefail
 
-_pinned_cache_dir="${TMPDIR:-/tmp}/cpm-pinned-paths-$$"
+_pinned_cache_dir="${TMPDIR:-/var/tmp}/cpm-pinned-paths-$$"
 mkdir -p "${_pinned_cache_dir}"
 
 _pinned_network_labs=""

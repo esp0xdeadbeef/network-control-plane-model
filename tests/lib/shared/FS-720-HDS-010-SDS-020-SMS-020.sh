@@ -89,15 +89,15 @@ if nix eval --no-write-lock-file --impure --json --expr "
       inventoryPath = \"${tmp_dir}/GAMP/HAT/emulated-isp-residential-testnet/inventory-nixos.nix\";
     };
   in cpm.endpointAssignment.nixos-streaming-test
-" >/tmp/fs720-hat-endpoint-assignment-negative.out 2>/tmp/fs720-hat-endpoint-assignment-negative.err; then
-  cat /tmp/fs720-hat-endpoint-assignment-negative.out >&2 || true
+" >"${TMPDIR:-/var/tmp}/fs720-hat-endpoint-assignment-negative.out" 2>"${TMPDIR:-/var/tmp}/fs720-hat-endpoint-assignment-negative.err"; then
+  cat "${TMPDIR:-/var/tmp}/fs720-hat-endpoint-assignment-negative.out" >&2 || true
   fail "missing static gateway4 was accepted"
 fi
 
 grep -F "static endpoint nixos-streaming-test has no gateway4" \
-  /tmp/fs720-hat-endpoint-assignment-negative.err >/dev/null \
+  "${TMPDIR:-/var/tmp}/fs720-hat-endpoint-assignment-negative.err" >/dev/null \
   || {
-    cat /tmp/fs720-hat-endpoint-assignment-negative.err >&2 || true
+    cat "${TMPDIR:-/var/tmp}/fs720-hat-endpoint-assignment-negative.err" >&2 || true
     fail "missing gateway4 diagnostic did not name the endpoint and field"
   }
 
