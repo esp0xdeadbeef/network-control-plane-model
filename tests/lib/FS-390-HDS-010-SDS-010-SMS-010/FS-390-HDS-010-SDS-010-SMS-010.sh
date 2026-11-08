@@ -7,7 +7,7 @@ trace_id="FS-390-HDS-010-SDS-010-SMS-010"
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 network_labs_root="${NETWORK_LABS_ROOT:-${repo_root}/../network-labs}"
 network_forwarding_model_root="${NETWORK_FORWARDING_MODEL_ROOT:-${repo_root}/../network-forwarding-model}"
-tmp_dir="$(mktemp -d "/tmp/${trace_id}-cpm-artifact.XXXXXX")"
+tmp_dir="$(mktemp -d "${TMPDIR:-/var/tmp}/${trace_id}-cpm-artifact.XXXXXX")"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 fail() {

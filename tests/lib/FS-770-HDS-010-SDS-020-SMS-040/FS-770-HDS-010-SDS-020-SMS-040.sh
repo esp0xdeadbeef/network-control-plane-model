@@ -34,7 +34,7 @@ cd "$repo_root"
 check_cpm() {
   local desc="$1" inv_expr="$2"
   local tmp_nix
-  tmp_nix=$(mktemp /tmp/cpm-test-XXXXXX.nix)
+  tmp_nix=$(mktemp "${TMPDIR:-/var/tmp}/cpm-test-XXXXXX.nix")
   cat > "$tmp_nix" << NIXEND
     let cpm = builtins.getFlake (toString ${repo_root});
         system = builtins.currentSystem;
@@ -61,7 +61,7 @@ NIXEND
 extract_surface() {
   local inv_expr="$1"
   local tmp_nix
-  tmp_nix=$(mktemp /tmp/cpm-surface-XXXXXX.nix)
+  tmp_nix=$(mktemp "${TMPDIR:-/var/tmp}/cpm-surface-XXXXXX.nix")
   cat > "$tmp_nix" << NIXEND
     let cpm = builtins.getFlake (toString ${repo_root});
         system = builtins.currentSystem;

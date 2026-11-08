@@ -18,7 +18,7 @@ require_cmd() {
 
 require_cmd jq
 
-tmp_parent="${TMPDIR:-/tmp}"
+tmp_parent="${TMPDIR:-/var/tmp}"
 tmp_dir="$(mktemp -d "${tmp_parent%/}/fs030-cpm-binder-audit-smt-high.XXXXXX")"
 trap 'rm -rf "${tmp_dir}"' EXIT
 rm -f "${tmp_dir}/base.nix" \

@@ -13,7 +13,7 @@
 #
 # Exit: 0 if all tests pass, 1 if any test fails.
 set -euo pipefail
-exec > >(tee "/tmp/network-control-plane-model-tests.out")
+exec > >(tee "${TMPDIR:-/var/tmp}/network-control-plane-model-tests.out")
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

@@ -150,7 +150,7 @@ nix eval --no-write-lock-file \
     }
   ' >"${output_json}"
 
-cp "${output_json}" /tmp/f420-out.json
+cp "${output_json}" "${TMPDIR:-/var/tmp}/f420-out.json"
 failed_checks="$(jq -r '.checks | to_entries[] | select(.value != true) | .key' "${output_json}")"
 if [[ -n "${failed_checks}" ]]; then
   echo "FAIL fs420-translation-record-emission" >&2
