@@ -34,6 +34,15 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 fail() { echo "FAIL lease-record-keying: $*" >&2; exit 1; }
 
+unique_keys() {
+  nix eval --no-write-lock-file --impure --json --expr '
+    let keys = builtins.fromJSON "'"$1"'";
+    in builtins.length (builtins.attrNames (
+         builtins.listToAttrs (map (k: { name = k; value = true; }) keys)))
+       == builtins.length keys
+  '
+}
+
 [[ -f "${intent_path}" ]] || fail "P1 no lease-bearing fixture at ${intent_path}; set NIXOS_SRC to the nixos checkout"
 [[ -f "${inventory_path}" ]] || fail "P1 no lease-bearing inventory at ${inventory_path}"
 
@@ -103,5 +112,18 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
 ' | grep -qx true; then
   fail "P2 two lease records share a key, so an unchanged renewal was not idempotent"
 fi
+
+
+# The predicate is evaluated once, by the same function, for both the positive and
+# the negative: a negative that re-implements it proves nothing.
+if [[ "$(unique_keys '["10.20.20.10|dhcp4|clients","10.20.20.11|dhcp4|clients"]')" != "true" ]]; then
+  fail "P1 the unique-key predicate rejected a set of distinct keys, so the check cannot pass a conforming model"
+fi
+
+# SN1: the same predicate must reject duplicates.
+if [[ "$(unique_keys '["10.20.20.10|dhcp4|clients","10.20.20.10|dhcp4|clients"]')" == "true" ]]; then
+  fail "SN1 the unique-key predicate accepted a duplicated key, so it cannot detect the defect it exists for"
+fi
+
 
 echo "PASS lease-record-keying"

@@ -34,6 +34,15 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 fail() { echo "FAIL public-ingress-fixture-row: $*" >&2; exit 1; }
 
+unique_keys() {
+  nix eval --no-write-lock-file --impure --json --expr '
+    let keys = builtins.fromJSON "'"$1"'";
+    in builtins.length (builtins.attrNames (
+         builtins.listToAttrs (map (k: { name = k; value = true; }) keys)))
+       == builtins.length keys
+  '
+}
+
 [[ -f "${intent_path}" ]] || fail "P1 no public-ingress fixture at ${intent_path}; set NIXOS_SRC to the nixos checkout"
 [[ -f "${inventory_path}" ]] || fail "P1 no public-ingress inventory at ${inventory_path}"
 
@@ -99,5 +108,18 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
 ' | grep -qx true; then
   fail "P2 two public-ingress authorities share an identical surface/port/proto key, so a split port-forward was emitted as duplicate rows instead of distinct ones"
 fi
+
+
+# The predicate is evaluated once, by the same function, for both the positive and
+# the negative: a negative that re-implements it proves nothing.
+if [[ "$(unique_keys '["tcp:4242:1.2.3.4","udp:4242:1.2.3.4"]')" != "true" ]]; then
+  fail "P1 the unique-key predicate rejected a set of distinct keys, so the check cannot pass a conforming model"
+fi
+
+# SN1: the same predicate must reject duplicates.
+if [[ "$(unique_keys '["tcp:4242:1.2.3.4","tcp:4242:1.2.3.4"]')" == "true" ]]; then
+  fail "SN1 the unique-key predicate accepted a duplicated key, so it cannot detect the defect it exists for"
+fi
+
 
 echo "PASS public-ingress-fixture-row"
