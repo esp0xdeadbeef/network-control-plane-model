@@ -78,8 +78,11 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   fail "P1 a namespace carries no owner scope, so a suffix exists that no modeled scope declares"
 fi
 
-# P2: every authoritative zone must be covered by a modeled namespace or by a
-# modeled dnsDomain. A zone whose suffix nothing declares is a defaulted suffix.
+# P2: every authoritative zone must be covered by an explicitly modeled namespace.
+# URS Local Service Discovery is explicit that a namespace "shall name either an
+# explicit domain or an explicit reference to a named site zone; it shall not
+# inherit a site-wide domain default". So a zone satisfied only by the site-wide
+# dnsDomain is the defect this clause exists to catch, not an acceptable fallback.
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
@@ -90,19 +93,18 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
       map (t: (t.services.dns or { }).protectedReservationPublications or [ ]) targetValues
     ));
 
-    declaredDomains = map (p: p.dnsDomain or null) (site.ownership.prefixes or [ ]);
-
     zones = map (z: z.name) (builtins.concatLists (
       map (t: (t.services.dns or { }).localZones or [ ]) targetValues
     ));
 
-    covered = name:
-      builtins.any (ns: ns == name || builtins.match ".*\\.${ns}" name != null) namespaces
-      || builtins.any (dom: dom != null && (dom == name || builtins.match ".*\\.${dom}" name != null)) declaredDomains;
+    coveredByNamespace = name:
+      builtins.any
+        (ns: ns == name || builtins.match ".*\\.${ns}" name != null)
+        namespaces;
   in
-    builtins.all covered zones
+    builtins.all coveredByNamespace zones
 ' | grep -qx true; then
-  fail "P2 an authoritative zone exists whose suffix is declared by no modeled namespace or dnsDomain, so the suffix was defaulted rather than modeled"
+  fail "P2 an authoritative zone is not covered by an explicitly modeled namespace. A zone that resolves only because of the site-wide dnsDomain is inheriting a site-wide default, which URS Local Service Discovery forbids"
 fi
 
 echo "PASS namespace-suffix-declaration"
