@@ -315,7 +315,16 @@ let
               failForwarding "${sitePath}.runtimeTargets.${targetName}.effectiveRuntimeRealization.interfaces.${policyEntry.name}.${addressField}" "FS-270-HDS-010-SDS-010-SMS-020: selected policy-state lane requires a point-to-point peer";
         in
         builtins.seq _hasPeer {
-          interfaceName = policyEntry.name;
+          # FS-270-HDS-010-SDS-010-SMS-020: the route selector must itself carry
+          # the policy-table reachability route -- the renderer validates it on
+          # the selector interface. Emitting it only for `policyEntry.name` left
+          # selector targets without the route (the name belongs to the policy
+          # image, so merging into the selector's own interfaces attached
+          # nothing; measured 2026-11-10: no trial render could be produced).
+          # Both names below are model fields, so this adds no authority: the
+          # route content is unchanged and `addForTarget` only attaches an entry
+          # to an interface that actually exists on that target.
+          interfaceName = selector.policyInterface;
           family = selector.family;
           route = {
             dst = selector.destinationPrefix;
@@ -337,10 +346,27 @@ let
             };
           };
         };
+      # The policy-side lane keeps its copy: this is the same canonical route,
+      # attached to whichever of the two lanes the target owns.
+      routeEntriesFor =
+        selector:
+        let
+          primary = routeEntryFor selector;
+          forward = selector.direction == "forward";
+          policyLane =
+            if (target.role or null) == "downstream-selector" then
+              (if forward then sourcePolicy else destinationPolicy)
+            else
+              (if forward then destinationPolicy else sourcePolicy);
+        in
+        lib.optionals (policyLane.name != selector.policyInterface) [
+          (primary // { interfaceName = policyLane.name; })
+        ]
+        ++ [ primary ];
     in
     {
       inherit selectors;
-      routeEntries = builtins.map routeEntryFor selectors;
+      routeEntries = lib.concatMap routeEntriesFor selectors;
     };
 
   addForTarget =
