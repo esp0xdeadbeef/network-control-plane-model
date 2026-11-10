@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # run-all-tests.sh — Run all CPM construction tests with auto-discovery.
 #
-# Discovers all test-*.sh and FS-*.sh files under tests/, runs each in a background
-# subprocess, captures output, and reports PASS/FAIL per test.
+# Discovers every test entrypoint through the shared scripts/lib/discover-tests.sh
+# contract, runs each in a background subprocess, captures output, and reports
+# PASS/FAIL per test.
 #
 # Sets NETWORK_REPO_DIRECT_TEST_OK=1 so that CPM direct tests pass the
 # repo-spot-test guard. Tests that need NETWORK_REPO_SWEEP=1 should be
@@ -20,15 +21,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ============================================================
 # Auto-discover tests
 # ============================================================
+# shellcheck source=scripts/lib/discover-tests.sh
+source "${repo_root}/scripts/lib/discover-tests.sh"
+
 tests=()
 retired=()
-for f in "${repo_root}/tests/test-"*.sh "${repo_root}/tests/FS-"*.sh; do
-  [[ -f "${f}" ]] || continue
+mapfile -t discovered < <(discover_tests "${repo_root}")
+for name in "${discovered[@]}"; do
+  f="${repo_root}/tests/${name}"
   # A test marked retired is skipped: the scenario it exercises was removed from
   # network-labs and no equivalent fixture exists. The marker stays in the file
   # so the reason remains visible and greppable.
   if grep -q '^# GAMP-SKIP: ' "${f}"; then
-    retired+=("$(basename "${f}")")
+    retired+=("${name}")
     continue
   fi
   tests+=("${f}")
@@ -98,7 +103,7 @@ for test_path in "${tests[@]}"; do
   log_file="${tmp_dir}/${name}.log"
 
   # Run test in background with NETWORK_REPO_DIRECT_TEST_OK=1
-  NETWORK_REPO_DIRECT_TEST_OK=1 bash "${test_path}" >"${log_file}" 2>&1 &
+  NETWORK_REPO_DIRECT_TEST_OK=1 "$(discover_test_runner "${test_path}")" "${test_path}" >"${log_file}" 2>&1 &
   pid=$!
   pid_to_name["${pid}"]="${name}"
   pid_to_log["${pid}"]="${log_file}"
