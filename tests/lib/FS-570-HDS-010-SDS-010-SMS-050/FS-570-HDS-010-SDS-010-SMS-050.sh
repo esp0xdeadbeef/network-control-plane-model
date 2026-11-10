@@ -112,4 +112,33 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   fail "P2 one namespace is published for more than one owner scope, so the public view is not owned by exactly one scope"
 fi
 
+# SN1: the one-owner predicate must reject a namespace claimed by two owners. The
+# violating input is a synthetic publication set with one namespace under two scopes.
+if ! nix eval --no-write-lock-file --impure --expr '
+  let
+    pubs = [
+      { namespace = "clients.home.arpa."; ownerScope = "cobalt-clients"; }
+      { namespace = "clients.home.arpa."; ownerScope = "neon-clients"; }
+    ];
+    byNs = builtins.groupBy (p: p.namespace) pubs;
+    ownersOf = ns: builtins.unique (map (p: p.ownerScope) byNs.${ns});
+    conflicts = builtins.filter (ns: builtins.length (ownersOf ns) > 1) (builtins.attrNames byNs);
+  in
+    conflicts == [ ]
+' | grep -qx true; then
+  fail "SN1 the one-owner predicate accepted a namespace claimed by two owner scopes"
+fi
+
+# SN2: an unknown record class must be rejected. The violating input names a class
+# the model never declares.
+if ! nix eval --no-write-lock-file --impure --expr '
+  let
+    classes = [ "A" "AAAA" "BOGUS" ];
+    known = [ "A" "AAAA" "PTR" "TXT" "MX" "SRV" "CNAME" ];
+  in
+    builtins.all (c: builtins.elem c known) classes
+' | grep -qx true; then
+  fail "SN2 the record-class predicate accepted an unrecognised class"
+fi
+
 echo "PASS public-view-separation"

@@ -116,4 +116,19 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   fail "P2 a published namespace is not explicitly qualified under a named site zone, so it inherits a site-wide default, which URS Local Service Discovery forbids"
 fi
 
+# SN1: the explicit-namespace predicate must reject a bare site-wide default. The
+# violating input is a namespace equal to the zone rather than more specific than it.
+if ! nix eval --no-write-lock-file --impure --expr '
+  let
+    siteZones = [ "home.arpa." ];
+    ns = "home.arpa.";
+    explicit = builtins.any
+      (z: ns != z && builtins.match ".*\\.${z}" ns != null)
+      siteZones;
+  in
+    explicit
+' | grep -qx true; then
+  fail "SN1 the explicit-namespace predicate accepted the bare site-wide zone as a namespace, which is the inheritance the URS forbids"
+fi
+
 echo "PASS namespace-suffix-declaration"
