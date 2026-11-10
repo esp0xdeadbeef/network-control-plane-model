@@ -78,11 +78,16 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   fail "P1 a namespace carries no owner scope, so a suffix exists that no modeled scope declares"
 fi
 
-# P2: every authoritative zone must be covered by an explicitly modeled namespace.
-# URS Local Service Discovery is explicit that a namespace "shall name either an
-# explicit domain or an explicit reference to a named site zone; it shall not
-# inherit a site-wide domain default". So a zone satisfied only by the site-wide
-# dnsDomain is the defect this clause exists to catch, not an acceptable fallback.
+# P2: every published namespace must be an explicitly qualified name under a named
+# site zone, not the bare site-wide default. URS Local Service Discovery: "A
+# namespace shall name either an explicit domain or an explicit reference to a
+# named site zone; it shall not inherit a site-wide domain default."
+#
+# The named site zones are taken from the model itself (`localZones`), and a
+# namespace must be strictly more specific than the zone it sits under. The subject
+# is the namespace value, not the zone list: localZones also carry reverse zones
+# derived from prefixes, so requiring every zone to be namespace-covered would fail
+# on legitimate `in-addr.arpa` entries.
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
@@ -93,18 +98,22 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
       map (t: (t.services.dns or { }).protectedReservationPublications or [ ]) targetValues
     ));
 
-    zones = map (z: z.name) (builtins.concatLists (
-      map (t: (t.services.dns or { }).localZones or [ ]) targetValues
-    ));
+    siteZones = builtins.filter
+      (z: builtins.match ".*arpa\\.$" z == null)
+      (map (z: z.name) (builtins.concatLists (
+        map (t: (t.services.dns or { }).localZones or [ ]) targetValues
+      )));
 
-    coveredByNamespace = name:
+    # Explicit means: strictly more specific than a named site zone, so the scope
+    # chose the suffix rather than inheriting it.
+    explicit = ns:
       builtins.any
-        (ns: ns == name || builtins.match ".*\\.${ns}" name != null)
-        namespaces;
+        (z: ns != z && builtins.match ".*\\.${z}" ns != null)
+        siteZones;
   in
-    builtins.all coveredByNamespace zones
+    builtins.length namespaces > 0 && builtins.all explicit namespaces
 ' | grep -qx true; then
-  fail "P2 an authoritative zone is not covered by an explicitly modeled namespace. A zone that resolves only because of the site-wide dnsDomain is inheriting a site-wide default, which URS Local Service Discovery forbids"
+  fail "P2 a published namespace is not explicitly qualified under a named site zone, so it inherits a site-wide default, which URS Local Service Discovery forbids"
 fi
 
 echo "PASS namespace-suffix-declaration"
