@@ -623,10 +623,17 @@ let
             lib.optional ((iface.addr4 or null) != null) iface.addr4
             ++ lib.optional ((iface.addr6 or null) != null) iface.addr6;
         in
-        # A target that advertises nothing is not running a resolver at all: do
-        # not invent a listener for it. FS-540's fixture has no `listen` and
-        # expects no fabric listener either.
-        if advertisedListeners == [ ] then
+        # A target that advertises nothing AND has no modeled DNS policy is not
+        # running a resolver at all: do not invent a listener for it (FS-540's
+        # fixture has neither and expects no fabric listener).
+        #
+        # A target that *does* carry `services.dns` is running one even with no
+        # advertisements. The policy node hosts core-dns that way -- no DHCP or RA
+        # at all -- so gating on advertisements alone left it with no listen
+        # address, and `providerEndpoints` fell back to a synthesised 10.1.0.16
+        # that nothing ever bound. That is precisely the address every access
+        # resolver was forwarding to, which is why its recursion SERVFAILed.
+        if advertisedListeners == [ ] && !hasModeledDnsPolicy then
           [ ]
         else
           lib.unique (
@@ -690,7 +697,7 @@ let
               ++ lib.optional (builtins.isString addr6) (peerOf addr6)
             );
         in
-        if advertisedListeners == [ ] then
+        if advertisedListeners == [ ] && !hasModeledDnsPolicy then
           [ ]
         else
           lib.unique (builtins.concatMap (name: peerPrefix interfaces.${name}) (builtins.attrNames interfaces));
