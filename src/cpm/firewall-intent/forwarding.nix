@@ -237,7 +237,36 @@ let
           )
           distinctTransitInterfaces
       );
+  # The modelled hop chain for a relation, so a rule can say WHERE on the path it
+  # was generated. Without it a consumer cannot tell the first transit hop from a
+  # later one, and rules that are correct at one hop are wrong at another: a
+  # service-endpoint route via the ingress peer is right on the downstream-selector
+  # and reflects the packet on the policy node (measured on the cobalt HAT).
+  nodePathFor =
+    relationId:
+    let
+      matches = builtins.filter (
+        path: builtins.isAttrs path && (path.relationId or null) == relationId
+      ) trafficPaths;
+    in
+    if matches == [ ] then [ ] else (builtins.head matches).nodePath or [ ];
+
+  annotateNodePath =
+    rule:
+    if builtins.isAttrs rule && builtins.isString (rule.relationId or null) then
+      rule // { nodePath = nodePathFor rule.relationId; }
+    else
+      rule;
+
+  annotateRules =
+    result:
+    if builtins.isAttrs result && builtins.isList (result.rules or null) then
+      result // { rules = map annotateNodePath result.rules; }
+    else
+      result;
+
 in
+annotateRules (
 if role == "access" then
   {
     mode = "explicit-access-forwarding";
@@ -340,3 +369,4 @@ else if role == "core" then
   }
 else
   null
+)
