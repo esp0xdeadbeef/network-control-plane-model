@@ -44,7 +44,7 @@ nix eval --no-write-lock-file --impure --json --expr '
   let
     flake = builtins.getFlake "'"path:${repo_root}"'";
   in
-    flake.libBySystem."'"${system}"'.compileAndBuildFromPaths {
+    flake.libBySystem."'"${system}"'".compileAndBuildFromPaths {
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
