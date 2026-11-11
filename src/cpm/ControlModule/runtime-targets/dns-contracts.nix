@@ -579,7 +579,75 @@ let
   synthesizeRouterSelfDns = target:
     let
       advertisements = attrsOrEmpty (target.advertisements or null);
-      listeners = advertisedDnsListeners advertisements;
+      advertisedListeners = advertisedDnsListeners advertisements;
+      # A resolver that fabric peers query must listen on the address those peers
+      # route to, and that address is never an advertised one.
+      #
+      # `advertisedDnsListeners` collects the DNS servers broadcast over DHCP and
+      # RA, which are by construction the addresses *tenants* are told to use. A
+      # resolver reached across the fabric publishes no advertisement for that
+      # side, so its fabric address never entered `listen`, and unbound bound
+      # loopback plus the tenant-facing addresses only.
+      #
+      # Measured on the cobalt HAT, the access resolver ran with
+      #   interface: 127.0.0.1 / ::1 / 10.2.30.1 / fd42:dead:beef:230::1
+      # and no fabric address, while its fabric address is 10.1.0.0/31 on the
+      # downstream-selector lane. Querying it returned `connection refused` -- not
+      # a timeout -- so the address was correct and routable and only the listener
+      # was absent.
+      #
+      # These are added to the emitted `listen` list ONLY. They deliberately do
+      # not join `listeners`, because `listeners` also feeds
+      # `resolverIdentitySources` and the `accessFrom` ACL, where a core-service
+      # prefix (10.19.0.8/32 in FS-400's fixture) must never appear: FS-550 and
+      # FS-540 both treat those as non-listener. Widening `listeners` instead
+      # failed test-runtime-origin-dns-provider-allow-from and FS-540.
+      #
+      # Selected by explicit `interfaceClass` metadata, never by interface name:
+      # FS-310-HDS-010-SDS-010-SMS-120 forbids deriving network meaning from name
+      # patterns.
+      fabricListeners =
+        let
+          realization = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+          interfaces = attrsOrEmpty (realization.interfaces or null);
+          facesFabric =
+            iface:
+            let
+              cls = attrsOrEmpty (iface.interfaceClass or null);
+            in
+            ((cls.edgeFacing or false) || (cls.fabricFacing or false))
+            && !(cls.exitFacing or false)
+            && !(cls.uplinkLane or false);
+          addressesOf =
+            iface:
+            lib.optional ((iface.addr4 or null) != null) iface.addr4
+            ++ lib.optional ((iface.addr6 or null) != null) iface.addr6;
+        in
+        # A target that advertises nothing is not running a resolver at all: do
+        # not invent a listener for it. FS-540's fixture has no `listen` and
+        # expects no fabric listener either.
+        if advertisedListeners == [ ] then
+          [ ]
+        else
+          lib.unique (
+            builtins.concatMap (
+              name:
+              let
+                iface = interfaces.${name};
+              in
+              if facesFabric iface then
+                builtins.filter
+                  (addr: builtins.isString addr && addr != "" && addr != "127.0.0.1" && addr != "::1")
+                  (map stripPrefixLength (addressesOf iface))
+              else
+                [ ]
+            ) (builtins.attrNames interfaces)
+          );
+      # The fabric listen addresses are part of the listener identity: FS-540
+      # requires outgoingInterfaces == listen, and a recursion source must be a
+      # real listener. Keeping them out of `listeners` made `listen` list an
+      # address the resolver would not bind from.
+      listeners = lib.unique (advertisedListeners ++ fabricListeners);
       sources = advertisedDnsSources advertisements;
       derivedReverseZones = builtins.filter (z: z != null) (map reverseZoneForCidr sources);
       listenerPolicyForwarders = policyDerivedDnsForwardersForListeners listeners;
@@ -638,6 +706,12 @@ let
       # through a service path), that identity is its modeled, non-loopback
       # interface addresses; leaving the source unbound would let the query
       # egress from whichever address the default route selects.
+      # The resolver's identity is the set of addresses it can be reached on.
+      # Only fabric-facing lanes qualify: an exit/uplink surface carries core
+      # service prefixes (FS-400's fixture has 10.19.0.8/32) which are
+      # destinations, not listener identities, and putting them here made the
+      # provider ACL advertise them (test-runtime-origin-dns-provider-allow-from,
+      # FS-550).
       serviceIdentitySources =
         let
           ifaces = attrsOrEmpty ((attrsOrEmpty (target.effectiveRuntimeRealization or null)).interfaces or null);
@@ -647,8 +721,20 @@ let
               (lib.optional (builtins.isString (iface.addr4 or null)) (stripPrefixLength iface.addr4))
               ++ (lib.optional (builtins.isString (iface.addr6 or null)) (stripPrefixLength iface.addr6))
             );
+          # Include every interface that is not an exit/uplink surface. Listing
+          # the classes to *include* was wrong twice: it dropped the nebula lane
+          # (FS-540's 100.96.10.1) because that lane is neither edgeFacing nor
+          # fabricFacing. Excluding the exit surfaces is the invariant that
+          # actually matters -- those carry core service prefixes (10.19.0.8/32)
+          # which are destinations, not listener identities.
+          faceable =
+            iface:
+            let
+              cls = attrsOrEmpty (iface.interfaceClass or null);
+            in
+            !(cls.exitFacing or false) && !(cls.uplinkLane or false);
         in
-        lib.unique (builtins.concatMap addressesOf (builtins.attrValues ifaces));
+        lib.unique (builtins.concatMap addressesOf (builtins.filter faceable (builtins.attrValues ifaces)));
       resolverIdentitySources =
         let
           advertised = builtins.filter (addr: addr != "127.0.0.1" && addr != "::1") listeners;
@@ -708,9 +794,9 @@ let
     # advertisement-driven synthesis is access-specific; the identity binding
     # applies whenever the resolver has modeled DNS policy or forwarders, or
     # advertised listeners.
-    if (target.role or null) != "access" && listeners == [ ] && !hasModeledDnsPolicy && existingForwarders == [ ] then
+    if (target.role or null) != "access" && advertisedListeners == [ ] && !hasModeledDnsPolicy && existingForwarders == [ ] then
       target
-    else if (target.role or null) == "access" && listeners == [ ] then
+    else if (target.role or null) == "access" && advertisedListeners == [ ] then
       target
     else if (target.role or null) == "access" && !hasModeledDnsPolicy then
       builtins.deepSeq listenerPolicyForwarders
