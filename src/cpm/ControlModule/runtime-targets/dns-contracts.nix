@@ -744,8 +744,32 @@ let
     if upstreamResolverContracts == [ ] then
       dns
     else
+      let
+        # A resolver that forwards to another resolver needs egress authority just
+        # as one with forwarders does: it originates its own queries toward that
+        # upstream. Without this the access resolver carried route contracts but no
+        # `explicit-egress-default`, so
+        # `dnsServiceRuntimeOriginEgressContract` returned null for it and the node
+        # published no `runtimeOriginEgress` at all.
+        #
+        # Measured on the cobalt HAT: access.services.dns.allowedUpstreamClasses was
+        # [ "local-access" ], runtimeOriginEgress was ABSENT, and four consumers then
+        # each guessed the resolver's source differently -- the policy forward rule
+        # used the service address (10.2.30.1), the kernel used the interface
+        # address (10.1.0.0), the core's ACL refused the fabric peer, and the DS's
+        # route pointed at the ingress peer. One missing field, four symptoms.
+        allowedUpstreamClasses = lib.unique (
+          listOrEmpty (dns.allowedUpstreamClasses or null) ++ [ "explicit-egress-default" ]
+        );
+        roles = attrsOrEmpty (dns.roles or null);
+        recursionRole = attrsOrEmpty (roles.recursion or null);
+      in
       dns
       // {
+        inherit allowedUpstreamClasses;
+        roles = roles // {
+          recursion = recursionRole // { inherit allowedUpstreamClasses; };
+        };
         routeContracts = listOrEmpty (dns.routeContracts or null) ++ upstreamResolverContracts;
         policyMatrix = listOrEmpty (dns.policyMatrix or null) ++ upstreamResolverContracts;
       };
