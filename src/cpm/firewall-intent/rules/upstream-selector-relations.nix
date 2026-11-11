@@ -285,7 +285,24 @@ in
         else
           null;
       toAccessNodes = serviceAccessNodes toEndpoint;
-      firstPolicy = if policyInterfaces == [ ] then null else builtins.head policyInterfaces;
+      # The lane this service-to-service leg runs on is the one carrying the
+      # REQUESTER's access node, not whichever policy interface happens to come
+      # first. Taking `head policyInterfaces` put every such relation on the
+      # clients lane: on the cobalt HAT the upstream-selector emitted
+      # allow-svc-dns-to-core-dns, allow-mgmt-dns-to-core-dns,
+      # allow-iot-dns-to-core-dns and allow-iot-srv-dns-to-core-dns all named
+      # the clients lane as fromInterface, so the DNS rules for those lanes were
+      # never written and their queries were dropped at the selector.
+      fromAccessNodes = serviceAccessNodes fromEndpoint;
+      requesterPolicy =
+        builtins.filter (i: builtins.elem (common.laneAccess i) fromAccessNodes) policyInterfaces;
+      firstPolicy =
+        if requesterPolicy != [ ] then
+          builtins.head requesterPolicy
+        else if policyInterfaces == [ ] then
+          null
+        else
+          builtins.head policyInterfaces;
       policyScope = if firstPolicy == null then null else common.laneScope firstPolicy;
       scopedPolicy =
         if policyScope == null then
