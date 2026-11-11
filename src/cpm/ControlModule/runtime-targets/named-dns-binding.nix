@@ -334,6 +334,11 @@ let
   # address (its advertised resolver source), so the core's allowFrom must be
   # the tenant address — not the fabric p2p address, which the resolver no
   # longer uses as its recursion source.
+  #
+  # NOTE (measured 2026-11-11, cobalt HAT): that premise is false in the rendered
+  # output. The access node's resolver reaches the core resolver with its FABRIC
+  # source address (`ip -4 route get <core> -> src 10.1.0.0`), so a tenant-only
+  # allowFrom refuses it. `resolverFabricPeerPrefixesFor` below adds those peers.
   interfaceAddresses =
     iface:
     uniqueStrings (
@@ -482,11 +487,65 @@ let
       ) bindings
     );
 
+  # Resolvers on other nodes forward their queries across the fabric, and they
+  # do so from their FABRIC address, not a tenant address:
+  #
+  #   access-clients$ ip -4 route get <core resolver>
+  #     ... src 10.1.0.0
+  #
+  # The core's allowFrom was built from tenant prefixes only, so it refused its
+  # own fabric peers and every cross-node DNS query died -- while the resolver
+  # was healthy, listening, and answering on 127.0.0.1. Measured on the cobalt
+  # HAT: `dig @10.1.0.16` from the core itself returned "missing question
+  # section" (a refused reply), and from the access node it timed out.
+  #
+  # FS-540-HDS-010-SDS-010-SMS-020 requires the requester ACLs to classify every
+  # source that can laterally reach a resolver rather than relying on a one-sided
+  # ACL. A fabric p2p peer of a resolver node is exactly such a source.
+  #
+  # Scoped to nodes that actually run a DNS service: peers of a plain router
+  # have no business querying its resolver.
+  resolverFabricPeerPrefixesFor =
+    coreServiceName:
+    let
+      resolverTargets = builtins.filter (
+        targetName:
+        let
+          services = attrsOrEmpty (runtimeTargets.${targetName}.services or null);
+          dns = attrsOrEmpty (services.dns or null);
+          roles = attrsOrEmpty (dns.roles or null);
+        in
+        roles != { }
+      ) (builtins.attrNames runtimeTargets);
+    in
+    uniqueStrings (
+      lib.concatMap (
+        targetName:
+        let
+          realization = attrsOrEmpty (runtimeTargets.${targetName}.effectiveRuntimeRealization or null);
+          interfaces = attrsOrEmpty (realization.interfaces or null);
+        in
+        lib.concatMap (
+          iface:
+          # Fabric/p2p links only: a tenant-facing or uplink address is already
+          # covered (or is not a resolver requester).
+          if (iface.sourceKind or null) == "tenant" then
+            [ ]
+          else
+            builtins.filter (value: builtins.isString value && value != "") [
+              (stripPrefixLength (iface.addr4 or ""))
+              (stripPrefixLength (iface.addr6 or ""))
+            ]
+        ) (builtins.attrValues interfaces)
+      ) resolverTargets
+    );
+
   requesterAllowFromFor =
     coreServiceName:
     uniqueStrings (
       bindingRequesterHostPrefixesFor coreServiceName
       ++ directTenantRequesterPrefixesFor coreServiceName
+      ++ resolverFabricPeerPrefixesFor coreServiceName
     );
 
   requesterRelationsFor =
