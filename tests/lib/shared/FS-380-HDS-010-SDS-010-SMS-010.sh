@@ -160,6 +160,51 @@ REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
           message = "Routed public IPv4 mode requires an internal return route for the public client prefix.";
         }
       ];
+
+    # FS-380-HDS-020-SDS-010: "Missing `ipv4.internetModes` for a core scope
+    # shall fail closed (no WAN IP assigned, no default route)."
+    #
+    # A core that declares IPv4 NAT egress but names no private
+    # `masqueradeSourcePrefixes4` used to contribute nothing and say nothing:
+    # no `privateNat44` record, no diagnostic. The compiled cobalt site carried
+    # no `ipv4` key at all, the renderer fell back to a blanket masquerade, and
+    # the omission only surfaced at the far end -- tenants had no return route
+    # and `traceroute 1.1.1.1` died at the downstream-selector with `!N`.
+    # See network-site-esp GAMP/HAT/evidence/cobalt-2026-11-11.md.
+    natIntentNoPrefixes = ipv4InternetModeContract {
+      runtimeTargets = {
+        core.natIntent = { families.ipv4 = true; };
+      };
+    };
+    natIntentNoPrefixesDiagnosed =
+      natIntentNoPrefixes.records.privateNat44 == [ ]
+      && (builtins.length natIntentNoPrefixes.diagnostics.privateNat44) == 1
+      && (builtins.head natIntentNoPrefixes.diagnostics.privateNat44).code
+        == "E_INTERNET_MODES_MISSING_PRIVATE_NAT44"
+      && (builtins.head natIntentNoPrefixes.diagnostics.privateNat44).runtimeTarget == "core";
+
+    # The same target with a private prefix is a record and NOT a diagnostic,
+    # so the check cannot be satisfied by reporting unconditionally.
+    natIntentWithPrefixes = ipv4InternetModeContract {
+      runtimeTargets = {
+        core.natIntent = {
+          families.ipv4 = true;
+          masqueradeSourcePrefixes4 = [ "10.2.30.0/24" ];
+        };
+      };
+    };
+    natIntentWithPrefixesClean =
+      (builtins.length natIntentWithPrefixes.records.privateNat44) == 1
+      && natIntentWithPrefixes.diagnostics.privateNat44 == [ ];
+
+    # A target with no IPv4 NAT intent at all is not an error: it simply has no
+    # NAT record to be missing.
+    noNatIntent = ipv4InternetModeContract {
+      runtimeTargets = { core.natIntent = { families.ipv4 = false; }; };
+    };
+    noNatIntentClean =
+      noNatIntent.records.privateNat44 == []
+      && noNatIntent.diagnostics.privateNat44 == [ ];
   in
     if
       privateNatRecord
@@ -168,6 +213,9 @@ REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
       && hostOnlyDiagnostic
       && noRoutedPublicDiagnostics
       && missingReturnDiagnostic
+      && natIntentNoPrefixesDiagnosed
+      && natIntentWithPrefixesClean
+      && noNatIntentClean
     then
       true
     else
@@ -179,10 +227,15 @@ REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
           hostOnlyDiagnostic
           noRoutedPublicDiagnostics
           missingReturnDiagnostic
+          natIntentNoPrefixesDiagnosed
+          natIntentWithPrefixesClean
+          noNatIntentClean
           ;
         ipv4Modes = ipv4Modes;
         ipv4Diagnostics = ipv4Diagnostics;
         missingReturn = missingReturn;
+        natIntentNoPrefixes = natIntentNoPrefixes;
+        noNatIntent = noNatIntent;
       })
 ' >/dev/null
 

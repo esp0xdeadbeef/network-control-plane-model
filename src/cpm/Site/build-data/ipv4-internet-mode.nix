@@ -108,6 +108,42 @@ let
         (natIntent.families.ipv4 or false) == true)
       (sortedNames runtimeTargets);
 
+  # A target that declares IPv4 NAT intent but contributes no privateNat44
+  # record: it has egress modelled and nothing to translate it against.
+  natTargetsWithoutRecord =
+    builtins.filter
+      (targetName: !(builtins.elem targetName privateNatEmittingTargets))
+      natTargets;
+
+  privateNatEmittingTargets = map (record: record.runtimeTarget) privateNatRecords;
+
+  privateNatDiagnostics = map
+    (targetName:
+      let
+        natIntent = attrsOrEmpty (runtimeTargets.${targetName}.natIntent or null);
+        declared = listOrEmpty (natIntent.masqueradeSourcePrefixes4 or null);
+      in
+      {
+        code = "E_INTERNET_MODES_MISSING_PRIVATE_NAT44";
+        severity = "error";
+        runtimeTarget = targetName;
+        message =
+          "runtime target '${targetName}' declares IPv4 NAT egress but yields no "
+          + "ipv4.internetModes.privateNat44 record"
+          + (
+            if declared == [ ] then
+              ": it declares no private masqueradeSourcePrefixes4, so nothing can be "
+              + "translated and no return route can be derived for its tenants"
+            else
+              ": it declares masqueradeSourcePrefixes4 ${builtins.toJSON declared}, "
+              + "none of which is a private IPv4 prefix"
+          )
+          + ". FS-380-HDS-020-SDS-010 requires this scope to fail closed.";
+        spec = "FS-380-HDS-020-SDS-010";
+        declaredSourcePrefixes = declared;
+      })
+    natTargetsWithoutRecord;
+
   privateNatRecords =
     builtins.concatMap
       (targetName:
@@ -267,5 +303,14 @@ in
   diagnostics = {
     routedPublicIpv4 = routedPublicDiagnostics;
     hostOnlyIpv4Boundary = hostOnlyDiagnostics;
+    # FS-380-HDS-020-SDS-010 requires that a core scope declaring internet
+    # egress but yielding no `ipv4.internetModes.privateNat44` record fails
+    # closed rather than silently producing a model with no NAT record. Without
+    # this the omission is invisible: the compiled cobalt site carried no
+    # `ipv4` key at all, the renderer fell back to a blanket masquerade, and
+    # the failure surfaced only at the far end as tenants with no return route
+    # (`traceroute`: `10.1.0.1 !N`). See network-site-esp
+    # GAMP/HAT/evidence/cobalt-2026-11-11.md.
+    privateNat44 = privateNatDiagnostics;
   };
 }
