@@ -643,6 +643,58 @@ let
                 [ ]
             ) (builtins.attrNames interfaces)
           );
+      # The peer side of each fabric lane: the remote address a query arrives
+      # from, as a single host prefix. `listen` names the local end; this names
+      # the end that is allowed to ask.
+      fabricPeerPrefixes =
+        let
+          realization = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+          interfaces = attrsOrEmpty (realization.interfaces or null);
+          facesFabric =
+            iface:
+            let
+              cls = attrsOrEmpty (iface.interfaceClass or null);
+            in
+            !(cls.exitFacing or false) && !(cls.uplinkLane or false);
+          peerPrefix =
+            iface:
+            let
+              addr4 = iface.addr4 or null;
+              addr6 = iface.addr6 or null;
+              peerOf =
+                value:
+                let
+                  parts = lib.splitString "/" value;
+                  ip = builtins.head parts;
+                  len = if builtins.length parts > 1 then builtins.elemAt parts 1 else "";
+                in
+                if len == "31" || len == "127" then
+                  # Flip the last bit: the other end of the point-to-point link.
+                  let
+                    octets = lib.splitString "." ip;
+                  in
+                  if builtins.length octets == 4 then
+                    let
+                      last = builtins.fromJSON (builtins.elemAt octets 3);
+                      flipped = builtins.toJSON (if builtins.bitAnd last 1 == 1 then last - 1 else last + 1);
+                      head' = lib.take 3 octets;
+                    in
+                    "${lib.concatStringsSep "." head'}.${flipped}/32"
+                  else
+                    null
+                else
+                  null;
+            in
+            builtins.filter (v: v != null) (
+              lib.optional (builtins.isString addr4) (peerOf addr4)
+              ++ lib.optional (builtins.isString addr6) (peerOf addr6)
+            );
+        in
+        if advertisedListeners == [ ] then
+          [ ]
+        else
+          lib.unique (builtins.concatMap (name: peerPrefix interfaces.${name}) (builtins.attrNames interfaces));
+
       # The fabric listen addresses are part of the listener identity: FS-540
       # requires outgoingInterfaces == listen, and a recursion source must be a
       # real listener. Keeping them out of `listeners` made `listen` list an
@@ -756,7 +808,15 @@ let
         existingDns
         // {
           listen = lib.unique (listOrEmpty (existingDns.listen or null) ++ listeners);
-          allowFrom = lib.unique (listOrEmpty (existingDns.allowFrom or null) ++ sources);
+          # Admitting the fabric peers is the other half of the listener fix: an
+          # address that is bound but not allow-listed answers `refuse_non_local`,
+          # which is exactly what the cobalt HAT showed (`dig` returned a reply
+          # with no question section). Only the peer side of each fabric lane is
+          # added -- the narrower /31 or /127 -- so the ACL does not pick up whole
+          # interface prefixes.
+          allowFrom = lib.unique (
+            listOrEmpty (existingDns.allowFrom or null) ++ sources ++ fabricPeerPrefixes
+          );
           blockDirectEgress = true;
           directEgressBlockedTenants = listOrEmpty (existingDns.directEgressBlockedTenants or null);
           forwarders = safeForwarders;
