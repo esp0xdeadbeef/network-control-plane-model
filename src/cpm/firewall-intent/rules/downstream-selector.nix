@@ -87,6 +87,41 @@ let
       )
       trafficPaths;
 
+  # The node immediately AFTER this router on a policy-required path.
+  #
+  # policyEgressRules can only express a relation whose path continues to an
+  # access node (stagePath[i+2] == "access"), and localRelationRules only handles
+  # relations needing no policy. A service hosted on a core satisfies neither: its
+  # path is
+  #   [ "access-clients" "downstream-selector" "policy" "upstream-selector" "core" ]
+  # so policy is followed by upstream-selector, never an access node, and the
+  # relation produced no rule at all -- the DS policy-drop chain then silently
+  # discarded the access resolver's query.
+  #
+  # The next hop is already modelled, so it does not have to be inferred.
+  nextHopAfterSelector =
+    relation:
+    let
+      id = relationId relation;
+      step =
+        rest:
+        if rest == [ ] then
+          null
+        else if builtins.head rest == "downstream-selector" then
+          if builtins.length rest >= 2 then builtins.elemAt rest 1 else null
+        else
+          step (builtins.tail rest);
+      candidates = builtins.filter (
+        path: builtins.isAttrs path && (path.relationId or null) == id && (path.requiresPolicy or false) == true
+      ) trafficPaths;
+      nextHops = builtins.foldl' (
+        acc: path:
+        let h = step (path.nodePath or [ ]);
+        in if h == null || builtins.elem h acc then acc else acc ++ [ h ]
+      ) [ ] candidates;
+    in
+    if id == null || nextHops == [ ] then null else builtins.head nextHops;
+
   pathContainsPolicyEgressToAccess = relation: accessNode:
     let
       id = relationId relation;
@@ -298,6 +333,77 @@ let
           toIfaces
       );
 
+  # A policy-required relation whose path leaves this router toward a NON-access
+  # node (a service hosted on a core). Neither arm above can express it, so the
+  # rule was never emitted and the DS policy-drop chain silently discarded the
+  # packet -- the access resolver's query to the core resolver died here, which is
+  # why name resolution failed while the site's own egress worked.
+  #
+  # Emit from = the access-edge lane whose owner is the relation source, out = the
+  # fabric lane whose peer is the next node on the modelled path. Both the next
+  # hop and the lanes are already in the model; nothing is inferred.
+  nonAccessEgressRules = relationRaw:
+    let
+      relation = attrsOrEmpty relationRaw;
+      id = relationId relation;
+      action = if (relation.action or "allow") == "deny" then "deny" else "accept";
+      direction = "relation-forward-policy-egress";
+      nextHop = nextHopAfterSelector relation;
+      fromIfaces = accessIfacesForEndpoint (relation.from or null);
+      # Fabric lanes of this router: p2p links toward policy.
+      fabricIfaces = builtins.filter (
+        iface: common.laneKind iface == "access" && common.laneAccess iface != null
+      ) transitInterfaces;
+      # Only the fabric lane paired with the source access lane: the relation is
+      # scoped to one access scope, and emitting every fabric lane would grant
+      # the same authority on seven unrelated lanes.
+      sourceAccess = builtins.head (
+        builtins.filter (x: x != null) (map common.laneAccess fromIfaces)
+      );
+      toIfaces = builtins.filter (
+        iface: sourceAccess != null && common.laneAccess iface == sourceAccess
+      ) fabricIfaces;
+    in
+    if
+      !(relationRequiresPolicy relation)
+      || nextHop == null
+      # FS-260: policy-required ACCESS-to-ACCESS traffic must not bypass policy.
+      # That is `policyEgressRules`' job; this arm exists only for a destination
+      # that is not an access node (a service hosted on the core), so refuse to
+      # emit anything when the destination does resolve to access nodes.
+      || accessIfacesForEndpoint (relation.to or null) != [ ]
+      || fromIfaces == [ ]
+      || toIfaces == [ ]
+    then
+      [ ]
+    else
+      builtins.concatLists (
+        map
+          (fromIface:
+            map
+              (toIface: {
+                inherit action;
+                relationId = id;
+                comment = id;
+                priority = relation.priority or null;
+                trafficType = relation.trafficType or "any";
+                inherit direction;
+                matches = relationMatches relation;
+                from = attrsOrEmpty (relation.from or null);
+                to = attrsOrEmpty (relation.to or null);
+                fromInterface = fromIface.runtimeIfName;
+                toInterface = toIface.runtimeIfName;
+                applyTcpMssClamp = false;
+              }
+              // common.relationHandoff {
+                relationId = id;
+                inherit action direction fromIface toIface;
+                policyPoint = "downstream-selector";
+              })
+              toIfaces)
+          fromIfaces
+      );
+
   policyEgressRules = relationRaw:
     let
       relation = attrsOrEmpty relationRaw;
@@ -378,4 +484,5 @@ builtins.concatLists
 ++ builtins.concatLists (map localRelationRules (listOrEmpty relations))
 ++ builtins.concatLists (map policyIngressRules (listOrEmpty relations))
 ++ builtins.concatLists (map policyEgressRules (listOrEmpty relations))
+++ builtins.concatLists (map nonAccessEgressRules (listOrEmpty relations))
 ++ common.runtimeOriginDefaultForwardRules runtimeOriginSourcePrefixes transitInterfaces
