@@ -116,8 +116,29 @@ if ((again_rc == 0)); then
   exit 1
 fi
 
-if ! diff -q "${tmp_dir}/broken.err" "${tmp_dir}/broken-again.err" >/dev/null; then
+# Compare the diagnostic record, not Nix's incidental stack trace. The trace
+# embeds the /nix/store/<hash>-source path of the flake copy, and Nix re-copies
+# a dirty working tree under a new hash whenever anything in it changed between
+# the two evaluations — which concurrent CI test jobs routinely cause. Those
+# store paths are not part of the diagnostic and must not decide whether the
+# abort is reproducible; the structured `E_*` record is.
+extract_diagnostic() {
+  # The diagnostic is the emitted failure record carrying a stable E_* code.
+  grep -o '{"code":"E_[^"]*"[^}]*}' "$1" | tail -1
+}
+
+diagnostic_first="$(extract_diagnostic "${tmp_dir}/broken.err")"
+diagnostic_again="$(extract_diagnostic "${tmp_dir}/broken-again.err")"
+
+if [[ -z "${diagnostic_first}" || -z "${diagnostic_again}" ]]; then
+  echo "FAIL render-abort-enforcement: an aborted run carried no stable E_* diagnostic record to compare" >&2
+  cat "${tmp_dir}/broken.err" "${tmp_dir}/broken-again.err" >&2
+  exit 1
+fi
+
+if [[ "${diagnostic_first}" != "${diagnostic_again}" ]]; then
   echo "FAIL render-abort-enforcement: the abort diagnostic is not reproducible across runs" >&2
+  printf 'first: %s\nagain: %s\n' "${diagnostic_first}" "${diagnostic_again}" >&2
   exit 1
 fi
 

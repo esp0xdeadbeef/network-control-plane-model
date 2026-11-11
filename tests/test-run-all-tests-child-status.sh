@@ -6,6 +6,10 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 cp "${repo_root}/run-all-tests.sh" "${tmp_dir}/run-all-tests.sh"
+# run-all-tests.sh routes discovery through scripts/lib/discover-tests.sh, so the
+# fixture copy must carry that helper too or the runner cannot discover anything.
+mkdir -p "${tmp_dir}/scripts/lib"
+cp "${repo_root}/scripts/lib/discover-tests.sh" "${tmp_dir}/scripts/lib/discover-tests.sh"
 mkdir -p "${tmp_dir}/tests"
 
 cat >"${tmp_dir}/tests/test-pass.sh" <<'EOF'
