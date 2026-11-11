@@ -151,10 +151,26 @@ let
         };
       };
 
+  # The service-ingress-lane tag marks a route whose next hop is the ingress peer.
+  # That is the way onward only at a relation's FIRST transit hop; on the policy
+  # node the same /32 is more specific than the fabric /31 that names the real next
+  # hop and reflects the packet back (measured on the cobalt HAT: right on the
+  # downstream-selector via 10.1.0.25, wrong on policy where it beat
+  # `10.1.0.16/31 via 10.1.0.41 dev up-clients`).
+  #
+  # `targetIsPolicy` lets the callers suppress the tag there, so the route is still
+  # offered but without the policy-table complement marking that makes the renderer
+  # keep it ahead of the fabric route.
   tagIngressRoutes =
-    fromIface: routes: {
-      ipv4 = builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv4 or null));
-      ipv6 = builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv6 or null));
+    targetIsPolicy: fromIface: routes: {
+      ipv4 = if targetIsPolicy then
+        listOrEmpty (routes.ipv4 or null)
+      else
+        builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv4 or null));
+      ipv6 = if targetIsPolicy then
+        listOrEmpty (routes.ipv6 or null)
+      else
+        builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv6 or null));
     };
 
   serviceEndpointRoutes = import ./service-endpoint-routes.nix {
@@ -176,6 +192,7 @@ let
     services: target: forwarding:
     let
       servicesByName = serviceRecords services;
+      targetIsPolicy = (target.role or null) == "policy";
       effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
       interfaces = attrsOrEmpty (effective.interfaces or null);
       byRuntime = interfaceByRuntimeName interfaces;
@@ -193,7 +210,7 @@ let
                 fromIface = byRuntime.${fromName}.iface;
                 toIfName = byRuntime.${toName}.ifName;
                 toIface = byRuntime.${toName}.iface;
-                extraRoutes = tagIngressRoutes fromIface (routesFromInterface toIface);
+                extraRoutes = tagIngressRoutes targetIsPolicy fromIface (routesFromInterface toIface);
                 previous = attrsOrEmpty (acc.${toIfName} or null);
               in
               acc // { ${toIfName} = mergeRoutes previous extraRoutes; })
@@ -227,7 +244,7 @@ let
                   if serviceFacingRoute then toIfName else fromIfName;
                 routeIface =
                   if serviceFacingRoute then toIface else fromIface;
-                extraRoutes = tagIngressRoutes fromIface (dropRoutesAlreadyOnInterface routeIface {
+                extraRoutes = tagIngressRoutes targetIsPolicy fromIface (dropRoutesAlreadyOnInterface routeIface {
                   ipv4 = endpointRoutes 4 rule service { inherit fromIface toIface routeIface; };
                   ipv6 = endpointRoutes 6 rule service { inherit fromIface toIface routeIface; };
                 });
@@ -277,7 +294,7 @@ let
               fromIface = byRuntime.${fromName}.iface;
               fromIfName = byRuntime.${fromName}.ifName;
               service = servicesByName.${serviceName};
-              requesterRoutes = tagIngressRoutes fromIface (dropRoutesAlreadyOnInterface fromIface {
+              requesterRoutes = tagIngressRoutes targetIsPolicy fromIface (dropRoutesAlreadyOnInterface fromIface {
                 ipv4 = endpointRoutes 4 rule service {
                   fromIface = fromIface;
                   toIface = fromIface;
