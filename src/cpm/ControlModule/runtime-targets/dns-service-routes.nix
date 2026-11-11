@@ -132,6 +132,19 @@ let
     iface:
       (ingressLaneFor iface).kind or null;
 
+  # Is the service's own address on this interface, i.e. is this node the endpoint
+  # rather than a transit hop? Only then is the ingress interface the right place
+  # for the endpoint route.
+  ownsServiceAddress =
+    service: iface:
+    let
+      addr4 = iface.addr4 or null;
+      svc = (attrsOrEmpty (service.intent or null)).addresses or (service.addresses or [ ]);
+      bare = a: builtins.head (lib.splitString "/" a);
+      wanted = listOrEmpty svc;
+    in
+    addr4 != null && builtins.any (a: bare a == bare addr4) wanted;
+
   withIngressPolicyLane =
     fromIface: route:
     let
@@ -242,9 +255,21 @@ let
                 toIfName = byRuntime.${toName}.ifName;
                 toIface = byRuntime.${toName}.iface;
                 service = servicesByName.${serviceName};
+                # The endpoint route's next hop is `routeIface`'s peer, so this
+                # choice decides the gateway. Both ends of a resolver relation are
+                # `service` kind, so `laneKindFor` does not tell ingress from egress
+                # and a transit hop fell through to the ingress interface -- taking
+                # the ingress peer as the gateway and pointing the resolver route
+                # back at the node it came from.
+                #
+                # Measured on the cobalt HAT: the downstream-selector rendered
+                # `10.1.0.16 via 10.1.0.0 dev pacds` (pacds is 10.1.0.1, the access
+                # side) while the resolver is only reachable across pdspaac
+                # (10.1.0.24, peer 10.1.0.25).
                 serviceFacingRoute =
                   (target.role or null) == "policy"
-                  || (laneKindFor fromIface == "uplink" && laneKindFor toIface == "access-uplink");
+                  || (laneKindFor fromIface == "uplink" && laneKindFor toIface == "access-uplink")
+                  || (fromIfName != toIfName && !ownsServiceAddress service fromIface);
                 routeIfName =
                   if serviceFacingRoute then toIfName else fromIfName;
                 routeIface =
