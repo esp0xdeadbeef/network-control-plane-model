@@ -335,3 +335,4 @@ genericEgressRules
 ++ builtins.concatLists (map relationRules.externalTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.overlayUnderlayTransitRule (listOrEmpty relations))
 ++ builtins.concatLists (map relationRules.externalServiceTransitRule (listOrEmpty relations))
+++ builtins.concatLists (map relationRules.serviceToServiceEgressRule (listOrEmpty relations))
