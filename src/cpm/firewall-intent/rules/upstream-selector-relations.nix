@@ -258,6 +258,60 @@ in
       in
       (pairRules relation ingressIfaces serviceIfaces { }) ++ responseRules;
 
+  # A service-to-service relation whose destination is hosted on a core. None of
+  # the arms above match it: externalTransitRule and externalServiceTransitRule
+  # both require an `external` endpoint, and this relation is
+  # clients-dns (service) -> core-dns (service, provider node "core").
+  #
+  # Measured on the cobalt HAT: the upstream-selector contributed 0 rules for
+  # this relation while the policy node contributed 2, so a query surviving the
+  # policy hop died here. Same shape-gap as the downstream-selector's
+  # nonAccessEgressRules (7fbc407), one router later.
+  #
+  # Scoped to ONE lane pair. An unscoped version emitted every policy x core
+  # combination (28 rules) for a relation scoped to a single access scope, which
+  # would grant DNS authority on lanes that do not carry this traffic.
+  serviceToServiceEgressRule =
+    relationRaw:
+    let
+      relation = attrsOrEmpty relationRaw;
+      fromEndpoint = attrsOrEmpty (relation.from or null);
+      toEndpoint = attrsOrEmpty (relation.to or null);
+      id =
+        if builtins.isString (relation.id or null) && relation.id != "" then
+          relation.id
+        else if builtins.isString (relation.name or null) && relation.name != "" then
+          relation.name
+        else
+          null;
+      toAccessNodes = serviceAccessNodes toEndpoint;
+      firstPolicy = if policyInterfaces == [ ] then null else builtins.head policyInterfaces;
+      policyScope = if firstPolicy == null then null else common.laneScope firstPolicy;
+      scopedPolicy =
+        if policyScope == null then
+          (if firstPolicy == null then [ ] else [ firstPolicy ])
+        else
+          builtins.filter (i: common.laneScope i == policyScope) policyInterfaces;
+      policyUplinks =
+        if firstPolicy == null then [ ] else common.laneUplinks firstPolicy;
+      reachableCores = builtins.filter (
+        c: builtins.any (u: builtins.elem u (common.uplinks c)) policyUplinks
+      ) coreInterfaces;
+      chosenCores = if reachableCores == [ ] then [ ] else [ (builtins.head reachableCores) ];
+    in
+    if
+      id == null
+      || (relation.action or "allow") != "allow"
+      || (fromEndpoint.kind or null) != "service"
+      || (toEndpoint.kind or null) != "service"
+      || toAccessNodes != [ ]
+      || scopedPolicy == [ ]
+      || chosenCores == [ ]
+    then
+      [ ]
+    else
+      pairRules relation scopedPolicy chosenCores { };
+
   runtimeRoutedPrefixPublicEgressRules = import ./upstream-selector-runtime-prefix-egress.nix {
     inherit
       common
