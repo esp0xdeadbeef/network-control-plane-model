@@ -163,12 +163,17 @@ let
   # keep it ahead of the fabric route.
   tagIngressRoutes =
     targetIsPolicy: fromIface: routes: {
+      # On the policy node these routes must not be emitted at all, not merely
+      # untagged: a plain `/32` for the resolver address still outranks the fabric
+      # `/31` that names the real next hop, so the packet is reflected whether or
+      # not it carries the complement marking. An earlier version of this gate only
+      # dropped the tag and the rendered routes were unchanged (5 per node).
       ipv4 = if targetIsPolicy then
-        listOrEmpty (routes.ipv4 or null)
+        [ ]
       else
         builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv4 or null));
       ipv6 = if targetIsPolicy then
-        listOrEmpty (routes.ipv6 or null)
+        [ ]
       else
         builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv6 or null));
     };
