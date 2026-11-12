@@ -107,7 +107,18 @@ jq -e '
       has_all($required; .fields)
       and has_all($conditional; .fields)
       and has_none($placeholders; .fields)
-      and .schema.requiredFields == $required
+      # FS-890-HDS-010-SDS-010-SMS-010 states a minimum: "validate required
+      # record fields for type, timestamp source, site, tenant when applicable,
+      # host or service context, runtime fact set, model provenance, decision,
+      # reason, and redaction class". It does not make that list exhaustive.
+      #
+      # Asserting equality here made this row contradict FS-880-HDS-010-SDS-010-
+      # SMS-040, which requires a lease-derived record to be keyed by lease
+      # identity, source family, namespace, owner and requester scope -- a
+      # stricter per-record contract on the same dhcp4/dhcpv6 records. Require the
+      # FS-890 set to be present; additional required fields belong to another row
+      # contract and must not fail this one.
+      and has_all($required; .schema.requiredFields)
       and .schema.conditionalFields == $conditional
       and .schema.incompleteEvidence.classification == "incomplete-evidence"
       and .schema.incompleteEvidence.whenMissingFields == [
