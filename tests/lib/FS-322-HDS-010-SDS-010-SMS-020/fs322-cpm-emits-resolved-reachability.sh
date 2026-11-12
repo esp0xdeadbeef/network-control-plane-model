@@ -70,8 +70,38 @@ example_root="$(flake_input_path network-labs)/examples/single-wan"
 intent_path="${example_root}/intent.nix"
 inventory_path="${example_root}/inventory-nixos.nix"
 
-result_json="$(mktemp)"
-trap 'rm -f "${result_json}"' EXIT
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "${tmp_dir}"' EXIT
+result_json="${tmp_dir}/result.json"
+overlap_json="${tmp_dir}/overlap.json"
+
+# Seeded negative (FS-322-HDS-010-SDS-010-SMS-020, Module Failure Conditions):
+# "The module shall fail closed when overlapping offers lack declared
+# precedence", and the SDS forbids inferring a winner from member order. Two
+# scopes offer the same prefix, one scope selects both, and nothing declares a
+# precedence, so the model must refuse.
+cat >"${tmp_dir}/overlap-intent.nix" <<EOF
+let
+  base = import ${intent_path};
+  site = base.esp0xdeadbeef."site-a";
+  nodes = site.topology.nodes;
+  core = nodes."s-router-core-wan";
+  sel = nodes."s-router-upstream-selector";
+  a = nodes."s-router-access-client" // { offers = [ "10.99.0.0/16" ]; };
+  b = core // { offers = (core.offers or [ ]) ++ [ "10.99.0.0/16" ]; };
+  c = sel // { selects = [ "s-router-core-wan" "s-router-access-client" ]; };
+  nodes' = nodes // {
+    "s-router-access-client" = a;
+    "s-router-core-wan" = b;
+    "s-router-upstream-selector" = c;
+  };
+in
+base // {
+  esp0xdeadbeef = base.esp0xdeadbeef // {
+    "site-a" = site // { topology = site.topology // { nodes = nodes'; }; };
+  };
+}
+EOF
 
 REPO_ROOT="${repo_root}" INTENT_PATH="${intent_path}" INVENTORY_PATH="${inventory_path}" \
   nix eval --no-write-lock-file --impure --json --expr '
@@ -180,6 +210,42 @@ if [[ "${no_scope_count}" != "0" ]]; then
        "selector entries name no scope." >&2
   echo "  The emitted interface is 'ordered selected scopes', so an entry without a" >&2
   echo "  scope is not a selection." >&2
+  echo "FAIL fs322-cpm-emits-resolved-reachability"
+  exit 1
+fi
+
+# P4: overlapping offers without declared precedence must fail closed. Accept
+# either a refusal naming the overlap or, at minimum, a non-zero exit; accepting
+# the ambiguous model is the failure the SMS forbids.
+set +e
+REPO_ROOT="${repo_root}" INTENT_PATH="${tmp_dir}/overlap-intent.nix" \
+  INVENTORY_PATH="${inventory_path}" \
+  nix eval --no-write-lock-file --impure --json --expr '
+    let
+      repoRoot = builtins.getEnv "REPO_ROOT";
+      flake = builtins.getFlake ("path:" + repoRoot);
+      system = builtins.currentSystem;
+      cpm = flake.libBySystem.${system}.compileAndBuildFromPaths {
+        inputPath = builtins.getEnv "INTENT_PATH";
+        inventoryPath = builtins.getEnv "INVENTORY_PATH";
+        validateForwardingModel = false;
+        validateRuntimeModel = false;
+      };
+    in
+    cpm.control_plane_model.data
+  ' >"${overlap_json}" 2>"${tmp_dir}/overlap.err"
+overlap_rc=$?
+set -e
+
+if ((overlap_rc == 0)); then
+  echo "FAIL FS-322-HDS-010-SDS-010-SMS-020 P4: two scopes offered the same" \
+       "prefix with no declared precedence and the model accepted it." >&2
+  echo "  The SMS requires fail-closed here and the SDS forbids picking a winner" >&2
+  echo "  from member order. Emitted selections that both offer 10.99.0.0/16:" >&2
+  jq -c '[ .. | objects | select(.resolvedReachability?) | .resolvedReachability
+            | select((.selects | length) > 1)
+            | .selects[] | { scope, offeredPrefixes } ] | unique' \
+    "${overlap_json}" >&2 2>/dev/null || true
   echo "FAIL fs322-cpm-emits-resolved-reachability"
   exit 1
 fi
