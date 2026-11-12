@@ -81,8 +81,43 @@ let
     (left.dst or null) == (right.dst or null)
     && (left.${viaField} or null) == (right.${viaField} or null);
 
+  # Every host prefix this target already carries on ANY interface, so an
+  # endpoint route cannot shadow a fabric route that lives elsewhere.
+  #
+  # They were compared per-interface only, so the service-endpoint /32 emitted
+  # against the ingress lane and the fabric /31 on the policy-facing lane were
+  # never seen together. Both reached the kernel; the /32 is more specific, so it
+  # won and sent the query back the way it came.
+  #
+  # Measured on the cobalt HAT, downstream-selector table 1001:
+  #   10.1.0.16/32 via 10.1.0.0  dev pacds     <- chosen
+  #   10.1.0.16/31 via 10.1.0.25 dev pdspaac   <- correct, never used
+  # and `ip route get 10.1.0.16 from 10.1.0.0 iif pacds` returned
+  # `via 10.1.0.0 dev pacds`, reflecting the query to the access node.
+  targetHostPrefixes =
+    target: family:
+    let
+      ifaces = attrsOrEmpty (target.effectiveRuntimeRealization or null);
+      all = attrsOrEmpty (ifaces.interfaces or null);
+      routesOf =
+        name:
+        listOrEmpty (
+          (attrsOrEmpty (all.${name}.routes or null)).${if family == 4 then "ipv4" else "ipv6"} or null
+        );
+      key = route:
+        let
+          dst = route.dst or "";
+          parts = lib.splitString "/" dst;
+        in
+        if builtins.length parts == 2 && builtins.elem (builtins.elemAt parts 1) [ "31" "127" ] then
+          builtins.head parts
+        else
+          null;
+    in
+    builtins.filter (v: v != null) (map key (builtins.concatMap routesOf (builtins.attrNames all)));
+
   dropRoutesAlreadyOnInterface =
-    iface: extraRoutes:
+    target: iface: extraRoutes:
     let
       existingRoutes = attrsOrEmpty (iface.routes or null);
       missing = family: routes:
@@ -90,7 +125,13 @@ let
           (route:
             !builtins.any
               (existing: sameKernelRoute family route existing)
-              (listOrEmpty (existingRoutes.${if family == 4 then "ipv4" else "ipv6"} or null)))
+              (listOrEmpty (existingRoutes.${if family == 4 then "ipv4" else "ipv6"} or null))
+            # A host prefix here would be more specific than a fabric /31 the
+            # target already carries for the same address, and would win.
+            &&
+            !builtins.any
+              (fabricAddr: lib.hasPrefix "${fabricAddr}/" (route.dst or ""))
+              (targetHostPrefixes target family))
           (builtins.filter (gatewayReachableFromInterface family iface) (listOrEmpty routes));
     in
     {
@@ -274,7 +315,7 @@ let
                   if serviceFacingRoute then toIfName else fromIfName;
                 routeIface =
                   if serviceFacingRoute then toIface else fromIface;
-                extraRoutes = tagIngressRoutes targetIsPolicy fromIface (dropRoutesAlreadyOnInterface routeIface {
+                extraRoutes = tagIngressRoutes targetIsPolicy fromIface (dropRoutesAlreadyOnInterface target routeIface {
                   ipv4 = endpointRoutes 4 rule service { inherit fromIface toIface routeIface; };
                   ipv6 = endpointRoutes 6 rule service { inherit fromIface toIface routeIface; };
                 });
@@ -324,7 +365,7 @@ let
               fromIface = byRuntime.${fromName}.iface;
               fromIfName = byRuntime.${fromName}.ifName;
               service = servicesByName.${serviceName};
-              requesterRoutes = tagIngressRoutes targetIsPolicy fromIface (dropRoutesAlreadyOnInterface fromIface {
+              requesterRoutes = tagIngressRoutes targetIsPolicy fromIface (dropRoutesAlreadyOnInterface target fromIface {
                 ipv4 = endpointRoutes 4 rule service {
                   fromIface = fromIface;
                   toIface = fromIface;
