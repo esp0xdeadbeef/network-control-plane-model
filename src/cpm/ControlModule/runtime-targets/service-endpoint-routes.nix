@@ -123,6 +123,26 @@ let
           ipam.parseIPv6 address;
       take = count: values: builtins.genList (idx: builtins.elemAt values idx) count;
       fullHextets = if parsed == null then 0 else builtins.div parsed.prefixLen 16;
+
+      # IPv4 containment, computed here rather than taken from `common`.
+      # `common` is supplied by the caller, and a focused caller (a case that
+      # exercises `endpointRoutes` directly) passes only the helpers that module
+      # needs, so reaching for an optional member of it failed at evaluation with
+      # `attribute 'cidrContainsAddress' missing`.
+      ipv4ToInt =
+        octets: builtins.foldl' (acc: octet: acc * 256 + octet) 0 octets;
+      ipv4Contains =
+        let
+          cidrOctets = ipam.parseIPv4 parsed.addr;
+          addrOctets = ipam.parseIPv4 address;
+          hostBits = 32 - parsed.prefixLen;
+          blockSize = builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) hostBits);
+        in
+        cidrOctets != null
+        && addrOctets != null
+        && parsed.prefixLen <= 32
+        && builtins.div (ipv4ToInt cidrOctets) blockSize
+        == builtins.div (ipv4ToInt addrOctets) blockSize;
     in
     parsed != null
     && parsedAddr != null
@@ -132,7 +152,7 @@ let
     && parsed.prefixLen < fullLen
     && (
       if family == 4 then
-        common.cidrContainsAddress cidr address
+        ipv4Contains
       else
         parsed.prefixLen == 127
         || (
@@ -225,6 +245,7 @@ let
 in
 {
   inherit
+    coveredByModelledPrefix
     endpointRoutes
     externalServiceRules
     prefixContainsAddress
