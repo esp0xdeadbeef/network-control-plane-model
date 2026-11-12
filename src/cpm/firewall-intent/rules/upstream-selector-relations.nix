@@ -46,12 +46,39 @@ let
       ) transitInterfaces;
       # FS-322/FS-370: a relation names the exit scope (a modeled node). When
       # no lane carries the scope name, the scope is the core boundary that owns
-      # the exit; its offered exits are the core interfaces' uplinks on this
-      # target. Resolve the scope to those owned uplinks.
-      coreOwned =
-        uniqueStrings (
-          builtins.concatMap uplinksOf (builtins.filter (iface: common.uplinks iface != [ ]) coreInterfaces)
-        );
+      # the exit; its offered exits are that core's uplinks on this target.
+      #
+      # Resolving to "every uplink on every core interface" was wrong: a target
+      # exposes one interface per attached core, so a relation naming
+      # `c-router-core` also collected the uplinks of an unrelated core. Measured
+      # on the overlay-dns-lane-policy fixture: `c-router-core` owns only `wan`,
+      # yet the relation reached the gateway through an `east-west` lane owned by
+      # `c-router-nebula-core`. One relation then fanned into sibling lanes with
+      # the same destination and competing next hops -- the FS-540-HDS-010-SDS-010
+      # failure condition "one requester table receives equal-prefix DNS routes
+      # through competing access-lane next hops", and the FS-370 no-sibling-lane
+      # rule.
+      #
+      # The interface's source link is named `p2p-<node>-<peer>`, so the owning
+      # node is the link name's first node word. Compare the scope against it as
+      # a whole word, so `c-router-core` cannot match `c-router-nebula-core`.
+      ifaceNamesScope =
+        iface:
+        let
+          linkName = toString ((attrsOrEmpty (iface.backingRef or null)).name or "");
+        in
+        linkName == scopeStr
+        || builtins.match ".*p2p-${scopeStr}-.*" linkName != null
+        || builtins.match ".*p2p-${scopeStr}" linkName != null;
+      # A target exposes one interface per attached core; keep only the uplinks
+      # of the interfaces that name the requested scope.
+      coreOwned = uniqueStrings (
+        builtins.concatMap uplinksOf (
+          builtins.filter (iface: common.uplinks iface != [ ]) (
+            builtins.filter ifaceNamesScope coreInterfaces
+          )
+        )
+      );
     in
     if matching != [ ] then
       uniqueStrings (builtins.concatMap uplinksOf matching)

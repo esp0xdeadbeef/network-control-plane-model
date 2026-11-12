@@ -9,8 +9,12 @@
 # and generation facts, and publish one active generation identity and an opaque
 # prefix handle.
 #
-# Behavioural: compiles the cobalt testing model, which carries delegated-prefix
-# configuration, and asserts on the emitted model. Not executed before commit.
+# Behavioural: compiles the neon testing model, which is the fixture that models
+# a PPPoE DHCPv6-PD customer handoff (iaid + prefixDelegationRequestId), and
+# asserts on the emitted model. The cobalt fixture models no PD at all -- both of
+# its dhcpv6PD flags are false and it carries no iaid or prefixDelegationRequestId
+# -- so asserting PD generation identity against it was vacuous.
+# Not executed before commit.
 set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
@@ -21,8 +25,8 @@ require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required comm
 require_cmd jq
 
 nixos_src="${NIXOS_SRC:-${HOME}/github/nixos}"
-intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
+intent_path="${nixos_src}/prod-network/testing/intent-neon.nix"
+inventory_path="${nixos_src}/prod-network/testing/inventory-neon.nix"
 
 tmp_dir="$(mktemp -d)"; trap 'rm -rf "${tmp_dir}"' EXIT
 fail() { echo "FAIL pd-generation-identity: $*" >&2; exit 1; }
@@ -39,26 +43,32 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" 2>"${tmp_dir}/err" || fail "P1 the cobalt testing model does not compile:
+' >"${model_json}" 2>"${tmp_dir}/err" || fail "P1 the neon testing model does not compile:
 $(cat "${tmp_dir}/err")"
 
 # P1: the model must actually carry delegated-prefix configuration, otherwise the
-# case is vacuous. Cobalt terminates provider handoffs that include PD.
-if ! grep -qiE '"delegated|prefixDelegation|"pd"|iaid' "${model_json}"; then
-  fail "P1 the compiled model carries no delegated-prefix or IAID fact, so PD generation identity cannot be asserted here"
+# case is vacuous. Assert the specific facts the SMS consumes rather than a loose
+# substring: `"pd"` and `"delegated` matched unrelated keys (providerBootstrapDns,
+# delegatedEndpointAuthority) and let a PD-free model through.
+pd_clients="$(jq '[.. | objects | select(has("iaid") and has("prefixDelegationRequestId"))] | length' "${model_json}")"
+if [[ -z "${pd_clients}" || "${pd_clients}" -lt 1 ]]; then
+  fail "P1 the compiled model carries no iaid/prefixDelegationRequestId fact, so PD generation identity cannot be asserted here"
+fi
+
+# The normalized PD record must be the modeled identity, with no implicit
+# defaults (FS-800-HDS-030-SDS-020-SMS-020).
+if ! jq -e '[.. | objects | select(has("iaid") and has("prefixDelegationRequestId")) | select(.mode == "dhcpv6-pd" and .duidMode == "persistent" and .fallbackPolicy == "none")] | length > 0' "${model_json}" >/dev/null; then
+  fail "P1 no normalized dhcpv6-pd record carries the modeled mode, persistent DUID and fail-closed fallback policy"
 fi
 
 # P2: one active generation identity must be published, and the prefix handle must
 # be opaque. A handle equal to the raw delegated prefix is not opaque.
-if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
-  let
-    d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    text = builtins.toJSON d;
-    hasGeneration = builtins.match ".*\"(activeGeneration|generationIdentity)\".*" text != null;
-    hasHandle = builtins.match ".*\"(prefixHandle|opaquePrefixHandle)\".*" text != null;
-  in
-    hasGeneration && hasHandle
-' | grep -qx true; then
+#
+# Query the emitted keys directly. Stringifying the whole model with
+# builtins.toJSON and matching it blew the Nix stack on a multi-megabyte model,
+# so the predicate failed for a reason unrelated to what it asserts.
+if ! jq -e '([.. | objects | select(has("activeGeneration") or has("generationIdentity"))] | length > 0)
+           and ([.. | objects | select(has("prefixHandle") or has("opaquePrefixHandle"))] | length > 0)' "${model_json}" >/dev/null; then
   fail "P2 the model publishes no active generation identity together with an opaque prefix handle, so the PD generation cannot be identified or handed off safely"
 fi
 

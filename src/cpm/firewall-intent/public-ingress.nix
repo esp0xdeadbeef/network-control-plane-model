@@ -414,6 +414,25 @@ let
             sourcePreservation
             returnBehavior
             ;
+          # FS-790-HDS-010-SDS-010-SMS-010: a public-ingress row must publish the
+          # exposure identity it authorizes. The record named the surface, the
+          # source scope, the target service/endpoint and the tuples, but no
+          # identity, so a consumer could not tell which exposure a row is about
+          # and could not detect two rows authorizing the same exposure.
+          #
+          # The identity is derived from modeled facts only (no address, no
+          # port-table ordering): the public surface the traffic arrives on, the
+          # service endpoint it terminates at, and the protocol/public-port pair
+          # the row opens. It is stable under input enumeration order and is the
+          # same string every stage sees.
+          exposureIdentity = builtins.concatStringsSep ":" (
+            map toString [
+              publicSurface
+              targetEndpoint
+              (tupleRecord.protocol or "")
+              (tupleRecord.publicPort or "")
+            ]
+          );
           ingressInterface = ingressIface.runtimeIfName;
           publicAddressBinding = "runtime-interface-address";
           translationOwnerRuntimeTarget = targetName;
