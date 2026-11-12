@@ -44,3 +44,37 @@ _resolve_network_labs() {
 pinned_network_labs() { _resolve_network_labs; }
 pinned_hat_dir()  { echo "$(_resolve_network_labs)/GAMP/HAT/emulated-isp-residential-testnet"; }
 pinned_sat_dir()  { echo "$(_resolve_network_labs)/GAMP/SAT"; }
+
+# The cobalt/neon testing fixtures live in the `nixos` repository under
+# prod-network/testing, not in network-labs. `nixos` is not a flake input of
+# this repository (the lock is consumer-owned), so resolve it from one declared
+# location instead of each case guessing a developer home directory.
+#
+# Order: NIXOS_SRC (CI pins it to a checked-out revision), then the sibling
+# layout, then the developer home directory.
+_pinned_nixos_src=""
+
+_resolve_nixos_src() {
+  if [[ -n "${_pinned_nixos_src}" ]]; then
+    echo "${_pinned_nixos_src}"
+    return
+  fi
+  local repo_root candidate
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  for candidate in \
+    "${NIXOS_SRC:-}" \
+    "${repo_root}/../nixos" \
+    "${HOME}/github/nixos"
+  do
+    if [[ -n "${candidate}" && -f "${candidate}/prod-network/testing/intent-cobalt.nix" ]]; then
+      _pinned_nixos_src="${candidate}"
+      echo "${_pinned_nixos_src}"
+      return
+    fi
+  done
+  echo "ERROR: cannot resolve the nixos testing fixtures. Set NIXOS_SRC to a nixos checkout that contains prod-network/testing." >&2
+  exit 1
+}
+
+pinned_nixos_src() { _resolve_nixos_src; }
+pinned_nixos_testing() { echo "$(_resolve_nixos_src)/prod-network/testing"; }
