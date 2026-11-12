@@ -105,61 +105,47 @@ let
   prefixContainsAddress =
     family: cidr: address:
     let
-      parsed = if builtins.isString cidr then ipam.splitCIDR cidr else null;
       fullLen = if family == 4 then 32 else 128;
-      parsedAddr =
-        if parsed == null then
-          null
-        else if family == 4 then
-          ipam.parseIPv4 parsed.addr
-        else
-          ipam.parseIPv6 parsed.addr;
-      targetAddr =
+      rawParts = builtins.filter builtins.isString (builtins.split "/" cidr);
+      hasLen = builtins.length rawParts == 2;
+      base = if hasLen then builtins.head rawParts else "";
+      prefixLen = if hasLen then builtins.fromJSON (builtins.elemAt rawParts 1) else null;
+      bareAddress =
         if !(builtins.isString address) then
-          null
-        else if family == 4 then
-          ipam.parseIPv4 address
+          ""
         else
-          ipam.parseIPv6 address;
-      take = count: values: builtins.genList (idx: builtins.elemAt values idx) count;
-      fullHextets = if parsed == null then 0 else builtins.div parsed.prefixLen 16;
-
-      # IPv4 containment, computed here rather than taken from `common`.
-      # `common` is supplied by the caller, and a focused caller (a case that
-      # exercises `endpointRoutes` directly) passes only the helpers that module
-      # needs, so reaching for an optional member of it failed at evaluation with
-      # `attribute 'cidrContainsAddress' missing`.
-      ipv4ToInt =
-        octets: builtins.foldl' (acc: octet: acc * 256 + octet) 0 octets;
+          builtins.head (builtins.filter builtins.isString (builtins.split "/" address));
+      # A host route is not a covering prefix: it cannot justify suppressing
+      # itself, nor another host route for the same address.
+      isCoveringPrefix = prefixLen != null && prefixLen < fullLen;
+      sameFamily =
+        if family == 4 then
+          builtins.match "[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+" bareAddress != null
+        else
+          builtins.match ".*:.*" bareAddress != null;
+      octets = s: map builtins.fromJSON (builtins.filter builtins.isString (builtins.split "[.]" s));
+      toInt = o: builtins.foldl' (acc: x: acc * 256 + x) 0 o;
       ipv4Contains =
         let
-          cidrOctets = ipam.parseIPv4 parsed.addr;
-          addrOctets = ipam.parseIPv4 address;
-          hostBits = 32 - parsed.prefixLen;
-          blockSize = builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) hostBits);
+          blockSize = builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (i: i) (32 - prefixLen));
+          baseOctets = octets base;
+          addrOctets = octets bareAddress;
         in
-        cidrOctets != null
-        && addrOctets != null
-        && parsed.prefixLen <= 32
-        && builtins.div (ipv4ToInt cidrOctets) blockSize
-        == builtins.div (ipv4ToInt addrOctets) blockSize;
+        builtins.length baseOctets == 4
+        && builtins.length addrOctets == 4
+        && builtins.div (toInt baseOctets) blockSize == builtins.div (toInt addrOctets) blockSize;
     in
-    parsed != null
-    && parsedAddr != null
-    && targetAddr != null
-    # A host route is not a covering prefix; it cannot justify suppressing
-    # itself, nor another host route for the same address.
-    && parsed.prefixLen < fullLen
-    && (
-      if family == 4 then
-        ipv4Contains
-      else
-        parsed.prefixLen == 127
-        || (
-          lib.mod parsed.prefixLen 16 == 0
-          && take fullHextets parsedAddr == take fullHextets targetAddr
-        )
-    );
+    if !(builtins.isString cidr && hasLen && isCoveringPrefix && sameFamily) then
+      false
+    else if family == 4 then
+      ipv4Contains
+    else
+      # IPv6 routes are emitted zero-padded per hextet, so the base is a textual
+      # prefix of the address whenever the address is written the same way. Only
+      # compare on a hextet boundary, and accept the p2p /127 that names a link.
+      prefixLen == 127
+      || (lib.mod prefixLen 16 == 0 && lib.hasPrefix base bareAddress);
+
 
   coveredByModelledPrefix =
     family: iface: address:
@@ -172,10 +158,11 @@ let
     builtins.any
       (route:
         (routeIntent route).kind or null == "internal-reachability"
-        # A /31 or /127 names a point-to-point link, not the service prefix; those
-        # are the fabric routes this rule exists to stop shadowing.
-        && !hasP2PPrefixLength (route.dst or null)
         && (route.${viaField} or null) != null
+        # A /31 or /127 names a point-to-point link, not the service prefix. The
+        # containment test already rejects host routes; reject the p2p lengths here
+        # too, since those are the fabric routes this rule exists to stop shadowing.
+        && !(builtins.match ".*/(31|127)" (route.dst or "") != null)
         && prefixContainsAddress family (route.dst or null) address)
       routes;
 
