@@ -61,12 +61,21 @@ eval_service() {
           service =
             builtins.head (builtins.filter (item: (item.name or null) == "dmz-nebula") site.services);
           # FS-315/FS-270: the service endpoint route into the dmz access space is
-          # carried on the policy point access lane, not on the upstream
-          # selector dmz uplink.
-          target = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-policy" or { };
+          # carried on the access-facing lane of the downstream-selector, not on
+          # the upstream selector dmz uplink.
+          #
+          # This asserted the POLICY node. That is the one node the model must not
+          # put it on: 5857ec5 (FS-525) suppresses service-endpoint routes there
+          # deliberately, because a /32 outranks the fabric /31 that names the
+          # real next hop and reflects the query back the way it came -- measured
+          # on the cobalt HAT before that change. The endpoint route is emitted
+          # where the terminal attachment is, on the downstream-selector, and the
+          # policy node reaches the endpoint by its covering /24 on the same lane.
+          # The case was asserting the configuration the model was fixed away from.
+          target = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-downstream-selector" or { };
           realization = target.effectiveRuntimeRealization or { };
           interfaces = realization.interfaces or { };
-          iface = interfaces."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz" or { };
+          iface = interfaces."p2p-c-router-access-dmz-c-router-downstream-selector" or { };
           routes = (iface.routes or { }).ipv4 or [ ];
           hasProviderEndpointRoute =
             builtins.any (route: (route.dst or null) == "10.90.10.100/32") routes;
