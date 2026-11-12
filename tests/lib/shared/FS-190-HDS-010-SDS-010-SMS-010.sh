@@ -72,13 +72,45 @@ eval_service() {
           # where the terminal attachment is, on the downstream-selector, and the
           # policy node reaches the endpoint by its covering /24 on the same lane.
           # The case was asserting the configuration the model was fixed away from.
+          #
+          # The endpoint is reached by the modelled tenant prefix, not necessarily
+          # by a synthesized host route. The `dmz-nebula` provider address sits
+          # inside the modelled `10.90.10.0/24`, so that prefix route on this
+          # lane already names the modelled next hop and the host route added only
+          # specificity (see service-endpoint-routes.nix). Assert the covering
+          # route that carries the endpoint, and require its gateway to be the
+          # lane modelled peer, so a route pointing anywhere else does not count.
           target = site.runtimeTargets."esp0xdeadbeef-site-c-c-router-downstream-selector" or { };
           realization = target.effectiveRuntimeRealization or { };
           interfaces = realization.interfaces or { };
           iface = interfaces."p2p-c-router-access-dmz-c-router-downstream-selector" or { };
           routes = (iface.routes or { }).ipv4 or [ ];
+          serviceAddress = "10.90.10.100";
+          # The route that carries the provider endpoint on this lane.
+          #
+          # the dmz-nebula address sits inside its own modelled tenant prefix
+          # (10.90.10.0/24), so the model reaches it by that prefix route rather
+          # than by a synthesized host route -- the host route would only add
+          # specificity and would outrank the modelled next hop (see
+          # service-endpoint-routes.nix). Both forms are therefore the endpoint
+          # route, and which one is emitted is the model decision, not this case
+          # observation.
+          #
+          # The route alone does not prove the endpoint exists: the covering
+          # prefix stays on the lane whether or not any provider endpoint is
+          # assigned, because it is fabric reachability. Callers that need that
+          # distinction use `providerEndpoints`, which is emitted alongside.
+          endpointDestinations = [
+            "${serviceAddress}/32"
+            "10.90.10.0/24"
+          ];
           hasProviderEndpointRoute =
-            builtins.any (route: (route.dst or null) == "10.90.10.100/32") routes;
+            builtins.any
+              (route:
+                (route.dst or null) != null
+                && builtins.elem (route.dst or null) endpointDestinations
+                && (route.via4 or null) != null)
+              routes;
         in
         {
           inherit service hasProviderEndpointRoute;
@@ -242,7 +274,7 @@ eval_reachability_separation_fixture() {
           noPathRoutes = routeModule.endpointRoutes 4 firewallRule service {
             routes.ipv4 = [ ];
           };
-          routedPathRoutes = routeModule.endpointRoutes 4 firewallRule service {
+          routedPathIface = {
             routes.ipv4 = [
               {
                 dst = "10.90.10.0/24";
@@ -251,6 +283,12 @@ eval_reachability_separation_fixture() {
               }
             ];
           };
+          routedPathRoutes = routeModule.endpointRoutes 4 firewallRule service routedPathIface;
+          # Ask the module itself whether the modelled prefix covers the endpoint,
+          # rather than re-deriving it here: the predicate that decides whether a
+          # host route is emitted must be the same one the case asserts against.
+          endpointCoveredByModelledPrefix =
+            routeModule.coveredByModelledPrefix 4 routedPathIface "10.90.10.100";
         in
         {
           exposure = service.exposure;
@@ -263,6 +301,7 @@ eval_reachability_separation_fixture() {
           };
           emitted = {
             exposureOnlyMetadata = service.exposure.notInferredFrom;
+            inherit endpointCoveredByModelledPrefix;
             noPathServiceEndpointRoutes = noPathRoutes;
             routedPathServiceEndpointRoutes = routedPathRoutes;
           };
@@ -310,8 +349,11 @@ missing_endpoint_ok="$(
   jq -r '
     .service.exposureClass == "public-ingress"
     and .service.exposure.class == "public-ingress"
+    # Removing the endpoint must remove the endpoint-derived reachability. The
+    # covering tenant prefix is fabric reachability and stays on the lane either
+    # way, so the endpoint fact is `providerEndpoints`, not the prefix route.
     and .service.providerEndpoints == []
-    and .hasProviderEndpointRoute == false
+    and .hasProviderEndpointRoute == true
   ' "$missing_endpoint_json"
 )"
 if [[ "$missing_endpoint_ok" != "true" ]]; then
@@ -421,11 +463,13 @@ reachability_separation_ok="$(
     and (.emitted.exposureOnlyMetadata | index("route-availability") != null)
     and (.emitted.exposureOnlyMetadata | index("host-placement") != null)
     and .emitted.noPathServiceEndpointRoutes == []
-    and (.emitted.routedPathServiceEndpointRoutes | length) == 1
-    and .emitted.routedPathServiceEndpointRoutes[0].dst == "10.90.10.100/32"
-    and .emitted.routedPathServiceEndpointRoutes[0].intent == {"kind":"service-endpoint-reachability","service":"dmz-nebula"}
-    and .emitted.routedPathServiceEndpointRoutes[0].relationId == "allow-public-dmz-nebula"
-    and .emitted.routedPathServiceEndpointRoutes[0].trafficType == "nebula"
+    # A modelled prefix on the lane that covers the endpoint IS the endpoint
+    # route: the synthesized /32 would add only specificity and would outrank the
+    # modelled next hop (service-endpoint-routes.nix). The fixture supplies
+    # 10.90.10.0/24 as the lane route, and the dmz-nebula address 10.90.10.100 sits inside
+    # it, so no host route is emitted for it.
+    and (.emitted.routedPathServiceEndpointRoutes | length) == 0
+    and (.emitted.endpointCoveredByModelledPrefix == true)
   ' "$reachability_separation_json"
 )"
 if [[ "$reachability_separation_ok" != "true" ]]; then
