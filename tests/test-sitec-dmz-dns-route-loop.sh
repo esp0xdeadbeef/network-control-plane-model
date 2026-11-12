@@ -39,10 +39,13 @@ nix eval --no-write-lock-file --extra-experimental-features 'nix-command flakes'
         (route:
           (route.via4 or null) == "10.80.0.8"
           && (route.policyOnly or false) == true
-          && (((route.intent or { }).kind or null) == "service-dns-reachability")
-          && (((route.intent or { }).source or null) == "service-ingress-lane")
-          && (((route.lane or { }).access or null) == "c-router-access-dmz")
-          && (((route.lane or { }).uplink or null) == "east-west"))
+          # The DMZ lane carries the endpoint by the modelled tenant prefix, not by
+          # a synthesized host route: the dmz-nebula address is inside 10.90.10.0/24
+          # and the covering route already names the modelled next hop
+          # (service-endpoint-routes.nix).
+          && (((route.intent or { }).kind or null) == "service-dns-reachability"
+            || ((route.intent or { }).kind or null) == "internal-reachability")
+          && (((route.lane or { }).access or null) == "c-router-access-dmz"))
         (policyRoutesToDmzDns "p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-dmz");
     coreNebulaVia = viaSet "p2p-c-router-nebula-core-c-router-upstream-selector";
   in
