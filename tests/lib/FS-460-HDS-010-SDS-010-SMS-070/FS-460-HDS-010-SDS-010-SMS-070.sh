@@ -19,12 +19,16 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
+# tests/lib/pinned-paths.sh resolves the nixos testing fixtures from one
+# declared location (NIXOS_SRC, then the sibling layout, then the developer
+# home) instead of every case hardcoding a home directory.
+source "${repo_root}/tests/lib/pinned-paths.sh"
 system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-nixos_src="${NIXOS_SRC:-${HOME}/github/nixos}"
+nixos_src="$(pinned_nixos_src)"
 intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
 inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
 
