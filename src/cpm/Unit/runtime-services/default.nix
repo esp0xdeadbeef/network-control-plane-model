@@ -142,7 +142,36 @@ let
           ipv4Mode = requireEnum "${ipv6Path}.ipv4Mode" [ "disabled" ] (ipv6.ipv4Mode or null);
           inherit routerSolicitation;
           fallbackPolicy = requireEnum "${ipv6Path}.fallbackPolicy" [ "none" ] (ipv6.fallbackPolicy or null);
-        });
+        }
+        // (
+          # FS-800-HDS-030-SDS-020-SMS-030: the module publishes one active
+          # generation identity and an opaque prefix handle, consuming IAID and
+          # the PD request identity.
+          #
+          # Both come from the modeled facts above, so the identity is stable
+          # across evaluation order and identical for identical modeled input.
+          # The handle is a digest of the request identity, never the delegated
+          # prefix: the SMS forbids the prefix value appearing in evaluation,
+          # derivation text, logs or diagnostics, and CPM does not model the
+          # runtime prefix value at all.
+          let
+            iaid = requirePositiveInt "${ipv6Path}.iaid" (ipv6.iaid or null);
+            pdRequestId = requirePositiveInt
+              "${ipv6Path}.prefixDelegationRequestId"
+              (ipv6.prefixDelegationRequestId or null);
+            generationIdentity = "pd-generation:iaid=${toString iaid}:request=${toString pdRequestId}";
+            prefixHandle =
+              "opaque-pd-handle:"
+              + builtins.substring 0 32 (
+                builtins.hashString "sha256" generationIdentity
+              );
+          in
+          {
+            inherit generationIdentity prefixHandle;
+            activeGeneration = generationIdentity;
+            prefixHandleOpaque = true;
+          }
+        ));
       normalizePPPoEClient = pppoePath: client:
         let
           clientPath = "${pppoePath}.client";
