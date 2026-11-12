@@ -751,6 +751,9 @@ let
           runtimeStatePolicy
           runtimeDiagnostics
           ;
+        # FS-322: resolving a selection to the selected scope's offered
+        # prefixes needs the sibling nodes, not only this target's attrs.
+        peerNodeAttrs = nodes;
         effectiveRuntimeInterfaces =
           # The core egress surface is synthesized earlier from the modeled
           # egress intent; runtimeInterfaces already carries it and the

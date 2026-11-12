@@ -10,6 +10,7 @@
   nodePath,
   nodeName,
   nodeAttrs,
+  peerNodeAttrs,
   logical,
   isBgpRouter,
   placement,
@@ -23,6 +24,56 @@
   runtimeStatePolicy,
   runtimeDiagnostics,
 }:
+let
+  offersOf =
+    name:
+    let
+      peer = peerNodeAttrs.${name} or null;
+      offered = if builtins.isAttrs peer then (peer.offers or [ ]) else [ ];
+    in
+    if builtins.isList offered then offered else [ ];
+
+  selectedScopeOf =
+    entry:
+    if builtins.isAttrs entry then
+      (entry.scope or entry.surface or entry.uplink or null)
+    else if builtins.isString entry then
+      entry
+    else
+      null;
+
+  declaredSelects =
+    let
+      raw = nodeAttrs.selects or [ ];
+    in
+    if builtins.isList raw then raw else [ ];
+
+  resolvedReachability = {
+    scope = nodeName;
+    offers = offersOf nodeName;
+    # Declared order is preserved: precedence stays the model's decision.
+    selects = builtins.concatMap (
+      entry:
+      let
+        scope = selectedScopeOf entry;
+      in
+      if scope == null then
+        [ ]
+      else
+        [
+          {
+            inherit scope;
+            offeredPrefixes = offersOf scope;
+            behaviors =
+              if builtins.isAttrs entry && builtins.isList (entry.behaviors or null) then
+                entry.behaviors
+              else
+                [ ];
+          }
+        ]
+    ) declaredSelects;
+  };
+in
 {
         logicalNode = logical;
         role = nodeAttrs.role or null;
@@ -39,6 +90,13 @@
             addr6 = requireString "${nodePath}.loopback.ipv6" (loopback.ipv6 or null);
           };
           interfaces = effectiveRuntimeInterfaces;
+          # FS-322-HDS-010-SDS-010-SMS-020: per-scope resolved reachability. A
+          # scope's reachability is what it offers plus what it selects, joined
+          # here from the compiler's normalized offers/selects. It is never
+          # derived from permission relations: URS states reachability and
+          # permission "shall not be conflated". Renderers consume this instead
+          # of inferring a return leg from a relation record.
+          resolvedReachability = resolvedReachability;
         };
       }
       // (
