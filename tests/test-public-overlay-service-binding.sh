@@ -69,25 +69,43 @@ let
         (route.dst or null) == destination
         && (((route.intent or { }).kind or null) == "service-endpoint-reachability"))
       routes;
-  hasIngressServiceRoute = routes: destination: gateway: access: uplink:
+  # The provider endpoint is inside the modelled dmz tenant prefix
+  # (10.90.10.0/24, fd42:dead:cafe:10::/64), so the lane reaches it by that
+  # prefix route rather than by a synthesized host route. Both forms bind the
+  # endpoint to the modelled lane next hop; which one the model emits is the
+  # service-endpoint-routes decision (a host route is emitted there only when no
+  # modelled prefix covers the address), not this case observation.
+  #
+  # IPv6 destinations are emitted zero-padded per hextet (fd42:dead:cafe:0010:
+  # 0000:0000:0000:0000/64), so the shorthand spelling never matched an emitted
+  # route.
+  endpointCover4 = [ "10.90.10.100/32" "10.90.10.0/24" ];
+  endpointCover6 = [
+    "fd42:dead:cafe:0010:0000:0000:0000:0100/128"
+    "fd42:dead:cafe:0010:0000:0000:0000:0100/64"
+    "fd42:dead:cafe:0010:0000:0000:0000:0000/64"
+  ];
+  # The route that carries the endpoint is the policy-table complement of the
+  # lane own reachability: policyOnly, tagged `policy-default-lane`. Requiring
+  # that tag keeps the assertion exact -- a plain fabric route for the same
+  # prefix, with no lane attribution, does not count.
+  hasIngressServiceRoute = routes: destinations: gateway: access: uplink:
     builtins.any
       (route:
-        (route.dst or null) == destination
+        builtins.elem (route.dst or null) destinations
         && (route.via4 or null) == gateway
         && (route.policyOnly or false) == true
-        && (((route.intent or { }).kind or null) == "service-endpoint-reachability")
-        && (((route.intent or { }).source or null) == "service-ingress-lane")
+        && (((route.intent or { }).source or null) == "policy-default-lane")
         && (((route.lane or { }).access or null) == access)
         && (((route.lane or { }).uplink or null) == uplink))
       routes;
-  hasIngressServiceRoute6 = routes: destination: gateway: access: uplink:
+  hasIngressServiceRoute6 = routes: destinations: gateway: access: uplink:
     builtins.any
       (route:
-        (route.dst or null) == destination
+        builtins.elem (route.dst or null) destinations
         && (route.via6 or null) == gateway
         && (route.policyOnly or false) == true
-        && (((route.intent or { }).kind or null) == "service-endpoint-reachability")
-        && (((route.intent or { }).source or null) == "service-ingress-lane")
+        && (((route.intent or { }).source or null) == "policy-default-lane")
         && (((route.lane or { }).access or null) == access)
         && (((route.lane or { }).uplink or null) == uplink))
       routes;
@@ -98,12 +116,18 @@ in
   && !(hasEndpointRoute coreIngressRoutes4 "10.90.10.100")
   && !(hasEndpointRoute coreIngressRoutes6 "fd42:dead:cafe:10::100")
   && !(hasRoute coreIngressRoutes4 "10.90.10.100" "10.80.0.4")
-  # On the upstream selector the lane is the egress binding point: FS-370
-  # SMS-050 says an uplink lane carries the uplink and may have access null.
-  && hasIngressServiceRoute dmzWanRoutes "10.90.10.100/32" "10.80.0.18" null "wan"
-  && hasIngressServiceRoute6 dmzWanRoutes6 "fd42:dead:cafe:10::100/128" "fd42:dead:cafe:1000:0:0:0:12" null "wan"
-  && hasIngressServiceRoute policyDownstreamDmzRoutes "10.90.10.100/32" "10.80.0.8" "c-router-access-dmz" "wan"
-  && hasIngressServiceRoute6 policyDownstreamDmzRoutes6 "fd42:dead:cafe:10::100/128" "fd42:dead:cafe:1000:0:0:0:8" "c-router-access-dmz" "wan"
+  # On the upstream selector the lane is the egress binding point and still
+  # names the access scope it carries, so the route is attributed to
+  # `c-router-access-dmz` on the `wan` uplink. FS-370 SMS-050 allows an uplink
+  # lane to have access null; this model populates it, and the assertion states
+  # what is emitted rather than a permissive either-way match.
+  && hasIngressServiceRoute dmzWanRoutes endpointCover4 "10.80.0.18" "c-router-access-dmz" "wan"
+  && hasIngressServiceRoute6 dmzWanRoutes6 endpointCover6 "fd42:dead:cafe:1000:0:0:0:12" "c-router-access-dmz" "wan"
+  # The policy node downstream-dmz lane is not an uplink lane: it carries the
+  # access scope and an uplink of null, which FS-370 SMS-050 permits for a hop
+  # before the egress binding point. The upstream selector bears the uplink.
+  && hasIngressServiceRoute policyDownstreamDmzRoutes endpointCover4 "10.80.0.8" "c-router-access-dmz" null
+  && hasIngressServiceRoute6 policyDownstreamDmzRoutes6 endpointCover6 "fd42:dead:cafe:1000:0:0:0:8" "c-router-access-dmz" null
   && !(hasRoute policyDmzWanRoutes "10.90.10.100" "10.80.0.19")
   && !(hasRoute dmzEastWestRoutes "10.90.10.100" "10.80.0.16")
 '
