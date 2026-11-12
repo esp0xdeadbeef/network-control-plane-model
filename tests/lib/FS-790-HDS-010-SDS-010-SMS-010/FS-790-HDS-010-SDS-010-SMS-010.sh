@@ -35,8 +35,12 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 fail() { echo "FAIL public-ingress-fixture-row: $*" >&2; exit 1; }
 
 unique_keys() {
-  nix eval --no-write-lock-file --impure --json --expr '
-    let keys = builtins.fromJSON "'"$1"'";
+  # Pass the keys through the environment and read them with builtins.getEnv.
+  # Splice-based quoting (`'"$1"'`) produced a literal whose inner double quotes
+  # closed the Nix string early, so the expression never parsed and this
+  # self-check could not run at all. An env var has no quoting to get wrong.
+  KEYS_JSON="$1" nix eval --no-write-lock-file --impure --json --expr '
+    let keys = builtins.fromJSON (builtins.getEnv "KEYS_JSON");
     in builtins.length (builtins.attrNames (
          builtins.listToAttrs (map (k: { name = k; value = true; }) keys)))
        == builtins.length keys
@@ -57,56 +61,60 @@ nix eval --no-write-lock-file --impure --json --expr '
     }
 ' >"${model_json}" || fail "P1 the cobalt testing model does not compile, so no ingress row can be validated"
 
-# P1: at least one public-ingress authority must exist, so the case is not
-# vacuous.
-if ! jq -e '[.. | objects | select(has("publicIngressTupleAuthority"))] | length > 0' "${model_json}" >/dev/null 2>&1; then
-  fail "P1 the model carries no publicIngressTupleAuthority, so no ingress row can be validated"
+# At least one emitted public-ingress row must exist, so the case is not vacuous.
+#
+# Assert on the emitted rows, not on the intent mirror. FS-790-HDS-010-SDS-010-SMS-010
+# requires "public-ingress row identity records for platform-neutral model stages"
+# (Emitted Interfaces), and CPM publishes those per row and per tuple on
+# `runtimeTargets.<t>.natIntent.publicIngress[]`. The
+# `communicationContract.allowedRelations[].publicIngressTupleAuthority` record the
+# case used to read is the modeled *input* authority (surface, source scope, target
+# service/endpoint, tuples) and carries no identity by construction, so the identity
+# predicate could never hold there.
+if ! jq -e '[.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]?] | length > 0' "${model_json}" >/dev/null 2>&1; then
+  fail "P1 the model carries no emitted public-ingress row, so no ingress row can be validated"
 fi
 
-# P1: every authority names public surface, allowed source scope and exposure
-# identity. The failure names which fact is missing.
-missing="$(MODEL="${model_json}" nix eval --no-write-lock-file --impure --json --expr '
-  let
-    d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    relations = d.control_plane_model.data.esp0xdeadbeef.cobalt.communicationContract.allowedRelations;
-    withAuth = builtins.filter (r: r ? publicIngressTupleAuthority) relations;
-    auths = map (r: r.publicIngressTupleAuthority) withAuth;
-    lacking = f: builtins.length (builtins.filter (a: !(f a)) auths);
-    report = builtins.filter (x: x != null) [
-      (let n = lacking (a: (a.publicSurface or null) != null); in if n == 0 then null else "publicSurface:${toString n}")
-      (let n = lacking (a: (a.sourceScope or null) != null); in if n == 0 then null else "sourceScope:${toString n}")
-      (let n = lacking (a: (a.exposureIdentity or null) != null); in if n == 0 then null else "exposureIdentity:${toString n}")
-    ];
-  in report
-')"
+# P1: every emitted row names public surface, allowed source scope and exposure
+# identity. The failure names which fact is missing and on how many rows.
+missing="$(jq -c '
+  [ .control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]? ]
+  | {
+      total: length,
+      publicSurface: (map(select((.publicSurface // null) == null)) | length),
+      sourceScope: (map(select((.sourceScope // null) == null)) | length),
+      exposureIdentity: (map(select((.exposureIdentity // null) == null)) | length)
+    }
+  | . as $r
+  | ["publicSurface", "sourceScope", "exposureIdentity"]
+  | map(select(($r[.] ) > 0) | "\(.):\($r[.])")
+' "${model_json}")"
 
 if [[ "${missing}" != "[]" ]]; then
-  fail "P1 these public-ingress authorities omit a required fact: ${missing}"
+  fail "P1 these public-ingress rows omit a required fact: ${missing}"
 fi
 
 # P2: a split port-forward must be represented by separate rows. Two authorities
-# that share an exposure identity but differ in port must not be merged into one
-# record, so the emitted set must contain one record per (identity, port, proto).
-if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
-  let
-    d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    relations = d.control_plane_model.data.esp0xdeadbeef.cobalt.communicationContract.allowedRelations;
-    withAuth = builtins.filter (r: r ? publicIngressTupleAuthority) relations;
-    key = r:
-      let a = r.publicIngressTupleAuthority;
-          ports = builtins.concatLists (map (m: m.dports or [ ]) (r.match or [ ]));
-          protos = map (m: m.proto or "") (r.match or [ ]);
-      in builtins.toJSON {
-        inherit ports protos;
-        surface = a.publicSurface or null;
-      };
-    keys = map key withAuth;
-  in
-    builtins.length keys == builtins.length (builtins.attrNames (
-      builtins.listToAttrs (map (k: { name = k; value = true; }) keys)
-    ))
-' | grep -qx true; then
-  fail "P2 two public-ingress authorities share an identical surface/port/proto key, so a split port-forward was emitted as duplicate rows instead of distinct ones"
+# P2: a split port-forward must be represented by separate rows. Rows that share
+# an exposure identity must not be merged into one record, so the emitted set must
+# contain exactly one row per exposure identity.
+if ! jq -e '
+  [ .control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]? ]
+  | map(.exposureIdentity)
+  | length == (unique | length)
+' "${model_json}" >/dev/null 2>&1; then
+  fail "P2 two public-ingress rows share an identical exposure identity, so a split port-forward was emitted as duplicate rows instead of distinct ones"
+fi
+
+# P2: the split itself must be visible: a service exposed on the same surface and
+# endpoint over more than one protocol or port is several exposures, each with its
+# own identity, so a row never grants another ingress leg.
+if ! jq -e '
+  [ .control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]? ]
+  | group_by(.publicSurface + "|" + (.target.endpoint // ""))
+  | all(.[]; (map(.exposureIdentity) | length) == (map(.exposureIdentity) | unique | length))
+' "${model_json}" >/dev/null 2>&1; then
+  fail "P2 one public surface/endpoint pair reuses an exposure identity across rows, so one row authorizes more than one ingress leg"
 fi
 
 

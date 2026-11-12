@@ -54,18 +54,51 @@ fi
 
 # P1: every overlay must carry address, route and node facts, so each of those
 # has a modeled origin rather than a renderer default.
+#
+# The provider-side facts differ by provider, and demanding one shape of all of
+# them asserted a WireGuard artifact that a Nebula overlay does not have:
+#
+#   - `provider = "wireguard"` overlays carry a `providerContract` (nat, profile,
+#     generatedPeer, runtime paths) -- the commercial-imported egress shape.
+#   - `provider = "nebula"` overlays carry `nebula.lighthouse` (addr4/addr6,
+#     endpoint, port, endpointSourceFile) instead: there is no WireGuard peer
+#     profile to contract. The cobalt fixture's `garnet` overlay is exactly this
+#     case (provider nebula, role core-client, lighthouse on core-vpn-garnet-neon),
+#     which is why asserting `providerContract` on every overlay failed on it.
+#
+# FS-460-HDS-010-SDS-010-SMS-070 requires every network-affecting value to trace
+# to canonical authority; it does not require a WireGuard contract on a Nebula
+# overlay. Assert the authority each provider actually emits.
 missing="$(MODEL="${model_json}" nix eval --no-write-lock-file --impure --json --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
     overlays = d.control_plane_model.data.esp0xdeadbeef.cobalt.overlays;
     names = builtins.attrNames overlays;
     lacking = f: builtins.filter (n: !(f overlays.${n})) names;
+    providerContractAuthority =
+      o:
+      (o.providerContract or null) != null;
+    nebulaLighthouseAuthority =
+      o:
+      let
+        lh = (o.nebula.lighthouse or null);
+      in
+      lh != null
+      && (lh.addr4 or null) != null
+      && (lh.port or null) != null
+      && (lh.endpoint or null) != null
+      # A target-only secret path must be a reference, so the trace names the
+      # secret without carrying it.
+      && (lh.endpointSourceFile or null) != null;
+    hasProviderAuthority =
+      o:
+      if (o.provider or null) == "nebula" then nebulaLighthouseAuthority o else providerContractAuthority o;
     report =
       builtins.filter (x: x != null) [
         (let r = lacking (o: (o.ipam or null) != null); in if r == [ ] then null else "ipam:${builtins.concatStringsSep "," r}")
         (let r = lacking (o: (o.nodes or [ ]) != []); in if r == [ ] then null else "nodes:${builtins.concatStringsSep "," r}")
         (let r = lacking (o: (o.nodeRoutePrefixes or [ ]) != []); in if r == [ ] then null else "routes:${builtins.concatStringsSep "," r}")
-        (let r = lacking (o: (o.providerContract or null) != null); in if r == [ ] then null else "providerContract:${builtins.concatStringsSep "," r}")
+        (let r = lacking hasProviderAuthority; in if r == [ ] then null else "providerAuthority:${builtins.concatStringsSep "," r}")
       ];
   in report
 ')"

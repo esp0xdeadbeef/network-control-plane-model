@@ -109,9 +109,25 @@ jobs:
             echo "::endgroup::"
           done < "$RUNNER_TEMP/siblings.tsv"
 
+          # `nixos` is not a flake input of this repository, so it is absent from
+          # siblings.tsv, but several FS rows read the intent/inventory fixtures
+          # under prod-network/testing of that checkout via NIXOS_SRC. Default it
+          # to a developer home directory and every such row fails with "no ...
+          # fixture at /home/runner/github/nixos/...". Check it out like the rest
+          # so the suites see the same layout a developer does.
+          if [ ! -e "${workspace}/nixos" ]; then
+            echo "::group::nixos @ main"
+            git init --quiet "${workspace}/nixos"
+            git -C "${workspace}/nixos" remote add origin "https://github.com/esp0xdeadbeef/nixos.git"
+            git -C "${workspace}/nixos" fetch --quiet --depth 1 origin main
+            git -C "${workspace}/nixos" checkout --quiet FETCH_HEAD
+            echo "::endgroup::"
+          fi
+
           # Suites default these to a developer home directory; point them at the
           # sibling checkouts instead.
           {
+            printf 'NIXOS_SRC=%s\n'                "${workspace}/nixos"
             printf 'NETWORK_LABS_PATH=%s\n'        "${workspace}/network-labs"
             printf 'NETWORK_LABS_ROOT=%s\n'        "${workspace}/network-labs"
             printf 'NETWORK_LABS_REPO=%s\n'        "${workspace}/network-labs"
