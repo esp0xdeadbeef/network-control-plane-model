@@ -10,7 +10,14 @@
   nodePath,
   nodeName,
   nodeAttrs,
-  peerNodeAttrs,
+  # FS-322-HDS-010-SDS-010-SMS-020 resolves a selection to the *selected scope
+  # offered prefixes*, which needs the sibling nodes. Only the full
+  # build-target pass has them; a focused caller that constructs one target in
+  # isolation (the FS-250-SMS-010 case imports this file directly) has no
+  # siblings to give. Default to none, so the contract stays "resolve against
+  # whatever siblings are supplied" instead of turning the parameter into a
+  # hard requirement that breaks every isolated caller.
+  peerNodeAttrs ? { },
   logical,
   isBgpRouter,
   placement,
