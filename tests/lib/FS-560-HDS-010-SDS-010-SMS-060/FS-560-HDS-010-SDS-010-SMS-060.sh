@@ -83,11 +83,22 @@ fi
 # namespace shall name either an explicit domain or an explicit reference to a
 # named site zone; it shall not inherit a site-wide domain default."
 #
-# The named site zones are taken from the model itself (`localZones`), and a
-# namespace must be strictly more specific than the zone it sits under. The subject
-# is the namespace value, not the zone list: localZones also carry reverse zones
-# derived from prefixes, so requiring every zone to be namespace-covered would fail
-# on legitimate `in-addr.arpa` entries.
+# The authority is the intent, not a string shape. FS-560-HDS-010-SDS-010 (and FS
+# 1219) require the suffix to be *declared* by the owning scope: either an explicit
+# domain or a reference to a named zone. CPM resolves that declaration into
+# `data.<site>.domains.tenants[].dnsDomain`, one suffix per tenant scope.
+#
+# So a published namespace is explicit exactly when it is one of the suffixes the
+# intent declared. That is the property the URS describes, and it needs no guess
+# about which zones are "site zones": the earlier draft filtered `localZones` by a
+# hardcoded `in-addr.arpa`/`ip6.arpa` string match to separate forward zones from
+# reverse zones. That was an assumption, not a modeled fact -- and it was wrong in
+# both directions: `localZones` also holds the reverse zones CPM derives from
+# prefixes (`reverseNamespace` on the same record), so the filter had to invent a
+# classification the model already states by field.
+#
+# Comparing against the declared set also fails closed on the defect the SMS names:
+# a namespace defaulted from a site-wide suffix appears on no tenant's declaration.
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
@@ -98,37 +109,33 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
       map (t: (t.services.dns or { }).protectedReservationPublications or [ ]) targetValues
     ));
 
-    siteZones = builtins.filter
-      (z: builtins.match ".*arpa\\.$" z == null)
-      (map (z: z.name) (builtins.concatLists (
-        map (t: (t.services.dns or { }).localZones or [ ]) targetValues
-      )));
+    # The suffixes the owning scopes declared in intent.
+    declared =
+      map (t: t.dnsDomain)
+        (builtins.filter (t: (t.dnsDomain or null) != null) (site.domains.tenants or [ ]));
 
-    # Explicit means: strictly more specific than a named site zone, so the scope
-    # chose the suffix rather than inheriting it.
-    explicit = ns:
-      builtins.any
-        (z: ns != z && builtins.match ".*\\.${z}" ns != null)
-        siteZones;
+    inherited = builtins.filter (ns: !(builtins.elem ns declared)) namespaces;
   in
-    builtins.length namespaces > 0 && builtins.all explicit namespaces
+    builtins.length namespaces > 0 && inherited == [ ]
 ' | grep -qx true; then
-  fail "P2 a published namespace is not explicitly qualified under a named site zone, so it inherits a site-wide default, which URS Local Service Discovery forbids"
+  fail "P2 a published namespace is not the suffix its owning scope declared in intent, so it inherits a site-wide default, which URS Local Service Discovery forbids"
 fi
 
-# SN1: the explicit-namespace predicate must reject a bare site-wide default. The
-# violating input is a namespace equal to the zone rather than more specific than it.
-if ! nix eval --no-write-lock-file --impure --expr '
+# SN1: the predicate must reject a namespace the intent never declared. The
+# violating input is a bare site-wide suffix that no tenant scope chose.
+#
+# Fail when the predicate ACCEPTS the violating input, i.e. answers `true`. The
+# earlier condition was inverted -- it failed on the correct `false` answer -- and
+# stayed hidden only because P2 failed first and short-circuited the case.
+if [[ "$(nix eval --no-write-lock-file --impure --json --expr '
   let
-    siteZones = [ "home.arpa." ];
-    ns = "home.arpa.";
-    explicit = builtins.any
-      (z: ns != z && builtins.match ".*\\.${z}" ns != null)
-      siteZones;
+    declared = [ "clients.home.arpa." "svc.home.arpa." ];
+    namespaces = [ "clients.home.arpa." "home.arpa." ];
+    inherited = builtins.filter (ns: !(builtins.elem ns declared)) namespaces;
   in
-    explicit
-' | grep -qx true; then
-  fail "SN1 the explicit-namespace predicate accepted the bare site-wide zone as a namespace, which is the inheritance the URS forbids"
+    inherited == [ ]
+')" == "true" ]]; then
+  fail "SN1 the explicit-namespace predicate accepted a namespace no scope declared, which is the inheritance the URS forbids"
 fi
 
 echo "PASS namespace-suffix-declaration"
