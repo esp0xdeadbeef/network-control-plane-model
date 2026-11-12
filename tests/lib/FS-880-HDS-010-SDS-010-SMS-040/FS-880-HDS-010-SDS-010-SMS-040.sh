@@ -35,8 +35,12 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 fail() { echo "FAIL lease-record-keying: $*" >&2; exit 1; }
 
 unique_keys() {
-  nix eval --no-write-lock-file --impure --json --expr '
-    let keys = builtins.fromJSON "'"$1"'";
+  # Pass the keys through the environment and read them with builtins.getEnv.
+  # Splice-based quoting (`'"$1"'`) produced a literal whose inner double quotes
+  # closed the Nix string early, so the expression never parsed and this
+  # self-check could not run at all. An env var has no quoting to get wrong.
+  KEYS_JSON="$1" nix eval --no-write-lock-file --impure --json --expr '
+    let keys = builtins.fromJSON (builtins.getEnv "KEYS_JSON");
     in builtins.length (builtins.attrNames (
          builtins.listToAttrs (map (k: { name = k; value = true; }) keys)))
        == builtins.length keys
@@ -64,6 +68,15 @@ fi
 
 # P1: every record carries a key naming lease identity, source family and
 # namespace. The failure reports which field is missing.
+# P1: every lease record contract requires a key naming lease identity, source
+# family and namespace, so a record cannot be emitted without its own key.
+#
+# The record CPM emits here is a state *contract*: it declares the record's field
+# set and its `schema.requiredFields`. The keying tuple therefore belongs in
+# `schema.requiredFields`, not as a value on the descriptor -- a field merely
+# present in `fields` is optional, and a lease record that omits its own key is
+# precisely what an unchanged renewal looks like when it appends a second record
+# instead of retaining one. The failure reports which field is not required.
 missing="$(MODEL="${model_json}" nix eval --no-write-lock-file --impure --json --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
@@ -76,11 +89,14 @@ missing="$(MODEL="${model_json}" nix eval --no-write-lock-file --impure --json -
           in op.dhcp4Leases or [ ])
         targets
     );
+    required = r: (r.schema.requiredFields or [ ]);
     lacking = f: builtins.length (builtins.filter (r: !(f r)) recs);
     report = builtins.filter (x: x != null) [
-      (let n = lacking (r: (r.leaseKey or r.key or null) != null); in if n == 0 then null else "leaseKey:${toString n}")
-      (let n = lacking (r: (r.sourceFamily or null) != null); in if n == 0 then null else "sourceFamily:${toString n}")
-      (let n = lacking (r: (r.namespace or null) != null); in if n == 0 then null else "namespace:${toString n}")
+      (let n = lacking (r: builtins.elem "leaseKey" (required r)); in if n == 0 then null else "leaseKey:${toString n}")
+      (let n = lacking (r: builtins.elem "sourceFamily" (required r)); in if n == 0 then null else "sourceFamily:${toString n}")
+      (let n = lacking (r: builtins.elem "namespace" (required r)); in if n == 0 then null else "namespace:${toString n}")
+      (let n = lacking (r: builtins.elem "namespaceOwner" (required r)); in if n == 0 then null else "namespaceOwner:${toString n}")
+      (let n = lacking (r: builtins.elem "requesterScope" (required r)); in if n == 0 then null else "requesterScope:${toString n}")
     ];
   in report
 ')"
@@ -89,21 +105,27 @@ if [[ "${missing}" != "[]" ]]; then
   fail "P1 these lease records omit a keying field: ${missing}"
 fi
 
-# P2: an unchanged renewal must be idempotent, so two records must never share a
-# key. A duplicate key means a renewal produced a second record.
+# P2: an unchanged renewal must be idempotent, so two contracts must never
+# describe the same lease key. A duplicate key means a renewal produced a second
+# record instead of replacing the first.
+#
+# Each emitted record is a contract for one lease-store: its key is the modeled
+# lease-store identity (target + service + the contract's own id), which is what
+# the record set is reconciled against. `r.leaseKey` is not a value on the
+# descriptor -- P1 requires it as a per-record schema field -- so keying here on
+# it read nothing and the check could not run.
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    targets = builtins.attrValues d.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets;
+    targets = builtins.attrNames d.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets;
     recs = builtins.concatLists (
       map
         (t:
-          let sc = t.stateContracts or { };
-              op = sc.operationalRecords or { };
-          in op.dhcp4Leases or [ ])
+          let leases = d.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets.${t}.stateContracts.operationalRecords.dhcp4Leases or [ ];
+          in map (r: { inherit t; key = "${t}|" + (r.service or "") + "|" + (r.id or ""); }) leases)
         targets
     );
-    keys = map (r: r.leaseKey or r.key) recs;
+    keys = map (r: r.key) recs;
     uniqueCount = builtins.length (builtins.attrNames (
       builtins.listToAttrs (map (k: { name = k; value = true; }) keys)
     ));

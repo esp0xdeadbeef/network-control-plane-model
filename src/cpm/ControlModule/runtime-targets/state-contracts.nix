@@ -20,7 +20,42 @@ let
   recordPolicyFor = statePolicy:
     attrsOrEmpty (statePolicy.operationalRecords or null);
 
+  # FS-880-HDS-010-SDS-010-SMS-040 requires a lease-derived record to be keyed by
+  # "lease identity, source family, namespace, owner, and requester scope".
+  #
+  # The lists named the namespace-side facts and stopped there, so the emitted
+  # contract required no lease identity and no source family at all: two leases in
+  # the same namespace were indistinguishable, which is exactly the shape an
+  # unchanged renewal takes when it appends a second record instead of retaining
+  # one. Name both, so the keying tuple the SMS requires is the tuple the record
+  # contract demands.
+  leaseNamespaceFields = [
+    "leaseKey"
+    "sourceFamily"
+    "namespace"
+    "namespaceOwner"
+    "requesterScope"
+    "recordClass"
+    "deniedClasses"
+    "conflict"
+    "stale"
+    "revocation"
+  ];
+
+# FS-880-HDS-010-SDS-010-SMS-040: the keying tuple is one stable lease identity
+# plus the address family the lease was derived from, then the namespace, owner
+# and requester scope that decide which records the lease may touch.
+  leaseKeyingFields = [
+    "leaseKey"
+    "sourceFamily"
+    "namespace"
+    "namespaceOwner"
+    "requesterScope"
+  ];
+
   leaseNamespaceRecordFields = [
+    "leaseKey"
+    "sourceFamily"
     "namespace"
     "namespaceOwner"
     "requesterScope"
@@ -46,6 +81,8 @@ let
       interface = entry.interface or "";
       tenant = entry.tenant or "";
       leaseNamespaceFields = [
+        "leaseKey"
+        "sourceFamily"
         "namespace"
         "namespaceOwner"
         "requesterScope"
@@ -65,6 +102,8 @@ let
       interface = entry.interface or "";
       tenant = entry.tenant or "";
       leaseNamespaceFields = [
+        "leaseKey"
+        "sourceFamily"
         "namespace"
         "namespaceOwner"
         "requesterScope"
@@ -114,6 +153,9 @@ let
     recordContract targetName recordPolicy "dhcp4" (entry.id or entry.interface or "unknown") {
       eventTypes = leaseOperationalEventTypes;
       fields = leaseNamespaceRecordFields;
+      # The keying tuple is required, not optional: a lease record without its
+      # own key cannot be reconciled idempotently.
+      requiredFields = leaseKeyingFields;
       interface = entry.interface or "";
       tenant = entry.tenant or "";
     };
@@ -122,6 +164,7 @@ let
     recordContract targetName recordPolicy "dhcpv6" (entry.id or entry.interface or "unknown") {
       eventTypes = leaseOperationalEventTypes;
       fields = leaseNamespaceRecordFields;
+      requiredFields = leaseKeyingFields;
       interface = entry.interface or "";
       tenant = entry.tenant or "";
     };

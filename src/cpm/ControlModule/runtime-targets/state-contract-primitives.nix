@@ -143,8 +143,15 @@ let
       durabilityClass = durabilityClassFor "statePolicy.operationalRecords" recordPolicy required hasPath;
       stateLossHandling = stateLossHandlingFor "statePolicy.operationalRecords" recordPolicy durabilityClass;
       fieldExtensions = listOrEmpty (attrs.fields or null);
+      # FS-880-HDS-010-SDS-010-SMS-040: a lease-derived record is keyed by a set of
+      # facts, not merely decorated with them. A contract that lists a keying field
+      # without requiring it still validates a record that omits its own key, which
+      # is the shape an unchanged renewal takes when it appends instead of
+      # retaining. Let a caller promote fields into the required set; the keying
+      # tuple then cannot be absent.
+      requiredFieldExtensions = listOrEmpty (attrs.requiredFields or null);
       excludedFieldExtensions = listOrEmpty (attrs.excludedFields or null);
-      attrsWithoutSchemaOverrides = builtins.removeAttrs attrs [ "fields" "excludedFields" ];
+      attrsWithoutSchemaOverrides = builtins.removeAttrs attrs [ "fields" "excludedFields" "requiredFields" ];
       _pathRequired =
         if required && !hasPath then
           throw "statePolicy.operationalRecords.root or explicit ${service}.${id}.path is required when operationalRecords.required=true"
@@ -168,7 +175,7 @@ let
         fieldExtensions;
       excludedFields = appendUnique operationalRecordExcludedFields excludedFieldExtensions;
       schema = {
-        requiredFields = operationalRecordRequiredFields;
+        requiredFields = appendUnique operationalRecordRequiredFields requiredFieldExtensions;
         conditionalFields = operationalRecordConditionalFields;
         incompleteEvidence = {
           classification = "incomplete-evidence";
