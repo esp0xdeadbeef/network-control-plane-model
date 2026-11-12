@@ -98,12 +98,43 @@ REPO_ROOT="${repo_root}" INTENT_PATH="${intent_path}" INVENTORY_PATH="${inventor
         (t.effectiveRuntimeRealization or { }) ? resolvedReachability
         || (t.effectiveRuntimeRealization or { }) ? reachability;
       withReachability = builtins.filter hasReachability targets;
+      reachabilityOf = t:
+        (t.effectiveRuntimeRealization or { }).resolvedReachability
+        or (t.effectiveRuntimeRealization or { }).reachability
+        or { };
+      reachabilities = map reachabilityOf withReachability;
+      allSelections = builtins.concatMap (r: r.selects or [ ]) reachabilities;
+      # FS-322-HDS-010-SDS-010-SMS-020, Emitted Interfaces: "Per-scope resolved
+      # reachability (ordered selected scopes and their member uplinks)". A
+      # selection that names a scope but no member uplinks has restated the
+      # selection instead of resolving it, so every selection must name at least
+      # one uplink.
+      selectionsWithoutUplinks = builtins.filter (
+        s:
+        let
+          uplinks = s.uplinks or [ ];
+        in
+        !(builtins.isList uplinks) || uplinks == [ ]
+      ) allSelections;
+      # The record is "ordered selected scopes", so an entry must name one.
+      selectionsWithoutScope = builtins.filter (s: (s.scope or null) == null) allSelections;
     in
     {
       targetCount = builtins.length targets;
       depth = map (t: builtins.attrNames t) targets;
       runtimeKeys = runtimeKeys;
       reachabilityCount = builtins.length withReachability;
+      selectionCount = builtins.length allSelections;
+      noUplinkCount = builtins.length selectionsWithoutUplinks;
+      noScopeCount = builtins.length selectionsWithoutScope;
+      sampleNoUplink =
+        let
+          first = selectionsWithoutUplinks ++ [ { scope = null; uplinks = null; } ];
+        in
+        {
+          scope = (builtins.head first).scope or null;
+          uplinks = (builtins.head first).uplinks or null;
+        };
     }
   ' >"${result_json}"
 
@@ -124,6 +155,31 @@ if [[ "${reachability_count}" == "0" ]]; then
   echo "  Present effectiveRuntimeRealization keys: $(jq -c '.depth | .[0]' "${result_json}")" >&2
   echo "  network-realization-model cannot add this: it fails with" >&2
   echo "  NR_REALIZATION_INVENTED_SEMANTIC unless its network data equals CPM verbatim." >&2
+  echo "FAIL fs322-cpm-emits-resolved-reachability"
+  exit 1
+fi
+
+# P2: every resolved selection names the member uplinks it resolves to.
+no_uplink_count="$(jq -r '.noUplinkCount' "${result_json}")"
+selection_count="$(jq -r '.selectionCount' "${result_json}")"
+if [[ "${no_uplink_count}" != "0" ]]; then
+  echo "FAIL FS-322-HDS-010-SDS-010-SMS-020 P2: ${no_uplink_count} of" \
+       "${selection_count} resolved selections name no member uplinks." >&2
+  echo "  FS-322-HDS-010-SDS-010-SMS-020 emits reached scopes together with their" >&2
+  echo "  member uplinks; a selection carrying only the scope name has restated the" >&2
+  echo "  selection instead of resolving it. First offender:" >&2
+  jq -c '.sampleNoUplink' "${result_json}" >&2
+  echo "FAIL fs322-cpm-emits-resolved-reachability"
+  exit 1
+fi
+
+# P3: every resolved selection names the scope it selects.
+no_scope_count="$(jq -r '.noScopeCount' "${result_json}")"
+if [[ "${no_scope_count}" != "0" ]]; then
+  echo "FAIL FS-322-HDS-010-SDS-010-SMS-020 P3: ${no_scope_count} resolved" \
+       "selector entries name no scope." >&2
+  echo "  The emitted interface is 'ordered selected scopes', so an entry without a" >&2
+  echo "  scope is not a selection." >&2
   echo "FAIL fs322-cpm-emits-resolved-reachability"
   exit 1
 fi
