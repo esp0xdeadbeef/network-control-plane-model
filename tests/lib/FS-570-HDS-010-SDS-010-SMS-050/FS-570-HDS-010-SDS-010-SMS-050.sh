@@ -98,6 +98,10 @@ fi
 
 # P2: one namespace must belong to exactly one owner scope, because the public
 # view is owned by a single scope.
+# `builtins.unique` does not exist, so the predicate threw on evaluation and the
+# case failed for a reason unrelated to what it asserts. Count distinct owners
+# explicitly: one namespace is conflicted when its publications name more than
+# one distinct owner scope.
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
@@ -106,9 +110,14 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
       map (t: (t.services.dns or { }).protectedReservationPublications or [ ]) targets
     );
     byNs = builtins.groupBy (p: p.namespace) pubs;
-    ownersOf = ns: builtins.unique (map (p: p.ownerScope) byNs.${ns});
+    distinctCount =
+      values:
+      builtins.length (builtins.attrNames (
+        builtins.listToAttrs (map (v: { name = builtins.toJSON v; value = true; }) values)
+      ));
+    ownersOf = ns: distinctCount (map (p: p.ownerScope) byNs.${ns});
     conflicts = builtins.filter
-      (ns: builtins.length (ownersOf ns) > 1)
+      (ns: ownersOf ns > 1)
       (builtins.attrNames byNs);
   in
     conflicts == [ ]
@@ -118,30 +127,38 @@ fi
 
 # SN1: the one-owner predicate must reject a namespace claimed by two owners. The
 # violating input is a synthetic publication set with one namespace under two scopes.
-if ! nix eval --no-write-lock-file --impure --expr '
+if [[ "$(nix eval --no-write-lock-file --impure --json --expr '
   let
     pubs = [
       { namespace = "clients.home.arpa."; ownerScope = "cobalt-clients"; }
       { namespace = "clients.home.arpa."; ownerScope = "neon-clients"; }
     ];
     byNs = builtins.groupBy (p: p.namespace) pubs;
-    ownersOf = ns: builtins.unique (map (p: p.ownerScope) byNs.${ns});
-    conflicts = builtins.filter (ns: builtins.length (ownersOf ns) > 1) (builtins.attrNames byNs);
+    distinctCount =
+      values:
+      builtins.length (builtins.attrNames (
+        builtins.listToAttrs (map (v: { name = builtins.toJSON v; value = true; }) values)
+      ));
+    ownersOf = ns: distinctCount (map (p: p.ownerScope) byNs.${ns});
+    conflicts = builtins.filter (ns: ownersOf ns > 1) (builtins.attrNames byNs);
   in
     conflicts == [ ]
-' | grep -qx true; then
+')" == "true" ]]; then
   fail "SN1 the one-owner predicate accepted a namespace claimed by two owner scopes"
 fi
 
 # SN2: an unknown record class must be rejected. The violating input names a class
 # the model never declares.
-if ! nix eval --no-write-lock-file --impure --expr '
+# Fail when the predicate ACCEPTS the violating input, i.e. answers `true`. The
+# condition was inverted -- it failed on the predicate correct `false` answer --
+# and only surfaced once P2 and SN1 stopped short-circuiting the case.
+if [[ "$(nix eval --no-write-lock-file --impure --json --expr '
   let
     classes = [ "A" "AAAA" "BOGUS" ];
     known = [ "A" "AAAA" "PTR" "TXT" "MX" "SRV" "CNAME" ];
   in
     builtins.all (c: builtins.elem c known) classes
-' | grep -qx true; then
+')" == "true" ]]; then
   fail "SN2 the record-class predicate accepted an unrecognised class"
 fi
 
