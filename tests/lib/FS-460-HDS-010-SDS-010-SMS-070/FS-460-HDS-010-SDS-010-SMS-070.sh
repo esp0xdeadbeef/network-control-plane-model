@@ -28,30 +28,14 @@ system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'bui
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-# FIXTURE GAP, not a passing state to be preserved.
-#
-# `network-*` repositories must not read fixtures out of the `nixos` consumer
-# repository, and this case still does. It cannot be repointed at a pinned
-# `network-labs` example without weakening what it asserts, measured against the
-# pinned lock:
-#
-#   - the only Nebula overlay in a pinned example is
-#     `single-wan-with-nebula`, whose `nebula.lighthouse` carries endpoint,
-#     endpoint6, node and port -- but no `addr4`/`addr6` and no
-#     `endpointSourceFile`, which this case requires in order to prove that a
-#     target-only secret path is a reference rather than a carried value;
-#   - no pinned example carries a WireGuard overlay with a `providerContract`,
-#     so the per-provider branch has nothing to assert against there;
-#   - `dual-wan` and `multi-enterprise` model no overlays at all, and
-#     `s-router-overlay-dns-lane-policy` / `s-router-public-overlay-service`
-#     model `east-west` overlays with no lighthouse authority record.
-#
-# Weakening the assertions to fit what exists would make the row prove less than
-# the SMS asks. The fix is a `network-labs` example that models those facts; until
-# then the case keeps reading the model that has them and states so here.
-nixos_src="$(pinned_nixos_src)"
-intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
+# Pinned network-labs fixture. This repository must not read fixtures out of the
+# `nixos` consumer repository; `wireguard-provider-overlay` models both provider
+# shapes this row distinguishes: a WireGuard overlay whose provider contract
+# declares its ports and MTU, and a Nebula overlay whose lighthouse carries its
+# own addresses plus a target-only endpoint secret reference.
+example_dir="$(pinned_lab_example wireguard-provider-overlay)"
+intent_path="${example_dir}/intent.nix"
+inventory_path="${example_dir}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -70,10 +54,10 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" || fail "P1 the cobalt testing model does not compile, so no overlay trace can be asserted"
+' >"${model_json}" || fail "P1 the pinned lab fixture does not compile, so no overlay trace can be asserted"
 
 # P1: at least one overlay must exist, so the case is not vacuous.
-if ! jq -e '.control_plane_model.data.esp0xdeadbeef.cobalt.overlays | length > 0' "${model_json}" >/dev/null 2>&1; then
+if ! jq -e '[.control_plane_model.data.esp0xdeadbeef | to_entries[] | .value.overlays // {} | to_entries[]] | length > 0' "${model_json}" >/dev/null 2>&1; then
   fail "P1 the model carries no overlays, so the trace cannot be asserted"
 fi
 
@@ -87,9 +71,9 @@ fi
 #     generatedPeer, runtime paths) -- the commercial-imported egress shape.
 #   - `provider = "nebula"` overlays carry `nebula.lighthouse` (addr4/addr6,
 #     endpoint, port, endpointSourceFile) instead: there is no WireGuard peer
-#     profile to contract. The cobalt fixture's `garnet` overlay is exactly this
-#     case (provider nebula, role core-client, lighthouse on core-vpn-garnet-neon),
-#     which is why asserting `providerContract` on every overlay failed on it.
+#     profile to contract. The Nebula overlay in the pinned example is exactly
+#     this case (provider nebula, role lighthouse), which is why asserting
+#     `providerContract` on every overlay failed on it.
 #
 # FS-460-HDS-010-SDS-010-SMS-070 requires every network-affecting value to trace
 # to canonical authority; it does not require a WireGuard contract on a Nebula
@@ -97,7 +81,13 @@ fi
 missing="$(MODEL="${model_json}" nix eval --no-write-lock-file --impure --json --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    overlays = d.control_plane_model.data.esp0xdeadbeef.cobalt.overlays;
+    siteValues = builtins.filter builtins.isAttrs
+      (builtins.attrValues d.control_plane_model.data.esp0xdeadbeef);
+    overlayEntries = builtins.concatMap
+      (site: builtins.map (n: { name = n; value = builtins.getAttr n (site.overlays or { }); })
+        (builtins.attrNames (site.overlays or { })))
+      siteValues;
+    overlays = builtins.listToAttrs overlayEntries;
     names = builtins.attrNames overlays;
     lacking = f: builtins.filter (n: !(f overlays.${n})) names;
     providerContractAuthority =
@@ -137,7 +127,10 @@ fi
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    overlays = builtins.attrValues d.control_plane_model.data.esp0xdeadbeef.cobalt.overlays;
+    overlays = builtins.concatMap
+      (site: builtins.attrValues (site.overlays or { }))
+      (builtins.filter builtins.isAttrs
+        (builtins.attrValues d.control_plane_model.data.esp0xdeadbeef));
     withProfile = builtins.filter
       (o: (o.providerContract.profile or null) != null)
       overlays;
@@ -151,7 +144,7 @@ fi
 
 # P2: target-only secret paths must be references, never plaintext, so the trace
 # can name the secret without carrying it.
-if jq -r '.control_plane_model.data.esp0xdeadbeef.cobalt.overlays | tostring' "${model_json}" \
+if jq -r '[.control_plane_model.data.esp0xdeadbeef | to_entries[] | .value.overlays // {}] | tostring' "${model_json}" \
    | grep -qiE 'PRIVATE KEY|BEGIN .*KEY|="[A-Za-z0-9+/]{40,}"'; then
   fail "P2 an overlay fact carries what looks like plaintext key material; secret paths must be references"
 fi
