@@ -31,9 +31,12 @@ system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'bui
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-nixos_src="$(pinned_nixos_src)"
-intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
+# Pinned network-labs fixture. This repository must not read fixtures out of the
+# `nixos` consumer repository; `protected-reservation-publication` declares a
+# forward zone that names its authorizing relation and authority.
+example_dir="$(pinned_lab_example protected-reservation-publication)"
+intent_path="${example_dir}/intent.nix"
+inventory_path="${example_dir}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -52,7 +55,7 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" || fail "P1 the cobalt testing model does not compile, so no zone ordering can be asserted"
+' >"${model_json}" || fail "P1 the pinned lab fixture does not compile, so no zone ordering can be asserted"
 
 # P1: at least one target must carry zones, so the case is not vacuous.
 if ! jq -e '[.. | objects | select(has("localForwardZones"))] | length > 0' "${model_json}" >/dev/null 2>&1; then
@@ -64,12 +67,15 @@ fi
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    site = d.control_plane_model.data.esp0xdeadbeef.cobalt;
-    targets = builtins.attrNames site.runtimeTargets;
-    zonesOf = n:
-      let dns = site.runtimeTargets.${n}.services.dns or { };
-      in dns.localForwardZones or [ ];
-    allZones = builtins.concatLists (map zonesOf targets);
+    sites = builtins.filter builtins.isAttrs
+      (builtins.attrValues d.control_plane_model.data.esp0xdeadbeef);
+    targetValues = builtins.concatMap
+      (s: builtins.attrValues (s.runtimeTargets or { }))
+      sites;
+    zonesOf = t:
+      let dns = (t.services or { }).dns or { };
+      in if builtins.isAttrs dns then dns.localForwardZones or [ ] else [ ];
+    allZones = builtins.concatLists (map zonesOf targetValues);
     authorize = builtins.filter (z: (z.relationId or null) != null && (z.forwardTo or [ ]) != [ ]) allZones;
   in
     builtins.length allZones > 0 && builtins.length authorize == builtins.length allZones
@@ -83,14 +89,18 @@ fi
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    site = d.control_plane_model.data.esp0xdeadbeef.cobalt;
-    targets = builtins.attrNames site.runtimeTargets;
+    sites = builtins.filter builtins.isAttrs
+      (builtins.attrValues d.control_plane_model.data.esp0xdeadbeef);
+    targetValues = builtins.concatMap
+      (s: builtins.attrValues (s.runtimeTargets or { }))
+      sites;
 
-    zonesOf = n:
-      let dns = site.runtimeTargets.${n}.services.dns or { };
-      in (dns.localZones or [ ]) ++ (dns.localForwardZones or [ ]);
+    zonesOf = t:
+      let dns = (t.services or { }).dns or { };
+      in
+      if builtins.isAttrs dns then (dns.localZones or [ ]) ++ (dns.localForwardZones or [ ]) else [ ];
 
-    namesOf = n: map (z: z.name or "") (zonesOf n);
+    namesOf = t: map (z: z.name or "") (zonesOf t);
 
     # A shadowed zone is one whose name is a strict suffix of another zone that is
     # emitted before it.
@@ -111,7 +121,7 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
           idx;
       in builtins.length bad;
 
-    shadowed = builtins.any (n: shadowedIn (namesOf n) > 0) targets;
+    shadowed = builtins.any (t: shadowedIn (namesOf t) > 0) targetValues;
   in
     shadowed == false
 ' | grep -qx true; then
