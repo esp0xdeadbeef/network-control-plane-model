@@ -28,6 +28,27 @@ system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'bui
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
+# FIXTURE GAP, not a passing state to be preserved.
+#
+# `network-*` repositories must not read fixtures out of the `nixos` consumer
+# repository, and this case still does. It cannot be repointed at a pinned
+# `network-labs` example without weakening what it asserts, measured against the
+# pinned lock:
+#
+#   - the only Nebula overlay in a pinned example is
+#     `single-wan-with-nebula`, whose `nebula.lighthouse` carries endpoint,
+#     endpoint6, node and port -- but no `addr4`/`addr6` and no
+#     `endpointSourceFile`, which this case requires in order to prove that a
+#     target-only secret path is a reference rather than a carried value;
+#   - no pinned example carries a WireGuard overlay with a `providerContract`,
+#     so the per-provider branch has nothing to assert against there;
+#   - `dual-wan` and `multi-enterprise` model no overlays at all, and
+#     `s-router-overlay-dns-lane-policy` / `s-router-public-overlay-service`
+#     model `east-west` overlays with no lighthouse authority record.
+#
+# Weakening the assertions to fit what exists would make the row prove less than
+# the SMS asks. The fix is a `network-labs` example that models those facts; until
+# then the case keeps reading the model that has them and states so here.
 nixos_src="$(pinned_nixos_src)"
 intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
 inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
