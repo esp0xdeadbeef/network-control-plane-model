@@ -15,8 +15,8 @@
 #   overlays.<name>.providerContract.profile.generatedPeer.mtu   (declaration)
 #   runtimeTargets.<t>.advertisements.dhcp4[].interfaceMtu       (binding)
 #
-# Fixture: the cobalt testing model from the nixos repository, because the
-# single-wan example models no overlay MTU. Set NIXOS_SRC to that checkout.
+# Fixture: the pinned network-labs example `wireguard-provider-overlay`, which
+# declares a WireGuard provider contract with profile.generatedPeer.mtu.
 #
 # Not executed before commit.
 set -euo pipefail
@@ -32,9 +32,13 @@ system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'bui
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-nixos_src="$(pinned_nixos_src)"
-intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
+# Pinned network-labs fixture. This repository must not read fixtures out of the
+# `nixos` consumer repository; `wireguard-provider-overlay` declares a WireGuard
+# provider contract with `profile.generatedPeer.mtu`, which is the declaration
+# this row binds the access advertisements to.
+example_dir="$(pinned_lab_example wireguard-provider-overlay)"
+intent_path="${example_dir}/intent.nix"
+inventory_path="${example_dir}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -53,11 +57,12 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" || fail "P1 the cobalt testing model does not compile, so no MTU binding can be asserted"
+' >"${model_json}" || fail "P1 the pinned lab fixture does not compile, so no MTU binding can be asserted"
 
 # P1: the overlay declaration must carry an MTU, so the case is not vacuous.
 declared="$(
-  jq -r '[.control_plane_model.data.esp0xdeadbeef.cobalt.overlays
+  jq -r '[.control_plane_model.data.esp0xdeadbeef
+          | to_entries[] | .value.overlays // {}
           | to_entries[] | .value.providerContract.profile.generatedPeer.mtu
           | select(. != null)] | unique' "${model_json}"
 )"
@@ -69,21 +74,35 @@ declared="$(
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    site = d.control_plane_model.data.esp0xdeadbeef.cobalt;
+    sites = builtins.filter builtins.isAttrs (
+      builtins.attrValues d.control_plane_model.data.esp0xdeadbeef
+    );
+    overlays = builtins.concatMap
+      (s: builtins.attrValues (s.overlays or { }))
+      sites;
+    targetEntries = builtins.concatMap
+      (s:
+        let rt = s.runtimeTargets or { };
+        in builtins.map (n: { name = n; value = builtins.getAttr n rt; }) (builtins.attrNames rt))
+      sites;
     declared = builtins.concatLists (
       map
         (o:
-          let m = o.providerContract.profile.generatedPeer.mtu or null;
+          let
+            pc = o.providerContract or { };
+            profile = pc.profile or { };
+            gp = profile.generatedPeer or { };
+            m = gp.mtu or null;
           in if m == null then [ ] else [ m ])
-        (builtins.attrValues site.overlays)
+        overlays
     );
-    targets = builtins.attrNames site.runtimeTargets;
-    boundOf = n:
+    boundOf = entry:
       let
-        adv = site.runtimeTargets.${n}.advertisements.dhcp4 or [ ];
-        mtus = map (a: a.interfaceMtu.value or null) adv;
+        adverts = entry.value.advertisements or { };
+        adv = adverts.dhcp4 or [ ];
+        mtus = map (a: (a.interfaceMtu or { }).value or null) adv;
       in builtins.filter (v: v != null) mtus;
-    allBound = builtins.concatLists (map boundOf targets);
+    allBound = builtins.concatLists (map boundOf targetEntries);
   in
     builtins.length allBound > 0
     && builtins.all (v: builtins.elem v declared) allBound
@@ -96,15 +115,26 @@ fi
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    site = d.control_plane_model.data.esp0xdeadbeef.cobalt;
-    targets = builtins.attrNames site.runtimeTargets;
+    sites = builtins.filter builtins.isAttrs (
+      builtins.attrValues d.control_plane_model.data.esp0xdeadbeef
+    );
+    overlays = builtins.concatMap
+      (s: builtins.attrValues (s.overlays or { }))
+      sites;
+    targetEntries = builtins.concatMap
+      (s:
+        let rt = s.runtimeTargets or { };
+        in builtins.map (n: { name = n; value = builtins.getAttr n rt; }) (builtins.attrNames rt))
+      sites;
     boundMeta = builtins.concatLists (
       map
-        (n:
-          let adv = site.runtimeTargets.${n}.advertisements.dhcp4 or [ ];
-              metas = map (a: a.interfaceMtu or null) adv;
+        (entry:
+          let
+            adverts = entry.value.advertisements or { };
+            adv = adverts.dhcp4 or [ ];
+            metas = map (a: a.interfaceMtu or null) adv;
           in builtins.filter (m: m != null) metas)
-        targets
+        targetEntries
     );
     sourced = builtins.filter
       (m: (m.source or null) != null && (m.sourceOverlays or [ ]) != [ ])
