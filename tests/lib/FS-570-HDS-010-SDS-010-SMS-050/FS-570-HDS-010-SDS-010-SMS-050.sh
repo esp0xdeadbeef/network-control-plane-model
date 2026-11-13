@@ -21,9 +21,8 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-# tests/lib/pinned-paths.sh resolves the nixos testing fixtures from one
-# declared location (NIXOS_SRC, then the sibling layout, then the developer
-# home) instead of every case hardcoding a home directory.
+# tests/lib/pinned-paths.sh resolves the fixture from the pinned network-labs
+# flake input, so this case reads no developer checkout and no consumer repo.
 source "${repo_root}/tests/lib/pinned-paths.sh"
 system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
@@ -80,7 +79,7 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 fail() { echo "FAIL public-view-separation: $*" >&2; exit 1; }
 
-[[ -f "${intent_path}" ]] || fail "P1 no publication-bearing fixture at ${intent_path}; set NIXOS_SRC to the nixos checkout"
+[[ -f "${intent_path}" ]] || fail "P1 no publication-bearing fixture at ${intent_path}; the pinned network-labs example is missing"
 [[ -f "${inventory_path}" ]] || fail "P1 no publication-bearing inventory at ${inventory_path}"
 
 model_json="${tmp_dir}/model.json"
