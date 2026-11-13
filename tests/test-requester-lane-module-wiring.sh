@@ -68,10 +68,17 @@ if ! rg -q --glob '*.nix' --glob '!requester-lane-recursive-reachability.nix' \
   echo "  reports as admittedDmzLaneLearnsMgmtDnsV4, clientLaneLearnsAllowedMgmtDnsV4," >&2
   echo "  clientLaneLearnsAllowedMgmtDnsV6, clientLaneRouteIsPolicyTableAuthorityV4" >&2
   echo "  and clientLaneRouteIsPolicyTableAuthorityV6 failing." >&2
-  echo "  Wiring it alone is not enough: the module's seeded-negative check then" >&2
-  echo "  fires on the shared lab fixtures (DNS service routes without a matching" >&2
-  echo "  forwarding rule) and regresses FS-470-SMS-090, so that inconsistency has to" >&2
-  echo "  be resolved in the same change." >&2
+  echo "  Wiring it alone is not enough, and that was measured rather than assumed:" >&2
+  echo "  with the import added to finalize.nix the module's own seeded-negative" >&2
+  echo "  check fires on the shared lab fixtures --" >&2
+  echo "    FS-540-HDS-010-SDS-010-SMS-040: target(s) ... carry DNS service routes" >&2
+  echo "    but lack a matching DNS forwarding rule" >&2
+  echo "  -- which regresses FS-470-SMS-090 (PASS before the wiring, FAIL after) and" >&2
+  echo "  test-realized-interface-routes.sh. The inconsistency the module exists to" >&2
+  echo "  catch is therefore real and unaddressed, and this row cannot close by" >&2
+  echo "  enabling the module or by silencing its diagnostic: both are forbidden by" >&2
+  echo "  AGENTS.md. Resolve the DNS-routes-without-forwarding-rule inconsistency" >&2
+  echo "  first, then wire the module in; this assertion then holds." >&2
   fail "P1 the requester-lane reachability module is not imported by the pipeline"
 fi
 
