@@ -109,30 +109,9 @@ jobs:
             echo "::endgroup::"
           done < "$RUNNER_TEMP/siblings.tsv"
 
-          # `nixos` is not a flake input of this repository, so it is absent from
-          # siblings.tsv, but several FS rows read the intent/inventory fixtures
-          # under prod-network/testing of that checkout via NIXOS_SRC. Defaulting
-          # NIXOS_SRC to a developer home directory made every such row fail with
-          # "no ... fixture at /home/runner/github/nixos/...".
-          #
-          # Pin the revision: fetching `main` would make CI depend on whatever
-          # that repository happened to hold at run time, so a red run could not
-          # be reproduced and a green run could not be trusted. Bump this rev
-          # deliberately, in the same change that needs a newer fixture.
-          nixos_rev="f2b80249fedc0821b2ddc3c4bd74ea804674287a"
-          if [ ! -e "${workspace}/nixos" ]; then
-            echo "::group::nixos @ ${nixos_rev:0:10}"
-            git init --quiet "${workspace}/nixos"
-            git -C "${workspace}/nixos" remote add origin "https://github.com/esp0xdeadbeef/nixos.git"
-            git -C "${workspace}/nixos" fetch --quiet --depth 1 origin "${nixos_rev}"
-            git -C "${workspace}/nixos" checkout --quiet FETCH_HEAD
-            echo "::endgroup::"
-          fi
-
           # Suites default these to a developer home directory; point them at the
           # sibling checkouts instead.
           {
-            printf 'NIXOS_SRC=%s\n'                "${workspace}/nixos"
             printf 'NETWORK_LABS_PATH=%s\n'        "${workspace}/network-labs"
             printf 'NETWORK_LABS_ROOT=%s\n'        "${workspace}/network-labs"
             printf 'NETWORK_LABS_REPO=%s\n'        "${workspace}/network-labs"
