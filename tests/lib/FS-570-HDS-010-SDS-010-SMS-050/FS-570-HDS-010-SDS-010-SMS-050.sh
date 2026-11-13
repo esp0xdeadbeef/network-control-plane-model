@@ -30,6 +30,44 @@ system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'bui
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
+# BLOCKED on a fixture that models a protected reservation set.
+#
+# `network-*` repositories must not read fixtures out of the `nixos` consumer
+# repository, and this case still does. It cannot be repointed at a pinned
+# `network-labs` example, and the reason is measured, not assumed:
+#
+# CPM emits `protectedReservationPublications` only for a DHCP advertisement whose
+# `reservationSource` declares all of
+#
+#     schema      = "gamp-protected-reservation-set-v1"
+#     sourceClass = "protected"
+#     sourceFile  = <non-empty>
+#
+# (src/cpm/ControlModule/runtime-targets/dns-contracts.nix, the publication gate),
+# and whose domain is a namespace the resolver forwards or answers locally. Every
+# pinned lab example was measured against the pinned lock:
+#
+#   single-wan                     dhcp4 adv 3  publications 0
+#   single-wan-bgp                 dhcp4 adv 3  publications 0
+#   dual-wan                       dhcp4 adv 2  publications 0
+#   multi-enterprise               dhcp4 adv 3  publications 0
+#   priority-stability             dhcp4 adv 3  publications 0
+#   policy-any-to-any-fw           dhcp4 adv 3  publications 0
+#   single-wan-with-nebula         dhcp4 adv 3  publications 0
+#   s-router-overlay-dns-lane-policy  dhcp4 adv 8  publications 0
+#   s-router-public-overlay-service   dhcp4 adv 8  publications 0
+#
+# No lab inventory declares `namePublication` or a
+# `gamp-protected-reservation-set-v1` reservation source. In `single-wan` the
+# advertisements carry domain `lan.` while the resolver's localZones hold only the
+# derived reverse zones (10.20.10.in-addr.arpa. and the ip6.arpa. pairs), so the
+# forward namespace nothing owns is dropped by skipPublicationFor before the
+# source gate is even reached.
+#
+# Weakening the assertions to fit an empty publication set would delete what the
+# row proves. The fix is a `network-labs` example plus inventory that models a
+# protected reservation set; until one exists the case reads the model that has
+# the facts and states the dependency here.
 nixos_src="$(pinned_nixos_src)"
 intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
 inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
