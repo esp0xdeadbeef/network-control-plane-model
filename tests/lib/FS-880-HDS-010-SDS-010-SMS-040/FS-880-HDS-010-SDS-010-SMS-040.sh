@@ -20,18 +20,21 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-# tests/lib/pinned-paths.sh resolves the nixos testing fixtures from one
-# declared location (NIXOS_SRC, then the sibling layout, then the developer
-# home) instead of every case hardcoding a home directory.
+# tests/lib/pinned-paths.sh resolves the fixture from the pinned network-labs
+# flake input, so this case reads no developer checkout and no consumer repo.
 source "${repo_root}/tests/lib/pinned-paths.sh"
 system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-nixos_src="$(pinned_nixos_src)"
-intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
+# The fixture comes from the pinned `network-labs` flake input. This repository
+# must not read fixtures out of the `nixos` consumer repository, and the lease
+# records this row asserts on are modeled by the overlay-dns-lane-policy
+# example, which carries eight dhcp4 lease contracts across its targets.
+example_dir="$(pinned_lab_example s-router-overlay-dns-lane-policy)"
+intent_path="${example_dir}/intent.nix"
+inventory_path="${example_dir}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -51,7 +54,7 @@ unique_keys() {
   '
 }
 
-[[ -f "${intent_path}" ]] || fail "P1 no lease-bearing fixture at ${intent_path}; set NIXOS_SRC to the nixos checkout"
+[[ -f "${intent_path}" ]] || fail "P1 no lease-bearing fixture at ${intent_path}; the pinned network-labs example is missing"
 [[ -f "${inventory_path}" ]] || fail "P1 no lease-bearing inventory at ${inventory_path}"
 
 model_json="${tmp_dir}/model.json"
@@ -63,7 +66,7 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" || fail "P1 the cobalt testing model does not compile, so no lease record can be validated"
+' >"${model_json}" || fail "P1 the pinned lab fixture does not compile, so no lease record can be validated"
 
 # P1: at least one lease record must exist, so the case is not vacuous.
 if ! jq -e '[.. | objects | select(has("dhcp4Leases"))] | length > 0' "${model_json}" >/dev/null 2>&1; then
@@ -84,7 +87,12 @@ fi
 missing="$(MODEL="${model_json}" nix eval --no-write-lock-file --impure --json --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    targets = builtins.attrValues d.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets;
+    sites = builtins.filter builtins.isAttrs (
+      builtins.attrValues d.control_plane_model.data.esp0xdeadbeef
+    );
+    targets = builtins.concatMap
+      (s: builtins.attrValues (s.runtimeTargets or { }))
+      sites;
     recs = builtins.concatLists (
       map
         (t:
@@ -121,13 +129,27 @@ fi
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    targets = builtins.attrNames d.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets;
+    sites = builtins.filter builtins.isAttrs (
+      builtins.attrValues d.control_plane_model.data.esp0xdeadbeef
+    );
+    targetEntries = builtins.concatMap
+      (s:
+        let
+          rt = s.runtimeTargets or { };
+        in
+        builtins.map (n: { name = n; value = builtins.getAttr n rt; }) (builtins.attrNames rt))
+      sites;
     recs = builtins.concatLists (
-      map
-        (t:
-          let leases = d.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets.${t}.stateContracts.operationalRecords.dhcp4Leases or [ ];
-          in map (r: { inherit t; key = "${t}|" + (r.service or "") + "|" + (r.id or ""); }) leases)
-        targets
+      builtins.map
+        (entry:
+          let
+            t = entry.value;
+            leases = ((t.stateContracts or { }).operationalRecords or { }).dhcp4Leases or [ ];
+          in
+          builtins.map
+            (r: { key = "${entry.name}|" + (r.service or "") + "|" + (r.id or ""); })
+            leases)
+        targetEntries
     );
     keys = map (r: r.key) recs;
     uniqueCount = builtins.length (builtins.attrNames (

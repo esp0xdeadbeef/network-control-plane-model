@@ -45,6 +45,23 @@ pinned_network_labs() { _resolve_network_labs; }
 pinned_hat_dir()  { echo "$(_resolve_network_labs)/GAMP/HAT/emulated-isp-residential-testnet"; }
 pinned_sat_dir()  { echo "$(_resolve_network_labs)/GAMP/SAT"; }
 
+# A pinned network-labs example directory.
+#
+# `network-*` repositories may not read fixtures from the `nixos` consumer
+# repository; the fixture home for these repositories is `network-labs`, which is
+# a pinned flake input. Cases that used to compile a production testing model
+# call this instead and get the same store path CI resolves from the lock.
+pinned_lab_example() {
+  local example="$1"
+  local dir
+  dir="$(_resolve_network_labs)/examples/${example}"
+  if [[ ! -f "${dir}/intent.nix" ]]; then
+    echo "ERROR: network-labs example '${example}' has no intent.nix at ${dir}" >&2
+    exit 1
+  fi
+  echo "${dir}"
+}
+
 # The cobalt/neon testing fixtures live in the `nixos` repository under
 # prod-network/testing, not in network-labs. `nixos` is not a flake input of
 # this repository (the lock is consumer-owned), so resolve it from one declared
