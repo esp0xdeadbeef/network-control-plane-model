@@ -29,9 +29,13 @@ system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'bui
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-nixos_src="$(pinned_nixos_src)"
-intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
+# Pinned network-labs fixture. This repository must not read fixtures out of the
+# `nixos` consumer repository; `protected-reservation-publication` models a
+# public-ingress relation for the site resolver, with udp and tcp tuples, so the
+# row has a split port-forward to validate.
+example_dir="$(pinned_lab_example protected-reservation-publication)"
+intent_path="${example_dir}/intent.nix"
+inventory_path="${example_dir}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -63,7 +67,7 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" || fail "P1 the cobalt testing model does not compile, so no ingress row can be validated"
+' >"${model_json}" || fail "P1 the pinned lab fixture does not compile, so no ingress row can be validated"
 
 # At least one emitted public-ingress row must exist, so the case is not vacuous.
 #
@@ -75,14 +79,14 @@ nix eval --no-write-lock-file --impure --json --expr '
 # case used to read is the modeled *input* authority (surface, source scope, target
 # service/endpoint, tuples) and carries no identity by construction, so the identity
 # predicate could never hold there.
-if ! jq -e '[.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]?] | length > 0' "${model_json}" >/dev/null 2>&1; then
+if ! jq -e '[.control_plane_model.data.esp0xdeadbeef | to_entries[] | .value.runtimeTargets[]? | .natIntent.publicIngress[]?] | length > 0' "${model_json}" >/dev/null 2>&1; then
   fail "P1 the model carries no emitted public-ingress row, so no ingress row can be validated"
 fi
 
 # P1: every emitted row names public surface, allowed source scope and exposure
 # identity. The failure names which fact is missing and on how many rows.
 missing="$(jq -c '
-  [ .control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]? ]
+  [ .control_plane_model.data.esp0xdeadbeef | to_entries[] | .value.runtimeTargets[]? | .natIntent.publicIngress[]? ]
   | {
       total: length,
       publicSurface: (map(select((.publicSurface // null) == null)) | length),
@@ -103,7 +107,7 @@ fi
 # an exposure identity must not be merged into one record, so the emitted set must
 # contain exactly one row per exposure identity.
 if ! jq -e '
-  [ .control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]? ]
+  [ .control_plane_model.data.esp0xdeadbeef | to_entries[] | .value.runtimeTargets[]? | .natIntent.publicIngress[]? ]
   | map(.exposureIdentity)
   | length == (unique | length)
 ' "${model_json}" >/dev/null 2>&1; then
@@ -114,7 +118,7 @@ fi
 # endpoint over more than one protocol or port is several exposures, each with its
 # own identity, so a row never grants another ingress leg.
 if ! jq -e '
-  [ .control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets[]? | .natIntent.publicIngress[]? ]
+  [ .control_plane_model.data.esp0xdeadbeef | to_entries[] | .value.runtimeTargets[]? | .natIntent.publicIngress[]? ]
   | group_by(.publicSurface + "|" + (.target.endpoint // ""))
   | all(.[]; (map(.exposureIdentity) | length) == (map(.exposureIdentity) | unique | length))
 ' "${model_json}" >/dev/null 2>&1; then
