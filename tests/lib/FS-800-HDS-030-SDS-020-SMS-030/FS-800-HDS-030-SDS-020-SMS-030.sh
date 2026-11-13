@@ -19,23 +19,25 @@ set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
-# tests/lib/pinned-paths.sh resolves the nixos testing fixtures from one
-# declared location (NIXOS_SRC, then the sibling layout, then the developer
-# home) instead of every case hardcoding a home directory.
+# tests/lib/pinned-paths.sh resolves the fixture from the pinned network-labs
+# flake input, so this case reads no developer checkout and no consumer repo.
 source "${repo_root}/tests/lib/pinned-paths.sh"
 system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'builtins.currentSystem')}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-nixos_src="$(pinned_nixos_src)"
-intent_path="${nixos_src}/prod-network/testing/intent-neon.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-neon.nix"
+# Pinned network-labs fixture. This repository must not read fixtures out of the
+# `nixos` consumer repository; `wireguard-provider-overlay` models a PPPoE
+# DHCPv6-PD customer-side handoff with a concrete iaid and PD request identity.
+example_dir="$(pinned_lab_example wireguard-provider-overlay)"
+intent_path="${example_dir}/intent.nix"
+inventory_path="${example_dir}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"; trap 'rm -rf "${tmp_dir}"' EXIT
 fail() { echo "FAIL pd-generation-identity: $*" >&2; exit 1; }
 
-[[ -f "${intent_path}" ]] || fail "P1 no delegated-prefix fixture at ${intent_path}; set NIXOS_SRC to the nixos checkout"
+[[ -f "${intent_path}" ]] || fail "P1 no delegated-prefix fixture at ${intent_path}; the pinned network-labs example is missing"
 [[ -f "${inventory_path}" ]] || fail "P1 no delegated-prefix inventory at ${inventory_path}"
 
 model_json="${tmp_dir}/model.json"
@@ -47,7 +49,7 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" 2>"${tmp_dir}/err" || fail "P1 the neon testing model does not compile:
+' >"${model_json}" 2>"${tmp_dir}/err" || fail "P1 the pinned lab fixture does not compile:
 $(cat "${tmp_dir}/err")"
 
 # P1: the model must actually carry delegated-prefix configuration, otherwise the
