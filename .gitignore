@@ -2,6 +2,5 @@ output-compiler-signed.json
 vib.sh
 output-solver-signed.json
 *.json
-flake.lock
 result
 result-*
