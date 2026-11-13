@@ -36,6 +36,13 @@
 # FS-470-SMS-090 and others. So the inconsistency the module was written to
 # catch is real and currently unaddressed; this case records the gap instead of
 # hiding it.
+#
+# This is not an upstream bug that another repository should fix.
+# `service-dns-reachability` is CPM's own route-intent vocabulary: it appears in
+# network-forwarding-model, network-compiler and network-labs zero times, so
+# neither the forwarding model nor the compiler can emit it and neither can be
+# tested for it. The fact is produced and consumed entirely inside this
+# repository, which is why the case lives here.
 set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
