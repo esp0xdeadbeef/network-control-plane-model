@@ -32,9 +32,12 @@ system="${NIX_SYSTEM:-$(nix eval --no-write-lock-file --impure --raw --expr 'bui
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
 require_cmd jq
 
-nixos_src="$(pinned_nixos_src)"
-intent_path="${nixos_src}/prod-network/testing/intent-cobalt.nix"
-inventory_path="${nixos_src}/prod-network/testing/inventory-cobalt.nix"
+# Pinned network-labs fixture. This repository must not read fixtures out of the
+# `nixos` consumer repository; `protected-reservation-publication` models the
+# protected reservation source this row asserts on, in both inventories.
+example_dir="$(pinned_lab_example protected-reservation-publication)"
+intent_path="${example_dir}/intent.nix"
+inventory_path="${example_dir}/inventory-nixos.nix"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -53,7 +56,7 @@ nix eval --no-write-lock-file --impure --json --expr '
       inputPath = "'"${intent_path}"'";
       inventoryPath = "'"${inventory_path}"'";
     }
-' >"${model_json}" || fail "P1 the cobalt testing model does not compile, so no namespace can be validated"
+' >"${model_json}" || fail "P1 the pinned lab fixture does not compile, so no namespace can be validated"
 
 # P1: at least one namespace must be modeled, so the case is not vacuous.
 if ! jq -e '[.. | objects | select(has("protectedReservationPublications"))] | length > 0' "${model_json}" >/dev/null 2>&1; then
@@ -65,7 +68,12 @@ fi
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    targets = builtins.attrValues d.control_plane_model.data.esp0xdeadbeef.cobalt.runtimeTargets;
+    sites = builtins.filter builtins.isAttrs (
+      builtins.attrValues d.control_plane_model.data.esp0xdeadbeef
+    );
+    targets = builtins.concatMap
+      (s: builtins.attrValues (s.runtimeTargets or { }))
+      sites;
     pubs = builtins.concatLists (
       map
         (t:
@@ -106,17 +114,30 @@ fi
 if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
   let
     d = builtins.fromJSON (builtins.readFile (builtins.getEnv "MODEL"));
-    site = d.control_plane_model.data.esp0xdeadbeef.cobalt;
-    targetValues = builtins.attrValues site.runtimeTargets;
+    sites = builtins.filter builtins.isAttrs (
+      builtins.attrValues d.control_plane_model.data.esp0xdeadbeef
+    );
+    targetValues = builtins.concatMap
+      (s: builtins.attrValues (s.runtimeTargets or { }))
+      sites;
+    listOf = x: if builtins.isList x then x else [ ];
 
     namespaces = map (p: p.namespace) (builtins.concatLists (
-      map (t: (t.services.dns or { }).protectedReservationPublications or [ ]) targetValues
+      map
+        (t:
+          let
+            dns = (t.services or { }).dns or { };
+          in
+          if builtins.isAttrs dns then listOf (dns.protectedReservationPublications or [ ]) else [ ])
+        targetValues
     ));
 
-    # The suffixes the owning scopes declared in intent.
-    declared =
-      map (t: t.dnsDomain)
-        (builtins.filter (t: (t.dnsDomain or null) != null) (site.domains.tenants or [ ]));
+    # The suffixes the owning scopes declared in intent, across every site.
+    declared = builtins.concatMap
+      (s:
+        map (t: t.dnsDomain)
+          (builtins.filter (t: (t.dnsDomain or null) != null) (s.domains.tenants or [ ])))
+      sites;
 
     inherited = builtins.filter (ns: !(builtins.elem ns declared)) namespaces;
   in
