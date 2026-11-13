@@ -3,3 +3,5 @@ vib.sh
 output-solver-signed.json
 *.json
 flake.lock
+result
+result-*
