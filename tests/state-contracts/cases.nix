@@ -386,7 +386,14 @@ in
       (record:
         hasAll requiredRecordFields record.fields
         && hasAll conditionalRecordFields record.fields
-        && record.schema.requiredFields == requiredRecordFields
+        # FS-890-HDS-010-SDS-010-SMS-010 states a minimum set of required record
+        # fields; it does not make that list exhaustive. Asserting equality here
+        # made this contract contradict FS-880-HDS-010-SDS-010-SMS-040, which
+        # requires a lease-derived record to carry the keying tuple (leaseKey,
+        # sourceFamily, namespace, namespaceOwner, requesterScope) in
+        # requiredFields. Require the FS-890 set to be present; additional
+        # required fields belong to another row contract.
+        && hasAll requiredRecordFields record.schema.requiredFields
         && record.schema.conditionalFields == conditionalRecordFields)
       operationalRecords;
 
