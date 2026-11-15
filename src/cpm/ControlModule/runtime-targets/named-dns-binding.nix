@@ -263,20 +263,36 @@ let
       attachmentIds = uniqueStrings (
         map (iface: (attrsOrEmpty (iface.backingRef or null)).id or "") candidates
       );
-      # FS-540-HDS-010-SDS-010-SMS-035: "Preserve the emitted relation endpoint
-      # exactly: the provider listener and requester forwarder shall match per
-      # family, and a node loopback or another local address shall not be
-      # substituted." The emitted endpoint is the terminal attachment the
-      # relation names, so the listener/forwarder address is that attachment's
-      # address on this node, never the node loopback.
-      endpointAddresses = uniqueStrings (
+      # FS-525/FS-540: the listener and forwarder identity is the core node's
+      # node-stable service identity, invariant across the access relations it
+      # serves. The relation-facing attachment is path provenance: it selects
+      # and validates the path, but it is not the answering address. Binding
+      # the listener to that attachment made the service identity change with
+      # every lane and left requesters without a route to the address the core
+      # actually listened on.
+      identity = attrsOrEmpty (realization.loopback or null);
+      identityAddresses = uniqueStrings (
+        builtins.filter (
+          address:
+          address != ""
+          && (
+            (builtins.elem "ipv4" families && builtins.match ".*:.*" address == null)
+            || (builtins.elem "ipv6" families && builtins.match ".*:.*" address != null)
+          )
+        ) [
+          (stripPrefixLength (identity.addr4 or ""))
+          (stripPrefixLength (identity.addr6 or ""))
+        ]
+      );
+      # The terminal attachment stays available as path provenance.
+      attachmentAddresses = uniqueStrings (
         builtins.filter (
           address:
           (builtins.elem "ipv4" families && builtins.match ".*:.*" address == null)
           || (builtins.elem "ipv6" families && builtins.match ".*:.*" address != null)
         ) (lib.concatMap interfaceAddresses candidates)
       );
-      addresses = endpointAddresses;
+      addresses = identityAddresses;
       missingFamilies =
         lib.optional (
           builtins.elem "ipv4" families
@@ -307,7 +323,7 @@ let
           null;
     in
     {
-      inherit addresses attachmentIds endpointWarning;
+      inherit addresses attachmentIds attachmentAddresses endpointWarning;
       attachmentId = if builtins.length attachmentIds == 1 then builtins.head attachmentIds else null;
       ipv4 = builtins.filter (address: builtins.match ".*:.*" address == null) addresses;
       ipv6 = builtins.filter (address: builtins.match ".*:.*" address != null) addresses;

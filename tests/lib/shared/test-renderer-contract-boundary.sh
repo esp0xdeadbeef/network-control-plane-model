@@ -20,7 +20,38 @@ nix eval --no-write-lock-file --impure --no-warn-dirty --json --expr '
     lib = flake.inputs.nixpkgs.lib;
     cpmLib = flake.libBySystem.x86_64-linux;
     labs = flake.inputs.network-labs;
-    input = import "${labs}/examples/single-wan-with-nebula/intent.nix";
+    input =
+      let
+        base = import "${labs}/examples/single-wan-with-nebula/intent.nix";
+        site = base.esp0xdeadbeef."site-a";
+        core = site.topology.nodes."s-router-core-wan";
+        wan = core.uplinks.wan;
+      in
+      # This case exercises NAT capability gating, so NAT must be an explicit
+      # requirement. FS-420 forbids defaulting a translation mode: an uplink
+      # with no modeled translation is routed-public, not NAT44. Add the
+      # translation the case needs instead of relying on the old default.
+      base // {
+        esp0xdeadbeef = base.esp0xdeadbeef // {
+          "site-a" = site // {
+            topology = site.topology // {
+              nodes = site.topology.nodes // {
+                "s-router-core-wan" = core // {
+                  uplinks = core.uplinks // {
+                    wan = wan // {
+                      egress = (wan.egress or { }) // {
+                        ipv4 = (wan.egress.ipv4 or { }) // {
+                          translation = { mode = "nat44"; };
+                        };
+                      };
+                    };
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
     baseInventory = import "${labs}/examples/single-wan-with-nebula/inventory-nixos.nix";
     inventory = lib.recursiveUpdate baseInventory {
       controlPlane.sites.esp0xdeadbeef.site-a.rendererTargets.nixos-dns-limited = {

@@ -129,7 +129,13 @@ let
   );
   declined = interfaceDeclined declinedInterfaceIdentities;
   nat44ByUplink = attrsOrEmpty (egressIntent.nat44 or null);
-  nat44SelectedIntents = map (uplink: attrsOrEmpty (nat44ByUplink.${uplink} or null)) selectedUplinks;
+  # An uplink with no nat44 selection is emitted as an empty attribute set, not
+  # as a missing key. Counting that empty record as a selection would enable
+  # NAT44 (and default its mode) for every egress site, which is exactly the
+  # defaulting FS-420-HDS-010-SDS-010-SMS-040 forbids.
+  nat44SelectedIntents = builtins.filter (intent: intent != { }) (
+    map (uplink: attrsOrEmpty (nat44ByUplink.${uplink} or null)) selectedUplinks
+  );
   nonInternetTenantPrefixes4 = uniqueStrings (
     builtins.filter isPrivate4Prefix (
       builtins.filter (p: p != "") (
@@ -155,7 +161,11 @@ let
     )
   );
   nat66ByUplink = attrsOrEmpty (egressIntent.nat66 or null);
-  nat66SelectedIntents = map (uplink: attrsOrEmpty (nat66ByUplink.${uplink} or null)) selectedUplinks;
+  # As with nat44: an uplink without a selection is an empty record, and an
+  # empty record must not count as a selection.
+  nat66SelectedIntents = builtins.filter (intent: intent != { }) (
+    map (uplink: attrsOrEmpty (nat66ByUplink.${uplink} or null)) selectedUplinks
+  );
   nat66Requested = builtins.any (intent: (intent.mode or null) == "nat66") nat66SelectedIntents;
   trafficClass = egressIntent.trafficClass or "internet-egress";
   nat66SourcePrefixes = uniqueStrings (

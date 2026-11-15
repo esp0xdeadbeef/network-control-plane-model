@@ -115,22 +115,40 @@ if ((no_mode_rc == 0)); then
   # A site with no translation at all is legitimate for a routed-public site, so
   # succeed only if the emitted model carries no translation record either. What
   # must never happen is a translation record with a defaulted mode.
+  #
+  # Inspect the records structurally. Matching a regex against the whole site
+  # JSON overflowed the evaluator's stack on this model, so the previous check
+  # could never report what it claimed to test.
   if ! NO_MODE_JSON="${tmp_dir}/no-mode.out" nix eval --no-write-lock-file --impure --expr '
     let
       d = builtins.fromJSON (builtins.readFile (builtins.getEnv "NO_MODE_JSON"));
       site = d.control_plane_model.data.esp0xdeadbeef."site-a";
-      text = builtins.toJSON site;
-      defaulted = builtins.match ".*\"translationMode\":\"(nat44|none|nat66)\".*" text != null;
+      targets = builtins.attrValues (site.runtimeTargets or { });
+      records = builtins.concatLists (
+        map (target: (target.natIntent or { }).translationRecords or [ ]) targets
+      );
     in
-      !defaulted
+      records == [ ]
   ' | grep -qx true; then
     fail "SN1 a translation selection with no mode produced a defaulted translation mode instead of being refused"
   fi
 fi
 
 # SN2: the compiled baseline must carry the modeled mode explicitly, so the mode
-# is read from intent rather than inferred.
-if ! grep -qE '"translationMode"|"nat44"|translation' "${baseline_json}"; then
+# is read from intent rather than inferred. Read the record, not the JSON text:
+# a mode string that happens to appear anywhere in the model is not evidence
+# that the exit translation record carries it.
+if ! BASELINE_JSON="${baseline_json}" nix eval --no-write-lock-file --impure --expr '
+  let
+    d = builtins.fromJSON (builtins.readFile (builtins.getEnv "BASELINE_JSON"));
+    site = d.control_plane_model.data.esp0xdeadbeef."site-a";
+    targets = builtins.attrValues (site.runtimeTargets or { });
+    records = builtins.concatLists (
+      map (target: (target.natIntent or { }).translationRecords or [ ]) targets
+    );
+  in
+    builtins.any (record: (record.mode or null) == "nat44") records
+' | grep -qx true; then
   fail "SN2 the compiled model carries no translation selection even though the intent declares nat44"
 fi
 

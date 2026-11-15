@@ -118,11 +118,16 @@ let
       # A host route is not a covering prefix: it cannot justify suppressing
       # itself, nor another host route for the same address.
       isCoveringPrefix = prefixLen != null && prefixLen < fullLen;
+      # FS-310-SMS-120: the address family of a CIDR is structural (a
+      # colon-bearing base is IPv6, an dotted-quad base is IPv4), never a name.
+      # Test it on the base and require the *whole* base to be an address: a
+      # bare "does this string contain a colon" test would accept any string
+      # that happens to carry one.
       sameFamily =
         if family == 4 then
-          builtins.match "[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+" bareAddress != null
+          builtins.match "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}" base != null
         else
-          builtins.match ".*:.*" bareAddress != null;
+          builtins.match "([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}" base != null;
       octets = s: map builtins.fromJSON (builtins.filter builtins.isString (builtins.split "[.]" s));
       toInt = o: builtins.foldl' (acc: x: acc * 256 + x) 0 o;
       ipv4Contains =
@@ -162,7 +167,9 @@ let
         # A /31 or /127 names a point-to-point link, not the service prefix. The
         # containment test already rejects host routes; reject the p2p lengths here
         # too, since those are the fabric routes this rule exists to stop shadowing.
-        && !(builtins.match ".*/(31|127)" (route.dst or "") != null)
+        # The prefix length is parsed as a number (structural), not matched as a
+        # string pattern.
+        && !(hasP2PPrefixLength (route.dst or null))
         && prefixContainsAddress family (route.dst or null) address)
       routes;
 

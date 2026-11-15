@@ -40,6 +40,42 @@ let
     in
     if builtins.isList offered then offered else [ ];
 
+  # Topology collections are sets in the compiled site data and lists in
+  # hand-built fixtures. Normalize before filtering; `builtins.filter` on an
+  # attribute set is a type error, not an empty result.
+  asList =
+    value:
+    if builtins.isList value then value
+    else if builtins.isAttrs value then builtins.attrValues value
+    else [ ];
+
+  # FS-322-HDS-010-SDS-010-SMS-020: a selection is emitted as the ordered
+  # selected scopes *together with their member uplinks*. The member uplinks of
+  # a scope are the uplinks it owns -- declared on the node itself, or, for a
+  # scope that is an uplink rather than a node, the lanes that carry it.
+  uplinksOfNode =
+    name:
+    let
+      peer = peerNodeAttrs.${name} or null;
+      declared = if builtins.isAttrs peer then (peer.uplinks or null) else null;
+      fromLanes = builtins.concatLists (
+        builtins.map (
+          node: builtins.filter (uplink: builtins.isString uplink) (
+            map (iface: iface.uplink or null) (builtins.filter builtins.isAttrs (asList (node.interfaces or [ ])))
+            ++ builtins.map (iface: iface.uplink or null) (builtins.filter builtins.isAttrs (asList (node.uplinks or [ ])))
+          )
+        ) (builtins.filter builtins.isAttrs (builtins.attrValues peerNodeAttrs))
+      );
+      names =
+        if builtins.isAttrs declared then
+          builtins.attrNames declared
+        else if builtins.isList declared then
+          builtins.filter builtins.isString declared
+        else
+          [ ];
+    in
+    if names != [ ] then names else if name == "" then [ ] else builtins.filter (u: u == name) fromLanes;
+
   selectedScopeOf =
     entry:
     if builtins.isAttrs entry then
@@ -70,6 +106,12 @@ let
         [
           {
             inherit scope;
+            # The member uplinks the selection resolves to. A scope owns its
+            # declared uplinks; a scope that names a single uplink owns that
+            # uplink. Empty only when the scope is neither, and then the
+            # selection restates itself instead of resolving, which the contract
+            # forbids -- so it is reported, not defaulted.
+            uplinks = uplinksOfNode scope;
             offeredPrefixes = offersOf scope;
             behaviors =
               if builtins.isAttrs entry && builtins.isList (entry.behaviors or null) then

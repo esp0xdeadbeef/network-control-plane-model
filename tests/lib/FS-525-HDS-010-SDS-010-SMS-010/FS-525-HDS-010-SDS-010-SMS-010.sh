@@ -42,17 +42,11 @@ let
       (iface.sourceKind or null) == "p2p"
       && builtins.elem "isp-primary" ((iface.backingRef or { }).uplinks or [ ]))
     coreInterfaces;
-  # FS-525: the access-to-core binding uses the requested-family addresses of
-  # the selected relation terminal attachment as both core listeners and access
-  # forwarders. That attachment is the resolver service endpoint, not the
-  # uplink-facing transit interface, so derive the endpoints from the modeled
-  # terminal attachment and keep the transit addresses separate.
-  transitEndpoints = lib.unique (lib.concatMap
-    (iface: [ (stripPrefix iface.addr4) (stripPrefix iface.addr6) ])
-    coreTerminalInterfaces);
-  terminalAddresses = accessUpstream.addresses;
-  terminal4 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address == null) terminalAddresses);
-  terminal6 = builtins.head (builtins.filter (address: builtins.match ".*:.*" address != null) terminalAddresses);
+  # FS-525/FS-540: the listener/forwarder identity is the node-stable service
+  # identity of the core node, invariant across the access relations it
+  # serves. The selected relation attachment endpoint remains path
+  # provenance; it must not become the answering address.
+  identityAddresses = [ coreLoopback4 coreLoopback6 ];
   coreEgressRules = builtins.filter
     (rule: (rule.intent.kind or null) == "dns-service-public-egress")
     (core.forwardingIntent.rules or [ ]);
@@ -70,35 +64,28 @@ let
 in
   site.dns == forwardingSite.dns
   && (site.dns.warnings or [ ]) == [ ]
-  && coreService.providerEndpoints == [ { name = "core-primary"; ipv4 = [ terminal4 ]; ipv6 = [ terminal6 ]; } ]
+  && coreService.providerEndpoints == [ { name = "core-primary"; ipv4 = [ coreLoopback4 ]; ipv6 = [ coreLoopback6 ]; } ]
   # The intent declares no preferred uplink for the synthesized core resolver
   # service, so the model must not invent one.
   && coreService.preferredUplinks == [ ]
-  && accessUpstream.addresses == [ terminal4 terminal6 ]
+  && accessUpstream.addresses == identityAddresses
   && accessUpstream.service == "core-dns"
   && accessUpstream.node == "core-primary"
   && !(builtins.any
     (address: builtins.elem address [ "1.1.1.1" "9.9.9.9" "2606:4700:4700::1111" "2620:fe::fe" ])
     (accessDns.forwarders or [ ]))
   && accessDns.recursionMode == "forwarding"
-  && coreDns.listen == [ terminal4 terminal6 ]
-  # FS-540-HDS-010-SDS-010-SMS-020/035: the listener endpoints are the emitted
-  # relation endpoint, i.e. the terminal attachment named by the relation. In this row the
-  # terminal attachment is a p2p link whose metadata lists the uplinks, so the
-  # previous "not the transit address" check compared the attachment with
-  # itself; assert the identity instead and keep WAN surfaces out of the
-  # listener set.
+  && coreDns.listen == identityAddresses
+  # FS-540-HDS-010-SDS-010-SMS-020/035: the relation attachment is carried as
+  # path provenance on the binding, but the listener/forwarder identity is the
+  # node-stable service identity above. A WAN surface must still stay out of
+  # the listener set.
   && (let
-    terminalId = (builtins.head (builtins.filter
-      (binding: binding.service == "core-dns")
-      coreDns.serviceEndpointBindings)).terminalAttachmentId;
-    attachment = builtins.head (builtins.filter
-      (iface: ((iface.backingRef or { }).id or null) == terminalId)
-      coreInterfaces);
-  in coreDns.listen == [
-    (stripPrefix attachment.addr4)
-    (stripPrefix attachment.addr6)
-  ])
+    binding = builtins.head (builtins.filter
+      (entry: entry.service == "core-dns")
+      coreDns.serviceEndpointBindings);
+  in builtins.isString (binding.terminalAttachmentId or null)
+    && binding.terminalAttachmentId != "")
   && !(builtins.any
     (iface:
       (iface.sourceKind or null) == "wan"
@@ -488,25 +475,31 @@ let
         };
         core = {
           logicalNode.name = "core";
-          effectiveRuntimeRealization.interfaces = {
-            terminal = {
-              sourceKind = "p2p";
-              addr4 = "198.51.100.2/31";
-              addr6 = "2001:db8:fffe::2/127";
-              backingRef = { id = "modeled-link-a"; uplinks = [ "isp-a" ]; };
+          effectiveRuntimeRealization = {
+            loopback = {
+              addr4 = "198.51.100.1/32";
+              addr6 = "2001:db8:ffff::1/128";
             };
-            isp-a = {
-              sourceKind = "wan";
-              runtimeIfName = "wan0";
-              backingRef = { id = "uplink-a"; name = "isp-a"; };
-              policyRoutingAllocation = allocation 1002;
-            };
-          } // lib.optionalAttrs includeSecondary {
-            isp-b = {
-              sourceKind = "wan";
-              runtimeIfName = "wan1";
-              backingRef = { id = "uplink-b"; name = "isp-b"; };
-              policyRoutingAllocation = allocation 1003;
+            interfaces = {
+              terminal = {
+                sourceKind = "p2p";
+                addr4 = "198.51.100.2/31";
+                addr6 = "2001:db8:fffe::2/127";
+                backingRef = { id = "modeled-link-a"; uplinks = [ "isp-a" ]; };
+              };
+              isp-a = {
+                sourceKind = "wan";
+                runtimeIfName = "wan0";
+                backingRef = { id = "uplink-a"; name = "isp-a"; };
+                policyRoutingAllocation = allocation 1002;
+              };
+            } // lib.optionalAttrs includeSecondary {
+              isp-b = {
+                sourceKind = "wan";
+                runtimeIfName = "wan1";
+                backingRef = { id = "uplink-b"; name = "isp-b"; };
+                policyRoutingAllocation = allocation 1003;
+              };
             };
           };
           services.dns = {};
@@ -522,14 +515,15 @@ in
   # FS-540 SMS-045: the binding consumes the explicit recursive egress surface
   # instead of discovering an exit from relation order or interface order. With
   # the surface declared, both the empty relation list and the two-candidate
-  # ordering resolve to that one surface, and the emitted relation endpoint is
-  # the terminal attachment address (never a node loopback).
+  # ordering resolve to that one surface, and the emitted listener/forwarder is
+  # the node-stable service identity. The terminal attachment remains path
+  # provenance on the binding.
   missing.core.services.dns.egress.uplinks == [ "isp-a" ]
   && ambiguous.core.services.dns.egress.uplinks == [ "isp-a" ]
   && missing.core.services.dns.reproducibilityWarnings == [ ]
   && ambiguous.core.services.dns.reproducibilityWarnings == [ ]
-  && missing.core.services.dns.listen == [ "198.51.100.2" "2001:db8:fffe::2" ]
-  && ambiguous.core.services.dns.listen == [ "198.51.100.2" "2001:db8:fffe::2" ]
+  && missing.core.services.dns.listen == [ "198.51.100.1" "2001:db8:ffff::1" ]
+  && ambiguous.core.services.dns.listen == [ "198.51.100.1" "2001:db8:ffff::1" ]
   && missing.core.services.dns.serviceEndpointBindings
     == ambiguous.core.services.dns.serviceEndpointBindings
   && (builtins.head missing.core.services.dns.serviceEndpointBindings).terminalAttachmentId

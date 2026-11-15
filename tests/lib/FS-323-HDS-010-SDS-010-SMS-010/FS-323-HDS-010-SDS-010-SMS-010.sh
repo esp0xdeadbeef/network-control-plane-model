@@ -171,8 +171,15 @@ fi
 
 # SN3: dropping a permit relation must remove its path. Permission does not
 # persist a reachability fact by itself.
-no_wan_intent="${tmp_dir}/intent-no-wan-relation.nix"
-cat >"${no_wan_intent}" <<EOF
+#
+# The removed relation is the service permit, not the WAN permit: FS-323's
+# contract also requires every site to declare an internal-to-external allow
+# (E_CONTRACT_MISSING_EXTERNAL_ALLOW), so dropping the WAN relation would make
+# this case fail on that unrelated rule instead of exercising path removal.
+# The now-unreferenced service is dropped with it, because a service with no
+# allow relation is separately refused for having no exposure class.
+no_permit_intent="${tmp_dir}/intent-no-dns-relation.nix"
+cat >"${no_permit_intent}" <<EOF
 let
   base = import ${intent_path};
   site = base.esp0xdeadbeef."site-a";
@@ -182,23 +189,26 @@ base // {
     "site-a" = site // {
       communicationContract = site.communicationContract // {
         relations = builtins.filter
-          (rel: rel.id != "allow-tenants-to-wan")
+          (rel: rel.id != "allow-tenants-to-site-dns")
           site.communicationContract.relations;
+        services = builtins.filter
+          (svc: svc.name != "site-dns")
+          site.communicationContract.services;
       };
     };
   };
 }
 EOF
 
-compile_paths "${no_wan_intent}" "${inventory_source}" >"${tmp_dir}/no-wan.out"
+compile_paths "${no_permit_intent}" "${inventory_source}" >"${tmp_dir}/no-permit.out"
 
-if ! NO_WAN_JSON="${tmp_dir}/no-wan.out" nix eval --no-write-lock-file --impure --expr '
+if ! NO_PERMIT_JSON="${tmp_dir}/no-permit.out" nix eval --no-write-lock-file --impure --expr '
   let
-    data = builtins.fromJSON (builtins.readFile (builtins.getEnv "NO_WAN_JSON"));
+    data = builtins.fromJSON (builtins.readFile (builtins.getEnv "NO_PERMIT_JSON"));
     site = data.control_plane_model.data.esp0xdeadbeef."site-a";
     pathIds = map (p: p.relationId) site.trafficPaths;
   in
-    !(builtins.elem "allow-tenants-to-wan" pathIds)
+    !(builtins.elem "allow-tenants-to-site-dns" pathIds)
 ' | grep -qx true; then
   echo "FAIL reachability-fact-permission-separation: removing a permit relation left a reachability path behind" >&2
   exit 1

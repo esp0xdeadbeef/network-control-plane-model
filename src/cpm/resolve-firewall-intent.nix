@@ -61,7 +61,7 @@ let
   runtimeOriginSourcePrefixesForSite =
     import ./firewall-intent/runtime-origin-source-prefixes.nix { inherit helpers; };
   buildNat = import ./firewall-intent/nat.nix { inherit helpers lib ipam; };
-  buildForwarding = import ./firewall-intent/forwarding.nix { inherit helpers; };
+  buildForwarding = import ./firewall-intent/forwarding.nix { inherit helpers lib; };
 
   targetEntries = map
     (

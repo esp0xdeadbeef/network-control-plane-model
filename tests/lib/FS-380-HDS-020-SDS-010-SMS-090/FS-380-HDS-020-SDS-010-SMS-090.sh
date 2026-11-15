@@ -383,8 +383,9 @@ nix_eval_bool \
   "forwarding core output has wanInterfaces field" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { lib = import <nixpkgs/lib>; };
-      forwarding = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/forwarding.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { inherit lib; };
+      forwarding = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/forwarding.nix\") { inherit helpers lib; };
       mockInterfaces = [
         { sourceKind = \"wan\"; runtimeIfName = \"ens10\"; sourceInterfaceName = \"ens10\"; upstream = \"test\"; backingRef = {}; }
         { sourceKind = \"tenant\"; runtimeIfName = \"eth0\"; sourceInterfaceName = \"eth0\"; backingRef = {}; }
@@ -410,8 +411,9 @@ nix_eval_bool \
   "forwarding core output has lanInterfaces field" \
   "
     let
-      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { lib = import <nixpkgs/lib>; };
-      forwarding = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/forwarding.nix\") { inherit helpers; };
+      lib = import <nixpkgs/lib>;
+      helpers = import (builtins.getEnv \"REPO_ROOT\" + \"/lib/contract.nix\") { inherit lib; };
+      forwarding = import (builtins.getEnv \"REPO_ROOT\" + \"/src/cpm/firewall-intent/forwarding.nix\") { inherit helpers lib; };
       mockInterfaces = [
         { sourceKind = \"wan\"; runtimeIfName = \"ens10\"; sourceInterfaceName = \"ens10\"; upstream = \"test\"; backingRef = {}; }
         { sourceKind = \"tenant\"; runtimeIfName = \"eth0\"; sourceInterfaceName = \"eth0\"; backingRef = {}; }
