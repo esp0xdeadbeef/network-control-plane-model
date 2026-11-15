@@ -76,10 +76,14 @@ result_json="${tmp_dir}/result.json"
 overlap_json="${tmp_dir}/overlap.json"
 
 # Seeded negative (FS-322-HDS-010-SDS-010-SMS-020, Module Failure Conditions):
-# "The module shall fail closed when overlapping offers lack declared
-# precedence", and the SDS forbids inferring a winner from member order. Two
-# scopes offer the same prefix, one scope selects both, and nothing declares a
-# precedence, so the model must refuse.
+# the module shall fail closed when overlapping offers lack declared precedence.
+# FS-322 makes the *ordered* `selects` list the declared precedence (SMS-010:
+# "preserve selection order for precedence"), so the ambiguous shape is a
+# selection that declares no order at all. Before the requirement was aligned,
+# this case injected two scopes in a list and expected a refusal, which
+# contradicts the FS and the FS-800 overlapping-default path that relies on
+# modeled order. The case now injects an unordered selection shape and requires
+# the compiler to refuse it with E_CONTRACT_SELECTS.
 cat >"${tmp_dir}/overlap-intent.nix" <<EOF
 let
   base = import ${intent_path};
@@ -89,7 +93,8 @@ let
   sel = nodes."s-router-upstream-selector";
   a = nodes."s-router-access-client" // { offers = [ "10.99.0.0/16" ]; };
   b = core // { offers = (core.offers or [ ]) ++ [ "10.99.0.0/16" ]; };
-  c = sel // { selects = [ "s-router-core-wan" "s-router-access-client" ]; };
+  # No order is declared, so no precedence exists for the overlapping offer.
+  c = sel // { selects = { "s-router-core-wan" = { }; "s-router-access-client" = { }; }; };
   nodes' = nodes // {
     "s-router-access-client" = a;
     "s-router-core-wan" = b;
@@ -214,9 +219,9 @@ if [[ "${no_scope_count}" != "0" ]]; then
   exit 1
 fi
 
-# P4: overlapping offers without declared precedence must fail closed. Accept
-# either a refusal naming the overlap or, at minimum, a non-zero exit; accepting
-# the ambiguous model is the failure the SMS forbids.
+# P4: a selection that declares no order has no precedence for an overlapping
+# offer, so the model must fail closed with a diagnostic rather than choose a
+# winner. Accepting the ambiguous model is the failure the SMS forbids.
 set +e
 REPO_ROOT="${repo_root}" INTENT_PATH="${tmp_dir}/overlap-intent.nix" \
   INVENTORY_PATH="${inventory_path}" \
@@ -238,14 +243,19 @@ overlap_rc=$?
 set -e
 
 if ((overlap_rc == 0)); then
-  echo "FAIL FS-322-HDS-010-SDS-010-SMS-020 P4: two scopes offered the same" \
-       "prefix with no declared precedence and the model accepted it." >&2
-  echo "  The SMS requires fail-closed here and the SDS forbids picking a winner" >&2
-  echo "  from member order. Emitted selections that both offer 10.99.0.0/16:" >&2
-  jq -c '[ .. | objects | select(.resolvedReachability?) | .resolvedReachability
-            | select((.selects | length) > 1)
-            | .selects[] | { scope, offeredPrefixes } ] | unique' \
-    "${overlap_json}" >&2 2>/dev/null || true
+  echo "FAIL FS-322-HDS-010-SDS-010-SMS-020 P4: an unordered selection" \
+       "carrying overlapping offers was accepted." >&2
+  echo "  The SMS requires fail-closed here: without a declared order there is" >&2
+  echo "  no precedence for the overlapping prefix and the SDS forbids picking a" >&2
+  echo "  winner from member order or route enumeration." >&2
+  echo "FAIL fs322-cpm-emits-resolved-reachability"
+  exit 1
+fi
+
+if ! grep -F 'E_CONTRACT_SELECTS' "${tmp_dir}/overlap.err" >/dev/null; then
+  echo "FAIL FS-322-HDS-010-SDS-010-SMS-020 P4: the unordered selection was" \
+       "refused, but no diagnostic named the shape (expected E_CONTRACT_SELECTS)." >&2
+  sed -n '1,40p' "${tmp_dir}/overlap.err" >&2
   echo "FAIL fs322-cpm-emits-resolved-reachability"
   exit 1
 fi

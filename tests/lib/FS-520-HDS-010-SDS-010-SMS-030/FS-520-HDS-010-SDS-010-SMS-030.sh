@@ -6,10 +6,6 @@
 # OWNER:  network-control-plane-model
 # MODULE: Route Purpose Explanation
 #
-# EXPECTED TO FAIL, and the failure is a spec/implementation divergence rather
-# than missing plumbing. Do not widen this test to fit the current code — either
-# the implementation gains the vocabulary or the divergence is resolved upstream.
-#
 # Predicates taken from the SMS:
 #   P1  Route purpose is emitted as one of: internet, owned public service
 #       prefix, remote site, exit prefix, rejected, unknown.
@@ -20,17 +16,12 @@
 # route is being used for internet, an owned public service prefix, a remote site,
 # an exit prefix, or rejected and unknown reachability."
 #
-# CURRENT OBSERVED STATE (static read of
-# src/cpm/Site/build-data/normalize-runtime-routes.nix): `routePurpose` resolves
-# to exactly two tokens, "wan-internet" for a default destination and
-# "provider-prefix" otherwise:
-#
-#   routePurpose = intent.routePurpose or (
-#     if (route.dst or null) == defaultDst family then "wan-internet"
-#     else "provider-prefix");
-#
-# So a remote-site, exit-prefix, rejected or unknown purpose cannot be expressed,
-# and the two tokens present do not match the FS vocabulary.
+# The implementation is
+# src/cpm/Site/build-data/normalize-runtime-routes.nix: `routePurposeVocabulary`
+# is the closed FS set, `classifyRoutePurpose` rejects an undeclared value from a
+# producer, and only fills in the two the route itself determines (a default is
+# `internet`, a runtime-learned non-default is `exit-prefix`). Every other class
+# is carried from the modeled `intent.routePurpose`.
 set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"

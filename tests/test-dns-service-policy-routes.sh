@@ -88,6 +88,15 @@ INVENTORY_PATH="${inventory_path}" \
               && ((route.trafficType or null) == "dns")
               && (((route.intent or { }).kind or null) == "service-endpoint-reachability"))
             routes;
+        hasDnsServiceRouteOnLane = routes: destination: relationId: access:
+          builtins.any
+            (route:
+              (route.dst or null) == destination
+              && ((route.relationId or null) == relationId)
+              && ((route.trafficType or null) == "dns")
+              && (((route.intent or { }).kind or null) == "service-endpoint-reachability")
+              && (((route.lane or { }).access or null) == access))
+            routes;
         hasAll = expected: actual:
           builtins.all (value: builtins.elem value actual) expected;
         siteaUpstreamClient =
@@ -110,6 +119,11 @@ INVENTORY_PATH="${inventory_path}" \
         # authority is not fanned out to a sibling access lane (SMS-040).
         siteaPolicyStreaming =
           siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-streaming".routes;
+        # The requester leg rides the lane whose modeled next hop reaches the
+        # resolver; its `lane.access` still names the requester, which is what
+        # places it in that requester policy table (SMS-040 D3).
+        siteaPolicyMgmtLane =
+          siteaPolicy."p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-mgmt".routes;
         sitecClient =
           sitecPolicy."p2p-c-router-downstream-selector-c-router-policy--access-c-router-access-client".routes;
         sitecDmz =
@@ -130,19 +144,22 @@ INVENTORY_PATH="${inventory_path}" \
           # route authority containing policy table, outgoing lane, selected
           # next-hop identity, and provenance for each requested family and
           # resolver endpoint prefix." The requester leg carries the emitted
-          # resolver endpoint prefix on the requester access lane with the
-          # relation identity, and the fix must not fan that prefix out to a
+          # resolver endpoint prefix with the relation identity and the lane
+          # tag, on the interface whose modeled peer is the next hop (the
+          # service-facing lane), and the fix must not fan that prefix out to a
           # sibling access lane the relation did not admit (SMS-040).
           clientLaneLearnsAllowedMgmtDnsV4 =
-            hasDnsServiceRoute
-              (siteaPolicyClient.ipv4 or [ ])
+            hasDnsServiceRouteOnLane
+              (siteaPolicyMgmtLane.ipv4 or [ ])
               "10.20.10.1/32"
-              "allow-sitea-tenants-to-mgmt-dns";
+              "allow-sitea-tenants-to-mgmt-dns"
+              "s-router-access-client";
           clientLaneLearnsAllowedMgmtDnsV6 =
-            hasDnsServiceRoute
-              (siteaPolicyClient.ipv6 or [ ])
+            hasDnsServiceRouteOnLane
+              (siteaPolicyMgmtLane.ipv6 or [ ])
               "fd42:dead:beef:10::1/128"
-              "allow-sitea-tenants-to-mgmt-dns";
+              "allow-sitea-tenants-to-mgmt-dns"
+              "s-router-access-client";
           clientLaneRouteIsPolicyTableAuthorityV4 =
             builtins.any
               (route:
@@ -152,7 +169,7 @@ INVENTORY_PATH="${inventory_path}" \
                 && ((route.lane or { }).access or null) == "s-router-access-client"
                 && ((route.relationId or null) == "allow-sitea-tenants-to-mgmt-dns")
                 && (route.via4 or null) != null)
-              (siteaPolicyClient.ipv4 or [ ]);
+              (siteaPolicyMgmtLane.ipv4 or [ ]);
           clientLaneRouteIsPolicyTableAuthorityV6 =
             builtins.any
               (route:
@@ -162,12 +179,13 @@ INVENTORY_PATH="${inventory_path}" \
                 && ((route.lane or { }).access or null) == "s-router-access-client"
                 && ((route.relationId or null) == "allow-sitea-tenants-to-mgmt-dns")
                 && (route.via6 or null) != null)
-              (siteaPolicyClient.ipv6 or [ ]);
+              (siteaPolicyMgmtLane.ipv6 or [ ]);
           admittedDmzLaneLearnsMgmtDnsV4 =
-            hasDnsServiceRoute
-              (siteaPolicyDmz.ipv4 or [ ])
+            hasDnsServiceRouteOnLane
+              (siteaPolicyMgmtLane.ipv4 or [ ])
               "10.20.10.1/32"
-              "allow-sitea-tenants-to-mgmt-dns";
+              "allow-sitea-tenants-to-mgmt-dns"
+              "s-router-access-dmz";
           unadmittedStreamingLaneDoesNotLearnMgmtDnsV4 =
             !(hasDnsServiceRoute
               (siteaPolicyStreaming.ipv4 or [ ])
@@ -245,7 +263,7 @@ INVENTORY_PATH="${inventory_path}" \
           nebulaCoreHasNoMasqueradeInterfaces = siteaNebulaCore.natIntent.masqueradeInterfaces == [ ];
         };
         context = {
-          inherit siteaUpstreamClient siteaUpstreamMgmt siteaUpstreamMgmtWanA siteaUpstreamMgmtWanB siteaUpstreamEastWestCore siteaPolicyAdmin sitebBranch sitebHostile sitebHostileEastWest sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream sitecAccessDmzDns sitebAccessHostileDns;
+          inherit siteaUpstreamClient siteaUpstreamMgmt siteaUpstreamMgmtWanA siteaUpstreamMgmtWanB siteaUpstreamEastWestCore siteaPolicyAdmin sitebBranch sitebHostile sitebHostileEastWest sitebNebulaCoreUpstream sitecClient sitecDmz sitecCoreUpstream sitecAccessDmzDns sitebAccessHostileDns siteaPolicyMgmtLane;
           natIntent = siteaNebulaCore.natIntent;
           sitecPolicyInterfaces = builtins.attrNames sitecPolicy;
         };

@@ -59,30 +59,29 @@ let
       # through competing access-lane next hops", and the FS-370 no-sibling-lane
       # rule.
       #
-      # FS-310-SMS-120: the owning scope is read from the modeled link
-      # identity and must not match a sibling whose name merely extends it.
-      # The link name is `p2p-<node>-<peer>`; a node name may itself contain
-      # hyphens (`core-nebula`), so splitting the name on "-" destroys the
-      # identity it is supposed to match. Match the whole scope between the
-      # `p2p-` prefix and the following `-`, and keep the kind guard.
-      ifaceNamesScope =
+      # FS-310-SMS-120: the owning scope is a modeled node identity, not a
+      # substring of a rendered link name. Resolve it through the external
+      # bindings whose runtime binding lands on that node, then keep the
+      # core-owned lanes that carry those uplinks.
+      #
+      # An earlier revision matched `p2p-<scope>-` against the link name. That
+      # infers meaning from a name, and the identity it needs is not in the name
+      # at all once a node or peer contains hyphens (`core-nebula`): splitting
+      # on "-" or matching a prefix silently widens or narrows the set.
+      ifaceServesScope =
         iface:
         let
           ref = attrsOrEmpty (iface.backingRef or null);
-          linkName = toString (ref.name or "");
+          scopeUplinksStructural = endpointContext.uplinksForLogicalNode scopeStr;
         in
         (ref.kind or null) == "link"
-        && (
-          linkName == scopeStr
-          || builtins.match ".*p2p-${scopeStr}-.*" linkName != null
-          || builtins.match ".*p2p-${scopeStr}" linkName != null
-        );
+        && builtins.any (uplink: builtins.elem uplink (common.uplinks iface)) scopeUplinksStructural;
       # A target exposes one interface per attached core; keep only the uplinks
-      # of the interfaces that name the requested scope.
+      # of the interfaces whose modeled bindings serve the requested scope.
       coreOwned = uniqueStrings (
         builtins.concatMap uplinksOf (
           builtins.filter (iface: common.uplinks iface != [ ]) (
-            builtins.filter ifaceNamesScope coreInterfaces
+            builtins.filter ifaceServesScope coreInterfaces
           )
         )
       );

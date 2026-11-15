@@ -133,7 +133,7 @@ jq -e '
       (.intent.source == "explicit-uplink")
       and (.intent.routeSource == "explicit-uplink")
       and (.intent.sourcePeerOrProvider == "wan")
-      and (.intent.routePurpose == "provider-prefix")
+      and (.intent.routePurpose == "exit-prefix")
       and (.intent.maximumScope == "provider")
       and (.intent.rejectionBehavior == "reject")
       and (.intent.routeAvailabilityOnly == true)

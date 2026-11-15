@@ -25,16 +25,21 @@ jq -e '
   and .runtimeInterface == "ppp-test"
   and .mtu == 1492
   and .ipv6 == {
+    "activeGeneration": "pd-generation:iaid=7:request=11",
     "defaultRoute": true,
     "duidMode": "persistent",
     "fallbackPolicy": "none",
+    "generationIdentity": "pd-generation:iaid=7:request=11",
     "iaid": 7,
     "ipv4Mode": "disabled",
     "mode": "dhcpv6-pd",
     "prefixDelegationRequestId": 11,
+    "prefixHandle": "opaque-pd-handle:88db029cbff85019a2ff198e01dd8b30",
+    "prefixHandleOpaque": true,
     "resolverMode": "disabled",
     "routerSolicitation": false
   }
+  and (.ipv6.prefixHandle | test("^opaque-pd-handle:[0-9a-f]{32}$"))
 ' <<<"${positive}" >/dev/null
 
 expect_failure() {

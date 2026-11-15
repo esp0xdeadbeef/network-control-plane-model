@@ -11,6 +11,35 @@ let
   inherit (common) attrsOrEmpty listOrEmpty;
 
   defaultDst = family: if family == 4 then "0.0.0.0/0" else "::/0";
+  # FS-520: the explanation must identify whether the runtime route is used for
+  # internet, an owned public service prefix, a remote site, an exit prefix, or
+  # rejected/unknown reachability. This is the closed vocabulary; a producer that
+  # supplies `routePurpose` must use one of these values, and the derivation below
+  # only fills in the two the route itself determines (default -> internet,
+  # runtime-learned non-default -> exit prefix).
+  routePurposeVocabulary = [
+    "internet"
+    "owned-public-service-prefix"
+    "remote-site"
+    "exit-prefix"
+    "rejected"
+    "unknown"
+  ];
+  classifyRoutePurpose =
+    family: route: intent:
+    let
+      dst = route.dst or null;
+      declared = intent.routePurpose or null;
+    in
+    if declared != null then
+      if builtins.elem declared routePurposeVocabulary then
+        declared
+      else
+        throw "forwarding-model update required: runtime route purpose '${toString declared}' is not one of ${builtins.concatStringsSep ", " routePurposeVocabulary} (FS-520 Runtime Route Import Explanation)"
+    else if dst == defaultDst family then
+      "internet"
+    else
+      "exit-prefix";
   routeIdentity = import ./runtime-route-identity.nix { inherit attrsOrEmpty defaultDst; };
   inherit (routeIdentity) routeKey uniqueRoutes isPolicyDefault;
   routePolicy = import ./runtime-route-policy.nix {
@@ -538,10 +567,7 @@ let
             source = intent.source or "explicit-uplink";
             routeSource = intent.routeSource or (intent.source or "explicit-uplink");
             sourcePeerOrProvider = intent.sourcePeerOrProvider or sourcePeerOrProvider;
-            routePurpose =
-              intent.routePurpose or (
-                if (route.dst or null) == defaultDst family then "wan-internet" else "provider-prefix"
-              );
+            routePurpose = classifyRoutePurpose family route intent;
             maximumScope = intent.maximumScope or "provider";
             rejectionBehavior = intent.rejectionBehavior or "reject";
             routeAvailabilityOnly =
