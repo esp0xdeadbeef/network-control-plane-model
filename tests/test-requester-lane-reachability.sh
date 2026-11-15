@@ -59,6 +59,7 @@ INVENTORY_PATH="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory
   nix eval --no-write-lock-file --impure --json --expr '
     let
       flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
+      lib = flake.inputs.nixpkgs.lib;
       out = flake.libBySystem.${builtins.currentSystem}.compileAndBuildFromPaths {
         inputPath = builtins.getEnv "INTENT_PATH";
         inventoryPath = builtins.getEnv "INVENTORY_PATH";
@@ -77,6 +78,18 @@ INVENTORY_PATH="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory
       endpointsOn = name:
         builtins.filter isEndpointRoute (allFor name);
       mgmtLane = "p2p-s-router-downstream-selector-s-router-policy-only--access-s-router-access-mgmt";
+      endpointRoutesOnServiceLane = builtins.filter
+        (route: ((route.intent or { }).kind or null) == "service-endpoint-reachability")
+        ((routesOf mgmtLane).ipv4 or [ ]);
+      groupedEndpointRoutes = builtins.groupBy
+        (route: "${route.dst}|${(route.lane.access or "none")}")
+        endpointRoutesOnServiceLane;
+      noConflictingNextHop = builtins.all
+        (routes: builtins.length (lib.unique (map (route: route.via4 or null) routes)) == 1)
+        (builtins.attrValues groupedEndpointRoutes);
+      serviceLaneRoutesArePolicyComplements = builtins.all
+        (route: ((route.intent or { }).policyTableComplement or false))
+        endpointRoutesOnServiceLane;
     in {
       # P1/P2: the requester legs for both families live on the service-facing
       # lane, each carrying its own lane identity and relation identity.
@@ -119,14 +132,18 @@ INVENTORY_PATH="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory
           builtins.elem ((laneOf name).kind or null) [ "uplink" "access-uplink" ]
           && endpointsOn name != [ ])
         names;
+      # P5 (SMS-040 D4): equal-prefix service routes on one requester lane must
+      # not carry different next hops -- that is an ECMP/order choice, not the
+      # modeled hop -- and every one must be a policy-table complement.
+      inherit noConflictingNextHop serviceLaneRoutesArePolicyComplements;
       interfaceCount = builtins.length names;
     }
   ' >"${output_json}"
 
-for predicate in clientV4 clientV6 dmzV4; do
+for predicate in clientV4 clientV6 dmzV4 noConflictingNextHop serviceLaneRoutesArePolicyComplements; do
   if [[ "$(jq -r ".${predicate}" "${output_json}")" != "true" ]]; then
     jq . "${output_json}" >&2 || true
-    fail "P1/P2 ${predicate}: the requester leg is missing from the service-facing policy lane; the endpoint prefix must be emitted per requester lane with its relation, lane and next-hop provenance (FS-540-HDS-010-SDS-010-SMS-040 D3)"
+    fail "P1/P2/P5 ${predicate}: the requester leg must be emitted per requester lane with its relation, lane and next-hop provenance and exactly one modeled next hop per (prefix, lane) (FS-540-HDS-010-SDS-010-SMS-040 D3/D4)"
   fi
 done
 
