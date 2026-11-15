@@ -415,6 +415,16 @@ let
       providerAllowFrom = listOrEmpty (providerDns.allowFrom or null);
       providerPatch = {
         allowFrom = builtins.filter (prefix: !builtins.elem prefix requesterPrefixes) providerAllowFrom;
+        # FS-560-SMS-020: an authority that only owns local namespaces must not
+        # recurse. Carry that explicitly so the renderer emits the terminal root
+        # refusal; an `allow` source action above is then safe (it authorizes the
+        # shared zones, not recursion). An authority that forwards to a core
+        # already carries its own recursionMode and is left alone.
+        recursionMode =
+          if builtins.isString (providerDns.recursionMode or null) && providerDns.recursionMode != "" then
+            providerDns.recursionMode
+          else
+            "local-only";
         requesterPolicies = listOrEmpty (providerDns.requesterPolicies or null) ++ [
           {
             requesterService = requesterService;
