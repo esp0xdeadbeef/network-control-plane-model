@@ -326,7 +326,92 @@ let
                         toIface = fromIface;
                         policyPoint = "downstream-selector";
                       })
-                    ])
+                    ] ++ (
+                      # FS-540/FS-260: the modeled rule egresses on the
+                      # destination lane, but the resolver route rides the
+                      # requester lane up to the policy (the policy re-lanes on
+                      # its downward leg). Without a matching accept on the
+                      # requester lane's policy interface the packet is dropped
+                      # here even though the route and the policy ingress agree.
+                      let
+                        requesterPolicyIface = policyForAccess fromIface;
+                      in
+                      if
+                        requesterPolicyIface == null
+                        || requesterPolicyIface.runtimeIfName == toPolicyIface.runtimeIfName
+                      then
+                        [ ]
+                      else
+                        [
+                          ({
+                            inherit action;
+                            relationId = id;
+                            comment = id;
+                            priority = relation.priority or null;
+                            trafficType = relation.trafficType or "any";
+                            direction = "relation-forward-requester-lane";
+                            matches = relationMatches relation;
+                            from = attrsOrEmpty (relation.from or null);
+                            to = attrsOrEmpty (relation.to or null);
+                            transportAuthority = common.selectorTransportAuthority {
+                              inherit fromIface;
+                              toIface = requesterPolicyIface;
+                              trafficType = relation.trafficType or "any";
+                            };
+                            relationCardinality = {
+                              unit = "selector-forwarding-rule";
+                              decomposition = "requester-lane-companion";
+                              decomposed = true;
+                            };
+                            fromInterface = fromIface.runtimeIfName;
+                            toInterface = requesterPolicyIface.runtimeIfName;
+                            applyTcpMssClamp = false;
+                          }
+                          // common.relationHandoff {
+                            relationId = id;
+                            inherit action;
+                            direction = "relation-forward-requester-lane";
+                            inherit fromIface;
+                            toIface = requesterPolicyIface;
+                            policyPoint = "downstream-selector";
+                          })
+                          ({
+                            action = "accept";
+                            fromInterface = requesterPolicyIface.runtimeIfName;
+                            toInterface = fromIface.runtimeIfName;
+                            applyTcpMssClamp = false;
+                            connectionState = "established,related";
+                            returnRule = true;
+                            relationId = id;
+                            comment = id;
+                            priority = relation.priority or null;
+                            trafficType = relation.trafficType or "any";
+                            matches = relationMatches relation;
+                            from = attrsOrEmpty (relation.from or null);
+                            to = attrsOrEmpty (relation.to or null);
+                            direction = "relation-reverse-requester-lane";
+                            transportAuthority = common.selectorTransportAuthority {
+                              fromIface = requesterPolicyIface;
+                              toIface = fromIface;
+                              trafficType = relation.trafficType or "any";
+                              statefulReturn = true;
+                            };
+                            relationCardinality = {
+                              unit = "selector-forwarding-rule";
+                              decomposition = "requester-lane-companion";
+                              decomposed = true;
+                            };
+                          }
+                          // common.relationHandoff {
+                            relationId = id;
+                            action = "accept";
+                            direction = "relation-reverse-requester-lane";
+                            fromIface = requesterPolicyIface;
+                            toIface = fromIface;
+                            policyPoint = "downstream-selector";
+                          })
+                        ]
+                    ))
                   fromIfaces
               )
           )
