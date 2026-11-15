@@ -6,8 +6,9 @@
 # OWNER:  network-control-plane-model
 # MODULE: Provider Endpoint Fact Classification
 #
-# This case has NOT been executed. It asserts the predicates the SMS states
-# against the existing classification surface; run it before changing the row.
+# Presence-only check: it verifies the classification surface exists and names
+# the host-only/routed/delegated/translated concepts. It does NOT execute the
+# SMS seeded negatives (SN1/SN2); the SMS status is unclaimed for that reason.
 #
 # Predicates taken from the SMS:
 #   P1  Provider `/32` and `/128` endpoint facts are classified as host-only or
@@ -63,4 +64,4 @@ if ! grep -qiE 'ipv6|/128' "${surface}" && ! grep -rqiE 'ipv6' "${repo_root}/src
   fail "SN2 no IPv6 provider endpoint path exists to enforce the SN2 refusal against"
 fi
 
-echo "PASS provider-endpoint-classification"
+echo "PASS provider-endpoint-classification (surface presence only; SN1/SN2 not executed)"

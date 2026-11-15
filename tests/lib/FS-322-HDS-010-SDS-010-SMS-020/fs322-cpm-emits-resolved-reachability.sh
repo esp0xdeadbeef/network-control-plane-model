@@ -6,7 +6,10 @@
 # SPEC:   GAMP/SDS/FS-322-HDS-010-SDS-010.md          (Scope Reachability: Offers, Selects, Overlap Precedence)
 # OWNER:  network-control-plane-model
 #
-# EXPECTED TO FAIL. This case records a missing upstream fact, not a renderer bug.
+# Current contract: P1-P3 assert the per-scope resolved reachability the CPM
+# emits (ordered selected scopes, member uplinks, scope identity). P4 asserts
+# that a selection which declares no order fails closed with E_CONTRACT_SELECTS;
+# declared selection order is the FS-322 precedence (see the SMS-020 and SDS).
 #
 # FS-322 SDS assigns reachability derivation to the model chain, and its Software
 # Architecture section states it plainly:
