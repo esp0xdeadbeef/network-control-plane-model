@@ -4,54 +4,78 @@
 #
 # SPEC:   GAMP/SMS/FS-520-HDS-010-SDS-010-SMS-030.md
 # OWNER:  network-control-plane-model
-# MODULE: Route Purpose Explanation
+# MODULE: Route Purpose Emission
 #
-# Predicates taken from the SMS:
-#   P1  Route purpose is emitted as one of: internet, owned public service
-#       prefix, remote site, exit prefix, rejected, unknown.
-#   P2  Route purpose is explicit in the explanation input rather than derived
-#       from a default.
+# Predicates:
+#   P1  The emitted purpose is one of the FS-520 set: internet,
+#       owned-public-service-prefix, remote-site, exit-prefix, rejected, unknown.
+#   P2  A purpose the producer declared is carried unchanged; only the two the
+#       route itself determines are derived (default -> internet,
+#       runtime-learned non-default -> exit-prefix).
+#   P3  A producer value outside the set fails closed instead of being emitted.
 #
-# Requirement source: FS-520 says the function "shall identify whether the runtime
-# route is being used for internet, an owned public service prefix, a remote site,
-# an exit prefix, or rejected and unknown reachability."
-#
-# The implementation is
-# src/cpm/Site/build-data/normalize-runtime-routes.nix: `routePurposeVocabulary`
-# is the closed FS set, `classifyRoutePurpose` rejects an undeclared value from a
-# producer, and only fills in the two the route itself determines (a default is
-# `internet`, a runtime-learned non-default is `exit-prefix`). Every other class
-# is carried from the modeled `intent.routePurpose`.
+# The classifier is exercised directly, not by grepping the source: the former
+# version of this case only searched `src/cpm` for the vocabulary strings, so a
+# comment containing the words satisfied it and neither the derivation nor the
+# rejection was ever evaluated.
 set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-fail() { echo "FAIL route-purpose-explanation: $*" >&2; exit 1; }
+fail() { echo "FAIL route-purpose-emission: $*" >&2; exit 1; }
 
-surface="${repo_root}/src/cpm/Site/build-data/normalize-runtime-routes.nix"
-[[ -f "${surface}" ]] || fail "P1 the runtime-route surface does not exist at ${surface#"${repo_root}/"}"
+out="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json --expr '
+  let
+    flake = builtins.getFlake ("path:" + builtins.getEnv "REPO_ROOT");
+    lib = flake.inputs.nixpkgs.lib;
+    normalizer = import (builtins.getEnv "REPO_ROOT" + "/src/cpm/Site/build-data/normalize-runtime-routes.nix") {
+      inherit lib;
+      common = {
+        attrsOrEmpty = value: if builtins.isAttrs value then value else { };
+        listOrEmpty = value: if builtins.isList value then value else [ ];
+      };
+    };
+    classify = normalizer.classifyRoutePurpose;
+    values = normalizer.routePurposeVocabulary;
+    succeeds = expression: (builtins.tryEval expression).success;
+    learned = { dst = "198.51.100.0/24"; };
+  in {
+    vocabulary = values;
+    default4 = classify 4 { dst = "0.0.0.0/0"; } { };
+    default6 = classify 6 { dst = "::/0"; } { };
+    learned = classify 4 learned { };
+    declared = map (purpose: classify 4 learned { routePurpose = purpose; }) values;
+    explicitBeatsDerivation = classify 4 { dst = "0.0.0.0/0"; } { routePurpose = "remote-site"; };
+    legacyWanInternet = succeeds (classify 4 learned { routePurpose = "wan-internet"; });
+    legacyProviderPrefix = succeeds (classify 4 learned { routePurpose = "provider-prefix"; });
+  }')"
 
-# P1: each FS-required purpose must be expressible as a routePurpose value.
-# Checked individually so the failure names exactly which purposes are absent.
-missing=""
-for purpose in 'internet' 'owned.public.service.prefix' 'remote.site' 'exit.prefix' 'rejected' 'unknown'; do
-  grep -rqiE "${purpose}" "${repo_root}/src/cpm" --include=*.nix 2>/dev/null || missing="${missing} [${purpose}]"
-done
+jq -e '
+  .vocabulary == [
+    "internet",
+    "owned-public-service-prefix",
+    "remote-site",
+    "exit-prefix",
+    "rejected",
+    "unknown"
+  ]
+' <<<"${out}" >/dev/null || fail "P1 the closed purpose vocabulary is not the FS-520 set: $(jq -c '.vocabulary' <<<"${out}")"
 
-if [[ -n "${missing}" ]]; then
-  fail "P1 route purpose cannot express:${missing}.
-FS-520 requires internet, owned public service prefix, remote site, exit prefix,
-rejected and unknown. The implementation currently resolves routePurpose to only
-'wan-internet' and 'provider-prefix', so four of the six FS categories are
-unrepresentable and the two that exist use a vocabulary the FS does not name."
+jq -e '.default4 == "internet" and .default6 == "internet"' <<<"${out}" >/dev/null \
+  || fail "P2 a default route did not classify as internet: $(jq -c '{default4,default6}' <<<"${out}")"
+
+jq -e '.learned == "exit-prefix"' <<<"${out}" >/dev/null \
+  || fail "P2 a runtime-learned non-default route did not classify as exit-prefix: $(jq -c '.learned' <<<"${out}")"
+
+jq -e '.declared == .vocabulary' <<<"${out}" >/dev/null \
+  || fail "P2 a declared purpose was not carried unchanged: $(jq -c '.declared' <<<"${out}")"
+
+jq -e '.explicitBeatsDerivation == "remote-site"' <<<"${out}" >/dev/null \
+  || fail "P2 an explicit purpose was overwritten by the default derivation"
+
+if jq -e '.legacyWanInternet or .legacyProviderPrefix' <<<"${out}" >/dev/null; then
+  fail "P3 a producer purpose outside the FS-520 set was accepted (expected a fail-closed rejection)"
 fi
 
-# P2: the purpose must be explicit input, not only a computed default. The code
-# honours `intent.routePurpose or (...)`; assert the explicit form is present so a
-# reader can supply it.
-if ! grep -qE 'intent\.routePurpose' "${surface}"; then
-  fail "P2 routePurpose is not accepted as explicit explanation input"
-fi
-
-echo "PASS route-purpose-explanation"
+echo "PASS route-purpose-emission"

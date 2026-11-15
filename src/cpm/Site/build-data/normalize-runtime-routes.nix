@@ -722,5 +722,13 @@ let
     normalizeRuntimeTargetRoutesWith { postInitialComplementsOnly = true; };
 in
 {
-  inherit addPolicyRoutingAllocationsToTarget normalizeRuntimeTargetRoutes normalizeRuntimeTargetRoutesAfterPolicyComplements normalizeRuntimeTargetRoutesWith uniqueRoutes;
+  inherit
+    addPolicyRoutingAllocationsToTarget
+    classifyRoutePurpose
+    normalizeRuntimeTargetRoutes
+    normalizeRuntimeTargetRoutesAfterPolicyComplements
+    normalizeRuntimeTargetRoutesWith
+    routePurposeVocabulary
+    uniqueRoutes
+    ;
 }
