@@ -246,7 +246,20 @@ let
             else
               builtins.concatLists (
                 map
-                  (fromIface:
+                  (
+                    fromIface:
+                    let
+                      # FS-540 / FS-260: the upward hop into the policy rides
+                      # the *requester* lane. The destination-lane interface is
+                      # the downward leg; the policy's ingress rule for this
+                      # relation names the requester lane, so both ends of the
+                      # wire must use the same lane or the query is dropped at
+                      # the selector.
+                      fromPolicyIface = policyForAccess fromIface;
+                    in
+                    if fromPolicyIface == null then
+                      [ ]
+                    else
                     [
                       ({
                         inherit action;
@@ -269,7 +282,7 @@ let
                           decomposed = true;
                         };
                         fromInterface = fromIface.runtimeIfName;
-                        toInterface = toPolicyIface.runtimeIfName;
+                        toInterface = fromPolicyIface.runtimeIfName;
                         applyTcpMssClamp = false;
                       }
                       // common.relationHandoff {
@@ -280,7 +293,7 @@ let
                       })
                       ({
                         action = "accept";
-                        fromInterface = toPolicyIface.runtimeIfName;
+                        fromInterface = fromPolicyIface.runtimeIfName;
                         toInterface = fromIface.runtimeIfName;
                         applyTcpMssClamp = false;
                         connectionState = "established,related";
