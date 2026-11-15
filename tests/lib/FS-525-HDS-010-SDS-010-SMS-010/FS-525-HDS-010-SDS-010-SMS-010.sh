@@ -427,6 +427,7 @@ let
             providerNode = "core";
             trafficType = "dns";
             recursionMode = "iterative";
+            addressAuthority = "model-allocated-service-prefix";
           };
         };
         allowedRelations = [

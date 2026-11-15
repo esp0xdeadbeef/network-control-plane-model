@@ -254,6 +254,9 @@ let
     }:
     let
       realization = attrsOrEmpty (runtimeTargets.${targetName}.effectiveRuntimeRealization or null);
+      resolverDefinition = service resolverService;
+      useNodeStableIdentity =
+        (resolverDefinition.addressAuthority or null) == "model-allocated-service-prefix";
       interfaces = attrsOrEmpty (realization.interfaces or null);
       candidates = builtins.filter (
         iface:
@@ -263,15 +266,13 @@ let
       attachmentIds = uniqueStrings (
         map (iface: (attrsOrEmpty (iface.backingRef or null)).id or "") candidates
       );
-      # FS-525/FS-540: the listener and forwarder identity is the core node's
-      # node-stable service identity, invariant across the access relations it
-      # serves. The relation-facing attachment is path provenance: it selects
-      # and validates the path, but it is not the answering address. Binding
-      # the listener to that attachment made the service identity change with
-      # every lane and left requesters without a route to the address the core
-      # actually listened on.
+      # FS-525/FS-540 D1 applies to the core recursive resolver: its listener
+      # and forwarder identity is the core node's node-stable service identity,
+      # invariant across access relations. An access-provided DNS service
+      # (for example a tenant-gateway resolver) keeps its explicit listener:
+      # its address is part of the service definition, not a core binding.
       identity = attrsOrEmpty (realization.loopback or null);
-      identityAddresses = uniqueStrings (
+      nodeStableAddresses = uniqueStrings (
         builtins.filter (
           address:
           address != ""
@@ -285,14 +286,16 @@ let
         ]
       );
       # The terminal attachment stays available as path provenance.
-      attachmentAddresses = uniqueStrings (
+      endpointAddresses = uniqueStrings (
         builtins.filter (
           address:
           (builtins.elem "ipv4" families && builtins.match ".*:.*" address == null)
           || (builtins.elem "ipv6" families && builtins.match ".*:.*" address != null)
         ) (lib.concatMap interfaceAddresses candidates)
       );
-      addresses = identityAddresses;
+      attachmentAddresses = endpointAddresses;
+      addresses =
+        if useNodeStableIdentity then nodeStableAddresses else endpointAddresses;
       missingFamilies =
         lib.optional (
           builtins.elem "ipv4" families
