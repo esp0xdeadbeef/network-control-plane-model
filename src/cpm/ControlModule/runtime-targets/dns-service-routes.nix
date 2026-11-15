@@ -447,11 +447,87 @@ let
             else
               iface // { routes = mergeRoutes (attrsOrEmpty (iface.routes or null)) allExtraByIf.${ifName}; })
           interfaces;
+      targetIsDownstreamSelector = (target.role or null) == "downstream-selector";
+      endpointRouteKey =
+        route: "${route.dst or ""}|${(attrsOrEmpty (route.lane or null)).access or ""}";
+      endpointRoutesOf =
+        iface:
+        builtins.filter
+          (route: ((route.intent or { }).kind or null) == "service-endpoint-reachability")
+          (((iface.routes or { }).ipv4 or [ ]) ++ ((iface.routes or { }).ipv6 or [ ]));
+      ifaceLane =
+        iface: (attrsOrEmpty ((attrsOrEmpty (iface.backingRef or null)).lane or null)).access or null;
+      # Only a copy whose interface lane equals the route's requester lane is the
+      # modeled next hop; the same prefix on another lane's fabric interface is a
+      # second next hop and would be ECMP/order-selected.
+      fabricMatchedEndpointKeys =
+        if !targetIsDownstreamSelector then
+          [ ]
+        else
+          lib.unique (
+            builtins.concatMap
+              (
+                iface:
+                let
+                  lane = ifaceLane iface;
+                in
+                if !(((iface.interfaceClass or { }).fabricFacing or false)) || lane == null then
+                  [ ]
+                else
+                  map endpointRouteKey (
+                    builtins.filter
+                      (route: (attrsOrEmpty (route.lane or null)).access or null == lane)
+                      (endpointRoutesOf iface)
+                  )
+              )
+              (builtins.attrValues updatedInterfaces)
+          );
+      # On a downstream selector the service-endpoint /32 for a requester lane is
+      # also emitted on the edge-facing ingress interface and on fabric interfaces
+      # of other lanes. Those copies point back at the access node that sent the
+      # query, or at a link the policy does not admit for this lane, and being more
+      # specific than the modeled /24 they shadow the modeled copy in the policy
+      # table. Keep only the copy whose interface lane matches the requester lane.
+      interfacesWithoutLaneMismatchedEndpoints =
+        if !targetIsDownstreamSelector then
+          updatedInterfaces
+        else
+          builtins.mapAttrs
+            (
+              _ifName: iface:
+              let
+                lane = ifaceLane iface;
+                isEdge = ((iface.interfaceClass or { }).edgeFacing or false);
+                isFabric = ((iface.interfaceClass or { }).fabricFacing or false);
+              in
+              if !(isEdge || isFabric) then
+                iface
+              else
+                iface
+                // {
+                  routes = builtins.mapAttrs
+                    (
+                      _family: routes:
+                      builtins.filter
+                        (
+                          route:
+                          !(
+                            ((route.intent or { }).kind or null) == "service-endpoint-reachability"
+                            && builtins.elem (endpointRouteKey route) fabricMatchedEndpointKeys
+                            && (isEdge || lane != ((attrsOrEmpty (route.lane or null)).access or null))
+                          )
+                        )
+                        routes
+                    )
+                    (iface.routes or { });
+                }
+            )
+            updatedInterfaces;
     in
     if interfaces == { } || allExtraByIf == { } then
       target
     else
-      target // { effectiveRuntimeRealization = effective // { interfaces = updatedInterfaces; }; };
+      target // { effectiveRuntimeRealization = effective // { interfaces = interfacesWithoutLaneMismatchedEndpoints; }; };
 in
 { firewallIntent
 , normalizedRuntimeTargets
