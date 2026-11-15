@@ -232,6 +232,37 @@ let
         builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv6 or null));
     };
 
+  # Which interface an endpoint route must name as its outgoing interface.
+  #
+  # The route's next hop is `routeIface`'s /31 (or /127) peer, so this choice
+  # decides the gateway. Both ends of a resolver relation are `service` kind, so
+  # `laneKindFor` does not tell ingress from egress, and a transit hop fell
+  # through to the ingress interface -- taking the ingress peer as the gateway
+  # and pointing the resolver route back at the node it came from.
+  #
+  # Measured on the cobalt HAT: the downstream-selector rendered
+  # `10.1.0.16 via 10.1.0.0 dev pacds` (pacds is 10.1.0.1, the access side)
+  # while the resolver is only reachable across pdspaac (10.1.0.24, peer
+  # 10.1.0.25). On the policy node the requester route must follow the same
+  # service-facing next hop (`via 10.1.0.41 dev up-clients`) or it beats the
+  # fabric /31 that names the real hop and the query is reflected.
+  servicesViaToInterface =
+    { targetIsPolicy, fromIface, toIface, fromIfName, toIfName, service }:
+    targetIsPolicy
+    || (laneKindFor fromIface == "uplink" && laneKindFor toIface == "access-uplink")
+    || (fromIfName != toIfName && !ownsServiceAddress service fromIface);
+
+  # The requester leg always carries the requester lane tag, on every node
+  # including policy: that tag is what places the endpoint prefix in the
+  # requester's policy table (FS-540-HDS-010-SDS-010-SMS-040 D3). Suppressing it
+  # on policy leaves the requester with permission and a forwarder but no route
+  # in the table its local-origin rule selects.
+  tagRequesterLaneRoutes =
+    fromIface: routes: {
+      ipv4 = builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv4 or null));
+      ipv6 = builtins.map (withIngressPolicyLane fromIface) (listOrEmpty (routes.ipv6 or null));
+    };
+
   serviceEndpointRoutes = import ./service-endpoint-routes.nix {
     inherit
       lib
@@ -296,21 +327,9 @@ let
                 toIfName = byRuntime.${toName}.ifName;
                 toIface = byRuntime.${toName}.iface;
                 service = servicesByName.${serviceName};
-                # The endpoint route's next hop is `routeIface`'s peer, so this
-                # choice decides the gateway. Both ends of a resolver relation are
-                # `service` kind, so `laneKindFor` does not tell ingress from egress
-                # and a transit hop fell through to the ingress interface -- taking
-                # the ingress peer as the gateway and pointing the resolver route
-                # back at the node it came from.
-                #
-                # Measured on the cobalt HAT: the downstream-selector rendered
-                # `10.1.0.16 via 10.1.0.0 dev pacds` (pacds is 10.1.0.1, the access
-                # side) while the resolver is only reachable across pdspaac
-                # (10.1.0.24, peer 10.1.0.25).
-                serviceFacingRoute =
-                  (target.role or null) == "policy"
-                  || (laneKindFor fromIface == "uplink" && laneKindFor toIface == "access-uplink")
-                  || (fromIfName != toIfName && !ownsServiceAddress service fromIface);
+                serviceFacingRoute = servicesViaToInterface {
+                  inherit targetIsPolicy fromIface toIface fromIfName toIfName service;
+                };
                 routeIfName =
                   if serviceFacingRoute then toIfName else fromIfName;
                 routeIface =
@@ -364,22 +383,27 @@ let
             let
               fromIface = byRuntime.${fromName}.iface;
               fromIfName = byRuntime.${fromName}.ifName;
+              toIface = byRuntime.${toName}.iface;
+              toIfName = byRuntime.${toName}.ifName;
               service = servicesByName.${serviceName};
-              requesterRoutes = tagIngressRoutes targetIsPolicy fromIface (dropRoutesAlreadyOnInterface target fromIface {
-                ipv4 = endpointRoutes 4 rule service {
-                  fromIface = fromIface;
-                  toIface = fromIface;
-                  routeIface = fromIface;
-                };
-                ipv6 = endpointRoutes 6 rule service {
-                  fromIface = fromIface;
-                  toIface = fromIface;
-                  routeIface = fromIface;
-                };
+              serviceFacingRoute = servicesViaToInterface {
+                inherit targetIsPolicy fromIface toIface fromIfName toIfName service;
+              };
+              routeIfName = if serviceFacingRoute then toIfName else fromIfName;
+              routeIface = if serviceFacingRoute then toIface else fromIface;
+              # The route rides the interface whose peer is the modeled next hop,
+              # but keeps the requester's lane: the normalizer copies it into the
+              # requester's policy table by `lane.access` (SMS-040 D3).
+              requesterRoutes = tagRequesterLaneRoutes fromIface (dropRoutesAlreadyOnInterface target routeIface {
+                ipv4 = endpointRoutes 4 rule service { inherit fromIface toIface routeIface; skipCovered = true; };
+                ipv6 = endpointRoutes 6 rule service { inherit fromIface toIface routeIface; skipCovered = true; };
               });
               # The destination-facing pass may already have put the same
               # endpoint prefix on this interface; never emit a second atom for
-              # the same destination (FS-315: no duplicate route meaning).
+              # the same destination in the same lane (FS-315: no duplicate
+              # route meaning). The lane identity is part of the comparison:
+              # one route per admitted requester lane is required, and they all
+              # converge on the same service-facing next hop.
               alreadyThere =
                 family: routes:
                 builtins.filter
@@ -387,8 +411,10 @@ let
                     !(builtins.any
                       (existing:
                       (existing.dst or null) == (route.dst or null)
-                      && (existing.via4 or existing.via6 or null) == (route.via4 or route.via6 or null))
-                      (listOrEmpty ((attrsOrEmpty (acc.${fromIfName} or null)).${family} or null))))
+                      && (existing.via4 or existing.via6 or null) == (route.via4 or route.via6 or null)
+                      && ((attrsOrEmpty (existing.lane or null)).access or null)
+                        == ((attrsOrEmpty (route.lane or null)).access or null))
+                      (listOrEmpty ((attrsOrEmpty (acc.${routeIfName} or null)).${family} or null))))
                   routes;
               deduped = {
                 ipv4 = alreadyThere "ipv4" (requesterRoutes.ipv4 or [ ]);
@@ -399,7 +425,7 @@ let
               acc
             else
               acc // {
-                ${fromIfName} = mergeRoutes (attrsOrEmpty (acc.${fromIfName} or null)) deduped;
+                ${routeIfName} = mergeRoutes (attrsOrEmpty (acc.${routeIfName} or null)) deduped;
               })
         endpointExtraByIf
         requesterServiceRules;

@@ -59,8 +59,8 @@ base // {
                 allowedPrefixes = [ "203.0.113.48/32" ];
                 sourcePeerOrProvider = "wan-bgp-peer";
                 allowedSources = [ "wan-bgp-peer" ];
-                routePurpose = "provider-prefix";
-                allowedPurposes = [ "provider-prefix" ];
+                routePurpose = "exit-prefix";
+                allowedPurposes = [ "exit-prefix" ];
                 destinationOwner = "provider-wan";
                 allowedDestinationOwners = [ "provider-wan" ];
                 maximumScope = "provider";

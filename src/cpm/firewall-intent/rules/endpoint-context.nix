@@ -205,21 +205,17 @@ let
       )
     );
 
-  # Uplinks/overlays that reach a service's provider node, derived from the
-  # external bindings whose runtime binding lands on that logical node. For a
-  # core-hosted service this is the single fabric lane (or lanes) that reaches
-  # the provider core, never the full sibling lane set.
-  uplinksForService =
-    endpoint:
-    let
-      providerNodes = serviceProviderNodes endpoint;
-    in
+  # Uplinks/overlays whose runtime bindings land on any of `logicalNodes`.
+  # Structural identity: FS-310-SMS-120 forbids reading a scope from a rendered
+  # link name, and the link name cannot represent a hyphenated node unambiguously.
+  uplinksForLogicalNodes =
+    logicalNodes:
     uniqueStrings (
       builtins.concatLists (
         map
           (externalName:
             if builtins.any
-              (binding: builtins.elem ((attrsOrEmpty binding).logicalNode or null) providerNodes)
+              (binding: builtins.elem ((attrsOrEmpty binding).logicalNode or null) logicalNodes)
               (listOrEmpty (externalBindings.${externalName}.runtimeBindings or null))
             then
               listOrEmpty (externalBindings.${externalName}.uplinks or null)
@@ -229,6 +225,16 @@ let
           (builtins.attrNames externalBindings)
       )
     );
+
+  uplinksForLogicalNode = logicalNode: uplinksForLogicalNodes [ logicalNode ];
+
+  # Uplinks/overlays that reach a service's provider node, derived from the
+  # external bindings whose runtime binding lands on that logical node. For a
+  # core-hosted service this is the single fabric lane (or lanes) that reaches
+  # the provider core, never the full sibling lane set.
+  uplinksForService =
+    endpoint:
+    uplinksForLogicalNodes (serviceProviderNodes endpoint);
 
 in
 {
@@ -321,6 +327,8 @@ in
     sourcePrefixesForEndpoint
     tenantNamesForEndpoint
     serviceProviderNodes
+    uplinksForLogicalNode
+    uplinksForLogicalNodes
     uplinksForService
     ;
 }

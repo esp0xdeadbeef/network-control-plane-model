@@ -202,6 +202,13 @@ let
         else
           fromIface;
       bareAddress = a: builtins.head (lib.splitString "/" a);
+      # A requester-lane route is a policy-table complement (`policyOnly`), not a
+      # main-table route: it exists to put the endpoint in the requester's table,
+      # where the covering modelled prefix is not present. Suppressing it because
+      # main already has a covering prefix removes the only route that table can
+      # use (FS-540-HDS-010-SDS-010-SMS-040 D3).
+      skipCovered =
+        builtins.isAttrs ifaceArg && (ifaceArg.skipCovered or false);
       viaField = if family == 4 then "via4" else "via6";
       candidates = routeCandidates family routeIface;
       peer = p2pPeerAddress family (routeIface.${if family == 4 then "addr4" else "addr6"} or null);
@@ -234,7 +241,7 @@ let
           ${viaField} = via;
         })
         (builtins.filter
-          (address: !(coveredByModelledPrefix family routeIface (bareAddress address)))
+          (address: skipCovered || !(coveredByModelledPrefix family routeIface (bareAddress address)))
           (providerAddresses family service));
 in
 {
