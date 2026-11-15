@@ -94,7 +94,11 @@ in {
     && localUpstream.publicFallback == false
     && localUpstream.transitiveEgress == false
     && requesterPolicy.requesterService == "local-dns"
-    && requesterPolicy.action == "refuse_non_local"
+    # FS-560-SMS-020: the authority ACL entry is for the forwarding-capable
+    # requester (this resolver forwards the shared namespace to that authority),
+    # so it must be `allow`. refuse_non_local belongs only to the local-data-only
+    # direction asserted below by lateralRequesterPolicy.
+    && requesterPolicy.action == "allow"
     && familyComplete requesterPolicy.sourcePrefixes
     && builtins.all (prefix: !(builtins.elem prefix (recursiveDns.allowFrom or [ ])))
       requesterPolicy.sourcePrefixes

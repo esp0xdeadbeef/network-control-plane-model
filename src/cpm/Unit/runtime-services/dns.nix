@@ -252,8 +252,8 @@ in
           in
           if requesterService == "" || relationId == "" || sourcePrefixes == [ ] || namespaces == [ ] then
             failInventory "${dnsPath}.requesterPolicies[*]" "requires requesterService, relationId, sourcePrefixes, and namespaces"
-          else if action != "refuse_non_local" then
-            failInventory "${dnsPath}.requesterPolicies[*].action" "must be refuse_non_local for a local-only requester"
+          else if action != "refuse_non_local" && action != "allow" then
+            failInventory "${dnsPath}.requesterPolicies[*].action" "must be allow for a forwarding-capable requester or refuse_non_local for a local-data-only requester (FS-560-HDS-010-SDS-020-SMS-020)"
           else
             { inherit requesterService relationId action sourcePrefixes namespaces; })
         (attrsList "${dnsPath}.requesterPolicies" (dns.requesterPolicies or [ ]));
