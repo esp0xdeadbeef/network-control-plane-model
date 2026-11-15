@@ -162,6 +162,7 @@ let
     ];
   };
   relations = import ${repo_root}/src/cpm/firewall-intent/rules/upstream-selector-relations.nix {
+    lib = (builtins.getFlake "path:${repo_root}").inputs.nixpkgs.lib;
     inherit common endpointContext;
   };
 in
