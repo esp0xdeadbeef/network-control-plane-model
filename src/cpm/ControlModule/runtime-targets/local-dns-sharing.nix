@@ -419,7 +419,13 @@ let
           {
             requesterService = requesterService;
             sourcePrefixes = requesterPrefixes;
-            action = "refuse_non_local";
+            # FS-560-HDS-010-SDS-020-SMS-020: refuse_non_local is only for a
+            # local-data-only source. This requester forwards the shared
+            # namespace to this authority (localForwardZones above), so a
+            # refuse_non_local source action blocks the very zone the grant
+            # exists for. The authority is local-only and refuses every other
+            # miss itself; the source class is authorized for this namespace.
+            action = "allow";
             inherit namespaces relationId;
           }
         ];
