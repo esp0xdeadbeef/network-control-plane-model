@@ -1,4 +1,4 @@
-{ common, endpointContext, trafficTypeMatches ? { } }:
+{ lib, common, endpointContext, trafficTypeMatches ? { } }:
 
 let
   inherit (endpointContext)
@@ -59,17 +59,34 @@ let
       # through competing access-lane next hops", and the FS-370 no-sibling-lane
       # rule.
       #
-      # The interface's source link is named `p2p-<node>-<peer>`, so the owning
-      # node is the link name's first node word. Compare the scope against it as
-      # a whole word, so `c-router-core` cannot match `c-router-nebula-core`.
+      # FS-310-SMS-120: the owning scope is read from the modeled link
+      # identity, never from a pattern over a rendered name. The interface's
+      # backingRef carries the link's structural endpoints as
+      # `id = "link::<enterprise>.<site>::<link>"`. The scope names a modeled
+      # node, so compare it against those endpoints as whole words, so
+      # `c-router-core` cannot match `c-router-nebula-core`.
+      linkEndpoints =
+        iface:
+        let
+          ref = attrsOrEmpty (iface.backingRef or null);
+          id = toString (ref.id or "");
+          linkName = toString (ref.name or "");
+        in
+        lib.filter (endpoint: endpoint != "") (
+          builtins.split "-" (
+            if id != "" then
+              builtins.head (lib.reverseList (lib.splitString "::" id))
+            else
+              linkName
+          )
+        );
       ifaceNamesScope =
         iface:
         let
-          linkName = toString ((attrsOrEmpty (iface.backingRef or null)).name or "");
+          ref = attrsOrEmpty (iface.backingRef or null);
         in
-        linkName == scopeStr
-        || builtins.match ".*p2p-${scopeStr}-.*" linkName != null
-        || builtins.match ".*p2p-${scopeStr}" linkName != null;
+        (ref.kind or null) == "link"
+        && (toString (ref.name or "") == scopeStr || builtins.elem scopeStr (linkEndpoints iface));
       # A target exposes one interface per attached core; keep only the uplinks
       # of the interfaces that name the requested scope.
       coreOwned = uniqueStrings (

@@ -21,7 +21,7 @@ REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
       inherit helpers lib ipam;
     };
     buildForwarding = import (root + "/src/cpm/firewall-intent/forwarding.nix") {
-      inherit helpers;
+      inherit helpers lib;
     };
     sourceFile = "/run/secrets/lab-dmz-ipv6-prefix";
     runtimePrefix = {

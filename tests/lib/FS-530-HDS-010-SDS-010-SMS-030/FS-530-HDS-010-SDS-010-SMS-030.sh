@@ -84,13 +84,22 @@ if ! MODEL="${model_json}" nix eval --no-write-lock-file --impure --expr '
     loopbackOf = n: targets.${n}.effectiveRuntimeRealization.loopback.addr4 or null;
 
     # Advertised resolvers per target, flattened across dhcp4/dhcpv6.
+    # The advertisement contract emits a list of explicit per-interface
+    # entries; accept the older attribute-set form too so the predicate is
+    # about the addresses, not the container shape.
+    entriesOf =
+      value:
+      if builtins.isList value then value
+      else if builtins.isAttrs value then builtins.attrValues value
+      else [ ];
     advertisedOf =
       n:
       let
         adv = targets.${n}.advertisements or { };
-        dhcp4 = adv.dhcp4 or { };
+        dhcp4 = entriesOf (adv.dhcp4 or [ ]);
+        dhcpv6 = entriesOf (adv.dhcpv6 or [ ]);
         servers = builtins.concatLists (
-          map (s: s.dnsServers or [ ]) (builtins.attrValues dhcp4)
+          map (s: s.dnsServers or [ ]) (dhcp4 ++ dhcpv6)
         );
       in
         servers;

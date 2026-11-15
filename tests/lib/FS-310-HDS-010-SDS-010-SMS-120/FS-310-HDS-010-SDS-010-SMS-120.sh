@@ -57,6 +57,9 @@ PERMITTED_PATTERNS=(
 
   # --- IPv4 address / CIDR format ---
   '"([0-9]{1,3}\\.){3}[0-9]{1,3}"'
+  # --- IPv4 dotted-quad format (unambiguous: builtins.match is whole-string)
+  #     so this does not accept an address prefix.
+  '"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"'
   '"^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$"'
   '"^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/32$"'
   '"([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})/([0-9]{1,2})"'

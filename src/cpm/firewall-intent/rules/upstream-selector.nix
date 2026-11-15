@@ -1,4 +1,4 @@
-{ common }:
+{ lib, common }:
 
 {
   endpointBindings ? { },
@@ -16,7 +16,7 @@ let
     inherit endpointBindings services transitInterfaces;
   };
   relationRules = import ./upstream-selector-relations.nix {
-    inherit common endpointContext trafficTypeMatches;
+    inherit lib common endpointContext trafficTypeMatches;
   };
   inherit (endpointContext) coreInterfaces policyInterfaces listOrEmpty;
 

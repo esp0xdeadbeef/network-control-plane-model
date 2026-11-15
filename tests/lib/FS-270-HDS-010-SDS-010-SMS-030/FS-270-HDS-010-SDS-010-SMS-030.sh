@@ -15,7 +15,9 @@ result_json="${tmpdir}/fs270-transit-host-local-separation.json"
 cat >"${expr_nix}" <<'NIX'
 let
   repoRoot = builtins.getEnv "REPO_ROOT";
+  lib = (builtins.getFlake ("path:" + repoRoot)).inputs.nixpkgs.lib;
   buildForwarding = import (repoRoot + "/src/cpm/firewall-intent/forwarding.nix") {
+    inherit lib;
     helpers = { };
   };
 

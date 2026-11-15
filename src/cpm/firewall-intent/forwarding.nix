@@ -1,9 +1,9 @@
-{ helpers }:
+{ helpers, lib }:
 
 let
   attrsOrEmpty = value: if builtins.isAttrs value then value else { };
   listOrEmpty = value: if builtins.isList value then value else [ ];
-  ruleBuilders = import ./rules.nix { };
+  ruleBuilders = import ./rules.nix { inherit lib; };
   inherit (ruleBuilders)
     buildAccessRules
     buildCoreRules
