@@ -175,11 +175,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1794897847,
-        "narHash": "sha256-1oRTXz9fIzzUbEHInUTE3Z/zPwIFrUoN5D7c+NOlBuY=",
+        "lastModified": 1794898201,
+        "narHash": "sha256-5SjtWnAxI+jHXXkimdjthYhHgOItRB+ghpSqmHn46ys=",
         "owner": "esp0xdeadbeef",
         "repo": "network-labs",
-        "rev": "045e811d637b8093a187a02a3efa146d9646b949",
+        "rev": "b3c5b4e35c475b812907ce33a92b82d353de0ed8",
         "type": "github"
       },
       "original": {
