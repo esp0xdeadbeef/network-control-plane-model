@@ -70,12 +70,37 @@ let
   fabricLinkBinding = fabricLinkBindingForInterface { inherit sourceKind backingRef targetDef; };
   isSelectorFabricRole = nodeRole == "downstream-selector" || nodeRole == "upstream-selector";
   hasSelectorFabricLink = isSelectorFabricRole && fabricLinkBinding != null;
+  # FS-255/FS-260: a core whose exit is a selected remote tenant context gets
+  # its one reachability leg from the `underlayAccess` carriage attachment, so
+  # that attachment must be a real inventory port -- not a surface synthesized
+  # from intent, and never a copy of the ingress p2p. The requirement is scoped
+  # to targets with no uplink port: a target that realizes an uplink already has
+  # its modeled egress, and a cross-platform stub carries the uplink stub but no
+  # tenant ports because another inventory realizes the tenant LAN.
+  requiresTenantPortRealization =
+    realizedTarget
+    && nodeRole != null
+    && nodeRole == "core"
+    && sourceKind == "tenant"
+    && portBindings.byUplink == { };
   requiresExplicitPortRealization =
-    realizedTarget && (sourceKind == "wan" || (sourceKind == "p2p" && !hasSelectorFabricLink));
+    realizedTarget
+    && (
+      sourceKind == "wan"
+      || (sourceKind == "p2p" && !hasSelectorFabricLink)
+      || requiresTenantPortRealization
+    );
   _requiredPortBinding =
     if requiresExplicitPortRealization && portBinding == null then
       if sourceKind == "p2p" then
         failInventory "${targetId}.ports" "${ifacePath} on realized target '${targetId}' requires explicit port realization for backing link '${backingRef.id}'"
+      else if sourceKind == "tenant" then
+        # FS-255/FS-260: the carriage surface of a core whose exit is a
+        # selected remote tenant context is a host attachment, so it must be
+        # realized by an inventory port. Synthesizing it from intent alone
+        # gives the core a surface no host has, and the overlay terminator ends
+        # up with no underlay leg at all.
+        failInventory "${targetId}.ports" "${ifacePath} on realized target '${targetId}' requires explicit tenant port realization for tenant '${ifaceAttrs.tenant or "?"}' (the overlay underlayAccess carrier)"
       else
         failInventory "${targetId}.ports" "${ifacePath} on realized target '${targetId}' requires explicit uplink port realization for uplink '${backingRef.upstreamAlias}'"
     else
@@ -204,6 +229,17 @@ let
       backingRef = builtins.removeAttrs backingRef [ "linkKind" "upstreamAlias" ];
     }
     // taxonomy
+    # FS-255: a tenant surface exists only when the inventory realizes it. A
+    # target that another inventory owns arrives here as a stub with no tenant
+    # port, and the forwarding model still names the attachment; that name is
+    # not a host attachment, so it must not count as one (and must not borrow
+    # the ingress bridge as its own).
+    // (
+      if sourceKind == "tenant" && portBinding == null then
+        { hostFacing = false; }
+      else
+        { }
+    )
     // binderSourceAudit.make {
       path = ifacePath;
       field = "effectiveRuntimeRealization.interfaces.${ifName}";

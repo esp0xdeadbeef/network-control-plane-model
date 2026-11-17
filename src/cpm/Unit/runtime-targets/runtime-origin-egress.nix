@@ -135,10 +135,8 @@ in
         # preferred source is realized as exactly ONE preferred-source default
         # per address family on the modeled deterministic route to the selected
         # egress surface. Decorate exactly one default-carrying interface (the
-        # egress route), preferring the modeled core-egress surface; never
-        # duplicate the mechanic across several default-carrying interfaces.
-        isEgressSurface =
-          name: iface: (iface.sourceKind or null) == "core-egress";
+        # egress route); never duplicate the mechanic across several
+        # default-carrying interfaces.
         defaultInterfaces =
           builtins.filter
             (entry: carriesDefault entry.v)
@@ -147,11 +145,7 @@ in
           if defaultInterfaces == [ ] then
             null
           else
-            let
-              egressSurface =
-                builtins.filter (e: isEgressSurface e.n e.v) defaultInterfaces;
-            in
-            (if egressSurface != [ ] then builtins.head egressSurface else builtins.head defaultInterfaces).n;
+            (builtins.head defaultInterfaces).n;
       in
       lib.mapAttrs (
         ifName: iface:

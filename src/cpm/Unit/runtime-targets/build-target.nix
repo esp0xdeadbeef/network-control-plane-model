@@ -261,58 +261,46 @@ let
         in
         if mtu != null then iface // { inherit mtu; } else iface
       ) runtimeInterfacesBase0;
-      # FS-370-HDS-010-SDS-010-SMS-010: the egress identity is owned by the
-      # forwarding model. Consume nodeAttrs.egressIntent to synthesize the core
-      # egress surface rather than inferring it from a fabric p2p shape.
-      egressIntent = attrsOrEmpty (nodeAttrs.egressIntent or null);
-      modeledExit = (egressIntent.exit or false) == true;
-      modeledEligible = (egressIntent.eligible or false) == true;
-      egressSurfaceNames = builtins.filter (n: n != null) (
-        listOrEmpty (egressIntent.egressSurfaces or null)
-        ++ listOrEmpty (egressIntent.wanInterfaces or null)
-      );
-      _ifaceList = builtins.attrValues runtimeInterfacesBase;
-      _hostP2p = builtins.filter
-        (i: (i.hostFacing or false) == true && (i.sourceKind or "") == "p2p")
-        _ifaceList;
-      _hasTenant = builtins.any (i: (i.sourceKind or "") == "tenant") _ifaceList;
-      _hasEgress = builtins.any
-        (i: (i.hostFacing or false) == true && (i.direction or "") == "egress" && (i.sourceKind or "") != "core-egress")
-        _ifaceList;
-      _hostP2pForEgress = builtins.filter
-        (i: builtins.elem (i.logicalInterface or "") egressSurfaceNames)
-        _hostP2p;
-      _egressP2p =
-        if _hostP2pForEgress != [ ] then
-          builtins.head _hostP2pForEgress
-        else if modeledExit && modeledEligible && builtins.length _hostP2p == 1 then
-          builtins.head _hostP2p
+      # FS-255: an uplink that only carries a modeled provider tunnel is that
+      # tunnel's adapter, not the core's egress-facing host attachment -- the
+      # physical carriage for the tunnel is the `underlayAccess` tenant port.
+      # The tunnel identity is the overlay runtime adapter present on this
+      # target (`overlay-<name>`), whether the overlay came from the model or
+      # from the inventory; the uplink that shares that name carries it.
+      overlayRuntimeNames = builtins.map
+        (n: builtins.substring 8 (builtins.stringLength n - 8) n)
+        (builtins.filter (n: lib.hasPrefix "overlay-" n && builtins.stringLength n > 8) (builtins.attrNames runtimeInterfacesBase));
+      hasBoundTenantCarriage = builtins.any
+        (i:
+          (i.sourceKind or null) == "tenant"
+          && (i.binderSourceAudit.sourceClass or null) == "public-inventory")
+        (builtins.attrValues runtimeInterfacesBase);
+      runtimeInterfacesMarked = builtins.mapAttrs (
+        _name: iface:
+        let
+          uplinkName = iface.sourceInterface or iface.upstream or null;
+        in
+        if
+          (iface.sourceKind or null) == "wan"
+          && uplinkName != null
+          && builtins.elem uplinkName overlayRuntimeNames
+          && hasBoundTenantCarriage
+        then
+          iface // { providerOverlay = uplinkName; }
         else
-          null;
-      needsCoreEgress =
-        modeledExit && modeledEligible && !_hasTenant && !_hasEgress && _egressP2p != null;
-      runtimeInterfacesWithEgress =
-        if needsCoreEgress then
-          let
-            stripped = builtins.removeAttrs _egressP2p [ "runtimeIfName" "renderedIfName" "runtimeInterface" ];
-          in
-          runtimeInterfacesBase // {
-            "core-uplink-egress" = stripped // {
-              sourceKind = "core-egress";
-              adapterClass = "core-role-egress";
-              direction = "egress";
-              hostFacing = true;
-              virtualAdapter = false;
-            };
-          }
-        else
-          runtimeInterfacesBase;
+          iface
+      ) runtimeInterfacesBase;
+      # FS-255: a core's host surfaces are the modeled ones. Nothing here
+      # synthesizes a second surface from the ingress p2p -- a core that models
+      # neither a local exit nor an `underlayAccess` carriage attachment has one
+      # leg, and that is a cardinality error to report, not something to paper
+      # over with a host adapter record that no host has.
       runtimeOriginEgressContract = runtimeOriginEgress.contractFor {
         inherit nodeRole uplinkAttrs loopback;
-        interfaces = runtimeInterfacesWithEgress;
+        interfaces = runtimeInterfacesMarked;
         egressIntent = nodeAttrs.egressIntent or null;
       };
-      runtimeInterfaces = runtimeOriginEgress.applyToInterfaces runtimeOriginEgressContract runtimeInterfacesWithEgress;
+      runtimeInterfaces = runtimeOriginEgress.applyToInterfaces runtimeOriginEgressContract runtimeInterfacesMarked;
       routeFilteredRuntimeInterfaces =
         if isBgpRouter then
           lib.mapAttrs (
