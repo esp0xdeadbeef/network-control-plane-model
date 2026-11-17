@@ -235,7 +235,7 @@ let
     # not a host attachment, so it must not count as one (and must not borrow
     # the ingress bridge as its own).
     // (
-      if sourceKind == "tenant" && portBinding == null then
+      if sourceKind == "tenant" && portBinding == null && nodeRole == "core" then
         { hostFacing = false; }
       else
         { }
