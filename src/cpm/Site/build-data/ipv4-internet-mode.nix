@@ -309,8 +309,7 @@ in
     # this the omission is invisible: the compiled cobalt site carried no
     # `ipv4` key at all, the renderer fell back to a blanket masquerade, and
     # the failure surfaced only at the far end as tenants with no return route
-    # (`traceroute`: `10.1.0.1 !N`). See network-site-esp
-    # GAMP/HAT/evidence/cobalt-2026-11-11.md.
+    # (`traceroute`: `10.1.0.1 !N`), measured on a live acceptance run.
     privateNat44 = privateNatDiagnostics;
   };
 }

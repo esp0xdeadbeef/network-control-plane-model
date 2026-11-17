@@ -170,7 +170,7 @@ REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --expr '
     # no `ipv4` key at all, the renderer fell back to a blanket masquerade, and
     # the omission only surfaced at the far end -- tenants had no return route
     # and `traceroute 1.1.1.1` died at the downstream-selector with `!N`.
-    # See network-site-esp GAMP/HAT/evidence/cobalt-2026-11-11.md.
+    # Measured on a live acceptance run.
     natIntentNoPrefixes = ipv4InternetModeContract {
       runtimeTargets = {
         core.natIntent = { families.ipv4 = true; };
