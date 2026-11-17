@@ -3,13 +3,15 @@
 # GAMP-SCOPE: software-module-test
 # Construction handoff: CMC constructs in network-control-plane-model (CPM).
 # This focused test verifies every SMS-030 predicate through the
-# gamp-sms-input-contracts.py checker in canonical-gamp.
+# gamp-sms-input-contracts.py checker, which ships with the orchestration
+# repository (`network-codex-agent`). The path is taken from the environment
+# rather than hardcoded, so this public repository names no private checkout.
 set -euo pipefail
 
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-codex_agent_root="${repo_root}/../canonical-gamp"
+codex_agent_root="${NETWORK_ORCHESTRATOR_ROOT:-${repo_root}/../network-codex-agent}"
 checker="${codex_agent_root}/scripts/helpers/gamp-sms-input-contracts.py"
 
 if [[ ! -x "${checker}" ]]; then
