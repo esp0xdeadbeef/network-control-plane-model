@@ -21,7 +21,7 @@ lib.mapAttrs (
       prefix: builtins.isString prefix && !(lib.hasInfix ":" prefix)
     ) (target.advertises or [ ]);
     role = target.role or "";
-    isCore = builtins.substring 0 4 role == "core";
+    isCore = role == "core";
     interfaces = (target.effectiveRuntimeRealization or { }).interfaces or { };
     isFabricP2p =
       iface:

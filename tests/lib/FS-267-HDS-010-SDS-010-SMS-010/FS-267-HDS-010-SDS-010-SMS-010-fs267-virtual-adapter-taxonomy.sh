@@ -65,10 +65,16 @@ validate_taxonomy() {
   | ($nonVirtualP2p | map(select((.owningRole // "") == "core" or (.owningRole // "") == "access"))) as $hostP2p
   | ($nonVirtualP2p | map(select((.owningRole // "") != "core" and (.owningRole // "") != "access"))) as $fabricP2p
   | ($interfaces | map(select(.sourceKind == "tenant" and .virtualAdapter == false))) as $nonVirtualTenant
-  # FS-255: a tenant attachment on a core role is a role surface, not a host
-  # attachment, and is deliberately non-host-facing. Only tenants terminating
-  # on an access role are host-facing tenant surfaces.
-  | ($nonVirtualTenant | map(select((.owningRole // "") == "access"))) as $hostTenant
+  # FS-255: a tenant attachment is a host-facing surface exactly when the
+  # inventory realizes it. On a core whose exit is a selected remote tenant
+  # context it is the carriage surface and counts; on a core that another
+  # inventory only stubs it has no port, so it is not a surface at all.
+  | ($nonVirtualTenant | map(select(.hostFacing == true))) as $hostTenant
+  | ($nonVirtualTenant
+     | map(select(
+         .hostFacing != true
+         and ((.binderSourceAudit.sourceClass // "") == "public-inventory")))
+    ) as $boundTenantNotHostFacing
   | [
       $virtual[]
       | select(
@@ -154,6 +160,9 @@ validate_taxonomy() {
           or ((.owningRole // "") == "")
         )
     ] as $badHostTenant
+  | [
+      $boundTenantNotHostFacing[]
+    ] as $badUnboundTenant
   | {
       virtualCount: ($virtual | length),
       selectorFabricLinkCount: ($selector | length),
@@ -171,7 +180,8 @@ validate_taxonomy() {
       badRuntimeNameAuthorityCount: ($badRuntimeNameAuthority | length),
       badHostP2pCount: ($badHostP2p | length),
       badFabricP2pCount: ($badFabricP2p | length),
-      badHostTenantCount: ($badHostTenant | length)
+      badHostTenantCount: ($badHostTenant | length),
+      badUnboundTenantCount: ($badUnboundTenant | length)
     }
   | select(
       .virtualCount > 0
@@ -188,6 +198,7 @@ validate_taxonomy() {
       and .badHostP2pCount == 0
       and .badFabricP2pCount == 0
       and .badHostTenantCount == 0
+      and .badUnboundTenantCount == 0
     )
   ' "${input}" >/dev/null
 }
