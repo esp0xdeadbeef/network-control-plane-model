@@ -439,6 +439,15 @@ let
       # route (which is DHCP-provided and therefore only present in the WAN's
       # table). Giving them distinct slots strands the fabric ingress in a table
       # with return routes but no default.
+      #
+      # An egress-only provider overlay belongs in that same shared table for the
+      # same reason: its generic default is what tenant payload must follow out.
+      # Two interfaces installing a default into one (table, destination,
+      # metric) triple is NOT solved here -- `ip route replace` keys on that
+      # triple, so the fix belongs where the competing route is created. See
+      # `overlay-route-augmentation/core-routes.nix`
+      # (`stripCompetingFabricDefaults`): the core's p2p handoff carries no
+      # default of its own; the exit does.
       coreSharedSlot =
         if targetRole == "core" then count else null;
       entries =

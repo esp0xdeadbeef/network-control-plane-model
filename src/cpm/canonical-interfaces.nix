@@ -55,22 +55,24 @@ let
     interface:
     let
       class = interface.interfaceClass or { };
+      sourceKind = interface.sourceKind or null;
+      adapterClass = interface.adapterClass or null;
       providerSession = (class.providerSession or false) == true;
-      overlay = (class.overlay or false) == true;
-      isObject =
-        builtins.isAttrs interface
-        && (interface.runtimeIfName or null) != null;
+      isOverlay = sourceKind == "overlay";
+      isPpp = providerSession || adapterClass == "pppoe" || adapterClass == "ppp";
     in
-    if !isObject then
-      throw "canonical-interfaces: interface without runtimeIfName cannot be published"
-    else if providerSession then
+    if isPpp then
       "iana-if-type:ppp"
-    else if overlay then
+    else if isOverlay then
+      # Overlay VPN adapters (nebula/wireguard) are modelled as virtual adapters
+      # with `sourceKind = "overlay"` and no `interfaceClass` at all -- measured:
+      # the six such interfaces in the residential-testnet HAT intent are
+      # `nebula1`, `wg-host128`, `wg-egress`. They are tunnels.
       "iana-if-type:tunnel"
     else if interface ? interfaceClass then
       "iana-if-type:ethernetCsmacd"
     else
-      throw "canonical-interfaces: interface '${interface.runtimeIfName}' has no interfaceClass to classify";
+      throw "canonical-interfaces: interface '${interface.runtimeIfName or "?"}' has no modelled class (sourceKind/adapterClass/interfaceClass) to classify";
 
   # The canonical identity of an interface is SITE-WIDE UNIQUE, and that is not
   # the same thing as its platform name. Measured on the neon site: 89 realized

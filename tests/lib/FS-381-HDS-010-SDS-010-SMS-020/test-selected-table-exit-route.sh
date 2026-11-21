@@ -30,9 +30,11 @@ set -euo pipefail
 #
 # Assertions, per fixture, per target, per family:
 #
-#   (1) selectability -- every exit default declares a table, or its interface
-#       allocates one. A default in no selectable table is not a path off the
-#       scope.
+#   (1) selectability -- a default must be in the table its own interface
+#       allocates (the allocation IS the modelled rule; no separate rule list is
+#       emitted), and a core must have exactly ONE table shared by all its
+#       interfaces so forwarded payload reaches the exit default. "The interface
+#       allocates a slot somewhere" is NOT the assertion.
 #   (2) no cross-device competition -- two interfaces must not install the same
 #       (table, destination, metric) default for one family. `ip route replace`
 #       keys on that tuple, so the second installation would silently evict the
@@ -91,6 +93,9 @@ flatten_defaults() {
     [ .control_plane_model.data[][] ][0] as $site
     | $site.runtimeTargets as $targets
     | [ $targets | to_entries[] as $t
+        | ($t.value.effectiveRuntimeRealization.targetOriginatedSelection.tableId // null) as $sel
+        | ([ ($t.value.effectiveRuntimeRealization.interfaces // {}) | .[] | (.routeSelectionRules // []) | .[] | .tableId ]
+           | map(select(. != null))) as $ruleTables
         | ($t.value.effectiveRuntimeRealization.interfaces // {}) | to_entries[] as $i
         | ($i.value.policyRoutingAllocation.tableId // null) as $tbl
         | [ ($i.value.routes.ipv4 // [] | .[] | {family: 4} + .),
@@ -101,6 +106,8 @@ flatten_defaults() {
           , allocatedTable: $tbl
           , family: .family
           , table: (.tableId // $tbl)
+          , selectionTable: $sel
+          , ruleTables: $ruleTables
           , dst: .dst
           , metric: (.metric // 50)
           , policyOnly: (.policyOnly // false)
@@ -139,13 +146,50 @@ for fixture in "${fixtures[@]}"; do
     saw_overlay=$((saw_overlay + 1))
   fi
 
-  # ---- (1) every exit default is selectable by some rule -----------------
+  # ---- (1) the modelled selection reaches the exit default -------------------
+  #
+  # Two predicates, both about the table a modelled lookup actually selects.
+  # Confirmed by measurement on this model: `routeSelectionRules` is not emitted
+  # at all -- an interface's `policyRoutingAllocation` (priority + tableId) IS
+  # the modelled rule. So "named by a routeSelectionRules entry" cannot be
+  # checked here; the allocation is the rule, and the assertions below use it.
+  #
+  #   1a. A default installed by an interface must be in THAT interface's own
+  #       allocated table. A default placed into another scope's table is reachable
+  #       only by looking up someone else's selection.
+  #
+  #   1b. On a CORE, every interface must share ONE table. The core's fabric
+  #       handoff and its exit deliberately share a slot so payload forwarded in
+  #       from the fabric reaches the exit's default. If the exit gets a table of
+  #       its own (measured: overlay-wg-egress 1005 while the fabric ingress and
+  #       the target-originated selection were 1003), the forwarded path selects
+  #       1003 and the exit default is unreachable -- the exit is "modelled" but
+  #       nothing selects it. That is the 2026-11-21 cobalt IPv6 failure.
+  #
+  # Per-lane tables on `policy` and the selectors are correct and are NOT
+  # splits: each lane has its own rule, and 1a makes its default reachable.
   unplaced="$(jq -r '
+    .[]
+    | select(.table != null and .table != .allocatedTable)
+    | "\(.target): \(.dst) (family \(.family)) on \(.iface) is in table \(.table), but that interface allocates \(.allocatedTable)"
+  ' "${defaults}")"
+  coreSplit="$(jq -r '
+    .control_plane_model.data[][] as $site
+    | $site.runtimeTargets | to_entries[]
+    | select(.value.role == "core")
+    | .key as $t
+    | [ .value.effectiveRuntimeRealization.interfaces // {} | to_entries[]
+        | { iface: .key, table: (.value.policyRoutingAllocation.tableId // null) } ] as $ifs
+    | ([ $ifs[].table ] | unique) as $tables
+    | select(($tables | length) > 1)
+    | "\($t) is a core whose interfaces select \($tables | join(", ")) -- the fabric ingress selects one and an exit default may live in another"
+  ' "${model}")"
+  nullTable="$(jq -r '
     .[]
     | select(.table == null)
     | "\(.target): \(.dst) (family \(.family)) on \(.iface) has no table and its interface allocates none"
   ' "${defaults}")"
-
+  unplaced="$(printf '%s\n%s\n%s\n' "${unplaced}" "${coreSplit}" "${nullTable}" | sed '/^$/d')"
   if [[ -n "${unplaced}" ]]; then
     echo "FAIL selected-table-exit-route [${fixture}]: an exit default is in no selectable table" >&2
     while IFS= read -r line; do printf '  %s\n' "${line}" >&2; done <<<"${unplaced}"
