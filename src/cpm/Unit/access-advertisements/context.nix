@@ -108,6 +108,25 @@ let
       # /127) and host (/32, /128) plumbing is not client reachability and
       # must never be emitted (RFC 3442 option 121 is capped at 255 bytes,
       # and leaking the fabric plumbing to clients is not modeled).
+      #
+      # DEDUPLICATED BY DESTINATION. The same internal-reachability prefix is
+      # carried on several of the access node's point-to-point interfaces (the
+      # downstream and upstream selector legs each hold an installable route to
+      # it), so concatenating the per-interface lists without compaction
+      # emitted the same destination two or more times. Measured on the neon
+      # inventory: `advertisements.ipv6Ra[0].moreSpecificRoutes` carried
+      # `fd42:dead:beef:390::/64` (the unlock tenant, where FS-100 places the
+      # Tang box) twice and the whole set twice over.
+      #
+      # That list is consumed verbatim by the renderer, which emits one radvd
+      # `route <prefix> { ... }` stanza per entry
+      # (`network-renderer-nixos/s88/ControlModule/access/render/radvd.nix`).
+      # A duplicate entry is therefore a duplicate RFC 4191 Route Information
+      # Option for one prefix: noise the tenant must parse repeatedly, and a
+      # second, independently-lifetimed route for the same destination that a
+      # client may install over the first. Cross-tenant reachability is a
+      # contract (FS-100: Tang in the unlock tenant is reachable from every
+      # access tenant), so it must be advertised once, deterministically.
       internalReachabilityRoutes = family:
         let
           ifaces = getRuntimeTargetInterfaces targetPath target;
@@ -129,10 +148,29 @@ let
                   (builtins.match ".*/(127|128)$" dst) != null;
             in
             builtins.isString dst && !plumbing;
+          selected = builtins.filter
+            (r: isClientSubnet r && ((r.intent.kind or null) == "internal-reachability" || (r.advertisedToClients or false) == true))
+            routes;
+          # Order-preserving unique by `dst`. The accepted routes are a few
+          # dozen at most, so a quadratic insert is clearer than a
+          # listToAttrs round trip and does not reorder the output (the
+          # rendered radvd stanzas should stay stable across evaluations).
+          uniqueByDst =
+            seen: acc: remaining:
+            if remaining == [ ] then
+              acc
+            else
+              let
+                head = builtins.head remaining;
+                dst = head.dst or null;
+                rest = builtins.tail remaining;
+              in
+              if builtins.elem dst seen then
+                uniqueByDst seen acc rest
+              else
+                uniqueByDst (seen ++ [ dst ]) (acc ++ [ head ]) rest;
         in
-        builtins.filter
-          (r: isClientSubnet r && ((r.intent.kind or null) == "internal-reachability" || (r.advertisedToClients or false) == true))
-          routes;
+        uniqueByDst [ ] [ ] selected;
 
       # Explicit IPv6 internet egress for this tenant, per FS-400/410/420.
       # Two modeled modes grant a client-facing IPv6 default route:
