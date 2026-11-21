@@ -317,6 +317,58 @@ let
         interfaces;
 
 
+
+  # A core that egresses through a policy-routed provider overlay must not also
+  # install a default on its fabric p2p handoff. Both would land in the core's
+  # ONE shared policy table (see `normalize-runtime-routes.nix`), and
+  # `ip route replace` keys on (table, destination, metric), so the second
+  # installation silently evicts the first -- which is exactly how the live
+  # cobalt IPv6 exit died on 2026-11-21 while IPv4 worked.
+  #
+  # Measured on `wireguard-provider-overlay`, core-nebula, after the egress-only
+  # default was added:
+  #
+  #   table 1003 0.0.0.0/0 metric 50 claimed by
+  #     overlay-wg-egress, p2p-core-nebula-upstream-selector
+  #
+  # The exit owns the default; the fabric handoff carries reachability TO the
+  # exit, not a default of its own. This mirrors `pppoe-default-route-filter`,
+  # which strips the same route from a PPPoE core's p2p handoff for the same
+  # reason.
+  stripCompetingFabricDefaults =
+    nodeRole: interfaces:
+    if nodeRole != "core" then
+      interfaces
+    else
+      let
+        isDefault = route: (route.dst or null) == "0.0.0.0/0" || (route.dst or null) == "::/0";
+        isDefaultReachability = route: isDefault route
+          && ((route.intent or { }).kind or null) == "default-reachability";
+        hasEgressDefault = builtins.any
+          (iface:
+            let routes = attrsOrEmpty (iface.routes or null);
+            in builtins.any
+              (fam: builtins.any
+                (route: isDefaultReachability route && (route.policyOnly or false) == true)
+                (listOrEmpty (routes.${fam} or null)))
+              [ "ipv4" "ipv6" ])
+          (builtins.attrValues interfaces);
+        strip = routes:
+          lib.mapAttrs
+            (_: entries: builtins.filter (route: !(isDefaultReachability route)) (listOrEmpty entries))
+            (attrsOrEmpty routes);
+      in
+      if !hasEgressDefault then
+        interfaces
+      else
+        lib.mapAttrs
+          (_: iface:
+            if (iface.sourceKind or null) == "p2p" then
+              iface // { routes = strip (iface.routes or null); }
+            else
+              iface)
+          interfaces;
+
 in
 {
   inherit
@@ -327,5 +379,6 @@ in
     addGenericOverlayDefaultRoutesToCore
     addEgressSourceReturnRoutesToCore
     addRuntimePrefixReturnsToCoreOverlay
+    stripCompetingFabricDefaults
     ;
 }

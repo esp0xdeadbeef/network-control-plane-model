@@ -11,6 +11,7 @@
 , addOverlayUnderlayEndpointRoutesToCore
 , addDelegatedOverlayDefaultRoutesToCore
 , addGenericOverlayDefaultRoutesToCore
+, stripCompetingFabricDefaults
 , addEgressSourceReturnRoutesToCore
 , addRuntimePrefixReturnsToCoreOverlay
 , addRuntimePrefixReturnsToWanCore
@@ -76,10 +77,12 @@ let
     addRuntimePrefixReturnsToCoreOverlay nodeRole (
       addEgressSourceReturnRoutesToCore nodeRole (
         addDelegatedOverlayDefaultRoutesToCore nodeRole (
-          addGenericOverlayDefaultRoutesToCore nodeRole (
+          stripCompetingFabricDefaults nodeRole (
+            addGenericOverlayDefaultRoutesToCore nodeRole (
             addOverlayUnderlayEndpointRoutesToCore nodeRole (
               addOverlayNodeRoutesToCoreOverlay nodeRole (addOverlayNodeRoutesToSelector nodeRole interfaces)
             )
+          )
           )
         )
       )
