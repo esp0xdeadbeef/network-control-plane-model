@@ -204,8 +204,13 @@
               hatEndpointAssignment = import ./src/cpm/hat-endpoint-assignment.nix {
                 inherit lib deploymentHosts;
               };
+              # Canonical interface identity, published by the producer (see
+              # src/cpm/canonical-interfaces.nix). Kept identical to src/main.nix:
+              # both assembly paths must publish it, or a build through one entry
+              # point carries the canonical collection and the other does not.
+              canonicalInterfaces = import ./src/cpm/canonical-interfaces.nix { inherit lib; } cpm;
               result = {
-                control_plane_model = cpm;
+                control_plane_model = cpm // { inherit canonicalInterfaces; };
                 endpointInventory = inventory;
                 forwardingOut = input;
                 inherit deploymentHosts;
@@ -332,7 +337,10 @@
                 inputTreatment = "pass-through";
                 normalizedTo = "nix-attrset";
               };
+              canonicalInterfaces =
+                import ./src/cpm/canonical-interfaces.nix { inherit lib; } controlPlaneModel;
               normalizedControlPlaneModel = controlPlaneModel // {
+                inherit canonicalInterfaces;
                 meta = existingMeta // {
                   layerEntry = layerEntryMeta;
                 };

@@ -24,6 +24,12 @@ let
         }
       );
 
+  # Canonical interface identity is a property of the modelled network, so the
+  # producer publishes it. Peer renderers map it instead of deriving an identity
+  # from a platform interface name or an adapter class (FS-310: a renderer must
+  # not invent canonical meaning).
+  canonicalInterfaces = import ./cpm/canonical-interfaces.nix { inherit lib; } cpm;
+
   deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
   hatEndpointAssignment = import ./cpm/hat-endpoint-assignment.nix {
     inherit deploymentHosts;
@@ -31,7 +37,7 @@ let
   };
 
   merged = {
-    control_plane_model = cpm;
+    control_plane_model = cpm // { inherit canonicalInterfaces; };
     endpointInventory = inventory;
     inherit deploymentHosts;
   }
