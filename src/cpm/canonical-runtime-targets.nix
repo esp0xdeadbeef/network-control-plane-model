@@ -10,7 +10,8 @@
 #
 # This publishes them as one flat, sorted list:
 #
-#   { enterprise, site, target, role, placementHost, logicalNode, containers }
+#   { enterprise, site, target, role, placementHost, logicalNode, containers,
+#     interfaces }
 #
 # A projection of the producer's own values -- nothing is re-derived -- so it
 # cannot disagree with the model it came from.
@@ -35,6 +36,13 @@ let
                 placementHost = (target.placement or { }).host or null;
                 logicalNode = target.logicalNode or { };
                 containers = target.containers or [ ];
+                # The target's realized interfaces (logical name, backingRef,
+                # sourceKind, addresses and routes). An overlay renderer plans
+                # from these -- which lane an overlay interface carries and
+                # which prefixes it routes -- so they are published rather than
+                # re-read from the model.
+                interfaces =
+                  (target.effectiveRuntimeRealization or { }).interfaces or { };
               })
             (builtins.attrNames targets))
         (builtins.attrNames sites))
