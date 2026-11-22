@@ -11,7 +11,7 @@
 # This publishes them as one flat, sorted list:
 #
 #   { enterprise, site, target, role, placementHost, logicalNode, containers,
-#     interfaces }
+#     interfaces, facts }
 #
 # A projection of the producer's own values -- nothing is re-derived -- so it
 # cannot disagree with the model it came from.
@@ -43,6 +43,12 @@ let
                 # re-read from the model.
                 interfaces =
                   (target.effectiveRuntimeRealization or { }).interfaces or { };
+                # The complete modelled target record, published rather than
+                # re-derived. A renderer whose plan reads more than the fields
+                # singled out above (nebula reads advertisements, natIntent and
+                # forwardingIntent to build node routes) can take them from here
+                # instead of walking the producer's model.
+                facts = target;
               })
             (builtins.attrNames targets))
         (builtins.attrNames sites))
