@@ -66,6 +66,19 @@ let
                 [{
                   target = entry.targetName;
                   interface = ifaceName;
+                  # The platform interface name the route is installed on, and
+                  # the modelled class the renderer filters by. Both are
+                  # modelled facts; a consumer must not re-derive them from
+                  # nested per-interface records.
+                  runtimeIfName =
+                    iface.runtimeIfName or (iface.renderedIfName or ifaceName);
+                  sourceKind = iface.sourceKind or null;
+                  policyOnly = (route.policyOnly or false) == true;
+                  # The deployment host the target is placed on, so a renderer
+                  # can scope its artifact without re-reading placement from the
+                  # nested model.
+                  deploymentHost =
+                    ((entry.target.placement or { }).host or null);
                   inherit family dst tableId;
                   gateway = route.${viaField} or null;
                   metric = route.metric or null;
@@ -80,7 +93,8 @@ let
 
   # Deterministic order and no exact duplicates: one command, one entry.
   keyOf = entry: builtins.toJSON [
-    entry.target entry.interface entry.family entry.dst entry.gateway entry.tableId entry.metric
+    entry.target entry.interface entry.family entry.dst entry.gateway
+    entry.tableId entry.metric entry.policyOnly
   ];
   deduped = builtins.attrValues (
     builtins.listToAttrs (
