@@ -34,14 +34,6 @@ let
   canonicalSites = import ./cpm/canonical-sites.nix { inherit lib; } cpm;
   canonicalRuntimeTargets = import ./cpm/canonical-runtime-targets.nix { inherit lib; } cpm;
 
-  # Realization facts the access-endpoint renderer materializes: per host, the
-  # bridge networks and uplinks declared for it. These live in the inventory's
-  # deployment block, not in the model, and are published here so a renderer can
-  # read canonical content instead of re-reading inventory or the model.
-  canonicalDeployment = {
-    hosts = (inventory.deployment or { }).hosts or { };
-  };
-
   deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
   hatEndpointAssignment = import ./cpm/hat-endpoint-assignment.nix {
     inherit deploymentHosts;

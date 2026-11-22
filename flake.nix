@@ -213,9 +213,8 @@
               canonicalWireGuard = import ./src/cpm/canonical-wireguard.nix { inherit lib; } cpm;
               canonicalSites = import ./src/cpm/canonical-sites.nix { inherit lib; } cpm;
               canonicalRuntimeTargets = import ./src/cpm/canonical-runtime-targets.nix { inherit lib; } cpm;
-              canonicalDeployment = { hosts = (inventory.deployment or { }).hosts or { }; };
               result = {
-                control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard canonicalSites canonicalRuntimeTargets canonicalDeployment; };
+                control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard canonicalSites canonicalRuntimeTargets; };
                 endpointInventory = inventory;
                 forwardingOut = input;
                 inherit deploymentHosts;
