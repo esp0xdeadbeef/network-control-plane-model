@@ -40,6 +40,12 @@ let
                 terminateOn = overlay.terminateOn or [ ];
                 inherit nodes;
                 providerBootstrapDns = overlay.providerBootstrapDns or [ ];
+                # The complete modelled overlay record, published rather than
+                # re-derived: a renderer that needs a field this projection does
+                # not single out (nebula's overlay plan reads peers, lighthouses
+                # and static hosts) can take it from here instead of walking the
+                # producer's model.
+                facts = overlay;
               })
             (builtins.attrNames overlays))
         (builtins.attrNames sites))
