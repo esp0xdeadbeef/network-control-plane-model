@@ -86,6 +86,45 @@ let
     && (route.dst or null) != defaultDst family
     && (route.dst or null) != null;
 
+  # FS-315: one (prefix, lane) authority has ONE next-hop set. Several
+  # interfaces of one access lane can each carry the same prefix (measured on
+  # `single-wan`, `downstream-selector`: 10.20.10.0/24 arrives with lane admin
+  # from ens5 and lane mgmt from ens8). Copying every one of them into the lane's
+  # policy table installs the same destination twice with different next hops --
+  # `ip route replace` keys on (table, destination), so the surviving route is
+  # whoever wrote last, and the containerlab renderer refuses the site
+  # (FS-310-HDS-020-SDS-010-SMS-060).
+  #
+  # The complement is therefore built from ONE member per (family, destination,
+  # lane access): the member with the lowest next-hop string, so two evaluations
+  # agree. This selects a member; it does not delete the base routes, so
+  # per-requester-lane reachability (FS-540 ... SMS-040) still sees each lane's
+  # own path.
+  oneMemberPerLanePrefix =
+    family: routes:
+    let
+      viaField = if family == 4 then "via4" else "via6";
+      laneAccessOf = route: (attrsOrEmpty (route.lane or null)).access or null;
+      keyOf = route: builtins.toJSON [
+        family
+        (route.dst or null)
+        (laneAccessOf route)
+      ];
+      viaOf = route: let v = route.${viaField} or null; in if builtins.isString v then v else "";
+      grouped = builtins.foldl'
+        (acc: route:
+          let k = keyOf route;
+          in acc // {
+            ${k} =
+              if builtins.hasAttr k acc
+              then (if viaOf route < viaOf acc.${k} then route else acc.${k})
+              else route;
+          })
+        { }
+        routes;
+    in
+    builtins.attrValues grouped;
+
   policyTableComplements =
     family: defaults: routes:
     builtins.concatLists (
@@ -117,7 +156,7 @@ let
             };
           }
         ) matching
-      ) (builtins.filter (isPolicyTableComplementSource family) routes)
+      ) (oneMemberPerLanePrefix family (builtins.filter (isPolicyTableComplementSource family) routes))
     );
 in
 {
