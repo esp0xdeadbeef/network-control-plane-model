@@ -30,6 +30,7 @@ let
   # not invent canonical meaning).
   canonicalInterfaces = import ./cpm/canonical-interfaces.nix { inherit lib; } cpm;
   canonicalRoutes = import ./cpm/canonical-routes.nix { inherit lib; } cpm;
+  canonicalWireGuard = import ./cpm/canonical-wireguard.nix { inherit lib; } cpm;
 
   deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
   hatEndpointAssignment = import ./cpm/hat-endpoint-assignment.nix {
@@ -38,7 +39,7 @@ let
   };
 
   merged = {
-    control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes; };
+    control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard; };
     endpointInventory = inventory;
     inherit deploymentHosts;
   }

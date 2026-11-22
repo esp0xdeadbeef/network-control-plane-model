@@ -210,8 +210,9 @@
               # point carries the canonical collection and the other does not.
               canonicalInterfaces = import ./src/cpm/canonical-interfaces.nix { inherit lib; } cpm;
               canonicalRoutes = import ./src/cpm/canonical-routes.nix { inherit lib; } cpm;
+              canonicalWireGuard = import ./src/cpm/canonical-wireguard.nix { inherit lib; } cpm;
               result = {
-                control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes; };
+                control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard; };
                 endpointInventory = inventory;
                 forwardingOut = input;
                 inherit deploymentHosts;
