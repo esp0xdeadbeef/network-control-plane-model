@@ -92,15 +92,42 @@ let
     targetPairs;
 
   # Deterministic order and no exact duplicates: one command, one entry.
+  #
+  # The identity is the one `ip route replace` keys on -- (family, table,
+  # destination, gateway, metric) on one interface of one target -- plus the
+  # interface and target that carry it. It is NOT the modelled route record:
+  #
+  #   `policyOnly` does not reach the kernel. One modelled route can arrive here
+  #   twice, once as the plain route and once as the policy-only projection of
+  #   it, and both are the same command. Keying on `policyOnly` published two
+  #   entries for one authority, and every renderer then installed two
+  #   primitives for one route (FS-310-HDS-020-SDS-010-SMS-060: "exact
+  #   duplicates become repeated target routes instead of one primitive").
+  #
+  #   `kind` and `sourceKind` are provenance. Two entries that differ only in
+  #   them are still one command; `kind` is taken from the first in canonical
+  #   order so the published record stays deterministic.
+  #
+  # Anything else that differs is a genuine conflict -- two routes that cannot
+  # both be installed -- and is left to the model's own validation rather than
+  # being merged here, because realizing a winner would be this projection
+  # choosing meaning the producer did not.
   keyOf = entry: builtins.toJSON [
     entry.target entry.interface entry.family entry.dst entry.gateway
-    entry.tableId entry.metric entry.policyOnly
+    entry.tableId entry.metric
   ];
-  deduped = builtins.attrValues (
-    builtins.listToAttrs (
-      map (entry: { name = keyOf entry; value = entry; }) routeEntries
-    )
-  );
+  grouped = builtins.groupBy keyOf routeEntries;
+  merged =
+    key:
+    let
+      entries = grouped.${key};
+      # `policyOnly` does not reach the kernel, but it is still published, and a
+      # consumer that reads it must see the union: one of the arrivals being the
+      # policy-only projection means the route IS policy-only.
+      policyOnly = builtins.any (entry: entry.policyOnly == true) entries;
+    in
+    (builtins.head entries) // { inherit policyOnly; };
+  deduped = map merged (builtins.attrNames grouped);
   sorted = builtins.sort
     (a: b: (keyOf a) < (keyOf b))
     deduped;
