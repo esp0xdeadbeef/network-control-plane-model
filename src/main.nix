@@ -29,6 +29,7 @@ let
   # from a platform interface name or an adapter class (FS-310: a renderer must
   # not invent canonical meaning).
   canonicalInterfaces = import ./cpm/canonical-interfaces.nix { inherit lib; } cpm;
+  canonicalRoutes = import ./cpm/canonical-routes.nix { inherit lib; } cpm;
 
   deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
   hatEndpointAssignment = import ./cpm/hat-endpoint-assignment.nix {
@@ -37,7 +38,7 @@ let
   };
 
   merged = {
-    control_plane_model = cpm // { inherit canonicalInterfaces; };
+    control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes; };
     endpointInventory = inventory;
     inherit deploymentHosts;
   }

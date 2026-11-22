@@ -209,8 +209,9 @@
               # both assembly paths must publish it, or a build through one entry
               # point carries the canonical collection and the other does not.
               canonicalInterfaces = import ./src/cpm/canonical-interfaces.nix { inherit lib; } cpm;
+              canonicalRoutes = import ./src/cpm/canonical-routes.nix { inherit lib; } cpm;
               result = {
-                control_plane_model = cpm // { inherit canonicalInterfaces; };
+                control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes; };
                 endpointInventory = inventory;
                 forwardingOut = input;
                 inherit deploymentHosts;
@@ -339,8 +340,10 @@
               };
               canonicalInterfaces =
                 import ./src/cpm/canonical-interfaces.nix { inherit lib; } controlPlaneModel;
+              canonicalRoutes =
+                import ./src/cpm/canonical-routes.nix { inherit lib; } controlPlaneModel;
               normalizedControlPlaneModel = controlPlaneModel // {
-                inherit canonicalInterfaces;
+                inherit canonicalInterfaces canonicalRoutes;
                 meta = existingMeta // {
                   layerEntry = layerEntryMeta;
                 };
