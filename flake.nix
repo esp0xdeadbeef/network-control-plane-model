@@ -345,8 +345,20 @@
                 import ./src/cpm/canonical-interfaces.nix { inherit lib; } controlPlaneModel;
               canonicalRoutes =
                 import ./src/cpm/canonical-routes.nix { inherit lib; } controlPlaneModel;
+              canonicalWireGuard =
+                import ./src/cpm/canonical-wireguard.nix { inherit lib; } controlPlaneModel;
+              canonicalSites =
+                import ./src/cpm/canonical-sites.nix { inherit lib; } controlPlaneModel;
+              canonicalRuntimeTargets =
+                import ./src/cpm/canonical-runtime-targets.nix { inherit lib; } controlPlaneModel;
               normalizedControlPlaneModel = controlPlaneModel // {
-                inherit canonicalInterfaces canonicalRoutes;
+                inherit
+                  canonicalInterfaces
+                  canonicalRoutes
+                  canonicalWireGuard
+                  canonicalSites
+                  canonicalRuntimeTargets
+                  ;
                 meta = existingMeta // {
                   layerEntry = layerEntryMeta;
                 };
