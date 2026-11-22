@@ -20,7 +20,12 @@
 cpm:
 let
   providers = cpm.wgInventory or { };
-  contracts = cpm.providerContracts or { };
+  # The renderer reads `providerContracts.wireguard` (the per-overlay WireGuard
+  # provider contracts the producer builds from inventory), so the canonical
+  # projection keeps that key rather than flattening it away.
+  contracts = {
+    wireguard = cpm.providerContractsWireguard or { };
+  };
 in
 {
   inherit providers contracts;
