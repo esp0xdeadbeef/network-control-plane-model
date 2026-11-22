@@ -52,8 +52,29 @@ let
     enterpriseNames;
 
   keyOf = entry: "${entry.enterprise}/${entry.site}/${entry.overlay}";
+  # Site-level records: the plan derives dynamic firewall CIDRs from
+  # `site.domains.tenants`, which lives on the site, not on an overlay or a
+  # target. Published as canonical content so an overlay renderer does not have
+  # to walk the producer's model for it.
+  siteEntries = builtins.concatMap
+    (enterprise:
+      let sites = cpm.data.${enterprise} or { }; in
+      map
+        (site: {
+          inherit enterprise site;
+          facts = sites.${site};
+        })
+        (builtins.attrNames sites))
+    enterpriseNames;
+
+  siteKeyOf = entry: "${entry.enterprise}/${entry.site}";
 in
 {
+  sites = builtins.sort
+    (a: b: (siteKeyOf a) < (siteKeyOf b))
+    (builtins.attrValues (
+      builtins.listToAttrs (map (entry: { name = siteKeyOf entry; value = entry; }) siteEntries)
+    ));
   overlays = builtins.sort
     (a: b: (keyOf a) < (keyOf b))
     (builtins.attrValues (
