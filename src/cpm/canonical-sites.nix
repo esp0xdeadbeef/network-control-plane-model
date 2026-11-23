@@ -68,8 +68,37 @@ let
     enterpriseNames;
 
   siteKeyOf = entry: "${entry.enterprise}/${entry.site}";
+
+  # The same site facts, grouped the way the producer's own `data` tree is grouped:
+  # enterprise -> site -> record.
+  #
+  # `sites` above is a flat list, which is the right shape for a renderer that wants
+  # "every site record". It is the wrong shape for the consumers that iterate
+  # enterprise -> site, and there are several: network-renderer-nixos
+  # dry-config-model/sites.nix and its Unit/lookup/runtime-context files walk
+  # exactly that tree, so they read `control_plane_model.data` -- which
+  # RR_RAW_CPM_INPUT forbids. Regrouping the flat list in each consumer is both
+  # repetitive and easy to get subtly wrong (measured: one such regroup cost 10
+  # tests); the producer already holds this grouping, so it publishes it here.
+  #
+  # This is a projection of values the model already carries. Nothing is
+  # re-derived and no entry is added that `sites` does not also contain.
+  byEnterprise =
+    builtins.foldl'
+      (
+        acc: entry:
+        acc
+        // {
+          ${entry.enterprise} = (acc.${entry.enterprise} or { }) // {
+            ${entry.site} = entry.facts;
+          };
+        }
+      )
+      { }
+      siteEntries;
 in
 {
+  inherit byEnterprise;
   sites = builtins.sort
     (a: b: (siteKeyOf a) < (siteKeyOf b))
     (builtins.attrValues (
