@@ -8,7 +8,7 @@
 }:
 
 let
-  inherit (common) attrsOrEmpty failInventory listOrEmpty;
+  inherit (common) attrsOrEmpty failInventory listOrEmpty uniqueRoutes;
   ipam = common.ipam or { };
   # FS-540-HDS-010-SDS-010-SMS-010: the resolver source (the resolver own host or
   # loopback identity) binds to the modeled egress surface as exactly one
@@ -503,8 +503,12 @@ let
               iface
               // {
                 routes = {
-                  ipv4 = listOrEmpty (routes.ipv4 or null) ++ routesByFamily.ipv4;
-                  ipv6 = listOrEmpty (routes.ipv6 or null) ++ routesByFamily.ipv6;
+                  # A route list is a set: the interface's own routes and the
+                  # forwarder-derived ones routinely name the same prefix, and
+                  # publishing both made every consumer install it twice
+                  # (FS-310-HDS-020-SDS-010-SMS-060).
+                  ipv4 = uniqueRoutes (listOrEmpty (routes.ipv4 or null) ++ routesByFamily.ipv4);
+                  ipv6 = uniqueRoutes (listOrEmpty (routes.ipv6 or null) ++ routesByFamily.ipv6);
                 };
               })
           interfaces;
