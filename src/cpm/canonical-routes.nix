@@ -98,6 +98,13 @@ let
                   gateway = route.${viaField} or null;
                   metric = route.metric or null;
                   kind = (route.intent or { }).kind or null;
+                  # FS-370-HDS-010-SDS-010-SMS-010 / FS-540: the preferred
+                  # source the runtime-origin contract binds a default to. It is
+                  # already stamped on the interface route by
+                  # runtime-origin-egress.nix `applyToInterfaces`; publishing it
+                  # here is what lets a renderer install the route without
+                  # reading the model to find it.
+                  preferredSource = route.preferredSource or null;
                 }];
           in
           builtins.concatMap
