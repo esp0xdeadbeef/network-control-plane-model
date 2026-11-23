@@ -25,6 +25,21 @@
 { lib }:
 cpm:
 let
+  # Distinct values, order preserved. `lib.unique` would do, but values here can
+  # be null and lists of mixed types, so compare their canonical JSON.
+  unique =
+    values:
+    let
+      indexed = lib.imap0 (index: value: { inherit index value; }) values;
+      firstFor = builtins.listToAttrs (
+        map (entry: { name = builtins.toJSON entry.value; value = entry.index; }) indexed
+      );
+      keep = map (entry: entry.value) (
+        builtins.filter (entry: (firstFor.${builtins.toJSON entry.value}) == entry.index) indexed
+      );
+    in
+    keep;
+
   enterpriseNames = builtins.attrNames (cpm.data or { });
 
   targetPairs = builtins.concatMap
@@ -117,16 +132,44 @@ let
     entry.tableId entry.metric
   ];
   grouped = builtins.groupBy keyOf routeEntries;
+  # Every field of an entry is either part of `keyOf` or one of these. That is
+  # the whole contract: the identity is what `ip route replace` keys on, so two
+  # entries sharing it ARE one command, and the only things left to reconcile
+  # are the label (`kind`), the modelled class (`sourceKind`) and the projection
+  # flag (`policyOnly`).
+  #
+  # There is deliberately no "conflict" branch. A conflict would need two
+  # entries that share the key but differ in something else, and the key already
+  # contains every field a route has apart from these three -- `interface` is in
+  # the key, so two different links never collide, and `deploymentHost` follows
+  # from `target`. A guard for an unreachable case is a guard nobody can
+  # falsify; the merge below is covered by a test that asserts both the merge
+  # and that distinct next hops stay distinct.
   merged =
     key:
     let
       entries = grouped.${key};
-      # `policyOnly` does not reach the kernel, but it is still published, and a
-      # consumer that reads it must see the union: one of the arrivals being the
-      # policy-only projection means the route IS policy-only.
+      # `kind` and `sourceKind` label the same command; when a merged group
+      # arrives with several labels, publish one of them deterministically.
+      # Picking by arrival order would make the record depend on evaluation
+      # order; sorting first makes the answer a function of the content.
+      oneOf =
+        name:
+        let
+          values = unique (map (entry: entry.${name} or null) entries);
+        in
+        if builtins.length values == 1 then
+          builtins.head values
+        else
+          builtins.head (builtins.sort (a: b: builtins.toJSON a < builtins.toJSON b) values);
       policyOnly = builtins.any (entry: entry.policyOnly == true) entries;
     in
-    (builtins.head entries) // { inherit policyOnly; };
+    (builtins.head entries)
+    // {
+      inherit policyOnly;
+      kind = oneOf "kind";
+      sourceKind = oneOf "sourceKind";
+    };
   deduped = map merged (builtins.attrNames grouped);
   sorted = builtins.sort
     (a: b: (keyOf a) < (keyOf b))
