@@ -110,6 +110,28 @@ result="$(REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json
     mergedPolicyOnly =
       if builtins.length sameCommand == 1 then (builtins.head sameCommand).policyOnly else null;
     distinctGatewayCount = builtins.length distinctGateways;
+    # The property that actually matters: merging must not lose a field that
+    # identifies WHERE a route installs. `kind`, `sourceKind` and `policyOnly`
+    # are the only fields the module may reconcile. If `deploymentHost` or
+    # `runtimeIfName` ever differ inside one kernel identity, a route has been
+    # silently repointed at another link or host.
+    #
+    # Measured on wireguard-provider-overlay when this was written: 661 raw
+    # records, 244 merged groups, and the only differing fields were `kind` and
+    # `policyOnly`. This assertion is what makes that a checked fact instead of
+    # a one-off observation.
+    fieldsDifferingInsideMerges =
+      let
+        groupedByKernel = lib.groupBy kernelIdentity routes;
+        multiGroups = builtins.filter
+          (k: builtins.length groupedByKernel.${k} > 1)
+          (builtins.attrNames groupedByKernel);
+        fields = [ "kind" "sourceKind" "policyOnly" "deploymentHost" "runtimeIfName" ];
+        distinct = f: group: builtins.length (lib.attrNames (lib.listToAttrs
+          (map (e: { name = builtins.toJSON (e.${f} or null); value = true; }) group)));
+      in
+      builtins.filter (f: builtins.any (k: distinct f groupedByKernel.${k} > 1) multiGroups) fields;
+
   }
 ')"
 
@@ -124,6 +146,7 @@ deterministic="$(jq -r '.deterministic' <<<"${result}")"
 merged="$(jq -r '.mergedSameCommand' <<<"${result}")"
 merged_policy_only="$(jq -r '.mergedPolicyOnly' <<<"${result}")"
 distinct_gateways="$(jq -r '.distinctGatewayCount' <<<"${result}")"
+nonmergeable_diffs="$(jq -r '.fieldsDifferingInsideMerges | map(select(. != "kind" and . != "sourceKind" and . != "policyOnly")) | join(",")' <<<"${result}")"
 merged_kind="$(jq -r '.mergedKind' <<<"${result}")"
 
 ((published > 0)) || fail "the model published no canonical routes, so this check is vacuous"
@@ -138,6 +161,8 @@ merged_kind="$(jq -r '.mergedKind' <<<"${result}")"
 # Sorted, so "internal-reachability" < "service-dns-reachability".
 [[ "${merged_kind}" == "internal-reachability" ]] \
   || fail "the merged entry's kind must be chosen deterministically, got ${merged_kind}"
+[[ -z "${nonmergeable_diffs}" ]] \
+  || fail "routes merged across a field that identifies where they install (${nonmergeable_diffs}); one has been repointed"
 [[ "${distinct_gateways}" == "2" ]] \
   || fail "two routes with different next hops are different primitives and must both be kept, got ${distinct_gateways}"
 
