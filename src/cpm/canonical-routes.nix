@@ -112,6 +112,19 @@ let
                   # Publishing it is what lets a renderer emit the route without
                   # reading the model.
                   scope = route.scope or null;
+                  # The complete modelled route record, published rather than
+                  # projected field by field.
+                  #
+                  # Two fields were found missing this way in two attempts --
+                  # `preferredSource` (FS-370/FS-540 runtime-origin contract) and
+                  # `scope` (FS-380-SMS-120 link scope) -- each time by a renderer
+                  # emitting from the canonical records and hitting a contract
+                  # the projection could not satisfy. Hand-picking the fields a
+                  # renderer might need guarantees a third; publishing the record
+                  # the producer already holds makes the question moot, and it is
+                  # the same shape `canonicalSites` and
+                  # `canonicalRuntimeTargets` already use (`facts`).
+                  facts = route;
                 }];
           in
           builtins.concatMap
