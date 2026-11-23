@@ -126,7 +126,6 @@ in
     listOrEmpty
     resolveSiteEntry
     mergeRoutes
-    uniqueRoutes
     uniqueStrings
     ;
 }
