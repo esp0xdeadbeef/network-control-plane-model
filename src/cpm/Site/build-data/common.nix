@@ -16,7 +16,6 @@ let
     attrsOrEmpty
     listOrEmpty
     mergeRoutes
-    uniqueRoutes
     uniqueStrings
     ;
 
