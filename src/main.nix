@@ -33,6 +33,7 @@ let
   canonicalWireGuard = import ./cpm/canonical-wireguard.nix { inherit lib; } cpm;
   canonicalSites = import ./cpm/canonical-sites.nix { inherit lib; } cpm;
   canonicalRuntimeTargets = import ./cpm/canonical-runtime-targets.nix { inherit lib; } cpm;
+  canonicalForwarding = import ./cpm/canonical-forwarding.nix { inherit lib; } cpm;
 
   deploymentHosts = if inventory ? deployment && inventory.deployment ? hosts then inventory.deployment.hosts else { };
   hatEndpointAssignment = import ./cpm/hat-endpoint-assignment.nix {
@@ -41,7 +42,7 @@ let
   };
 
   merged = {
-    control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard canonicalSites canonicalRuntimeTargets; };
+    control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard canonicalSites canonicalRuntimeTargets canonicalForwarding; };
     endpointInventory = inventory;
     inherit deploymentHosts;
   }
