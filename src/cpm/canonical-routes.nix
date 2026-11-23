@@ -105,6 +105,13 @@ let
                   # here is what lets a renderer install the route without
                   # reading the model to find it.
                   preferredSource = route.preferredSource or null;
+                  # FS-380-HDS-020-SDS-010-SMS-120: a route's scope. The
+                  # renderer's contract distinguishes a link-scoped route from a
+                  # universe-scoped one (test asserts `Scope = "link"` on a
+                  # transit-ingress reply), and the interface route carries it.
+                  # Publishing it is what lets a renderer emit the route without
+                  # reading the model.
+                  scope = route.scope or null;
                 }];
           in
           builtins.concatMap
