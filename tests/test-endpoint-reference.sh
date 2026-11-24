@@ -12,9 +12,9 @@
 #                       addressing only has the reference; resolving it at build
 #                       time would bake a stale value into the artifact.
 #   overlay address     the tunnel address inside the overlay. It is not an
-#                       endpoint and no domain name can supply it: FS-350-HDS-010-
-#                       SDS-010-SMS-050 realizes it in inventory from the NFM
-#                       participant ledger.
+#                       endpoint and no domain name can supply it. It is realized in
+#                       inventory from the NFM participant ledger, owned by
+#                       FS-350-HDS-010-SDS-010-SMS-050.
 #
 # The model already supports both (`underlayEndpointSourceFiles` becomes
 # `underlayEndpoints = [ { sourceFile; family; } ]` and is never resolved here;
