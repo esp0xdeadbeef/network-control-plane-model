@@ -210,12 +210,12 @@
               # point carries the canonical collection and the other does not.
               canonicalInterfaces = import ./src/cpm/canonical-interfaces.nix { inherit lib; } cpm;
               canonicalRoutes = import ./src/cpm/canonical-routes.nix { inherit lib; } cpm;
-              canonicalWireGuard = import ./src/cpm/canonical-wireguard.nix { inherit lib; } cpm;
+              canonicalOverlays = import ./src/cpm/canonical-overlays.nix { inherit lib; } cpm;
               canonicalSites = import ./src/cpm/canonical-sites.nix { inherit lib; } cpm;
               canonicalForwarding = import ./src/cpm/canonical-forwarding.nix { inherit lib; } cpm;
               canonicalRuntimeTargets = import ./src/cpm/canonical-runtime-targets.nix { inherit lib; } cpm;
               result = {
-                control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard canonicalSites canonicalRuntimeTargets canonicalForwarding; };
+                control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalOverlays canonicalSites canonicalRuntimeTargets canonicalForwarding; };
                 endpointInventory = inventory;
                 forwardingOut = input;
                 inherit deploymentHosts;
@@ -346,8 +346,8 @@
                 import ./src/cpm/canonical-interfaces.nix { inherit lib; } controlPlaneModel;
               canonicalRoutes =
                 import ./src/cpm/canonical-routes.nix { inherit lib; } controlPlaneModel;
-              canonicalWireGuard =
-                import ./src/cpm/canonical-wireguard.nix { inherit lib; } controlPlaneModel;
+              canonicalOverlays =
+                import ./src/cpm/canonical-overlays.nix { inherit lib; } controlPlaneModel;
               canonicalSites =
                 import ./src/cpm/canonical-sites.nix { inherit lib; } controlPlaneModel;
               canonicalRuntimeTargets =
@@ -356,7 +356,7 @@
                 inherit
                   canonicalInterfaces
                   canonicalRoutes
-                  canonicalWireGuard
+                  canonicalOverlays
                   canonicalSites
                   canonicalRuntimeTargets
                   ;

@@ -30,7 +30,7 @@ let
   # not invent canonical meaning).
   canonicalInterfaces = import ./cpm/canonical-interfaces.nix { inherit lib; } cpm;
   canonicalRoutes = import ./cpm/canonical-routes.nix { inherit lib; } cpm;
-  canonicalWireGuard = import ./cpm/canonical-wireguard.nix { inherit lib; } cpm;
+  canonicalOverlays = import ./cpm/canonical-overlays.nix { inherit lib; } cpm;
   canonicalSites = import ./cpm/canonical-sites.nix { inherit lib; } cpm;
   canonicalRuntimeTargets = import ./cpm/canonical-runtime-targets.nix { inherit lib; } cpm;
   canonicalForwarding = import ./cpm/canonical-forwarding.nix { inherit lib; } cpm;
@@ -42,7 +42,16 @@ let
   };
 
   merged = {
-    control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalWireGuard canonicalSites canonicalRuntimeTargets canonicalForwarding; };
+    # The artifact carries its control-plane model under TWO names: the historical
+    # `control_plane_model`, and `model`, which is simply what it is.
+    #
+    # A consumer that needs model fields had to spell `control_plane_model`, and a
+    # reader -- human or a gate -- cannot tell that apart from a renderer reaching
+    # into the plain CPM, which RR_RAW_CPM_INPUT forbids. Publishing a neutral alias
+    # lets a consumer name the thing it wants instead of the stage that produced it.
+    # Same value under both names; nothing about the artifact changes.
+    model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalOverlays canonicalSites canonicalRuntimeTargets canonicalForwarding; };
+    control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalOverlays canonicalSites canonicalRuntimeTargets canonicalForwarding; };
     endpointInventory = inventory;
     inherit deploymentHosts;
   }
