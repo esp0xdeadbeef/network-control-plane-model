@@ -347,27 +347,11 @@ let
         else
           let
             routes = attrsOrEmpty (iface.routes or null);
-            # One default per (family, destination, lane).
-            #
-            # The key used to include the next hop, so three forwarded rules that
-            # each supplied a different peer produced three competing
-            # `0.0.0.0/0` records on one interface -- measured: five defaults on
-            # one policy interface with gateways 10.10.0.11, .13 and .15, after
-            # including the one from `policy-derived-default`.
-            #
-            # `ip route replace` keys on (table, destination, metric), so only one
-            # of them can be installed and which one wins is arbitrary; when the
-            # survivor pointed at an uplink that could not carry the traffic the
-            # tenant's packets were dropped with the default route still visible.
-            #
-            # The next hop is deliberately NOT part of the identity: a destination
-            # has one default, and the first record in source order is the
-            # deterministic choice.
             routeKeyOf =
               route:
               "${builtins.toString (route.family or 0)}|${route.dst or ""}|${
-                (attrsOrEmpty (route.lane or null)).access or ""
-              }";
+                route.via4 or route.via6 or ""
+              }|${(attrsOrEmpty (route.lane or null)).access or ""}";
             dedupe =
               routes:
               let
@@ -401,10 +385,6 @@ let
     targetName: iface:
     complementInterface targetName (dropOriginMainRoutes targetName iface);
 
-  dedupeAfterIngress =
-    _targetName: target:
-    dedupeTarget _targetName target;
-
   addIngressDefaults =
     targets: targetName: target:
     let
@@ -436,82 +416,5 @@ let
 
   complementedTargets = builtins.mapAttrs addFinalHygiene runtimeTargets;
 
-  # One default per (family, destination, lane) across ALL producers.
-  #
-  # `complementInterface` and `ingressDefaultsFor` each append defaults
-  # independently, and a target can reach this point carrying one from each plus
-  # one it already had. Measured before this: five `0.0.0.0/0` records on one
-  # policy interface with gateways 10.10.0.11, .13 and .15.
-  #
-  # Three competing defaults for one destination is not redundancy that resolves
-  # itself: `ip route replace` keys on (table, destination, metric), so exactly one
-  # is installed and which one is decided by iteration order. When the survivor
-  # named an uplink that could not carry the traffic, the tenant's packets were
-  # dropped while `ip route` still showed a default -- the exact field symptom.
-  #
-  # The first record in source order wins, so the choice is deterministic.
-  collapseDuplicateDefaults =
-    familyField: routes:
-    let
-      keyOf =
-        route:
-        let
-          fam = familyField route;
-          familyKey = if builtins.isInt fam then builtins.toString fam else "-";
-          dst = route.dst or "";
-          dstKey = if builtins.isString dst then dst else "-";
-          isDefault = dstKey == "0.0.0.0/0" || dstKey == "::/0";
-          laneAccess = (attrsOrEmpty (route.lane or null)).access or null;
-          laneKey = if builtins.isString laneAccess then laneAccess else "-";
-        in
-        # For a DEFAULT, (family, dst) is the identity: only one default per table
-        # can exist, so the lane does not make a second one installable. Other
-        # destinations keep the lane in the key.
-        if isDefault then
-          "${familyKey}|${dstKey}"
-        else
-          "${familyKey}|${dstKey}|${laneKey}";
-      step =
-        acc: route:
-        let
-          key = keyOf route;
-        in
-        if builtins.hasAttr key acc.seen then
-          acc
-        else
-          {
-            seen = acc.seen // { ${key} = true; };
-            values = acc.values ++ [ route ];
-          };
-    in
-    (builtins.foldl' step { seen = { }; values = [ ]; } routes).values;
-
-  dedupeTarget =
-    _targetName: target:
-    let
-      effective = attrsOrEmpty (target.effectiveRuntimeRealization or null);
-      interfaces = attrsOrEmpty (effective.interfaces or null);
-    in
-    target
-    // {
-      effectiveRuntimeRealization = effective // {
-        interfaces = builtins.mapAttrs (
-          _ifName: iface:
-          let
-            routes = attrsOrEmpty (iface.routes or null);
-          in
-          iface
-          // {
-            routes = routes // {
-              ipv4 = collapseDuplicateDefaults (r: if builtins.isInt (r.family or null) then r.family else 4) (listOrEmpty (routes.ipv4 or null));
-              ipv6 = collapseDuplicateDefaults (r: if builtins.isInt (r.family or null) then r.family else 6) (listOrEmpty (routes.ipv6 or null));
-            };
-          }
-        ) interfaces;
-      };
-    };
-
 in
-builtins.mapAttrs dedupeAfterIngress (
-  builtins.mapAttrs (addIngressDefaults complementedTargets) complementedTargets
-)
+builtins.mapAttrs (addIngressDefaults complementedTargets) complementedTargets
