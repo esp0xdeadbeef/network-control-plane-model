@@ -98,7 +98,75 @@ let
       inherit lib helpers cpmData;
     };
 
-  providerContractsWireguard =
+  # The two source paths this model must reconcile. `cpm.data...overlays` is the
+  # source the model publishes; the inventory path below is the projection that
+  # silently published nothing on the provider-overlay example.
+  overlayProvenanceEntries =
+    builtins.concatLists (
+      map
+        (enterpriseName:
+          let sites = cpmData.${enterpriseName} or { };
+          in
+          builtins.concatLists (
+            map
+              (siteName:
+                let overlays = sites.${siteName}.overlays or { };
+                in
+                map
+                  (overlayName:
+                    let
+                      inventorySites = inventory.controlPlane.sites or { };
+                      inventoryOverlays = (inventorySites.${enterpriseName} or { }).${siteName}.overlays or { };
+                      inventoryOverlay = inventoryOverlays.${overlayName} or { };
+                    in
+                    {
+                      inherit enterpriseName siteName overlayName inventoryOverlay;
+                      overlay = overlays.${overlayName};
+                      cpmPath = "cpm.data.${enterpriseName}.${siteName}.overlays.${overlayName}";
+                      inventoryPath = "inventory.controlPlane.sites.${enterpriseName}.${siteName}.overlays.${overlayName}";
+                    })
+                  (sortedNames overlays))
+              (sortedNames sites)))
+        (sortedNames cpmData));
+
+  overlayRuntimeInterface =
+    overlay:
+    let
+      nodes = builtins.attrValues (overlay.runtimeNodes or { });
+      ifaces = builtins.filter (s: builtins.isString s && s != "") (
+        map (node: (node.service or { }).interface or null) nodes
+      );
+    in
+    if ifaces == [ ] then null else builtins.head ifaces;
+
+  overlayCarriesProviderMaterial =
+    overlay:
+    builtins.isAttrs (overlay.providerContract or null)
+    || (builtins.isAttrs (overlay.runtimeNodes or null) && builtins.attrNames (overlay.runtimeNodes or { }) != [ ]);
+
+  overlayProvenanceViolation =
+    entry: detail:
+    throw "FS-460-HDS-010-SDS-010-SMS-070: overlay '${entry.overlayName}' carries provider material at ${entry.cpmPath} but not at ${entry.inventoryPath}. ${detail} The two sources must agree; the CPM publishes one canonicalOverlays record and must not fall back to an empty projection.";
+
+  _validatedOverlayProvenance =
+    forceAll (
+      map
+        (entry:
+          if
+            builtins.isAttrs (entry.overlay.providerContract or null)
+            && !(builtins.isAttrs (entry.inventoryOverlay.providerContract or null))
+          then
+            overlayProvenanceViolation entry "The provider contract is present only in the model path."
+          else if
+            overlayCarriesProviderMaterial entry.overlay
+            && overlayRuntimeInterface entry.inventoryOverlay == null
+          then
+            overlayProvenanceViolation entry "The inventory path yields no runtime interface for an overlay that carries provider material."
+          else
+            true)
+        overlayProvenanceEntries);
+
+  providerContractsWireguardRaw =
     builtins.listToAttrs (
       builtins.concatLists (
         map
@@ -121,7 +189,7 @@ let
       )
     );
 
-  wgInventory =
+  wgInventoryRaw =
     builtins.listToAttrs (
       builtins.concatLists (
         map
@@ -147,6 +215,10 @@ let
           (builtins.attrNames (inventory.controlPlane.sites or { }))
       )
     );
+
+  providerContractsWireguard = builtins.seq _validatedOverlayProvenance providerContractsWireguardRaw;
+
+  wgInventory = builtins.seq _validatedOverlayProvenance wgInventoryRaw;
 
   secretSourceContract =
     import ./secret-source-contract.nix {
@@ -221,5 +293,5 @@ let
       };
 in
 builtins.seq
-  (forceAll [ _validatedRuntimeModel _validatedInventory providerAccessRequiredFieldsValidation ])
+  (forceAll [ _validatedRuntimeModel _validatedInventory providerAccessRequiredFieldsValidation _validatedOverlayProvenance ])
   cpmWithMediatedCredentials
