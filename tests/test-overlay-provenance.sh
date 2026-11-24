@@ -4,7 +4,9 @@
 # SPECIFICATION REQUIRED: a GAMP row must state the provenance rule for overlay
 # provider material. FS-460-HDS-010-SDS-010-SMS-070 is the closest existing chain,
 # but it does not own this rule; the rule currently exists only as an error string
-# and a comment. Do not infer a new trace ID from this test.
+# and a comment. Intended owner: the platform GAMP SMS layer, mirrored under
+# network-labs/GAMP/SMS/ (the trace-ID tree, not this repository). Do not infer a
+# new trace ID from this test.
 #
 # THE RULE
 # --------

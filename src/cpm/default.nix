@@ -146,7 +146,7 @@ let
 
   overlayProvenanceViolation =
     entry: detail:
-    throw "FS-460-HDS-010-SDS-010-SMS-070: overlay '${entry.overlayName}' carries provider material at ${entry.cpmPath} but not at ${entry.inventoryPath}. ${detail} The two sources must agree; the CPM publishes one canonicalOverlays record and must not fall back to an empty projection.";
+    throw "FS-460-HDS-010-SDS-010-SMS-070: overlay '${entry.overlayName}' carries provider material at ${entry.cpmPath} but not at ${entry.inventoryPath}. ${detail} The two sources must agree; the CPM publishes one canonicalOverlays record and must not fall back to an empty projection. The caller must supply matching provider material at both paths, or move the overlay to the provenance layer that owns it.";
 
   _validatedOverlayProvenance =
     forceAll (
