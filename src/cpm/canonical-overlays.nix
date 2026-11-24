@@ -47,6 +47,12 @@
 { lib }:
 cpm:
 let
+  # The provider material the producer projects from the inventory (interface,
+  # peers). Kept as the whole record rather than a field of it: the provider-named
+  # projection this replaces rebuilt it as `{ interface; }` and dropped `peers`,
+  # which the renderer requires.
+  providerMaterialFor = overlayName: (cpm.wgInventory or { }).${overlayName} or { };
+
   # The provider is a value the model states, not a namespace this file invents.
   # The fallback exists because an overlay record that names no provider still has
   # one mechanism behind it; it is the only provider the producer emits today.
@@ -92,6 +98,13 @@ let
                 nodes = overlay.nodes or { };
                 providerBootstrapDns = overlay.providerBootstrapDns or [ ];
                 providerInterface = providerInterfaceOf overlay;
+                providerMaterial =
+                  let material = providerMaterialFor overlayName;
+                  in
+                  if material != { } then
+                    material
+                  else
+                    { interface = providerInterfaceOf overlay; };
                 providerContract = overlay.providerContract or null;
                 facts = overlay;
               }
@@ -121,6 +134,7 @@ let
           inherit (entry)
             provider
             providerInterface
+            providerMaterial
             providerContract
             terminateOn
             nodes

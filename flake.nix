@@ -214,7 +214,12 @@
               canonicalSites = import ./src/cpm/canonical-sites.nix { inherit lib; } cpm;
               canonicalForwarding = import ./src/cpm/canonical-forwarding.nix { inherit lib; } cpm;
               canonicalRuntimeTargets = import ./src/cpm/canonical-runtime-targets.nix { inherit lib; } cpm;
+              # `model` is the same value as `control_plane_model`: a consumer names
+              # the thing it wants rather than the stage that produced it, so a
+              # renderer reading model fields is not confused with one reading the
+              # plain CPM (RR_RAW_CPM_INPUT).
               result = {
+                model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalOverlays canonicalSites canonicalRuntimeTargets canonicalForwarding; };
                 control_plane_model = cpm // { inherit canonicalInterfaces canonicalRoutes canonicalOverlays canonicalSites canonicalRuntimeTargets canonicalForwarding; };
                 endpointInventory = inventory;
                 forwardingOut = input;
