@@ -23,6 +23,11 @@ let
   addStateContracts = import ./state-contracts.nix {
     inherit common;
   };
+  # FS-310-HDS-020-SDS-010-SMS-060: the facts that decide a route's lane
+  # occurrence -- `policyRoutingSources` and `networkBehavior` -- must come from
+  # the model, not from a renderer's reading of interface topology. Published on
+  # every target here, so no target can render without them.
+  addPolicyRoutingFacts = import ./policy-routing-facts.nix { inherit lib; };
 in
 { accessAdvertisements
 , firewallIntent
@@ -64,7 +69,9 @@ builtins.listToAttrs (
     in
     {
       name = targetName;
-      value = addStateContracts targetName (addDnsContracts (normalizedRuntimeTargets.${targetName} // intentAttrs // advertisementAttrs));
+      value = addPolicyRoutingFacts (
+        addStateContracts targetName (addDnsContracts (normalizedRuntimeTargets.${targetName} // intentAttrs // advertisementAttrs))
+      );
     })
     (sortedNames normalizedRuntimeTargets)
 )
