@@ -114,7 +114,16 @@ let
       sourceKindIs =
         kind: name:
         ((attrsOrEmpty interfaces.${name}).sourceKind or null) == kind;
-      roles = attrsOrEmpty target.traversalParticipation;
+      # `or { }` is not decoration: `behaviorForInterfaces { } interfaces` is a real
+      # call (sourcesForInterface asks for the behaviour of a target it does not
+      # have), and `attrsOrEmpty target.traversalParticipation` FORCES the
+      # selection before the helper can forgive it -- so a target without the
+      # attribute crashed evaluation with
+      #   error: attribute 'traversalParticipation' missing
+      # instead of falling back to "participates in nothing". The sibling
+      # `interfacesOf` above already spells the same access as `or null`; this was
+      # the one site that did not.
+      roles = attrsOrEmpty (target.traversalParticipation or null);
       isSelector = any_ "edgeFacing" && any_ "fabricFacing";
       isUpstreamSelector = any_ "coreFacing" && any_ "exitFacing";
       isPolicy = any_ "fabricFacing" && any_ "exitFacing";
