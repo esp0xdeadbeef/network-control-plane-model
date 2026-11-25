@@ -357,6 +357,19 @@
                 import ./src/cpm/canonical-sites.nix { inherit lib; } controlPlaneModel;
               canonicalRuntimeTargets =
                 import ./src/cpm/canonical-runtime-targets.nix { inherit lib; } controlPlaneModel;
+              # The pass-through path published five of the six canonical collections:
+              # `canonicalForwarding` was missing, while the compile path above
+              # (and src/main.nix) publish it. Measured: a CPM built from a
+              # test-clients intent through this entry point carries
+              # canonicalInterfaces, canonicalOverlays, canonicalRoutes,
+              # canonicalRuntimeTargets and canonicalSites, and
+              # `canonicalForwarding` is absent -- so
+              # `network-realization-model`'s projection cannot put it in a bundle,
+              # and every renderer that maps it fails on exactly the sites built
+              # this way ("canonical collection 'canonicalForwarding' is missing").
+              # The two assembly paths must publish the same set.
+              canonicalForwarding =
+                import ./src/cpm/canonical-forwarding.nix { inherit lib; } controlPlaneModel;
               normalizedControlPlaneModel = controlPlaneModel // {
                 inherit
                   canonicalInterfaces
@@ -364,6 +377,7 @@
                   canonicalOverlays
                   canonicalSites
                   canonicalRuntimeTargets
+                  canonicalForwarding
                   ;
                 meta = existingMeta // {
                   layerEntry = layerEntryMeta;
