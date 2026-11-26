@@ -36,7 +36,7 @@ Four renderer rules were implemented and each measured against the two rows that
 (`FS-310-HDS-020-SDS-010-SMS-060` for the duplicates, `FS-540-HDS-010-SDS-010-SMS-040` for
 per-lane return routing):
 
-| rule | SMS-060 | FS-540-040 |
+| rule | FS-310-HDS-020-SDS-010-SMS-060 | FS-540-HDS-010-SDS-010-SMS-040 |
 | --- | --- | --- |
 | keep a derived policy route only if the bundle places it on this interface | PASS | FAIL (sitea_mgmt_wan_dns_v4/v6, sitea_upstream_dns_route) |
 | drop when the bundle places it on another interface (rendered-name projection) | FAIL | PASS |
