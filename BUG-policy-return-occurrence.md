@@ -65,3 +65,29 @@ duplicates.
 
 Until then the renderer keeps the lenient rule, because deleting a per-lane return breaks
 forwarding while leaving a duplicate only violates the presentation invariant.
+
+## Addendum: the runtime interface name the bundle publishes is not the device name
+
+A renderer must join each canonical record to the interface that installs it. The bundle
+offers `interface` (modelled, e.g. `p2p-downstream-selector-policy--access-access-vlan2`) and
+`runtimeIfName` (e.g. `downstream-vlan2`). The second cannot be adopted verbatim as a Linux
+device name, because IFNAMSIZ is 15 characters:
+
+```
+downstream-vlan2     16   TOO LONG
+downstream-unlock    17   TOO LONG
+downstream-clients   18   TOO LONG
+downstream-dmz       14   usable
+downstream-mgmt      15   usable
+```
+
+So the renderer abbreviates (`down-vlan2`, `down-clients`) and the two vocabularies diverge
+for exactly the lanes that matter. Measured on the neon HAT, the policy container carries
+`down-vlan2`, `down-clients`, `down-unlock`, while the bundle says `downstream-vlan2`,
+`downstream-clients`, `downstream-unlock`; every canonical lookup keyed by `runtimeIfName`
+misses there. On cobalt the names happen to coincide (`access-clients`), which is why the same
+renderer code works for that site and not for neon.
+
+Required: the bundle (or the platform binding) must carry the **rendered** device name it was
+realized with, per interface, so a renderer can join without re-deriving the abbreviation.
+Publishing `runtimeIfName` that violates IFNAMSIZ is not a usable join key.
