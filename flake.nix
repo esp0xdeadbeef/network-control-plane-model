@@ -3,7 +3,13 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nixpkgs-network.url = "github:NixOS/nixpkgs/ac56c456ebe4901c561d3ebf1c98fbd970aea753";
+    # NO `nixpkgs-network`. This repository carried a whole second nixpkgs -- an
+    # absolute rev, github:NixOS/nixpkgs/ac56c456... (2024-07-27) -- to obtain
+    # `lib.network`, and then never referenced `lib.network` anywhere: grepping the
+    # tree for `lib.network` returns nothing outside this overlay. The input was dead
+    # weight in every lock that could reach it, and an absolute rev cannot be moved by
+    # `nix flake update` or by a consumer's `follows`, so it sat there pinning a second
+    # graph (and a second stdenv) for no reason.
 
     network-forwarding-model.url = "github:esp0xdeadbeef/network-forwarding-model/main";
     network-forwarding-model.inputs.nixpkgs.follows = "nixpkgs";
@@ -17,7 +23,6 @@
     {
       self,
       nixpkgs,
-      nixpkgs-network,
       network-forwarding-model,
       network-labs,
       ...
@@ -53,22 +58,7 @@
         lib = nixpkgs.lib;
       };
 
-      mkPkgs =
-        system:
-        let
-          patchedPkgs = import nixpkgs-network { inherit system; };
-          patchedNetwork = patchedPkgs.lib.network;
-        in
-        import nixpkgs {
-          inherit system;
-          overlays = [
-            (final: prev: {
-              lib = prev.lib // {
-                network = patchedNetwork;
-              };
-            })
-          ];
-        };
+      mkPkgs = system: import nixpkgs { inherit system; };
 
       mkSystemLib =
         system:
