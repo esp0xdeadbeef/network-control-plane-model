@@ -39,7 +39,7 @@ run_integration() {
   if command -v jq >/dev/null 2>&1; then
     jq_cmd=(jq)
   else
-    jq_cmd=(nix run nixpkgs#jq --)
+    jq_cmd=(nix run --inputs-from "${ROOT}" nixpkgs#jq --)
   fi
 
   local example_repo
