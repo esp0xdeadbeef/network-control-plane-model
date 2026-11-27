@@ -50,7 +50,7 @@ check_cpm() {
     in if runner.success then "PASS" else "FAIL"
 NIXEND
   local result
-  result=$(nix eval --no-write-lock-file --impure --raw -f "$tmp_nix" 2>&1) || true
+  result=$(nix eval --no-write-lock-file --impure --raw -f "$tmp_nix" 2>&1 | grep -vF "you don't have Internet access") || true
   rm -f "$tmp_nix"
   echo "$result"
 }
