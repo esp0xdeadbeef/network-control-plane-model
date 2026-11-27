@@ -34,7 +34,7 @@ run_check() {
           }; in builtins.deepSeq r.control_plane_model true
         );
     in if (runner (${intent_expr})).success then \"PASS\" else \"FAIL\"
-  " 2>&1)
+  ")
   echo "$result"
 }
 
