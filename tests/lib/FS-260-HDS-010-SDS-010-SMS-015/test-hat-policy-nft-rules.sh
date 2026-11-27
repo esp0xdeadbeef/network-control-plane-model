@@ -196,7 +196,10 @@ run_cpm_verify() {
   nix_file="${REPO_ROOT}/tests/fs260-hds010-sds010-sms015-hat-probe-cpm-verify.nix"
 
   # Evaluate the nix expression
-  nix eval --no-write-lock-file --impure --expr "(import ${nix_file} { repoRoot = \"${REPO_ROOT}\"; })" --json > "${result_json}" 2>&1 || {
+  # STDOUT INTO THE JSON FILE, STDOUT ONLY. `2>&1` wrote Nix's offline warning into it,
+  # and the jq that reads it failed with "Invalid numeric literal at line 1, column 8" --
+  # reported as "exited 5 without a PASS/FAIL line" rather than as unparseable input.
+  nix eval --no-write-lock-file --impure --expr "(import ${nix_file} { repoRoot = \"${REPO_ROOT}\"; })" --json > "${result_json}" || {
     echo "FAIL test-hat-policy-nft-rules (CPM verify mode)" >&2
     echo "nix eval --no-write-lock-file error:" >&2
     cat "${result_json}" >&2
