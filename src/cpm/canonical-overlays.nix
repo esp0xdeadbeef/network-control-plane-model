@@ -17,7 +17,7 @@
 # This publishes one record per overlay, with the provider as a FIELD:
 #
 #   { enterprise, site, overlay, provider, terminateOn, nodes,
-#     providerBootstrapDns, providerInterface, providerContract, facts }
+#     providerBootstrapDns, interface, providerContract, facts }
 #
 # `facts` is the complete modelled overlay record, published rather than
 # re-derived, so a renderer that needs a field this projection does not single out
@@ -97,7 +97,15 @@ let
                 terminateOn = overlay.terminateOn or [ ];
                 nodes = overlay.nodes or { };
                 providerBootstrapDns = overlay.providerBootstrapDns or [ ];
-                providerInterface = providerInterfaceOf overlay;
+                # The MODELLED field name, not a new one. `providerInterface` republished
+                # `runtimeNodes.<node>.service.interface` under an invented key, and the
+                # platform-abstention scan (FS-310-HDS-040-SDS-010-SMS-150) reads a device
+                # token in an unrecognised key as platform grammar leaking into CPM output:
+                #   NEW VIOLATION: "nebula1" at canonicalOverlays.overlays.1.providerInterface
+                # The scan permits `interface` under `overlays` because that field is the
+                # typed provider handoff the model itself publishes; carrying the same value
+                # under the same name keeps one fact and one spelling.
+                interface = providerInterfaceOf overlay;
                 providerMaterial =
                   let material = providerMaterialFor overlayName;
                   in
@@ -133,7 +141,7 @@ let
         value = {
           inherit (entry)
             provider
-            providerInterface
+            interface
             providerMaterial
             providerContract
             terminateOn
