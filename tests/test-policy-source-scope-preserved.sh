@@ -13,7 +13,7 @@ archive_json="${work_dir}/archive.json"
 output_json="${work_dir}/cpm.json"
 gron_txt="${work_dir}/cpm.gron"
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 labs_path="$(
   ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let

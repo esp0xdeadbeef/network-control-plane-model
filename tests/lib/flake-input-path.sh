@@ -27,5 +27,5 @@ flake_input_path() {
     printf '%s\n' "${sibling}"
     return 0
   fi
-  nix flake archive --json "path:${root}" | jq -er ".inputs[\"${input_name}\"].path"
+  flake-archive-offline --json "path:${root}" | jq -er ".inputs[\"${input_name}\"].path"
 }

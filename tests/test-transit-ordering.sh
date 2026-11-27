@@ -9,7 +9,7 @@ archive_json="$(mktemp)"
 output_json="$(mktemp)"
 trap 'rm -f "${archive_json}" "${output_json}"' EXIT
 
-nix flake archive --json "path:${repo_root}" > "${archive_json}"
+flake-archive-offline --json "path:${repo_root}" > "${archive_json}"
 labs_path="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 intent_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/intent.nix"
 inventory_path="${labs_path}/examples/s-router-overlay-dns-lane-policy/inventory-nixos.nix"

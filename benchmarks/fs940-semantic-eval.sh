@@ -59,7 +59,7 @@ emit_bench_record() {
 archive_json="$(mktemp)"
 forwarding_json="$(mktemp --suffix=.json)"
 trap 'rm -f "${archive_json}" "${forwarding_json}"' EXIT
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 
 if [[ -n "${CPM_BENCH_EXAMPLES:-}" ]]; then

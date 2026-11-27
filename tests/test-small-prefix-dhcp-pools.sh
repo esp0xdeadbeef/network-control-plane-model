@@ -13,7 +13,7 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 archive_json="${tmp_dir}/archive.json"
 output_json="${tmp_dir}/cpm.json"
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 
 nix run --no-write-lock-file "path:${repo_root}#compile-and-build-control-plane-model" -- \

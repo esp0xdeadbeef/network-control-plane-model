@@ -17,7 +17,7 @@ require_cmd() {
 require_cmd jq
 
 labs_path="$(
-  nix flake archive --json "path:${repo_root}" \
+  flake-archive-offline --json "path:${repo_root}" \
     | jq -er '.inputs["network-labs"].path'
 )"
 

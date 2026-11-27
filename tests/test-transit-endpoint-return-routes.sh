@@ -7,7 +7,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-search_root="$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')/examples"
+search_root="$(flake-archive-offline --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')/examples"
 example_root="${search_root}/dual-wan-branch-overlay-bgp"
 intent_path="${example_root}/intent.nix"
 inventory_path="${example_root}/inventory-nixos.nix"

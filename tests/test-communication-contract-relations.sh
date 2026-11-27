@@ -10,7 +10,7 @@ cd "$repo_root"
 archive_json="$(mktemp)"
 trap 'rm -f "'"${archive_json}"'"' EXIT
 
-nix flake archive --json "path:${repo_root}" > "${archive_json}"
+flake-archive-offline --json "path:${repo_root}" > "${archive_json}"
 
 labs_path="$(
   ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '

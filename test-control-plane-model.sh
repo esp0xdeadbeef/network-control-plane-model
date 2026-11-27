@@ -44,7 +44,7 @@ run_integration() {
 
   local example_repo
   example_repo="$(
-    nix flake archive --json "path:${ROOT}" \
+    flake-archive-offline --json "path:${ROOT}" \
       | "${jq_cmd[@]}" -er '.inputs["network-labs"].path'
   )"
 

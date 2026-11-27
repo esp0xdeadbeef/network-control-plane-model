@@ -16,7 +16,7 @@ if [[ -n "${NETWORK_FORWARDING_MODEL_OVERRIDE:-}" ]]; then
   nix_args+=(--override-input network-forwarding-model "${NETWORK_FORWARDING_MODEL_OVERRIDE}")
 fi
 
-nix flake archive "${nix_args[@]}" --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline "${nix_args[@]}" --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
   ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '

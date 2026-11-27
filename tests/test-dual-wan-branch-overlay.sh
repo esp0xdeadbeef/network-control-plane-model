@@ -9,7 +9,7 @@ source "${repo_root}/tests/lib/direct-test-guard.sh"
 archive_json="$(mktemp)"
 trap 'rm -f "${archive_json}"' EXIT
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 example_root="${labs_root}/examples"
 

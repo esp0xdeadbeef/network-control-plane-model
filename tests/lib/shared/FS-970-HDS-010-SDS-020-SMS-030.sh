@@ -21,7 +21,7 @@ require_cmd jq
 
 flake_input_path() {
   local input_name="$1"
-  nix flake archive --json "path:${repo_root}" \
+  flake-archive-offline --json "path:${repo_root}" \
     | jq -er ".inputs[\"${input_name}\"].path"
 }
 

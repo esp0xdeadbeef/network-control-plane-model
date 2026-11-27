@@ -10,7 +10,7 @@ output_json="$(mktemp)"
 trap 'rm -f "${output_json}"' EXIT
 
 labs_path="$(
-  nix flake archive --json "path:${repo_root}" \
+  flake-archive-offline --json "path:${repo_root}" \
     | jq -er '.inputs["network-labs"].path'
 )"
 

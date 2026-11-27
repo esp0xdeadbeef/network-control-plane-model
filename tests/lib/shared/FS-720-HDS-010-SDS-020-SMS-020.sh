@@ -7,7 +7,7 @@ set -euo pipefail
 repo_root="${SMS_TEST_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 source "${repo_root}/tests/lib/direct-test-guard.sh"
 
-labs_root="${NETWORK_LABS_ROOT:-$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')}"
+labs_root="${NETWORK_LABS_ROOT:-$(flake-archive-offline --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')}"
 hat_root="${labs_root}/GAMP/HAT/emulated-isp-residential-testnet"
 
 fail() {

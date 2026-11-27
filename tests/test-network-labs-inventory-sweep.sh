@@ -22,7 +22,7 @@ if ! [[ "${jobs}" =~ ^[0-9]+$ ]] || ((jobs < 1)); then
   exit 2
 fi
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 examples_root="${labs_root}/examples"
 

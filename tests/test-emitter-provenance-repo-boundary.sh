@@ -18,7 +18,7 @@ archive_json="$(mktemp)"
 tmp_dir="$(mktemp -d)"
 trap 'rm -f "${archive_json}"; rm -rf "${tmp_dir}"' EXIT
 
-nix flake archive --json "path:${repo_root}" > "${archive_json}"
+flake-archive-offline --json "path:${repo_root}" > "${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 intent="${labs_root}/examples/single-wan/intent.nix"
 inventory="${labs_root}/examples/single-wan/inventory-nixos.nix"

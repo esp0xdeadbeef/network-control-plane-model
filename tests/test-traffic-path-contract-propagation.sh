@@ -11,7 +11,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 archive_json="${tmp_dir}/archive.json"
 output_json="${tmp_dir}/output.json"
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 labs_path="$(
   ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '
     let

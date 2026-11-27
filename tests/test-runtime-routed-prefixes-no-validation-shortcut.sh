@@ -12,7 +12,7 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 archive_json="${tmp_dir}/archive.json"
 violations_tsv="${tmp_dir}/violations.tsv"
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 labs_root="$(jq -er '.inputs["network-labs"].path' "${archive_json}")"
 examples_root="${labs_root}/examples"
 

@@ -11,7 +11,7 @@ out_dir="$(mktemp -d)"
 violations_jsonl="$(mktemp)"
 trap 'rm -f "${archive_json}" "${violations_jsonl}"; rm -rf "${out_dir}"' EXIT
 
-nix flake archive --json "path:${repo_root}" >"${archive_json}"
+flake-archive-offline --json "path:${repo_root}" >"${archive_json}"
 
 labs_path="$(
   ARCHIVE_JSON="${archive_json}" nix eval --no-write-lock-file --impure --raw --expr '

@@ -23,7 +23,7 @@ ambiguous_scope_stderr="$(mktemp)"
 reachability_separation_json="$(mktemp)"
 trap 'rm -f "$archive_json" "$baseline_json" "$missing_endpoint_inventory" "$missing_endpoint_json" "$no_exposure_intent" "$no_exposure_json" "$missing_scope_intent" "$missing_scope_json" "$missing_scope_stderr" "$ambiguous_scope_intent" "$ambiguous_scope_json" "$ambiguous_scope_stderr" "$reachability_separation_json"' EXIT
 
-nix flake archive --json "path:${repo_root}" > "$archive_json"
+flake-archive-offline --json "path:${repo_root}" > "$archive_json"
 
 labs_path="$(
   ARCHIVE_JSON="$archive_json" nix eval --no-write-lock-file --impure --raw --expr '

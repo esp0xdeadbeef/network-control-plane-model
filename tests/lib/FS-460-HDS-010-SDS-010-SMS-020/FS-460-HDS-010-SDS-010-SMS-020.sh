@@ -29,7 +29,7 @@ flake_input_path() {
   if [[ "${input_name}" == "network-labs" && -n "${NETWORK_LABS_PATH:-}" ]]; then
     realpath "${NETWORK_LABS_PATH}"; return
   fi
-  nix flake archive --json "path:${repo_root}" | jq -er ".inputs[\"${input_name}\"].path"
+  flake-archive-offline --json "path:${repo_root}" | jq -er ".inputs[\"${input_name}\"].path"
 }
 
 labs_root="$(flake_input_path network-labs)"

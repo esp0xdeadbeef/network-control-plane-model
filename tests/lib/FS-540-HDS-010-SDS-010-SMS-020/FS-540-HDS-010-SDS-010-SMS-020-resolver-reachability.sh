@@ -62,7 +62,7 @@ fail() {
 # The row's own controlled fixture, not a site model: a site model needs a
 # sibling nixos checkout, and this test must run from a clone of this
 # repository alone.
-labs_root="${NETWORK_LABS_PATH:-$(nix flake archive --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')}"
+labs_root="${NETWORK_LABS_PATH:-$(flake-archive-offline --json "path:${repo_root}" | jq -er '.inputs["network-labs"].path')}"
 row="${labs_root}/GAMP/SMT/FS-540-HDS-010-SDS-010-SMS-020"
 [[ -f "${row}/intent.nix" ]] || fail "missing controlled row source ${row}/intent.nix"
 inventory="${row}/inventory-nixos.nix"
