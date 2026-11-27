@@ -35,6 +35,14 @@ echo ""
 # If validate passes, tryEval.success=true → returns "PASS".
 run_validate_test() {
   local desc="$1" record_expr="$2"
+  # THE VERDICT LINE, not the whole transcript.
+  #
+  # `2>&1` merged Nix's own diagnostics into the verdict. With the network namespace
+  # removed, Nix prints
+  #   warning: you don't have Internet access; disabling some network-dependent features
+  # as the FIRST line, so `$R` became that warning instead of PASS/FAIL and a negative
+  # case that correctly rejected the record still reported "expected FAIL, got: <warning>".
+  # The expression emits exactly one PASS or FAIL, so select that.
   local result
   result=$(REPO_ROOT="$repo_root" nix eval --no-write-lock-file --impure --raw --expr "
     let
@@ -52,7 +60,7 @@ run_validate_test() {
         bsa.validate \"test.record\" (${record_expr})
       );
     in if result.success then \"PASS\" else \"FAIL\"
-  " 2>&1)
+  " 2>&1 | grep -E '^(PASS|FAIL)$' | tail -1)
   echo "$result"
 }
 
@@ -142,7 +150,7 @@ run_pipeline_check() {
           }; in builtins.deepSeq r.control_plane_model true
         );
     in if (runner (${inv_expr})).success then \"PASS\" else \"FAIL\"
-  " 2>&1)
+  " 2>&1 | grep -E '^(PASS|FAIL)$' | tail -1)
   echo "$result"
 }
 
