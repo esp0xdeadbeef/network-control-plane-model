@@ -825,7 +825,10 @@ in
   }
 CPMCONT
 
-integrated_json="$(CPM_REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json -f "${tmp_dir}/integrated-continuity.nix" 2>&1)" || {
+# STDOUT ONLY. `2>&1` put Nix's offline warning in front of the JSON, jq reported
+# "Invalid numeric literal at line 1, column 8", and the case surfaced that as
+# "post-DNAT continuity broken" -- a wrong answer rather than unparseable input.
+integrated_json="$(CPM_REPO_ROOT="${repo_root}" nix eval --no-write-lock-file --impure --json -f "${tmp_dir}/integrated-continuity.nix")" || {
   echo "FAIL FS-270-HDS-010-SDS-010-SMS-040 INTEGRATED: nix eval --no-write-lock-file failed: ${integrated_json}" >&2
   exit 1
 }

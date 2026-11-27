@@ -76,7 +76,7 @@ extract_surface() {
     in builtins.removeAttrs data [ "diagnostics" ]
 NIXEND
   local json_output
-  json_output=$(nix eval --no-write-lock-file --impure --json -f "$tmp_nix" 2>&1) || true
+  json_output=$(nix eval --no-write-lock-file --impure --json -f "$tmp_nix" 2>&1 | grep -vF "you don't have Internet access") || true
   rm -f "$tmp_nix"
   echo "$json_output"
 }
