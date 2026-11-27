@@ -91,3 +91,28 @@ renderer code works for that site and not for neon.
 Required: the bundle (or the platform binding) must carry the **rendered** device name it was
 realized with, per interface, so a renderer can join without re-deriving the abbreviation.
 Publishing `runtimeIfName` that violates IFNAMSIZ is not a usable join key.
+
+## Addendum 2: the local-origin DNS return route is published in the wrong table
+
+`FS-380-HDS-020-SDS-010-SMS-120` requires, on the access node's tenant interface (`lan2`,
+modelled `tenant-client`):
+
+    Destination 10.38.120.0/24, Scope link, Table 1002   (the access policy table)
+
+The bundle publishes the same prefix for that interface in table **1001** (the interface's own
+allocation), so the renderer can only satisfy the row by *choosing* a table -- which
+`FS-310-HDS-020-SDS-010-SMS-060` forbids and its placement check rejects:
+
+    a rendered route's place disagrees with the canonical record.
+    rendered ('tenant-client', 1002, '10.38.120.0/24', '', '')
+    canonical ('tenant-client', 1001, '10.38.120.0/24', '', '')
+    A renderer may not choose a route's table or lane occurrence.
+
+Measured 2026-11-27 on the row's own fixture (`select-current-lab SMT
+FS-380-HDS-020-SDS-010-SMS-120`): the access container owns tables 1001 (tenant interface) and
+1002 (uplink), and the local-origin DNS route is emitted into 1001 only.
+
+Required: publish the local-origin DNS return route for the tenant interface with `tableId`
+of the access policy table that carries the default (1002 here), with the lane facts that
+justify it. Until then the row cannot be green, and the renderer's derived copy is suppressed
+by its own duplicate check -- which is the correct behaviour, not a workaround.
