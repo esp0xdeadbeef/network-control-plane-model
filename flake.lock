@@ -606,7 +606,9 @@
         "network-renderer-openconfig": "network-renderer-openconfig_3",
         "network-renderer-wireguard": "network-renderer-wireguard_3",
         "nixos-network-compiler": "nixos-network-compiler_3",
-        "nixpkgs": "nixpkgs_4"
+        "nixpkgs": [
+          "nixpkgs"
+        ]
       },
       "locked": {
         "lastModified": 1795736653,
@@ -2105,22 +2107,6 @@
         "type": "github"
       }
     },
-    "nixpkgs_5": {
-      "locked": {
-        "lastModified": 1795234589,
-        "narHash": "sha256-f/VVvxf5RsQgWVhUtefoca5ktVg0DA2bnkMOcmSnozo=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "2786a2a72088ecf32aea5b3ec52099e6a7cff78f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "openconfig": {
       "flake": false,
       "locked": {
@@ -2173,7 +2159,7 @@
       "inputs": {
         "network-forwarding-model": "network-forwarding-model",
         "network-labs": "network-labs",
-        "nixpkgs": "nixpkgs_5"
+        "nixpkgs": "nixpkgs_4"
       }
     }
   },
