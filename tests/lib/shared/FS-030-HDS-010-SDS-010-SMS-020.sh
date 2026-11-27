@@ -38,13 +38,18 @@ rm -f "${tmp_dir}/base.nix" \
   "${tmp_dir}/cross-stage.out" \
   "${tmp_dir}/cross-stage.err"
 
-flake_input_path() {
-  local input_name="$1"
-  nix flake archive --json "path:${repo_root}" \
-    | jq -er ".inputs[\"${input_name}\"].path"
-}
+# LOCAL CHECKOUT, NOT A NETWORK FETCH.
+#
+# This used `nix flake archive`, which copies every input into the store and therefore
+# downloads `github:owner/repo/<rev>` tarballs. The revision that failed came from a
+# sibling's lock, and a `github:` tarball and a git checkout are different store paths,
+# so the sibling CI already checked out could never satisfy it -- the case died fetching
+# from github.com with the network closed.
+#
+# See tests/lib/flake-input-path.sh: the sibling directory is the input path.
+source "${repo_root}/tests/lib/flake-input-path.sh"
 
-example_root="$(flake_input_path network-labs)/examples/single-wan"
+example_root="$(flake_input_path network-labs "${repo_root}")/examples/single-wan"
 intent_path="${example_root}/intent.nix"
 inventory_source="${example_root}/inventory-nixos.nix"
 
