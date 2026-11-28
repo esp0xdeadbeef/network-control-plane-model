@@ -114,3 +114,40 @@ Either one alone is enough to drop the query. They have to agree on the path, an
 to be the one the exposure contract names: `allow-clients-dns-to-unlock-dns` is `controlled`,
 so the flow must cross the policy point, and therefore the selector's route for
 `10.3.90.0/24` should point at the policy lane rather than at the access node.
+
+## Addendum 2: the backward host route is the ingress-peer endpoint route
+
+The bundle carries no host route for `10.3.90.1`; only the two fabric `/24`s (via the
+access-unlock lane and via the policy lane). The `10.3.90.1 via 10.10.0.0 dev access-clients`
+entry appears at render time, from the endpoint-route stage:
+
+  src/cpm/ControlModule/runtime-targets/dns-service-routes.nix
+    `withIngressPolicyLane` tags a route with the policy table of the *requester* lane, and
+    `servicesViaToInterface` decides whether the route names the `to` interface instead:
+
+      servicesViaToInterface =
+        { targetIsPolicy, fromIface, toIface, fromIfName, toIfName, service }:
+        targetIsPolicy
+        || (laneKindFor fromIface == "uplink" && laneKindFor toIface == "access-uplink")
+        || (fromIfName != toIfName && !ownsServiceAddress service fromIface);
+
+On the neon downstream-selector, for the `clients-dns -> unlock-dns` relation, that predicate
+is false: the target is not policy, the requester lane is an access lane (not `uplink`), and
+the two names collapse to the same interface. So the route keeps the requester lane and takes
+its **ingress peer** (`10.10.0.0`, the clients access node) as the gateway -- which is the
+node the query arrived from.
+
+The module's own comment records this pattern from the cobalt HAT ("a transit hop fell through
+to the ingress interface -- taking the ingress peer as the gateway and pointing the resolver
+route back at the node it came from"), so the same fall-through is still reachable whenever the
+requester and the service do not sit on a `uplink`/`access-uplink` pair -- which is exactly the
+cross-tenant case.
+
+## What a correct fix has to decide
+
+For a `controlled` service, a transit hop must send the endpoint prefix toward the node the
+exposure contract names (the policy point), not toward the requester. On the neon selector the
+bundle already publishes that alternative on the policy lane
+(`10.3.90.0/24 via 10.10.0.27` on `p2p-downstream-selector-policy--access-access-clients`, table
+1012); what is missing is choosing it for the endpoint host route and letting the relation's
+accept rules name the same egress.
