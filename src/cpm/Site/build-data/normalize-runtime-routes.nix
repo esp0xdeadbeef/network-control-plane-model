@@ -140,24 +140,51 @@ let
     && builtins.isString (lane.uplink or null)
     && lane.uplink != "";
 
+  # FS-310-HDS-020-SDS-010-SMS-060: the COMPLEMENT BELONGS ON THE INTERFACE THAT
+  # OWNS ITS GATEWAY.
+  #
+  # This used to run per *policy* interface and copy the core lane's default route
+  # into the policy lane's route list. The record then named the policy lane while
+  # carrying the core lane's `via`, which no kernel will install on that link:
+  #
+  #   interface = p2p-policy-upstream-selector--access-access-clients--uplink-wan
+  #   gateway   = 10.10.0.22          (the core lane's peer, two hops away)
+  #   GatewayOnLink = false
+  #
+  # Measured on neon: networkd logged "Nexthop has invalid gateway or device
+  # mismatch", table 1004 stayed empty while `21004 from all iif policy-clients
+  # lookup 1004` was installed, and the tenant's every packet was answered
+  # "Destination Net Unreachable" at the selector. See
+  # BUG-policy-table-default-interface.md.
+  #
+  # The route is now built on the CORE interface it came from -- where its gateway
+  # is the on-link peer -- and relabelled with the policy lane so the renderer
+  # still puts it in that lane's table. This mirrors
+  # `upstreamSelectorCorePolicyComplements` below, which already does exactly that
+  # for non-default routes.
   upstreamSelectorPolicyDefaultComplements =
-    family: targetRole: policyIface: interfaces:
-    if !(isUpstreamSelectorAccessUplinkInterface targetRole policyIface) then
+    family: targetRole: coreIface: interfaces:
+    if !(isUpstreamSelectorCoreDefaultInterface targetRole coreIface) then
       [ ]
     else
       let
-        policyLane = interfaceLane policyIface;
-        policyUplink = policyLane.uplink or null;
+        coreUplinks = interfaceUplinks coreIface;
         routesFor = iface: listOrEmpty ((attrsOrEmpty (iface.routes or null))."ipv${builtins.toString family}" or null);
-        coreIfaces = builtins.filter
+        policyIfaces = builtins.filter
           (
             iface:
-            isUpstreamSelectorCoreDefaultInterface targetRole iface
-            && builtins.elem policyUplink (interfaceUplinks iface)
+            let
+              lane = interfaceLane iface;
+              uplink = lane.uplink or null;
+            in
+            (lane.kind or null) == "access-uplink"
+            && (lane.access or null) != null
+            && builtins.isString uplink
+            && builtins.elem uplink coreUplinks
           )
           (builtins.attrValues interfaces);
         defaultRouteFor =
-          route:
+          policyIface: route:
           if
             !builtins.isAttrs route
             || (route.dst or null) != defaultDst family
@@ -167,7 +194,7 @@ let
           else
             route
             // {
-              lane = policyLane;
+              lane = interfaceLane policyIface;
               policyOnly = true;
               reason = "policy-table-default-reachability";
               intent = (attrsOrEmpty (route.intent or null)) // {
@@ -176,10 +203,12 @@ let
               };
             };
       in
-      builtins.filter (route: route != null) (
-        builtins.concatLists (
-          builtins.map (coreIface: builtins.map defaultRouteFor (routesFor coreIface)) coreIfaces
-        )
+      builtins.concatLists (
+        builtins.map
+          (policyIface: builtins.filter (route: route != null) (
+            builtins.map (defaultRouteFor policyIface) (routesFor coreIface)
+          ))
+          policyIfaces
       );
 
   upstreamSelectorCorePolicyComplements =
