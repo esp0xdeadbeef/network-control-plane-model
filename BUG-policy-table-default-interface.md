@@ -96,3 +96,38 @@ and every packet is answered `Destination Net Unreachable` at hop 4.
 
 `BUG-policy-return-occurrence.md` -- the same "record names a lane that is not the installing
 lane" shape, for return routes.
+
+## Addendum: after moving the complement, the lane default points back downstream
+
+Fix `282e4a2` places the complement on the core interface, which is right. Rendering neon
+again (renderer `9f5cf6a7`) shows the lane's table now holds a *different* record:
+
+```
+upstream-selector # ip route show table 1004 | grep '^default'
+default via 10.10.0.48 dev policy-clients proto static
+```
+
+`10.10.0.48` is the peer on the *downstream* side of that lane (policy holds `10.10.0.48/31`,
+the selector holds `10.10.0.49/31`). So the selector hands the tenant's packets straight back
+to the policy node that forwarded them:
+
+```
+policy            # ip route get 1.1.1.1 from 10.3.30.100 iif down-clients
+1.1.1.1 from 10.3.30.100 via 10.10.0.49 dev up-clients table 1012      -> selector
+upstream-selector # ip route get 1.1.1.1 from 10.3.30.100 iif policy-clients
+1.1.1.1 from 10.3.30.100 via 10.10.0.48 dev policy-clients table 1004  -> policy
+```
+
+and the tenant's traceroute dies at that hop (`10.10.0.55 ... *  *`), with no packet ever
+reaching the core's `ppp0` (`tcpdump -i ppp0 icmp` counted zero).
+
+That record comes from `policy-lane-defaults.nix` (`defaultRouteFor`), which builds a
+complement whose gateway is `peerAddress` of the lane it is attached to. On a *policy* node
+that peer is upstream and the route is correct; on an *upstream-selector* the same lane faces
+downstream, so the peer is the way back. The complement needs the egress lane's peer in that
+case -- which is exactly the route `282e4a2` now keeps on the core interface (`via
+10.10.0.22`), and which the lane's table should point at.
+
+Open: decide whether `policy-lane-defaults.nix` should skip lanes whose direction is
+downstream on an upstream-selector (the role is a model fact), or whether the lane's table
+should be populated from the core-side complement rather than from a peer-of-this-lane route.
