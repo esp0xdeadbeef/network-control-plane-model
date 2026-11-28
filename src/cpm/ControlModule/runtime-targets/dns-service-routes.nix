@@ -318,6 +318,18 @@ let
               !(builtins.hasAttr fromName byRuntime)
               || !(builtins.hasAttr toName byRuntime)
               || !(builtins.hasAttr serviceName servicesByName)
+              # A RETURN rule's `to` is the requester's own access node, so installing
+              # the SERVICE endpoint there points it back at the node the query came
+              # from. Measured on the neon downstream-selector, cross-tenant
+              # `clients-dns -> unlock-dns`:
+              #
+              #   rule  policy-clients -> access-clients   (returnRule = true)
+              #   route 10.3.90.1/32 via 10.10.0.0 dev access-clients   (table 1001)
+              #
+              # while the resolver lives on access-unlock (10.10.0.12). Endpoint
+              # prefixes belong to the forward path; the reverse rules carry the
+              # requester's return traffic and need no route to the service.
+              || (rule.returnRule or false)
             then
               acc
             else
@@ -369,6 +381,10 @@ let
             || !(builtins.hasAttr toName byRuntime)
             || !(builtins.hasAttr serviceName servicesByName)
             || fromName == toName
+            # Same reason as the endpoint pass: a return rule ends at the requester,
+            # so a requester-lane endpoint route there is a route back to the sender
+            # (measured: 10.3.90.1/32 via 10.10.0.0 dev access-clients).
+            || (rule.returnRule or false)
             # Only a downstream access lane may carry requester-lane authority.
             # An uplink lane is an exit surface, and putting an internal
             # resolver endpoint on it would create a return route for a
