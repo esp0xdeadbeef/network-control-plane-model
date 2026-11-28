@@ -80,3 +80,37 @@ cross-tenant proof:
 tenant-client # dig tang.unlock.home.arpa @10.3.30.1     -> SERVFAIL
 access-clients # dig tang.unlock.home.arpa @10.3.90.1   -> timeout
 ```
+
+## Addendum: the selector's lane table sends the target address back to the requester
+
+Looking one layer below the rule mismatch, the selector's own lookup for the real packet is
+wrong before any filter runs:
+
+```
+downstream-selector # ip route get 10.3.90.1 from 10.10.0.0 iif access-clients
+10.3.90.1 from 10.10.0.0 via 10.10.0.0 dev access-clients table 1001
+    cache <redirect> iif access-clients
+
+downstream-selector # ip route show table 1001 | head -6
+10.3.30.0/24 via 10.10.0.0 dev access-clients proto static
+10.3.30.1    via 10.10.0.0 dev access-clients proto static
+10.3.60.1    via 10.10.0.0 dev access-clients proto static
+10.3.90.1    via 10.10.0.0 dev access-clients proto static     <- the unlock resolver
+10.10.0.0/31 dev access-clients proto static scope link
+```
+
+`10.3.90.1` is the unlock resolver, which lives on `access-unlock` (`10.10.0.12/31`), not on
+`access-clients` (`10.10.0.0/31`). Table 1001 is the clients lane's table and it carries that
+endpoint as if it were reached through the clients access node, so the packet is redirected
+back to the port it arrived on.
+
+So two independent layers hide the same flow:
+
+1. the lane table points the target endpoint back at the requester's own lane, and
+2. the relation's transit accepts name `policy-clients`/`policy-unlock`, an egress the route
+   never uses.
+
+Either one alone is enough to drop the query. They have to agree on the path, and the path has
+to be the one the exposure contract names: `allow-clients-dns-to-unlock-dns` is `controlled`,
+so the flow must cross the policy point, and therefore the selector's route for
+`10.3.90.0/24` should point at the policy lane rather than at the access node.
