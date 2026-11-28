@@ -29,7 +29,7 @@ The bundle publishes two defaults on that one interface:
 `10.10.0.23/31`), not a neighbour on `policy-clients`. `10.10.0.49` is this interface's own
 address, so the first record is not installable as a gateway route either.
 
-Rendered and booted (HAT, `network-site-esp` `hat-isp.py`, neon):
+Rendered and booted in the hardware acceptance fixture (the egress-chain HAT, neon site):
 
 ```
 upstream-selector # ip -4 rule | grep 'iif policy-clients'
