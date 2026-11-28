@@ -166,9 +166,36 @@ let
       )
       rules;
 
+  # FS-315 / FS-540-045: THE COMPLEMENT POINTS UPSTREAM, SO IT IS SKIPPED ON THE NODE
+  # WHERE THAT LANE FACES DOWNSTREAM.
+  #
+  # `defaultRouteFor` uses the peer address of the lane it is attached to. On a POLICY
+  # node that peer is upstream (the selector) and the route is right. On an
+  # UPSTREAM-SELECTOR the same `access-uplink` lane faces the policy node, so the peer is
+  # the way back: the selector returned the tenant's packets to the policy node that had
+  # just forwarded them, and they never reached the core. Measured on the neon HAT:
+  #
+  #   policy            # ip route get 1.1.1.1 from 10.3.30.100 iif down-clients
+  #   1.1.1.1 ... via 10.10.0.49 dev up-clients table 1012          -> selector
+  #   upstream-selector # ip route get 1.1.1.1 from 10.3.30.100 iif policy-clients
+  #   1.1.1.1 ... via 10.10.0.48 dev policy-clients table 1004      -> policy  (loop)
+  #
+  # tenant traceroute died at that hop and `tcpdump -i ppp0 icmp` on the core counted 0.
+  #
+  # The selector's lane table is instead populated by the egress-side complement that
+  # `normalize-runtime-routes.nix` now attaches to the interface that owns its gateway
+  # (network-control-plane-model 282e4a2). Whether a target is an upstream selector is a
+  # published model fact (`networkBehavior`), not an inference from names.
+  targetBehavior =
+    targetName: attrsOrEmpty (runtimeTargets.${targetName}.networkBehavior or null);
+
   complementInterface =
     targetName: iface:
-    if laneKind iface != "access-uplink" || !hasRuntimeSourceRule runtimeTargets.${targetName} iface then
+    if
+      laneKind iface != "access-uplink"
+      || !hasRuntimeSourceRule runtimeTargets.${targetName} iface
+      || (targetBehavior targetName).isUpstreamSelector or false
+    then
       iface
     else
       let
